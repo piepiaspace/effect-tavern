@@ -42,6 +42,13 @@ export default {
   },
   plugins: [{ name: "tavern", placeholders: [braces] }],
   glossary: [
+    // the same in every language: proper names of the wire and the app, and the unit the size readings count in
+    { term: "effect-tavern", doNotTranslate: true },
+    { term: "tokens", doNotTranslate: true },
+    { term: "JSON Schema", doNotTranslate: true },
+    { term: "JSON Object", doNotTranslate: true },
+    { term: "Tool Call", doNotTranslate: true },
+    { term: "Base URL", doNotTranslate: true },
     {
       term: "Record",
       translations: { "zh-CN": "记录" },
