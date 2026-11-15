@@ -32,6 +32,40 @@ import {
 import { turn } from "./turn.ts"
 import { fetchContext, fetchDetail } from "./wire.ts"
 import { t } from "./i18n.ts"
+import type { ConnectionCode } from "@effect-tavern/provider/src/providers.ts"
+
+/** The codes of a pair with no connection (providers.ts `ConnectionError`): each a way into Settings → 服务商. */
+const CONNECTION: Record<ConnectionCode, true> = {
+  "provider-missing": true,
+  "provider-disabled": true,
+  "provider-no-model": true,
+  "provider-no-endpoint": true,
+  "provider-no-key": true,
+  "url-empty": true,
+  "url-invalid": true,
+  "url-scheme": true,
+  "url-credentials": true,
+  "url-fragment": true,
+  "url-query": true,
+  "url-operation": true,
+  "url-origin": true,
+}
+/** A failure's words: a code the client knows is a button into the settings that fix it (no sentence, no params), any
+ *  other failure its message as it came (an upstream provider's text, verbatim). */
+export const Failed = (props: { error: { message: string; code?: string } }) => (
+  <Switch fallback={props.error.message}>
+    <Match when={props.error.code === "no-model"}>
+      <button type="button" class="go" onClick={() => openSettings("routing")}>
+        {t("app.goDefaultModel")}
+      </button>
+    </Match>
+    <Match when={props.error.code !== undefined && Object.hasOwn(CONNECTION, props.error.code)}>
+      <button type="button" class="go" onClick={() => openSettings("providers")}>
+        {t("app.goProviders")}
+      </button>
+    </Match>
+  </Switch>
+)
 
 const pct = (x: number) => `${Math.round(x * 100)}%`
 
@@ -181,11 +215,7 @@ export const Settlement = (props: { node: Node }) => {
               <p class="detail">
                 <Show when={e().phase}>{(p) => <span class="phase">{t(stageNames[p()])}</span>}</Show>
                 <span>
-                  <Show when={e().code === "no-model"} fallback={e().message}>
-                    <button type="button" class="go" onClick={() => openSettings("routing")}>
-                      {t("app.goDefaultModel")}
-                    </button>
-                  </Show>
+                  <Failed error={e()} />
                 </span>
               </p>
             )}
@@ -550,11 +580,7 @@ export const Demand = (props: { node: Node; n: number }) => {
         {(f) => (
           <span class="failed">
             <Show when={f().phase}>{(p) => <span class="phase">{t(stageNames[p()])}</span>}</Show>
-            <Show when={f().code === "no-model"} fallback={f().message}>
-              <button type="button" class="go" onClick={() => openSettings("routing")}>
-                {t("app.goDefaultModel")}
-              </button>
-            </Show>
+            <Failed error={f()} />
           </span>
         )}
       </Show>

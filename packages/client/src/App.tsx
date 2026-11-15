@@ -25,10 +25,10 @@ import { Check, Close, Copy, DieFill, Down, Edit, Insert, Next, Prev, Record, Wa
 import { Inspect } from "./inspector.tsx"
 import { blocks } from "./markdown.ts"
 import { plain, Prose } from "./prose.tsx"
-import { openSettings, Settings } from "./settings.tsx"
+import { Settings } from "./settings.tsx"
 import { Timeline } from "./timeline.tsx"
 import { WritingPage } from "./writing.tsx"
-import { Demand, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
+import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
 import { apart, lineOf, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
 import { shrinkwrap } from "./shrinkwrap.ts"
@@ -363,11 +363,7 @@ const Draft = (props: { d: Draft; phase: Phase | null; error: Failure | null }) 
             <div class="body">
               <Show when={e().phase}>{(p) => <span class="phase">{t(stageNames[p()])}</span>}</Show>
               <span>
-                <Show when={e().code === "no-model"} fallback={e().message}>
-                  <button type="button" class="go" onClick={() => openSettings("routing")}>
-                    {t("app.goDefaultModel")}
-                  </button>
-                </Show>
+                <Failed error={e()} />
               </span>
             </div>
             <button type="button" class="icon" aria-label={t("common.dismiss")} onClick={dismiss}>

@@ -2,7 +2,7 @@
 // prefix kept, a bare origin left to the format's default path), the secret as the credential; what is missing or off
 // fails naming the provider. The hint never shows a short key.
 import assert from "node:assert/strict"
-import { connection, hint, type Provider, type Secret } from "../src/providers.ts"
+import { connection, ConnectionError, hint, type ConnectionCode, type Provider, type Secret } from "../src/providers.ts"
 
 const key: Secret = { id: "s", name: "K", type: "auth_token", value: "tok-0123456789abcdef" }
 const p: Provider = {
@@ -41,12 +41,21 @@ assert.deepEqual(connection(pathed, { id: "c" }, key).endpoint, {
   url: "https://relay.example/claude",
   resolution: "exact-prefix",
 })
-assert.throws(() => connection({ ...p, enabled: false }, { id: "x" }, key), /provider "Relay": disabled/)
-assert.throws(() => connection(p, { id: "x", format: "gemini" }, key), /provider "Relay": no gemini endpoint/)
-assert.throws(() => connection(p, { id: "x" }, undefined), /provider "Relay": no key/)
+// each refusal names the provider in its message and carries the code a client words it by; a URL's survives the wrap
+const coded = (code: ConnectionCode, message: RegExp) => (e: unknown) =>
+  e instanceof ConnectionError && e.code === code && message.test(e.message)
+assert.throws(
+  () => connection({ ...p, enabled: false }, { id: "x" }, key),
+  coded("provider-disabled", /provider "Relay": disabled/),
+)
+assert.throws(
+  () => connection(p, { id: "x", format: "gemini" }, key),
+  coded("provider-no-endpoint", /provider "Relay": no gemini endpoint/),
+)
+assert.throws(() => connection(p, { id: "x" }, undefined), coded("provider-no-key", /provider "Relay": no key/))
 assert.throws(
   () => connection({ ...p, endpoints: { anthropic: { url: "ftp://x" } } }, { id: "x" }, key),
-  /provider "Relay": .*http/,
+  coded("url-scheme", /provider "Relay": .*http/),
 )
 assert.equal(hint("sk-ant-api03-abcdefgh3210"), "sk-ant****3210")
 assert.equal(hint("short-key"), "****")

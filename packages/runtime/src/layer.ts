@@ -353,7 +353,8 @@ export interface Resolved {
     sentences: Record<string, string> // by ask id, `switch.<key>.<value>`
     taken: { pov: From | null; verbosity: From | null } // who holds the slot; the frame item says whether it is compiled
   }
-  dropped: { from: From; kind: string; id?: string; why: string }[] // what the locks refused: a client draws it, nothing throws
+  // what the locks refused, nothing throws: a client words it by `kind` (one per lock), `why` is the CLI's and the tests'
+  dropped: { from: From; kind: "name" | "product" | "entry"; id: string; why: string }[]
 }
 
 /** The switches as slot fragments: `pov` (pov, echo, agency; the last two drop when there is no player in the fiction)

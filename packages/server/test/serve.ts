@@ -216,7 +216,7 @@ const run = async (inspect: boolean) => {
 
     const err = sse(await (await post({ kind: "setField", node: node.id, effects: [{ path: "x", set: 1 }] })).text())
     assert.deepEqual([err.length, err[0]!.event, /x/.test(err[0]!.data.message!)], [1, "error", true])
-    assert.equal(err[0]!.data.code, undefined) // only the no-model failure carries a code
+    assert.equal(err[0]!.data.code, undefined) // only a no-model or connection failure carries a code
     // A parent that does not exist is a defect on the stream, not a new root (it once became its own parent and spun).
     const orphan = sse(await (await post({ kind: "act", parent: 99, input: { text: "hi" } })).text())
     assert.deepEqual([orphan.length, orphan[0]!.event, /99/.test(orphan[0]!.data.message!)], [1, "error", true])
@@ -750,7 +750,8 @@ await run(false)
 }
 
 // A tavern with no routing and no environment model still answers GET /nodes (the fold reads no model); the first line
-// it is sent fails with the code the client links to Settings → 默认模型 by (issue #61).
+// it is sent fails with the code the client links to Settings → 默认模型 by (issue #61); a pair on a disabled provider
+// with the code it links to Settings → 服务商 by (#189).
 {
   const t = tavern({ data: open(":memory:"), cards: chats, overlay: player.harness })
   const headers = { "x-tavern-story": String(t.lib.stories.create(chat.id)) }
@@ -764,6 +765,22 @@ await run(false)
       ).text(),
     ).at(-1)!
     assert.deepEqual([none.event, none.data.code], ["error", "no-model"])
+    t.lib.providers.put({
+      id: "relay",
+      name: "Relay",
+      enabled: false,
+      defaultFormat: "openai-compatible",
+      endpoints: { "openai-compatible": { url: "http://localhost:1" } },
+      secret: "k",
+      models: [{ id: "m" }],
+    })
+    t.lib.routing.write({ default: { provider: "relay", model: "m" } })
+    const off = sse(
+      await (
+        await fetch(base, { method: "POST", headers, body: JSON.stringify({ kind: "act", input: { text: "hi" } }) })
+      ).text(),
+    ).at(-1)!
+    assert.deepEqual([off.event, off.data.code], ["error", "provider-disabled"])
   } finally {
     bare.close()
   }
