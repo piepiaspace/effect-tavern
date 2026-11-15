@@ -5,7 +5,7 @@
 // the server. No ai-sdk here: the client imports these types, and url.ts is all this file runs.
 import { Schema } from "effect"
 import type { Connection } from "./connection.ts"
-import { normalize, type Format } from "./url.ts"
+import { normalize, UrlError, type Format, type UrlCode } from "./url.ts"
 
 const Format = Schema.Literals(["anthropic", "openai-compatible", "gemini"])
 const Endpoint = Schema.Struct({ url: Schema.String, exactPrefix: Schema.optionalKey(Schema.Boolean) })
@@ -79,20 +79,39 @@ export const hint = (value: string): string =>
   value.length >= 16 ? `${value.slice(0, 6)}****${value.slice(-4)}` : "****"
 export const secretView = ({ value, ...s }: Secret): SecretView => ({ ...s, hint: hint(value) })
 
+/** Why a model has no connection, for a client to word (`message` stays for the CLI and logs): a URL refused keeps
+ *  url.ts's code. */
+export type ConnectionCode =
+  | "provider-missing"
+  | "provider-disabled"
+  | "provider-no-model"
+  | "provider-no-endpoint"
+  | "provider-no-key"
+  | UrlCode
+export class ConnectionError extends Error {
+  constructor(
+    readonly code: ConnectionCode,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
 /** One model of one provider as a Connection: the model's format or the provider's default, that format's endpoint,
  *  the key. What is missing fails here, naming the provider; nothing falls back. */
 export const connection = (p: Provider, m: ModelEntry, s: Secret | undefined): Connection => {
-  const fail = (why: string) => new Error(`provider "${p.name}": ${why}`)
-  if (!p.enabled) throw fail("disabled")
+  const fail = (code: ConnectionCode, why: string) => new ConnectionError(code, `provider "${p.name}": ${why}`)
+  if (!p.enabled) throw fail("provider-disabled", "disabled")
   const format = m.format ?? p.defaultFormat
   const ep = p.endpoints[format]
-  if (!ep?.url.trim()) throw fail(`no ${format} endpoint`)
-  if (!s) throw fail("no key")
+  if (!ep?.url.trim()) throw fail("provider-no-endpoint", `no ${format} endpoint`)
+  if (!s) throw fail("provider-no-key", "no key")
   let endpoint
   try {
     endpoint = normalize(format, ep.url, ep.exactPrefix ? "exact-prefix" : "infer")
   } catch (e) {
-    throw fail(e instanceof Error ? e.message : String(e))
+    if (!(e instanceof UrlError)) throw e
+    throw fail(e.code, e.message)
   }
   return {
     id: `${p.id}/${m.id}`,

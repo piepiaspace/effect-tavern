@@ -20,6 +20,7 @@ const zh = {
     reviseNote: "修改这条场外指导",
     stopped: "已停止",
     waiting: "等待中",
+    goProviders: "设置服务商",
   },
   card: {
     begin: "开始",
@@ -249,6 +250,14 @@ const zh = {
     toggleGroup: "展开或折叠分组",
     unreachable: "不通",
     urlOf: "{name} 地址",
+    urlEmpty: "未填地址",
+    urlInvalid: "不是完整的网址",
+    urlScheme: "只支持 http 或 https",
+    urlCredentials: "地址里不能带账号密码",
+    urlFragment: "地址里不能带 #",
+    urlQuery: "地址里不能带查询参数",
+    urlOperation: "完整端点须开启精确前缀",
+    urlOrigin: "默认路径只接受裸域名",
   },
   readings: {
     again: "再来一次",
@@ -490,6 +499,9 @@ const zh = {
     title: "写作",
     searchLexicon: "搜索禁词",
     noLexiconMatch: "没有匹配的禁词",
+    droppedName: "{from}的代称「{id}」须为一行、不含 {{，未采用",
+    droppedProduct: "{from}的小剧场「{id}」没有内容，未采用",
+    droppedEntry: "{from}的词条「{id}」含 /，未采用",
   },
   packs: {
     newPack: "新写作包",

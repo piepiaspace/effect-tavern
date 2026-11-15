@@ -26,6 +26,7 @@ import {
   bind,
   compileDecision,
   connection,
+  ConnectionError,
   decisionUrl,
   probeDecision,
   type CompileOptions,
@@ -85,7 +86,8 @@ export type PublicEvent = TimelineEvent | { kind: "error"; message: string; code
  *  16), still a fraction of a cent on any model. */
 const PROBE_TOKENS = 16
 /** No pair for the stage and no environment model. Its `code` rides the stream's `error` event (serve.ts), so the client
- *  offers its way into Settings → 默认模型 without reading the message. */
+ *  offers its way into Settings → 默认模型 without reading the message; a pair with no connection (providers.ts
+ *  `ConnectionError`) rides it the same way, into Settings → 服务商. */
 export class NoModel extends Error {
   readonly code = "no-model"
   constructor() {
@@ -137,7 +139,7 @@ export const library = ({
   const routing = (): Routing => (data.routing.read() as Routing | undefined) ?? {}
   const providerOf = (id: string): Provider => {
     const p = data.providers.list().find((x) => x.id === id)
-    if (!p) throw new Error(`no provider ${id}`)
+    if (!p) throw new ConnectionError("provider-missing", `no provider ${id}`)
     return p
   }
   const secretOf = (p: Provider) => data.secrets.list().find((s) => s.id === p.secret)
@@ -147,7 +149,7 @@ export const library = ({
   const resolve = (pair: Pair): Model => {
     const p = providerOf(pair.provider)
     const m = p.models.find((x) => x.id === pair.model)
-    if (!m) throw new Error(`provider "${p.name}": no model ${pair.model}`)
+    if (!m) throw new ConnectionError("provider-no-model", `provider "${p.name}": no model ${pair.model}`)
     return bind(connection(p, m, secretOf(p)))
   }
   const model = (phase: Phase | "author"): Model => {
@@ -321,7 +323,7 @@ export const library = ({
             kind: "error",
             phase: e.phase,
             message: error instanceof Error ? error.message : String(error),
-            ...(error instanceof NoModel && { code: error.code }),
+            ...((error instanceof NoModel || error instanceof ConnectionError) && { code: error.code }),
           }
         }
         if (e.kind !== "change") return e

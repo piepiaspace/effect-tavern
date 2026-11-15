@@ -21,6 +21,7 @@ const en: Dict = {
     reviseNote: "Revise your note",
     stopped: "Stopped",
     waiting: "Waiting",
+    goProviders: "Set up provider",
   },
   card: {
     begin: "Begin",
@@ -250,6 +251,14 @@ const en: Dict = {
     toggleGroup: "Expand or collapse the group",
     unreachable: "Unreachable",
     urlOf: "{name} URL",
+    urlEmpty: "No URL",
+    urlInvalid: "Not an absolute URL",
+    urlScheme: "Use http or https",
+    urlCredentials: "No credentials in the URL",
+    urlFragment: "No # in the URL",
+    urlQuery: "No query string in the URL",
+    urlOperation: "A full endpoint needs exact prefix",
+    urlOrigin: "The default path takes a bare origin",
   },
   readings: {
     again: "Once more",
@@ -491,6 +500,9 @@ const en: Dict = {
     title: "Writing",
     searchLexicon: "Search banned phrases",
     noLexiconMatch: "No banned phrase matches",
+    droppedName: "The name “{id}” in {from} must be one line without {{, so it is left out",
+    droppedProduct: "The theater “{id}” in {from} has no text, so it is left out",
+    droppedEntry: "The entry “{id}” in {from} contains a /, so it is left out",
   },
   packs: {
     newPack: "New pack",

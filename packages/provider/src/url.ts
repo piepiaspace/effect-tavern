@@ -8,6 +8,26 @@ export interface Endpoint {
   resolution: Resolution
 }
 
+/** Why a URL is refused, for a client to word (`message` stays for the CLI and logs). */
+export type UrlCode =
+  | "url-empty"
+  | "url-invalid"
+  | "url-scheme"
+  | "url-credentials"
+  | "url-fragment"
+  | "url-query"
+  | "url-operation"
+  | "url-origin"
+export class UrlError extends Error {
+  constructor(
+    readonly code: UrlCode,
+    message: string,
+    options?: ErrorOptions,
+  ) {
+    super(message, options)
+  }
+}
+
 const RULES: Record<Format, { defaultPath: string; operationPath: string }> = {
   anthropic: { defaultPath: "/v1", operationPath: "/messages" },
   "openai-compatible": { defaultPath: "/v1", operationPath: "/chat/completions" },
@@ -31,24 +51,27 @@ const operationPrefix = (format: Format, pathname: string): { prefix: string; st
 
 export const normalize = (format: Format, input: string, requested: Resolution | "infer" = "infer"): Endpoint => {
   const trimmed = input.trim()
-  if (!trimmed) throw new Error("A provider URL is required.")
+  if (!trimmed) throw new UrlError("url-empty", "A provider URL is required.")
   let url: URL
   try {
     url = new URL(trimmed)
   } catch (cause) {
-    throw new Error("A provider URL must be a valid absolute URL.", { cause })
+    throw new UrlError("url-invalid", "A provider URL must be a valid absolute URL.", { cause })
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("A provider URL must use http or https.")
-  if (url.username || url.password) throw new Error("A provider URL cannot contain credentials.")
-  if (url.hash) throw new Error("A provider URL cannot contain a fragment.")
+  if (url.protocol !== "http:" && url.protocol !== "https:")
+    throw new UrlError("url-scheme", "A provider URL must use http or https.")
+  if (url.username || url.password) throw new UrlError("url-credentials", "A provider URL cannot contain credentials.")
+  if (url.hash) throw new UrlError("url-fragment", "A provider URL cannot contain a fragment.")
   const pathname = url.pathname.replace(/\/+$/, "")
   const op = operationPrefix(format, pathname)
   if (url.search && !(format === "gemini" && op?.streamQuery && url.search === "?alt=sse"))
-    throw new Error("A provider URL cannot contain a query string.")
-  if (op && requested === "format-default") throw new Error("A complete operation endpoint must use exact-prefix.")
+    throw new UrlError("url-query", "A provider URL cannot contain a query string.")
+  if (op && requested === "format-default")
+    throw new UrlError("url-operation", "A complete operation endpoint must use exact-prefix.")
   const prefix = (op?.prefix ?? pathname).replace(/\/+$/, "")
   const resolution = requested === "infer" ? (op || prefix ? "exact-prefix" : "format-default") : requested
-  if (resolution === "format-default" && prefix) throw new Error("format-default requires a bare provider origin.")
+  if (resolution === "format-default" && prefix)
+    throw new UrlError("url-origin", "format-default requires a bare provider origin.")
   return { url: `${url.origin}${prefix}`, resolution }
 }
 

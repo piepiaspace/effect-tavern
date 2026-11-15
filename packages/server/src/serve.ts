@@ -7,7 +7,8 @@
 // stories run side by side, with no lock across them.
 //   POST /      an Action (src/session.ts `Action`, decoded at this boundary) starts the story's turn and answers its
 //                 events as SSE, one `event:` per kind; a failure is an `error` event {message, code?} (code "no-model":
-//                 no routing pair and no environment model, library.ts `NoModel`). The turn is the story's, not the
+//                 no routing pair and no environment model, library.ts `NoModel`; a pair with no connection, the
+//                 provider's `ConnectionError` code). The turn is the story's, not the
 //                 response's: closing the response stops nothing, the turn lands whoever listens.
 //   GET  /turn    the turn in flight, to a client that comes back to the story: 204 when idle; else SSE, one `attach`
 //                 event {phase, draft: {parent, input, text, prev?} | null} then the live events (no replay). A turn

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { normalize, plan } from "../src/url.ts"
+import { normalize, plan, UrlError, type UrlCode } from "../src/url.ts"
 
 // bare origin → format default path
 assert.deepEqual(normalize("anthropic", "https://api.anthropic.com"), {
@@ -29,8 +29,17 @@ assert.equal(
   plan("gemini", normalize("gemini", "https://g.example/v1beta"), "gemini-pro").models,
   "https://g.example/v1beta/models",
 )
-// refused inputs
-for (const bad of ["", "ftp://x", "https://u:p@x.example", "https://x.example/#frag", "https://x.example/v1?key=1"])
-  assert.throws(() => normalize("openai-compatible", bad), bad || "(empty)")
-assert.throws(() => normalize("anthropic", "https://x.example/v1/messages", "format-default"))
+// refused inputs, each with the code a client words it by
+const refused = (code: UrlCode) => (e: unknown) => e instanceof UrlError && e.code === code
+for (const [bad, code] of [
+  ["", "url-empty"],
+  ["not a url", "url-invalid"],
+  ["ftp://x", "url-scheme"],
+  ["https://u:p@x.example", "url-credentials"],
+  ["https://x.example/#frag", "url-fragment"],
+  ["https://x.example/v1?key=1", "url-query"],
+] as const)
+  assert.throws(() => normalize("openai-compatible", bad), refused(code), bad || "(empty)")
+assert.throws(() => normalize("anthropic", "https://x.example/v1/messages", "format-default"), refused("url-operation"))
+assert.throws(() => normalize("anthropic", "https://x.example/v1", "format-default"), refused("url-origin"))
 console.log("url ok")

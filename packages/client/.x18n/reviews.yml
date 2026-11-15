@@ -1,6 +1,8 @@
 # yaml-language-server: $schema=https://x18n.dev/schema/reviews.json
 x18n: 1
 sources:
+  app.goProviders:
+    en: 157484f15f95b6
   app.phaseCheck:
     en: 16a823d18e0da0
   card.modeAuthor:
@@ -31,6 +33,22 @@ sources:
     en: 1d4bb1e424b9b5
   providers.headerValue:
     en: 1903e3f10e9bcb
+  providers.urlCredentials:
+    en: 6e0fd9748e3c1
+  providers.urlEmpty:
+    en: 114ad3a414e5d0
+  providers.urlFragment:
+    en: 220d5d3cb444e
+  providers.urlInvalid:
+    en: 1594e18e569b58
+  providers.urlOperation:
+    en: b6efd4918ccde
+  providers.urlOrigin:
+    en: b3582d358547d
+  providers.urlQuery:
+    en: c27f1cc716c51
+  providers.urlScheme:
+    en: 4e9b88758cbf6
   readings.asideOf:
     en: 5f7bd6f401033
   readings.remove:
@@ -45,5 +63,11 @@ sources:
     en: 1babea493a44cb
   writing.caretMiddle:
     en: ddcd992ec0fc9
+  writing.droppedEntry:
+    en: 1c5d59b87f27ea
+  writing.droppedName:
+    en: 1e6eddba2c7323
+  writing.droppedProduct:
+    en: d2f750260b7e0
   writing.keysN:
     en: c4a8f57da5330

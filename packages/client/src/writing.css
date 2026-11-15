@@ -67,6 +67,14 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+/* each tag is a sentence with a card's or pack's name in it: it wraps rather than run past the column */
+.dropped-strip .tag {
+  flex: 0 1 auto;
+  height: auto;
+  min-height: 22px;
+  padding-block: var(--space-half);
+  white-space: normal;
+}
 .wcard {
   flex: none;
   min-width: 0;

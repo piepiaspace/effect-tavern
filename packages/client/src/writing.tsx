@@ -5,7 +5,7 @@
 // narration switches (`local.switches` + compiled `layer.switches.sentences` + `taken` grey-out) and the per-turn
 // record products (`layer.products` with `from`, `on`, `text`, and modal prompt override in `local.products`).
 import type { Writing } from "@effect-tavern/runtime/src/fragment.ts"
-import type { Local } from "@effect-tavern/runtime/src/layer.ts"
+import type { Local, Resolved } from "@effect-tavern/runtime/src/layer.ts"
 import { unfilled } from "@effect-tavern/runtime/src/names.ts"
 import { createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
@@ -30,7 +30,7 @@ import { openPicker } from "./dialogs.tsx"
 import { kindOf } from "./record.ts"
 import { moot, pressing, sentence, SWITCHES, takenBy, type SwitchKey } from "./switches.ts"
 import { putLocal, refreshActiveCard } from "./wire.ts"
-import { t } from "./i18n.ts"
+import { type Key, t } from "./i18n.ts"
 
 export const openWriting = () => open("writing")
 
@@ -96,6 +96,13 @@ const UserChip = (props: { cardId: string; unfilled: boolean }) => {
   )
 }
 
+/** A refused row's sentence, by the lock that refused it (layer.ts `dropped`). */
+const DROPPED: Record<Resolved["dropped"][number]["kind"], Key> = {
+  name: "writing.droppedName",
+  product: "writing.droppedProduct",
+  entry: "writing.droppedEntry",
+}
+
 export const WritingPage = () => {
   const view = read(card)
   const allPacks = read(packs)
@@ -133,9 +140,7 @@ export const WritingPage = () => {
           <Show when={dropped().length > 0}>
             <div class="dropped-strip">
               <For each={dropped()} keyed={false}>
-                {(d) => (
-                  <span class="tag warn">{`${fromLabel(d().from)}${d().id ? ` · ${d().id}` : ""}: ${d().why}`}</span>
-                )}
+                {(d) => <span class="tag warn">{t(DROPPED[d().kind], { from: fromLabel(d().from), id: d().id })}</span>}
               </For>
             </div>
           </Show>

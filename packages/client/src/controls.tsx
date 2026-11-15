@@ -3,7 +3,7 @@
 // detail card, a modal, the one delete confirm), and the small pure helpers the sections share. No state of a section
 // lives here.
 import { lookup } from "@effect-tavern/provider/src/names.ts"
-import { normalize, plan, type Format } from "@effect-tavern/provider/src/url.ts"
+import { normalize, plan, UrlError, type Format, type UrlCode } from "@effect-tavern/provider/src/url.ts"
 import type { JSX } from "@solidjs/web"
 import { For, onSettled, Show } from "solid-js"
 import {
@@ -19,7 +19,7 @@ import { Switch as Toggle, SwitchThumb } from "@ui-sdk/solid/switch"
 import { Family } from "./family.tsx"
 import { Back, Caret, Check, Close } from "./icons.tsx"
 import { names } from "./store.ts"
-import { t } from "./i18n.ts"
+import { type Key, t } from "./i18n.ts"
 
 /** The menu's keyboard: arrows move focus among the items and wrap, Home/End jump; Escape and outside clicks are the popover's. */
 export const roam = (e: KeyboardEvent & { currentTarget: HTMLElement }) => {
@@ -48,12 +48,24 @@ export const grouped = (ids: readonly string[]): [string, string[]][] => {
   for (const id of ids) by.set(groupOf(id), [...(by.get(groupOf(id)) ?? []), id])
   return [...by]
 }
-/** The URL a format's endpoint will hit, or why the input is refused (url.ts's own message). */
+/** Why url.ts refuses a URL, by its code. */
+const REFUSED: Record<UrlCode, Key> = {
+  "url-empty": "providers.urlEmpty",
+  "url-invalid": "providers.urlInvalid",
+  "url-scheme": "providers.urlScheme",
+  "url-credentials": "providers.urlCredentials",
+  "url-fragment": "providers.urlFragment",
+  "url-query": "providers.urlQuery",
+  "url-operation": "providers.urlOperation",
+  "url-origin": "providers.urlOrigin",
+}
+/** The URL a format's endpoint will hit, or why the input is refused (worded by url.ts's code). */
 export const preview = (format: Format, url: string, exact: boolean | undefined, model = "{model}") => {
   try {
     return { ok: true, text: plan(format, normalize(format, url, exact ? "exact-prefix" : "infer"), model).stream }
   } catch (e) {
-    return { ok: false, text: e instanceof Error ? e.message : String(e) }
+    if (!(e instanceof UrlError)) throw e
+    return { ok: false, text: t(REFUSED[e.code]) }
   }
 }
 /** A value (a key, an error) onto the clipboard, then `flash` for a moment. A plain-http page off localhost (a phone
