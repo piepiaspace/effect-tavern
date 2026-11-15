@@ -52,7 +52,7 @@ assert.deepEqual(
 ) // fewer than four: all of them
 
 assert.equal(preview(row(1)), "line 1")
-assert.equal(preview(row(1, { last: { text: "  ", note: "慢一点" } })), "（场外指导）慢一点")
+assert.equal(preview(row(1, { last: { text: "  ", note: "慢一点" } })), "场外：慢一点")
 assert.equal(preview(row(1, { last: { text: "" } })), null)
 assert.equal(preview(row(1, { last: null, turns: 0 })), null)
 

@@ -181,9 +181,7 @@ export const Settlement = (props: { node: Node }) => {
               <p class="detail">
                 <Show when={e().phase}>{(p) => <span class="phase">{t(stageNames[p()])}</span>}</Show>
                 <span>
-                  {e().message}
-                  <Show when={e().code === "no-model"}>
-                    {" "}
+                  <Show when={e().code === "no-model"} fallback={e().message}>
                     <button type="button" class="go" onClick={() => openSettings("routing")}>
                       {t("app.goDefaultModel")}
                     </button>
@@ -200,7 +198,7 @@ export const Settlement = (props: { node: Node }) => {
             disabled={busy()}
             onClick={() => turn.retryRecord(props.node.id)}
           >
-            {t("readings.retryRecord")}
+            {t("common.retry")}
           </button>
           <button
             type="button"
@@ -365,13 +363,13 @@ export const Reading = (props: { el: Element }) => (
         <div
           class="check"
           role="img"
-          aria-label={`${el().check.action}: ${el().check.hit ? "hit" : "miss"}, ${pct(el().check.chance)}`}
+          aria-label={`${el().check.action}: ${el().check.hit ? t("readings.hit") : t("readings.miss")}, ${pct(el().check.chance)}`}
         >
           <div class="row">
             <Die aria-hidden="true" />
             <span class="label">{el().check.action}</span>
             <span class="badge" data-hit={el().check.hit}>
-              {el().check.hit ? "Hit" : "Miss"}
+              {el().check.hit ? t("readings.hit") : t("readings.miss")}
             </span>
             <span class="num">{pct(el().check.chance)}</span>
           </div>
@@ -556,7 +554,11 @@ export const Demand = (props: { node: Node; n: number }) => {
         {(f) => (
           <span class="failed">
             <Show when={f().phase}>{(p) => <span class="phase">{t(stageNames[p()])}</span>}</Show>
-            {f().message}
+            <Show when={f().code === "no-model"} fallback={f().message}>
+              <button type="button" class="go" onClick={() => openSettings("routing")}>
+                {t("app.goDefaultModel")}
+              </button>
+            </Show>
           </span>
         )}
       </Show>

@@ -208,24 +208,16 @@
 .manifest .spec-pop li {
   overflow-wrap: anywhere;
 }
+/* no default model: the one key to set it, in the warning colour */
 .manifest .nomodel {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: var(--text-footnote);
-  white-space: nowrap;
-}
-.manifest .more {
-  margin-left: var(--space-1);
-  padding: var(--space-half) var(--space-1);
+  align-self: flex-start;
+  padding: var(--space-half) var(--space-2);
   border-radius: var(--radius-sm);
-  background: var(--alpha-1);
-  color: var(--ink-3);
-  font-family: var(--font-mono);
-  font-size: var(--text-caption);
-}
-.manifest .more:hover {
-  background: var(--alpha-2);
-  color: var(--ink);
+  background: var(--warn-soft);
+  color: var(--warn);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+  white-space: nowrap;
 }
 .manifest .mono {
   font-family: var(--font-mono);

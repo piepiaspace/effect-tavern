@@ -76,12 +76,17 @@
 .strip .icon {
   flex: none;
 }
+/* the card's name gives way before the story's: capped, it ends in an ellipsis */
 .strip .c,
 .shell-tab .c {
   color: var(--ink-2);
   font-weight: 500;
   white-space: nowrap;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .strip .sep,
 .shell-tab .sep {

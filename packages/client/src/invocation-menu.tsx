@@ -49,8 +49,7 @@ export const InvocationMenu = (props: {
   const from = (source: "pack" | "card") => available().filter((i) => i.source === source)
   const groups = () => [...new Set(from("pack").map((i) => i.category))]
   const label = (name: string) =>
-    card()?.mounts.find((m) => m.id === name)?.name ??
-    (name === "local" ? t("composer.localTools") : t("composer.playerTools"))
+    card()?.mounts.find((m) => m.id === name)?.name ?? (name === "local" ? t("packs.local") : t("settings.packs"))
   const page = () => pages().at(-1)
   let field: HTMLInputElement | undefined
   onSettled(() => {
@@ -59,13 +58,7 @@ export const InvocationMenu = (props: {
   })
   const title = () => {
     const p = page()
-    return p === "pack"
-      ? t("composer.playerTools")
-      : p === "card"
-        ? t("composer.cardTools")
-        : p
-          ? label(p.slice(5))
-          : ""
+    return p === "pack" ? t("settings.packs") : p === "card" ? t("card.card") : p ? label(p.slice(5)) : ""
   }
   const Entry = (p: { item: PlayerCatalogItem }) => (
     <CommandItem
@@ -130,7 +123,7 @@ export const InvocationMenu = (props: {
             {(s) => (
               <Show when={from(s).length}>
                 <CommandItem class="item" value={s} page={s} onPointerDown={keep}>
-                  <span class="name">{s === "pack" ? t("composer.playerTools") : t("composer.cardTools")}</span>
+                  <span class="name">{s === "pack" ? t("settings.packs") : t("card.card")}</span>
                   <span class="hint" />
                   <span aria-hidden="true">›</span>
                 </CommandItem>

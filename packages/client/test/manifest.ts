@@ -51,12 +51,12 @@ const ri = view({
     actions: [],
   },
 })
-assert.deepEqual(chips(ri), [{ label: "参与者" }, { label: "状态", items: ["好感度"] }]) // no module label, no hidden field
-assert.deepEqual(chips(view({ input: "note", facets: { ...view({}).facets, mode: "note" } })), [{ label: "作者" }]) // nothing tracked
+assert.deepEqual(chips(ri), [{ label: "参与模式" }, { label: "状态", items: ["好感度"] }]) // no module label, no hidden field
+assert.deepEqual(chips(view({ input: "note", facets: { ...view({}).facets, mode: "note" } })), [{ label: "作者模式" }]) // nothing tracked
 // each mechanism the card has, in the shelf's words (no card tags: the player's words are Local.tags, #133)
 assert.deepEqual(
   chips(view({ facets: { ...view({}).facets, actions: true, openings: true } })).map((c) => c.label),
-  ["参与者", "检定", "多开场"],
+  ["参与模式", "检定", "多开场"],
 )
 // what each chip lists when tapped: fields by label, actions and readouts by id, the lore's size, the openings' count
 const all = chips(
@@ -81,7 +81,7 @@ assert.deepEqual(
     ["状态", ["体力", "gold"]],
     ["检定", ["dodge"]], // the text, not the id: what the player reads
     ["读数", ["mood?"]],
-    ["线索", ["4 条 · 7 层"]],
+    ["线索", ["4 条", "7 层"]],
     ["多开场", ["3 个开场白"]],
   ],
 )

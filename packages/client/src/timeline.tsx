@@ -65,6 +65,11 @@ export const Timeline = () => {
   const knot = (c: Cell) => ({ x: xy(c).x + KNOT.x, y: xy(c).y + KNOT.y })
   const node = (id: Id) => all().nodes.get(id)
   const sel = () => (selected() === null ? undefined : node(selected()!))
+  /** The drop's one question: the node and what follows it, or the node alone. */
+  const dropAsk = (id: Id) => {
+    const k = L.below(all(), id)
+    return k ? t("timeline.dropConfirm", { id, n: k }) : t("timeline.dropOne", { id })
+  }
   // where checkout(selected) lands: the newest leaf under it
   const target = createMemo(() => (sel() ? L.leaf(all(), sel()!.id) : null)) // read by every station: once per change
   const depth = (id: Id) => L.chain(all(), id).length
@@ -197,9 +202,7 @@ export const Timeline = () => {
         </button>
         <h1>{view()?.title}</h1>
         <span class="spacer" />
-        <span class="sums">
-          {t("timeline.sums", { nodes: all().nodes.size, head: all().head === null ? "null" : `#${all().head}` })}
-        </span>
+        <span class="sums">{t("timeline.nodesN", { n: all().nodes.size })}</span>
         <span class="seg" role="tablist" aria-label={t("common.view")}>
           <button
             role="tab"
@@ -266,12 +269,12 @@ export const Timeline = () => {
                       width: `${Math.max(260, th().lanes * (LANE + GAP) - GAP)}px`,
                     }}
                   >
-                    <span>{t("timeline.root", { id: th().root === null ? t("common.draft") : `#${th().root}` })}</span>
+                    <span>{th().root === null ? t("common.draft") : `#${th().root}`}</span>
+                    <Show when={th().root !== null && heading(view()?.heading, node(th().root!)!, all())}>
+                      {(h) => <span class="title">{h()}</span>}
+                    </Show>
                     <span class="dim">
                       {t("timeline.nodesN", { n: th().root === null ? 1 : L.below(all(), th().root!) + 1 })}
-                      <Show when={th().root !== null && heading(view()?.heading, node(th().root!)!, all())}>
-                        {(h) => <> · {h()}</>}
-                      </Show>
                     </span>
                   </div>
                   <For each={Array.from({ length: th().rows }, (_, r) => r)} keyed={false}>
@@ -341,7 +344,7 @@ export const Timeline = () => {
                       <button
                         type="button"
                         class="icon"
-                        aria-label={t("timeline.inspect")}
+                        aria-label={t("side.inspector")}
                         onClick={() => inspect(n().id)}
                       >
                         <Clue />
@@ -358,16 +361,19 @@ export const Timeline = () => {
                     </span>
                   </div>
                   <div class="facts">
-                    <span>
-                      {t("timeline.parent")} <b>{n().parent === null ? t("timeline.noParent") : `#${n().parent}`}</b>
-                    </span>
-                    <span>
-                      <b>{n().sibling ?? (n().parent === null ? "root" : "act")}</b>
-                      <Show when={vs().list.length > 1}>
-                        {" "}
-                        {vs().index + 1}/{vs().list.length}
-                      </Show>
-                    </span>
+                    <Show when={n().parent !== null}>
+                      <span>
+                        {t("timeline.parent")} <b>#{n().parent}</b>
+                      </span>
+                    </Show>
+                    <Show when={n().sibling || vs().list.length > 1}>
+                      <span class="kind">
+                        <SiblingKind of={n().sibling} />
+                        <Show when={vs().list.length > 1}>
+                          {vs().index + 1}/{vs().list.length}
+                        </Show>
+                      </span>
+                    </Show>
                     <Show when={heading(view()?.heading, n(), all())}>{(h) => <span>{h()}</span>}</Show>
                     <span>
                       {t("timeline.belowN", { n: L.below(all(), n().id) })}
@@ -430,21 +436,7 @@ export const Timeline = () => {
           </Show>
         </section>
       </div>
-      <Prompt
-        controller={confirm}
-        title={
-          <Show when={sel()}>
-            {(n) => (
-              <>
-                {t("timeline.dropConfirm", { id: n().id, n: L.below(all(), n().id) })}{" "}
-                {L.chain(all(), all().head).some((x) => x.id === n().id)
-                  ? t("timeline.headFalls")
-                  : t("timeline.headStays")}
-              </>
-            )}
-          </Show>
-        }
-      >
+      <Prompt controller={confirm} title={<Show when={sel()}>{(n) => <>{dropAsk(n().id)}</>}</Show>}>
         <div class="row">
           <button type="button" class="chip state" onClick={() => confirm.close()}>
             {t("common.cancel")}
@@ -453,10 +445,7 @@ export const Timeline = () => {
             type="button"
             class="chip danger"
             disabled={busy()}
-            data-agent-confirm={t("timeline.dropConfirm", {
-              id: sel()?.id ?? 0,
-              n: sel() ? L.below(all(), sel()!.id) : 0,
-            })}
+            data-agent-confirm={sel() ? dropAsk(sel()!.id) : ""}
             onClick={() => void drop()}
           >
             {t("common.delete")}

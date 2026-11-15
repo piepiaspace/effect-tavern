@@ -22,7 +22,7 @@ export const chips = (c: CardView): Chip[] => {
     fields: c.rules.fields.filter((f) => !f.hidden).map((f) => f.label ?? f.path),
     actions: c.rules.actions.map((a) => a.text),
     readouts: (c.rules.readouts ?? []).map((q) => q.text),
-    lore: [t("card.loreSize", { entries: c.lore.entries, layers: c.lore.layers })],
+    lore: [t("common.entries", { n: c.lore.entries }), t("card.loreLayers", { n: c.lore.layers })],
     openings: [t("card.openingsCount", { n: c.greetings.length })],
   }
   const has = (k: keyof typeof items) => (k === "fields" ? items.fields.length > 0 : c.facets[k])

@@ -42,6 +42,13 @@ export default {
   },
   plugins: [{ name: "tavern", placeholders: [braces] }],
   glossary: [
+    // the same in every language: proper names of the wire and the app, and the unit the size readings count in
+    { term: "effect-tavern", doNotTranslate: true },
+    { term: "tokens", doNotTranslate: true },
+    { term: "JSON Schema", doNotTranslate: true },
+    { term: "JSON Object", doNotTranslate: true },
+    { term: "Tool Call", doNotTranslate: true },
+    { term: "Base URL", doNotTranslate: true },
     {
       term: "Record",
       translations: { "zh-CN": "记录" },
@@ -54,8 +61,51 @@ export default {
     { term: "Timeline", translations: { "zh-CN": "时间线" } },
     { term: "Inspector", translations: { "zh-CN": "检查器" } },
     { term: "Persona", translations: { "zh-CN": "人设" } },
+    // the vocabulary (docs/copy-brief.md): one word per concept. The source is zh-CN, so a term is the Chinese word
+    // and the check asks the English under it to hold the translation (or one of its forms, matched at a word's start)
+    {
+      term: "场外",
+      translations: { en: "Note" },
+      forms: { en: ["note"] },
+      note: "the note channel; 场外指导 only as a hit label",
+    },
+    { term: "场内", translations: { en: "In story" } },
+    { term: "叙事者", translations: { en: "narrator" } },
+    { term: "轮", translations: { en: "turn" }, forms: { en: ["turn"] }, note: "a turn's depth; never 回合" },
+    {
+      term: "节点",
+      translations: { en: "node" },
+      forms: { en: ["node"] },
+      note: "a version on the tree: Timeline and Inspector only",
+    },
+    { term: "主线", translations: { en: "main line" } },
+    { term: "检索", translations: { en: "Lookup" }, forms: { en: ["lookup", "looking up"] }, note: "the lookup stage" },
+    { term: "判定", translations: { en: "Decide" }, forms: { en: ["decid"] }, note: "the decide stage" },
+    { term: "导演", translations: { en: "Direct" }, forms: { en: ["direct"] }, note: "the direct stage" },
+    { term: "叙事", translations: { en: "Narrate" }, forms: { en: ["narrat"] }, note: "the narrate stage" },
+    {
+      term: "校验",
+      translations: { en: "Check" },
+      forms: { en: ["check"] },
+      note: "the check stage; not 检查 (the Inspector's word)",
+    },
+    { term: "润色", translations: { en: "Polish" }, forms: { en: ["polish"] }, note: "the polish stage" },
+    {
+      term: "结算",
+      translations: { en: "Settle" },
+      forms: { en: ["settl"] },
+      note: "the record stage; 记录 is the panel",
+    },
+    { term: "小剧场", translations: { en: "Theater" }, forms: { en: ["theater"] } },
+    { term: "禁词", translations: { en: "banned phrase" }, forms: { en: ["banned phrase"] } },
+    { term: "格式键", translations: { en: "format key" }, forms: { en: ["format key"] } },
+    { term: "按需", translations: { en: "On demand" }, forms: { en: ["on-demand"] } },
+    { term: "每轮", translations: { en: "Every turn" } },
+    { term: "默认模型", translations: { en: "Default model" } },
+    { term: "主模型", translations: { en: "Main model" }, forms: { en: ["main"] }, note: "跟随主模型 is Follow main" },
+    { term: "跟随主模型", translations: { en: "Follow main" } },
   ],
-  checks: { "hard-string": "warning", glossary: "warning", "unused-key": "error", "missing-translation": "error" },
+  checks: { "hard-string": "warning", glossary: "error", "unused-key": "error", "missing-translation": "error" },
   extract: {
     keygen: "empty",
     // not words of the chrome: selectors, icon paths, HTTP verbs, storage keys; glyph marks (HEAD, →leaf, a count's

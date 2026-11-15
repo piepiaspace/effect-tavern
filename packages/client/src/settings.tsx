@@ -239,7 +239,6 @@ const Routing = (props: { onDecision: () => void }) => {
                   <div class="setting-card">
                     <div class="stage-head">
                       <span>{t(s()[1])}</span>
-                      <span class="tag mono">{s()[0]}</span>
                     </div>
                     <Menu
                       label={t(s()[1])}
@@ -394,7 +393,6 @@ const SlotEditor = (props: {
               <textarea
                 class="field"
                 rows="2"
-                placeholder={t("settings.messagePlaceholder")}
                 aria-label={t("settings.messageLabel")}
                 value={m().text}
                 onChange={(e) => {
@@ -452,7 +450,7 @@ const Personas = (props: Pane) => {
               >
                 <Avatar name={x().name} />
                 <span class="p-name">{x().name}</span>
-                <For each={onCards(x().id)}>{(t) => <span class="tag">{t}</span>}</For>
+                <For each={onCards(x().id)}>{(t) => <span class="tag clip">{t}</span>}</For>
                 <Show when={x().default}>
                   <StarFill class="p-mark" aria-label={t("settings.defaultPersona")} />
                 </Show>
@@ -477,7 +475,7 @@ const Personas = (props: Pane) => {
                   label={t("settings.personaName")}
                   onCommit={(name) => void putPersona({ ...x(), name }).then(refreshActiveCard)}
                 />
-                <For each={onCards(x().id)}>{(t) => <span class="tag">{t}</span>}</For>
+                <For each={onCards(x().id)}>{(t) => <span class="tag clip">{t}</span>}</For>
                 <span class="spacer" />
                 <button
                   type="button"

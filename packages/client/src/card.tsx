@@ -172,12 +172,9 @@ export const CardPage = () => {
               </ul>
               {/* said up front: Begin works without one (an opening calls no model), the first line sent does not */}
               <Show when={!route().default}>
-                <p class="nomodel">
-                  {t("card.model")} · {t("card.noDefault")}
-                  <button type="button" class="more" onClick={() => openSettings("routing")}>
-                    {t("app.goDefaultModel")}
-                  </button>
-                </p>
+                <button type="button" class="nomodel" onClick={() => openSettings("routing")}>
+                  {t("app.goDefaultModel")}
+                </button>
               </Show>
               <Size label={t("card.prompt")} n={c().tokens.head} />
             </section>
@@ -339,7 +336,7 @@ export const CardPage = () => {
                   disabled={busy() || starting()}
                   onClick={() => void begin()}
                 >
-                  {fresh() ? t("card.begin") : t("stories.newStory")}
+                  {fresh() ? t("card.begin") : t("side.newStory")}
                   <Change />
                 </button>
               </footer>

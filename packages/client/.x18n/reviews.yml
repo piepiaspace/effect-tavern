@@ -1,0 +1,41 @@
+# yaml-language-server: $schema=https://x18n.dev/schema/reviews.json
+x18n: 1
+sources:
+  app.phaseCheck:
+    en: 16a823d18e0da0
+  card.modeAuthor:
+    en: 796d5317f7d8c
+  card.modeParticipant:
+    en: 99d69f5b20466
+  composer.closeNote:
+    en: 71011493da568
+  models.prefill:
+    en: 1da8a7b35d5211
+  packs.askNarrateRole:
+    en: 1975a1eb16f640
+  packs.everyTurn:
+    en: 19f9c67cffc9b3
+  packs.modeOverride:
+    en: 13d0770ebc609b
+  packs.modeYield:
+    en: ffb9ec792994a
+  packs.onDemand:
+    en: 4c02d44e44ab9
+  packs.slotCustom:
+    en: 10dfe7211e10bf
+  providers.baseUrlExample:
+    en: 3baa8e039be39
+  providers.baseUrlOf:
+    en: 1d4bb1e424b9b5
+  providers.headerValue:
+    en: 1903e3f10e9bcb
+  readings.remove:
+    en: 17804617273af8
+  settings.stagePolish:
+    en: 16b921b720301b
+  timeline.draftLabel:
+    en: 3be7925838d5
+  writing.caretMiddle:
+    en: ddcd992ec0fc9
+  writing.keysN:
+    en: c4a8f57da5330
