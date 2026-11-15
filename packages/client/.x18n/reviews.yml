@@ -11,6 +11,8 @@ sources:
     en: 71011493da568
   models.prefill:
     en: 1da8a7b35d5211
+  packs.askNarrateCorrection:
+    en: 75fdcffdadaa0
   packs.askNarrateRole:
     en: 1975a1eb16f640
   packs.everyTurn:
@@ -29,12 +31,18 @@ sources:
     en: 1d4bb1e424b9b5
   providers.headerValue:
     en: 1903e3f10e9bcb
+  readings.asideOf:
+    en: 5f7bd6f401033
   readings.remove:
     en: 17804617273af8
+  settings.personaText:
+    en: 41ebe6d6e7b89
   settings.stagePolish:
     en: 16b921b720301b
   timeline.draftLabel:
     en: 3be7925838d5
+  timeline.dropSubtree:
+    en: 1babea493a44cb
   writing.caretMiddle:
     en: ddcd992ec0fc9
   writing.keysN:

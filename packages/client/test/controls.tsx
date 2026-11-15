@@ -175,7 +175,7 @@ const run = async () => {
   const entries = agent.snapshot().filter((e) => !e.offPage)
   for (const e of entries) check(e.label, `${e.component} ${e.ref} has no name`)
   const labels = entries.map((e) => e.label)
-  for (const l of ["接口格式", "流式输出", "小剧场 · 第 1 轮", "小剧场 · 第 2 轮", "侧栏宽度"])
+  for (const l of ["接口格式", "流式输出", "第 1 轮的小剧场", "第 2 轮的小剧场", "侧栏宽度"])
     check(labels.includes(l), `${l} is missing from the snapshot: ${labels.join(" | ")}`)
 
   const set = await agent.act({
@@ -188,7 +188,7 @@ const run = async () => {
   check(picked === "gemini", `the select's pick reached the app: ${picked}`)
   check(flipped, "the switch's flip reached the app")
 
-  const demand = await agent.act({ steps: [{ ref: "小剧场 · 第 2 轮", action: "press", args: ["日记"] }] })
+  const demand = await agent.act({ steps: [{ ref: "第 2 轮的小剧场", action: "press", args: ["日记"] }] })
   check(demand.ok, `demand: ${demand.error?.message}`)
   check(
     requests.some((b) => b.includes('"demand"') && b.includes('"node":2') && b.includes('"diary"')),

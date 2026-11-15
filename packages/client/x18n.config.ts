@@ -50,17 +50,18 @@ export default {
     { term: "Tool Call", doNotTranslate: true },
     { term: "Base URL", doNotTranslate: true },
     {
-      term: "Record",
-      translations: { "zh-CN": "记录" },
-      note: "the per-turn readings panel; never Notes (a product) or Note (the channel)",
+      term: "记录",
+      translations: { en: "Record" },
+      forms: { en: ["record"] },
+      note: "the per-turn ledger panel; never 摘要 (a product) or 场外 (the channel)",
     },
-    { term: "Swipe", translations: { "zh-CN": "换一版" } },
-    { term: "Reword", translations: { "zh-CN": "重写" } },
-    { term: "Status", translations: { "zh-CN": "状态" } },
-    { term: "Options", translations: { "zh-CN": "选项" } },
-    { term: "Timeline", translations: { "zh-CN": "时间线" } },
-    { term: "Inspector", translations: { "zh-CN": "检查器" } },
-    { term: "Persona", translations: { "zh-CN": "人设" } },
+    { term: "换一版", translations: { en: "Swipe" }, forms: { en: ["swipe"] } },
+    { term: "重写", translations: { en: "Reword" }, forms: { en: ["reword"] } },
+    { term: "状态", translations: { en: "Status" }, forms: { en: ["status", "state"] }, note: "what the world is now" },
+    { term: "选项", translations: { en: "Options" }, forms: { en: ["option"] } },
+    { term: "时间线", translations: { en: "Timeline" } },
+    { term: "检查器", translations: { en: "Inspector" } },
+    { term: "人设", translations: { en: "Persona" }, forms: { en: ["persona"] } },
     // the vocabulary (docs/copy-brief.md): one word per concept. The source is zh-CN, so a term is the Chinese word
     // and the check asks the English under it to hold the translation (or one of its forms, matched at a word's start)
     {

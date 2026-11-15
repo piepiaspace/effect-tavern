@@ -530,11 +530,7 @@ export const Demand = (props: { node: Node; n: number }) => {
             turn.demand(props.node.id, id)
           }}
         >
-          <MenuTrigger
-            class="btn"
-            disabled={busy() || unresolved()}
-            aria-label={`${t("readings.aside")} · ${t("common.turnN", { n: props.n })}`}
-          >
+          <MenuTrigger class="btn" disabled={busy() || unresolved()} aria-label={t("readings.asideOf", { n: props.n })}>
             {t("readings.aside")}
           </MenuTrigger>
           <MenuContent class="popup-list" side="top" align="start" sideOffset={4}>

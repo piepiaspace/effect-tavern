@@ -311,7 +311,7 @@ export const Timeline = () => {
                 <div class="nodehead">
                   <div class="nodebar">
                     <h2>
-                      {t("common.turnN", { n: depth(n().id) })} <span class="v">· #{n().id}</span>
+                      {t("common.turnN", { n: depth(n().id) })} <span class="v">#{n().id}</span>
                       <Show when={isHead(n().id)}>
                         <span class="pill solid">HEAD</span>
                       </Show>

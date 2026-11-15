@@ -263,6 +263,7 @@ const zh = {
     skipRecord: "跳过结算",
     hit: "命中",
     miss: "未中",
+    asideOf: "第 {n} 轮的小剧场",
   },
   settings: {
     close: "关闭设置",
@@ -401,7 +402,7 @@ const zh = {
     clusterLabel: "第 {n} 轮，{k} 个版本",
     draftLabel: "正在写的轮",
     dropConfirm: "删除 #{id} 及之后 {n} 个节点？",
-    dropSubtree: "删除子树",
+    dropSubtree: "删除这一支",
     leafN: "末端 #{id}",
     nodesN: "{n} 个节点",
     noneSelected: "未选中",
