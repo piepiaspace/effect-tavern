@@ -123,7 +123,7 @@ export const InvocationMenu = (props: {
           </div>
         )}
       </Show>
-      <CommandList>
+      <CommandList class="list">
         <CommandPage>
           {props.quick}
           <For each={["pack", "card"] as const}>

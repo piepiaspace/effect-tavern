@@ -282,7 +282,7 @@ export const Composer = () => {
                 quick={
                   <>
                     <Items of={inStory()} />
-                    <CommandSeparator />
+                    <CommandSeparator class="rule" />
                     <Items of={toNarrator()} />
                   </>
                 }
