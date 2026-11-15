@@ -179,6 +179,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* a row's name keeps its floor however many card tags it carries; the tags share the rest, each with an ellipsis */
+.p-row .p-name {
+  min-width: 40%;
+}
 /* the install's default persona */
 .p-row .p-mark {
   flex: none;

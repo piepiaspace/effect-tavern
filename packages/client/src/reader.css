@@ -583,8 +583,8 @@ main > section:is(:hover, :focus-within) > :is(.actions, .theater) .acts {
   margin-block: calc((var(--text-body) * 1.5 - var(--control)) / 2);
   margin-inline: auto calc(-1 * var(--space-2));
 }
-/* the way out of an error, inline after it (no model: Settings → 默认模型) */
-:is(.error, .settlement) .go {
+/* the way out of an error, in its place (no model: the key to the default model) */
+:is(.error, .settlement, .failed) .go {
   color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 2px;

@@ -320,8 +320,11 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     setEditingProd({ id: newId("th"), isNew: true, label: "", text: "", trigger: "demand" })
     void prodDlg.open()
   }
+  // the stored name the edit dialog's title says, kept through its close (the draft goes null as the dialog leaves)
+  let editName = ""
   const openEditProduct = (p: { id: string; label?: string; text?: string; trigger?: "demand" | "turn" }) => {
     const own = loc()?.products?.find((x) => x.id === p.id)
+    editName = own?.label ?? p.label ?? p.id
     setEditingProd({
       id: p.id,
       isNew: false,
@@ -539,13 +542,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
       </div>
 
       <Modal
-        title={
-          editingProd()?.isNew
-            ? t("packs.addTheater")
-            : t("packs.editTheater", {
-                name: products().find((p) => p.id === editingProd()?.id)?.label ?? editingProd()?.id ?? "",
-              })
-        }
+        title={editingProd()?.isNew ? t("packs.addTheater") : t("packs.editTheater", { name: editName })}
         controller={prodDlg}
         onClose={() => setEditingProd(null)}
       >

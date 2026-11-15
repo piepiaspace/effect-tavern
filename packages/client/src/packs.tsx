@@ -723,7 +723,7 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
           <input
             type="search"
             placeholder={t("writing.searchEntries")}
-            aria-label={t("writing.searchEntriesLabel")}
+            aria-label={t("writing.searchLexicon")}
             value={q()}
             onFocus={() => setSearching(true)}
             onBlur={() => setSearching(false)}
@@ -855,7 +855,7 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
               )}
             </For>
             <Show when={q().trim() && !shown().length}>
-              <p class="none">{t("writing.noEntries")}</p>
+              <p class="none">{t("writing.noLexiconMatch")}</p>
             </Show>
           </div>
         </div>
@@ -882,7 +882,10 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
     setEditing({ id: newId("th"), isNew: true, label: "", on: false, trigger: "demand", text: "" })
     void dlg.open()
   }
+  // the stored name the edit dialog's title says, kept through its close (the draft goes null as the dialog leaves)
+  let editName = ""
   const openEdit = (p: { id: string; label?: string; on?: boolean; trigger?: "demand" | "turn"; text?: string }) => {
+    editName = p.label ?? p.id
     setEditing({
       id: p.id,
       isNew: false,
@@ -977,13 +980,7 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
       </div>
 
       <Modal
-        title={
-          editing()?.isNew
-            ? t("packs.addTheater")
-            : t("packs.editTheater", {
-                name: products().find((p) => p.id === editing()?.id)?.label ?? editing()?.id ?? "",
-              })
-        }
+        title={editing()?.isNew ? t("packs.addTheater") : t("packs.editTheater", { name: editName })}
         controller={dlg}
         onClose={() => setEditing(null)}
       >
@@ -1175,7 +1172,7 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
                 <span class="snip-cell stext mono">{caretOf(s()) || "—"}</span>
                 <span class="snip-cell shint">
                   <span>{s().hint}</span>
-                  <span class="tag">{s().note ? t("writing.toNarrator") : t("writing.inStory")}</span>
+                  <span class="tag">{s().note ? t("composer.noteTag") : t("writing.inStory")}</span>
                 </span>
               </button>
             )}
@@ -1234,7 +1231,7 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
                         aria-pressed={e().draft.note ? "true" : "false"}
                         onClick={() => patch({ note: true })}
                       >
-                        {t("writing.toNarrator")}
+                        {t("composer.noteTag")}
                       </button>
                     </div>
                   </div>

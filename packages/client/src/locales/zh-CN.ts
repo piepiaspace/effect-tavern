@@ -487,7 +487,8 @@ const zh = {
     tabProse: "文风与要求",
     takenBy: "由 {from} 接管",
     title: "写作",
-    toNarrator: "场外",
+    searchLexicon: "搜索禁词",
+    noLexiconMatch: "没有匹配的禁词",
   },
   packs: {
     newPack: "新写作包",

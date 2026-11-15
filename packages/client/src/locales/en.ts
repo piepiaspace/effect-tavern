@@ -488,7 +488,8 @@ const en: Dict = {
     tabProse: "Style and requirements",
     takenBy: "Taken by {from}",
     title: "Writing",
-    toNarrator: "Note",
+    searchLexicon: "Search banned phrases",
+    noLexiconMatch: "No banned phrase matches",
   },
   packs: {
     newPack: "New pack",

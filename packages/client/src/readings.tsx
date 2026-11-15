@@ -554,7 +554,11 @@ export const Demand = (props: { node: Node; n: number }) => {
         {(f) => (
           <span class="failed">
             <Show when={f().phase}>{(p) => <span class="phase">{t(stageNames[p()])}</span>}</Show>
-            {f().message}
+            <Show when={f().code === "no-model"} fallback={f().message}>
+              <button type="button" class="go" onClick={() => openSettings("routing")}>
+                {t("app.goDefaultModel")}
+              </button>
+            </Show>
           </span>
         )}
       </Show>
