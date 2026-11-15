@@ -235,7 +235,7 @@ const run = async () => {
   key(line, "/")
   await wait(500)
   check(document.activeElement === field(), "the slash key opens the menu with the hand in its field")
-  check(rows().join(" ") === "继续 场外 写作技能 卡片调用", `the first page, no row lit yet: ${rows().join(" ")}`)
+  check(rows().join(" ") === "继续 场外 写作包 卡片", `the first page, no row lit yet: ${rows().join(" ")}`)
   key(field()!, "ArrowDown")
   await wait(100)
   check(rows()[0] === "继续*", `an arrow lights the first row: ${rows().join(" ")}`)

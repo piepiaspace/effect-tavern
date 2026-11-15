@@ -127,7 +127,7 @@ export const WritingPage = () => {
               <Back />
             </button>
             <h1>{t("writing.title")}</h1>
-            <Show when={title()}>{(c) => <span class="tag">{c()}</span>}</Show>
+            <Show when={title()}>{(c) => <span class="tag clip">{c()}</span>}</Show>
           </header>
 
           <Show when={dropped().length > 0}>
@@ -220,7 +220,7 @@ export const WritingPage = () => {
             <div class="field-well grow">
               <textarea
                 aria-label={t("switches.cardExtra")}
-                placeholder={t("writing.extraPlaceholder", { card: title() })}
+                placeholder={t("writing.extraPlaceholder")}
                 disabled={!cardId()}
                 value={extra()}
                 onChange={(e) => {
@@ -402,7 +402,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
           <Show when={p().role === "theater" && p().id !== "options"}>
             <span class="tag">{p().trigger === "demand" ? t("packs.onDemand") : t("packs.everyTurn")}</span>
           </Show>
-          <Show when={p().id !== "notes"} fallback={<span class="tag">{t("writing.alwaysOn")}</span>}>
+          <Show when={p().id !== "notes"} fallback={<span class="tag">{t("packs.everyTurn")}</span>}>
             <span onClick={(e) => e.stopPropagation()}>
               <Switch
                 on={!!p().on}
@@ -438,7 +438,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                   <legend>
                     {t(s().label)}
                     <Show when={taken()}>
-                      {(who) => <span class="tag">{t("writing.takenBy", { from: props.fromLabel(who()) })}</span>}
+                      {(who) => <span class="tag clip">{t("writing.takenBy", { from: props.fromLabel(who()) })}</span>}
                     </Show>
                   </legend>
                   <div class="sw-pills">
@@ -447,7 +447,6 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                         <button
                           type="button"
                           aria-pressed={(localSw()?.[s().key] ?? effSw()?.[s().key]) === v()[0] ? "true" : "false"}
-                          title={sentence(s().key, v()[0], sentences())}
                           disabled={disabled()}
                           onClick={() => setSwitch(s().key, v()[0])}
                         >
@@ -466,7 +465,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
 
       <div class="wsec grow">
         <div class="block-title">
-          <h3>{t("writing.products")}</h3>
+          <h3>{t("packs.tabProducts")}</h3>
           <div class="right">
             <span class="tag mono">
               {lit()} / {products().length}
@@ -540,7 +539,13 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
       </div>
 
       <Modal
-        title={editingProd()?.isNew ? t("packs.addTheater") : t("packs.editTheater")}
+        title={
+          editingProd()?.isNew
+            ? t("packs.addTheater")
+            : t("packs.editTheater", {
+                name: products().find((p) => p.id === editingProd()?.id)?.label ?? editingProd()?.id ?? "",
+              })
+        }
         controller={prodDlg}
         onClose={() => setEditingProd(null)}
       >

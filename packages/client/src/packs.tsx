@@ -44,6 +44,18 @@ const DEFAULT_FORMAT = new Map((CODE_HARNESS.format ?? []).map((f) => [f.label, 
 const isDefault = (item: unknown, def: unknown) => JSON.stringify(item) === JSON.stringify(def)
 type Save = (edit: (p: Layer) => Layer) => Promise<void>
 
+/** A head slot's name (fragment.ts SLOTS) in the locale in force; an id the table lacks stays as written. */
+const SLOT_NAMES: Record<string, () => string> = {
+  persona: () => t("common.persona"),
+  pov: () => t("switches.pov"),
+  voice: () => t("packs.slotVoice"),
+  style: () => t("packs.slotStyle"),
+  setting: () => t("packs.slotSetting"),
+  language: () => t("packs.slotLanguage"),
+  verbosity: () => t("switches.verbosity"),
+}
+const slotName = (s: string) => SLOT_NAMES[s]?.() ?? s
+
 const stageAskLabels = (): [string, string][] => [
   ["stage.role", t("packs.askStageRole")],
   ["lookup", t("settings.stageLookup")],
@@ -147,7 +159,7 @@ export const Packs = (props: Pane) => {
                   <span class="tag">{t("writing.builtin")}</span>
                 </Show>
                 <Show when={!isReservedPack(x().id)}>
-                  <For each={onCards(x().id)}>{(c) => <span class="tag">{c}</span>}</For>
+                  <For each={onCards(x().id)}>{(c) => <span class="tag clip">{c}</span>}</For>
                 </Show>
               </button>
             )}
@@ -199,7 +211,7 @@ export const Packs = (props: Pane) => {
                       label={t("packs.packName")}
                       onCommit={(name) => void savePack(p().id, (x) => ({ ...x, name }))}
                     />
-                    <For each={onCards(p().id)}>{(c) => <span class="tag">{c}</span>}</For>
+                    <For each={onCards(p().id)}>{(c) => <span class="tag clip">{c}</span>}</For>
                   </Show>
                   <span class="spacer" />
                   <nav class="wtabs" role="tablist" aria-label={t("writing.sections")}>
@@ -342,9 +354,7 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
               <div class="field-well">
                 <textarea
                   aria-label={t("writing.requirement")}
-                  placeholder={
-                    props.pack.id === "harness" ? t("writing.harnessPlaceholder") : t("writing.globalPlaceholder")
-                  }
+                  placeholder={t("writing.requirementPlaceholder")}
                   value={draft() ?? ""}
                   ref={(el) => requestAnimationFrame(() => el.focus())}
                   onInput={(e) => setDraft(e.currentTarget.value)}
@@ -375,7 +385,7 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
                   </div>
                   <Show when={atOf(f()) === "head"}>
                     <select
-                      class="field sm mono"
+                      class="field sm"
                       aria-label={t("packs.slot")}
                       value={SLOTS.includes(f().id) ? f().id : ""}
                       onChange={(e) => {
@@ -385,7 +395,7 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
                     >
                       <option value="">{t("packs.slotCustom")}</option>
                       <For each={SLOTS} keyed={(s) => s}>
-                        {(s) => <option value={s()}>{s()}</option>}
+                        {(s) => <option value={s()}>{slotName(s())}</option>}
                       </For>
                     </select>
                     <select
@@ -421,7 +431,6 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
                 <div class="field-well">
                   <textarea
                     aria-label={t("writing.requirement")}
-                    placeholder={t("writing.emptyRemoves")}
                     value={f().text ?? ""}
                     onChange={(e) => {
                       const text = e.currentTarget.value
@@ -434,7 +443,7 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
             )}
           </For>
           <Show when={!frags().length && draft() === null}>
-            <p class="none">{props.pack.id === "harness" ? t("writing.noHarness") : t("writing.noGlobal")}</p>
+            <p class="none">{t("writing.noRequirement")}</p>
           </Show>
         </div>
       </div>
@@ -597,8 +606,8 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                       updateEntry(x().i, { activation: e.currentTarget.value as "always" | "on_demand" })
                     }
                   >
-                    <option value="on_demand">{t("invoke.onDemand")}</option>
-                    <option value="always">{t("invoke.always")}</option>
+                    <option value="on_demand">{t("packs.onDemand")}</option>
+                    <option value="always">{t("packs.everyTurn")}</option>
                   </select>
                   <select
                     aria-label={t("invoke.residency")}
@@ -616,7 +625,7 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                   <button
                     type="button"
                     class="icon sm"
-                    aria-label={t("writing.deleteEntry")}
+                    aria-label={t("packs.deleteEntry")}
                     onClick={() => {
                       const i = x().i
                       setEntries((list) => list.filter((_, j) => j !== i))
@@ -775,7 +784,7 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
       >
         <div class="lex-wrap" data-off={on() ? "false" : "true"}>
           <div class="lex-head">
-            <span>{t("writing.patternHead")}</span>
+            <span>{t("writing.lexicon")}</span>
             <span>{t("writing.hint")}</span>
             <span />
           </div>
@@ -946,7 +955,7 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
                   <span class="tag">{p().trigger === "demand" ? t("packs.onDemand") : t("packs.everyTurn")}</span>
                 </Show>
                 <span class="row-text">{p().text ?? ""}</span>
-                <Show when={p().id !== "notes"} fallback={<span class="tag">{t("writing.alwaysOn")}</span>}>
+                <Show when={p().id !== "notes"} fallback={<span class="tag">{t("packs.everyTurn")}</span>}>
                   <span onClick={(e) => e.stopPropagation()}>
                     <Switch
                       on={!!p().on}
@@ -968,7 +977,13 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
       </div>
 
       <Modal
-        title={editing()?.isNew ? t("packs.addTheater") : t("packs.editTheater")}
+        title={
+          editing()?.isNew
+            ? t("packs.addTheater")
+            : t("packs.editTheater", {
+                name: products().find((p) => p.id === editing()?.id)?.label ?? editing()?.id ?? "",
+              })
+        }
         controller={dlg}
         onClose={() => setEditing(null)}
       >
@@ -1106,7 +1121,7 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
     <section class="wpanel" role="tabpanel" aria-label={t("writing.tabInputs")}>
       <div class="input-card">
         <div class="block-title">
-          <h3>{t("writing.formatKeys")}</h3>
+          <h3>{t("composer.formatKeys")}</h3>
           <span class="tag mono">{t("writing.keysN", { n: keys().length })}</span>
           <div class="right">
             <button
@@ -1189,7 +1204,7 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
                   <span>{e().snippet ? t("writing.name") : t("writing.displayName")}</span>
                   <input
                     class="field"
-                    placeholder={e().snippet ? t("writing.menuName") : t("writing.blankShowsGlyph")}
+                    placeholder={e().snippet ? t("writing.menuName") : undefined}
                     value={e().draft.label}
                     disabled={!!defaultOf(e())}
                     onInput={(ev) => patch({ label: ev.currentTarget.value })}
@@ -1200,13 +1215,12 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
                     <span>{t("writing.description")}</span>
                     <input
                       class="field"
-                      placeholder={t("writing.descriptionPlaceholder")}
                       value={e().draft.hint}
                       onInput={(ev) => patch({ hint: ev.currentTarget.value })}
                     />
                   </label>
                   <div class="mfield">
-                    <span>{t("writing.channel")}</span>
+                    <span>{t("writing.channelLabel")}</span>
                     <div class="at-toggle" role="group" aria-label={t("writing.channelLabel")}>
                       <button
                         type="button"
@@ -1233,14 +1247,14 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
                       aria-pressed={e().draft.between ? "true" : "false"}
                       onClick={() => patch({ between: true })}
                     >
-                      {t("writing.caretInside")}
+                      {t("writing.caretMiddle")}
                     </button>
                     <button
                       type="button"
                       aria-pressed={!e().draft.between ? "true" : "false"}
                       onClick={() => patch({ between: false })}
                     >
-                      {t("writing.caretAfter")}
+                      {t("writing.caretEnd")}
                     </button>
                   </div>
                 </div>
@@ -1321,7 +1335,7 @@ const AsksTab = (props: { pack: Layer; onSave: Save }) => {
     SWITCHES.flatMap((s) =>
       s.values.map(([val, labelKey]) => ({
         id: `switch.${s.key}.${String(val)}`,
-        label: `${t(s.label)} · ${t(labelKey)}`,
+        label: t("packs.switchRow", { switch: t(s.label), value: t(labelKey) }),
       })),
     )
 

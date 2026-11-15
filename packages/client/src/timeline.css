@@ -79,6 +79,16 @@
   font-weight: 600;
   border-bottom-color: var(--line-strong);
 }
+.timeline .band > span {
+  flex: none;
+}
+/* the scene title gives way to the root and the count: it ends in an ellipsis, never a hard cut */
+.timeline .band > .title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .timeline .band .dim {
   font-weight: 400;
 }
@@ -281,6 +291,11 @@ button.cell:hover {
 }
 .timeline .facts > span + span::before {
   content: "· ";
+}
+.timeline .facts .kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-half);
 }
 .timeline .facts b {
   color: var(--ink-2);

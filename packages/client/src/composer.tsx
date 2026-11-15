@@ -186,7 +186,7 @@ export const Composer = () => {
                 onClick={locate}
               >
                 <Edit aria-hidden="true" />
-                {t("composer.revising")} {turnOf(line(), r().node)}
+                {t("composer.revising", { turn: turnOf(line(), r().node) })}
               </button>
               <span class="spacer" />
               <button
@@ -209,7 +209,7 @@ export const Composer = () => {
               class="note"
               value={noteText()}
               enterkeyhint="enter"
-              aria-label={t("composer.noteToNarrator")}
+              aria-label={t("composer.noteTag")}
               onInput={(e) => updateComposition({ note: e.currentTarget.value })}
               onCompositionStart={noteIme.compositionStart}
               onCompositionEnd={noteIme.compositionEnd}

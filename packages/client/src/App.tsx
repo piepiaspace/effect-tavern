@@ -363,9 +363,7 @@ const Draft = (props: { d: Draft; phase: Phase | null; error: Failure | null }) 
             <div class="body">
               <Show when={e().phase}>{(p) => <span class="phase">{t(stageNames[p()])}</span>}</Show>
               <span>
-                {e().message}
-                <Show when={e().code === "no-model"}>
-                  {" "}
+                <Show when={e().code === "no-model"} fallback={e().message}>
                   <button type="button" class="go" onClick={() => openSettings("routing")}>
                     {t("app.goDefaultModel")}
                   </button>

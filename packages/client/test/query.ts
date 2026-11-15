@@ -51,15 +51,15 @@ assert.deepEqual(ids("对"), ["wuxia"]) // plain over a tag, by substring
 assert.deepEqual(ids("#对"), []) // `#` is exact
 assert.deepEqual(ids("#日常"), ["banxing"]) // a player's word
 assert.deepEqual(ids("#检定"), ["wuxia"]) // a facet's word
-assert.deepEqual(ids("#作者"), ["yandao"]) // the mode facet
-assert.deepEqual(ids("#参与者"), ["wuxia", "banxing"])
+assert.deepEqual(ids("#作者模式"), ["yandao"]) // the mode facet
+assert.deepEqual(ids("#参与模式"), ["wuxia", "banxing"])
 assert.deepEqual(ids("#多开场"), ["yandao"])
 assert.deepEqual(ids("-#检定"), ["banxing", "yandao", "table"]) // negated
 assert.deepEqual(ids("-竹"), ["banxing", "yandao", "table"])
-assert.deepEqual(ids("#参与者 -#武侠"), ["banxing"]) // AND across terms
+assert.deepEqual(ids("#参与模式 -#武侠"), ["banxing"]) // AND across terms
 assert.deepEqual(ids("#线索 star"), [])
 // the facet panel stays open over `#` terms alone or a `#…` being typed; a plain word closes it
-assert.deepEqual(["", "#作者 -#检定 ", "竹 #", "竹 #作", "竹", "#作者 竹"].map(facetsWanted), [
+assert.deepEqual(["", "#作者模式 -#检定 ", "竹 #", "竹 #作", "竹", "#作者模式 竹"].map(facetsWanted), [
   true,
   true,
   true,
@@ -70,12 +70,12 @@ assert.deepEqual(["", "#作者 -#检定 ", "竹 #", "竹 #作", "竹", "#作者 
 // the facet panel: system facets and the player's tags in separate groups, each with how many admitted rows carry it
 assert.deepEqual(
   facetCounts(
-    shelf.filter((c) => admits(c, [], tags[c.id], ["参与者"])),
+    shelf.filter((c) => admits(c, [], tags[c.id], ["参与模式"])),
     (id) => tags[id] ?? [],
   ),
   {
     facets: [
-      ["参与者", 2],
+      ["参与模式", 2],
       ["检定", 1],
       ["线索", 1],
     ],
@@ -86,7 +86,7 @@ assert.deepEqual(
     ],
   },
 )
-assert.deepEqual([isFacet("参与者"), isFacet("检定"), isFacet("武侠")], [true, true, false])
+assert.deepEqual([isFacet("参与模式"), isFacet("检定"), isFacet("武侠")], [true, true, false])
 
 // only the plain, positive words are marked; several at once
 assert.deepEqual(plain(parse("Star #日常 -盐 竹")), ["star", "竹"])

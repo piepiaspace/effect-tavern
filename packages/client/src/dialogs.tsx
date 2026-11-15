@@ -187,7 +187,6 @@ export const StoryDialogs = () => {
         controller={exportDialog}
         title={t("side.exportTitle", { title: exporting()?.title ?? t("stories.newStory") })}
       >
-        <p class="sub">{t("side.exportHint")}</p>
         <div class="row">
           <button type="button" class="chip state" onClick={() => exportDialog.close()}>
             {t("common.cancel")}
@@ -195,6 +194,7 @@ export const StoryDialogs = () => {
           <a
             class="chip state"
             href={exportUrl(exporting()?.id ?? 0, "json")}
+            title={t("side.exportJsonHint")}
             download
             onClick={() => exportDialog.close()}
           >
@@ -203,6 +203,7 @@ export const StoryDialogs = () => {
           <a
             class="chip primary"
             href={exportUrl(exporting()?.id ?? 0, "md")}
+            title={t("side.exportMdHint")}
             download
             onClick={() => exportDialog.close()}
           >

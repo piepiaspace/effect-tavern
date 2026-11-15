@@ -505,6 +505,16 @@
   font-size: var(--text-caption);
   white-space: nowrap;
 }
+/* a tag holding a name (a card's): capped, it ends in an ellipsis and never crowds the row's own name out */
+.tag.clip {
+  display: inline-block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 12em;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .tag.ok {
   background: var(--ok-soft);
   color: var(--ok);
@@ -521,6 +531,12 @@
 .probes {
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+/* which formats a tag answers for, when the endpoints differ: a dim segment before the verdict */
+.probes .tag .via {
+  margin-right: var(--space-1);
+  color: var(--ink-3);
+  font-weight: 400;
 }
 /* the request as sent, then the error, wrapping, capped by the component (300 characters) not the box */
 .probe-err {

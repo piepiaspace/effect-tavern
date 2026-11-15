@@ -523,11 +523,13 @@ const ProviderDetail = (props: { id: string; onBack: () => void; onVault: () => 
                             const v = () => verdict(pr())
                             return (
                               <span class={{ tag: true, ok: v().tone === "ok", bad: v().tone === "bad" }}>
-                                {probes().length > 1
-                                  ? `${pr()
+                                <Show when={probes().length > 1}>
+                                  <span class="via">
+                                    {pr()
                                       .formats.map((f) => FORMAT[f])
-                                      .join("/")} · `
-                                  : ""}
+                                      .join("/")}
+                                  </span>
+                                </Show>
                                 {v().text}
                               </span>
                             )

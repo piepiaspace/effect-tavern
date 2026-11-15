@@ -56,7 +56,7 @@ import { chosen, takenBy } from "./switches.ts"
 import { flip, theme } from "./theme.ts"
 import { fetchStories, putLocal, searchStories } from "./wire.ts"
 import { openWriting } from "./writing.tsx"
-import { flip as flipLocale, locale, t } from "./i18n.ts"
+import { flip as flipLocale, t } from "./i18n.ts"
 
 /** The install's keys: settings, the theme (a flip, pressed while the dark side holds) and the interface's language
  *  (a flip, pressed while English holds). `onLeave` is the drawer's, closed before settings opens. */
@@ -83,13 +83,7 @@ export const InstallKeys = (props: { onLeave?: () => void }) => {
       >
         <Shade />
       </button>
-      <button
-        type="button"
-        class="icon sm"
-        aria-label={t("side.language")}
-        aria-pressed={locale() === "en" ? "true" : "false"}
-        onClick={flipLocale}
-      >
+      <button type="button" class="icon sm" aria-label={t("side.language")} onClick={flipLocale}>
         <Translate />
       </button>
     </>
@@ -128,7 +122,7 @@ export const Sidebar = (props: {
   const own = () => view()?.id === at() && view()?.layer.frame.some((f) => f.id === "persona" && f.from === "card")
   const persona = () =>
     people().find((p) => p.id === personaOn(lib(), view(), at(), pg()))?.name ??
-    t(own() ? "side.cardDefault" : "side.noPersona")
+    t(own() ? "switches.followCard" : "side.noPersona")
   const writing = createMemo(() => {
     const cid = at()
     const v = cid && view()?.id === cid ? view() : undefined

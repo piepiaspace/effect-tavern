@@ -140,7 +140,7 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
                 </label>
               </div>
               <div class="inline-row">
-                <span>{t("models.prefillLong")}</span>
+                <span>{t("models.prefill")}</span>
                 <Switch
                   on={capOf(c().x, c().m, "prefill")}
                   label={t("models.prefill")}
