@@ -80,11 +80,15 @@ export const Menu = <T extends string>(props: {
   options: readonly Option<T>[]
   onPick: (v: T) => void
   placeholder?: string
-  stale?: Option<T> // what the trigger shows when the value is set but not among the options (a dangling pick)
+  // what the trigger shows when the value is set but not among the options (a dangling pick); its reason is a warn tag
+  // after the label, which truncates first
+  stale?: Option<T> & { reason?: "removed" | "disabled" }
   label?: string
   small?: boolean
 }) => {
-  const current = () => props.options.find((o) => o.value === props.value) ?? props.stale
+  const live = () => props.options.find((o) => o.value === props.value)
+  const current = () => live() ?? props.stale
+  const reason = () => (live() ? undefined : props.stale?.reason)
   return (
     <Select
       value={props.value ?? null}
@@ -96,6 +100,9 @@ export const Menu = <T extends string>(props: {
       <SelectTrigger class={{ select: true, sm: !!props.small }} aria-label={props.label}>
         <Show when={current()?.glyph}>{(g) => <Family id={g()} />}</Show>
         <span class="label">{current()?.label ?? props.placeholder ?? ""}</span>
+        <Show when={reason()}>
+          {(r) => <span class="tag warn">{r() === "removed" ? t("settings.removed") : t("settings.disabled")}</span>}
+        </Show>
         <Caret class="caret" />
       </SelectTrigger>
       <SelectContent class="popup-list scroller" sideOffset={4} align="start">
