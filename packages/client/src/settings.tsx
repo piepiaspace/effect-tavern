@@ -187,7 +187,8 @@ const Routing = (props: { onDecision: () => void }) => {
     return (
       s && {
         value: pairKey(pair!),
-        label: `${s.name} · ${s.model}（${s.reason === "removed" ? t("settings.removed") : t("settings.disabled")}）`,
+        label: `${s.name} · ${s.model}`,
+        reason: s.reason,
         glyph: s.model,
       }
     )
