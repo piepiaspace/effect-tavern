@@ -281,7 +281,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
 
   const activeSentence = (key: SwitchKey) => {
     const val = effSw()?.[key]
-    return val !== undefined ? sentence(key, val, sentences()) : t("switches.followCard")
+    return val !== undefined ? sentence(key, val, sentences()) : ""
   }
 
   const products = () => layer()?.products ?? []
@@ -430,11 +430,13 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
       <div class="wsec">
         <div class="block-title">
           <h3>{t("writing.switches")}</h3>
-          <div class="right">
-            <button type="button" class="btn sm ghost" disabled={!cardId()} onClick={resetSwitches}>
-              {t("writing.allFollowCard")}
-            </button>
-          </div>
+          <Show when={SWITCHES.some((s) => localSw()?.[s.key] !== undefined)}>
+            <div class="right">
+              <button type="button" class="btn sm ghost" onClick={resetSwitches}>
+                {t("writing.allFollowCard")}
+              </button>
+            </div>
+          </Show>
         </div>
         <div class="sw-grid">
           <For each={SWITCHES} keyed={(s) => s.key}>

@@ -66,8 +66,17 @@ const leaf = (dict: Dict, key: string): string | undefined => {
   }
   return typeof v === "string" ? v : undefined
 }
-/** The word under `key` in the locale in force (the source's when the locale lacks it), its `{holes}` filled. */
+/** The word under `key` in the locale in force (the source's when the locale lacks it), its `{holes}` filled. A
+ *  counted hole `{n|node|nodes}` is the number and the form `Intl.PluralRules` picks for it: the first for "one",
+ *  the second otherwise (English needs no more; Chinese writes a bare `{n}`). x18n.config.ts reads it as `{n}`. */
 export const t = (key: Key, params?: Record<string, string | number>): string => {
-  const s = leaf(DICTS[locale()], key) ?? leaf(zh, key) ?? key
-  return params ? s.replace(/\{(\w+)\}/g, (hole, name: string) => (name in params ? String(params[name]) : hole)) : s
+  const l = locale()
+  const s = leaf(DICTS[l], key) ?? leaf(zh, key) ?? key
+  if (!params) return s
+  return s.replace(/\{(\w+)(?:\|([^|{}]*)\|([^|{}]*))?\}/g, (hole, name: string, one?: string, other?: string) => {
+    if (!(name in params)) return hole
+    const v = params[name]!
+    if (one === undefined) return String(v)
+    return `${v} ${new Intl.PluralRules(l).select(Number(v)) === "one" ? one : other}`
+  })
 }

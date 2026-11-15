@@ -1,13 +1,13 @@
 // x18n (#67): the static side of src/i18n.ts. `vp run verify` runs `x18n check`: a `t()` key not in zh-CN.ts, a key
 // no code reads, a key en.ts lacks, a `{hole}` the English drops, a glossary term rendered another way. Our own
 // `t()` has no preset, so the `{name}` placeholder syntax is declared here (without it placeholder-mismatch is a
-// no-op), and hard-string detection is told what is not a word: selectors, icon paths, HTTP verbs, storage keys,
+// no-op; a counted hole `{n|node|nodes}` is the placeholder `n`), and hard-string detection is told what is not a word: selectors, icon paths, HTTP verbs, storage keys,
 // the shader in dust.ts, the rule DSL of phrase.ts (and / or / not are the card's grammar, not the chrome's).
 const braces = {
   id: "braces",
   example: "{name}",
   find: (value: string) =>
-    [...value.matchAll(/\{(\w+)\}/g)].map((m) => ({
+    [...value.matchAll(/\{(\w+)(?:\|[^|{}]*\|[^|{}]*)?\}/g)].map((m) => ({
       syntax: "braces",
       text: m[0],
       name: m[1]!,
