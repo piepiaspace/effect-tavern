@@ -70,7 +70,7 @@ docs/           内部工程调研与设计简报档案
 在 [Termux](https://termux.dev) 里运行一行，不用装 Bun、Node 或 Vite+：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/waylon256yhw/effect-tavern/main/start.sh | sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/start.sh | sh
 ```
 
 它会下载最新 Release 的手机版（约 50 MB），启动后自动打开浏览器 `http://127.0.0.1:7777`。以后输入 `effect-tavern` 启动，`effect-tavern update` 更新；数据在 `~/.tavern`。
