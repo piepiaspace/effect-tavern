@@ -77,6 +77,34 @@ const over = (data: Data, m: () => Model = model) =>
   assert.equal(data.stories.list("other")[0]?.id, theirs) // another card's id is left alone
 }
 
+// A card from the workshop (shelf.ts `create`): blank, it plays as the harness alone, the prose and then record's
+// notes, from the player's first line. An entry saved into it brings lookup with it on the next turn; no stage is
+// declared anywhere.
+{
+  const phases: string[] = []
+  const scripted = fake((o) => {
+    const doc = readStage(o)
+    phases.push(doc.phase)
+    return doc.phase === "narrate" ? { text: "雨停了。" } : defaultAnswer(doc, canned)
+  })
+  const lib = library({ data: open(":memory:"), overlay: player.harness, model: () => scripted })
+  const made = lib.cards.create()
+  const story = lib.stories.create(made.id)
+  const say = (text: string) =>
+    Effect.runPromise(
+      Stream.runDrain(lib.turn(story).start({ kind: "act", parent: lib.session(story).log.head, input: { text } })),
+    )
+  await say("你好")
+  assert.deepEqual([phases, lib.session(story).log.nodes.size], [["narrate", "record"], 1])
+  lib.cards.save(made.id, {
+    ...lib.cards.get(made.id),
+    lore: [{ id: "盐帮", layers: ["盐帮是城里最大的帮会。"], unlock: { all: [] }, offer: { any: [] } }],
+  })
+  phases.length = 0
+  await say("盐帮是什么")
+  assert.deepEqual([...new Set(phases)], ["lookup", "narrate", "record"])
+}
+
 // The turn in flight is the story's (src/turn.ts), crossed in process as the wire crosses it. Three stories, two on one
 // card and one on another, each run a turn at once and each lands. A turn whose only listener goes away runs on to its
 // node; a late `attach` gets the phase and the draft so far, then the live events to the node. A second turn on a busy

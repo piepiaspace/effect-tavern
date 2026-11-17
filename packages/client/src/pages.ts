@@ -23,6 +23,7 @@ const kindOf = (p: Page): Kind => (typeof p === "object" ? "inspect" : p)
 const loads: Partial<Record<Kind, () => unknown>> = {
   settings: wire.fetchSettings,
   writing: wire.fetchPacks,
+  workshop: wire.fetchCards,
 }
 const tab = () => activeOf(registry.get(tabs)) // the page stack is the active tab's (tabs.ts)
 
@@ -46,9 +47,13 @@ export const close = (): void => {
   edit({ page: to, under: under.slice(0, -1) })
 }
 /** Where a page's Back goes from this tab: the story (or a page over it), home, or nowhere (the bottom of the stack:
- *  the key is not drawn). */
-export const backOf = (t: Tab): "story" | "home" | null =>
-  t.under.at(-1) === "home" ? "home" : t.under.length || t.story !== null ? "story" : null
+ *  the key is not drawn); the workshop when the page was opened from it (a card's page from its manuscript). */
+export const backOf = (t: Tab): "story" | "home" | "workshop" | null => {
+  const to = t.under.at(-1)
+  if (to === "home") return "home"
+  if (to === "workshop" || to === "manuscript") return "workshop"
+  return t.under.length || t.story !== null ? "story" : null
+}
 /** The open story's row, when the listing names one. */
 const current = () => {
   const lib = registry.get(stories)
@@ -74,28 +79,38 @@ export const toReader = (): void => {
   if (isHome(t)) return edit({ page: "home", under: [] })
   const cur = registry.get(stories)?.stories.find((s) => s.id === t.story) // the tab can change before its reads finish
   if (t.story === null || !cur) return
-  const fromCard = t.page === "card" || t.under.includes("card") // its view was the card's default's (showCard)
+  // its view was the card's default's (showCard), or the card was written under it (the workshop's manuscript)
+  const browsed = (p: Page) => p === "card" || p === "manuscript"
+  const fromCard = browsed(t.page) || t.under.some(browsed)
   edit({ page: "reader", under: [], card: cur.card })
   void navigate(async (valid) => {
     await reading.activate(t.story)
     if (valid() && (fromCard || registry.get(card)?.id !== cur.card)) await wire.fetchCard(valid)
   })
 }
-/** A card's page, by id: the open story's card as the view holds it, another read by id (no story of it needed). The
- *  tab keeps its story (Escape takes it back); the sidebar's workspace follows the card. Where "新建故事" and a card's
- *  head go: no story is made until Begin (#116). From a home tab the card page is pushed over home: its Back returns
- *  there, and the tab is a home tab again. */
-export const showCard = (id: string): Promise<void> => {
+/** The tab on a card by id, `page` over whatever it was on: the tab keeps its story (Escape takes it back), the
+ *  sidebar's workspace follows the card, and the card's view is read by id when it is not the one held (or `reread`
+ *  says the held one will not do). */
+const onCard = (id: string, page: "card" | "manuscript", reread: () => boolean): Promise<void> => {
   if (tab().card !== id) edit({ card: id })
   const target = tab()
   return navigate(async (valid) => {
     await reading.activate(target.story)
-    // over a story in progress the view is by id too: Begin's new story starts on the card's default persona (#170)
-    if (valid() && (registry.get(card)?.id !== id || registry.get(log).nodes.size > 0))
-      await wire.fetchCardOf(id, valid)
-    if (valid() && tab() === target) open("card") // never reopen over a page chosen while the card loaded
+    if (valid() && (registry.get(card)?.id !== id || reread())) await wire.fetchCardOf(id, valid)
+    if (valid() && tab() === target) open(page) // never reopen over a page chosen while the card loaded
   })
 }
+/** A card's page, by id: the open story's card as the view holds it, another read by id (no story of it needed).
+ *  Where "新建故事" and a card's head go: no story is made until Begin (#116). From a home tab the card page is pushed
+ *  over home: its Back returns there, and the tab is a home tab again. Over a story in progress the view is by id
+ *  too: Begin's new story starts on the card's default persona (#170). */
+export const showCard = (id: string): Promise<void> => onCard(id, "card", () => registry.get(log).nodes.size > 0)
+/** A card open in the workshop (workshop.tsx), by id: its manuscript over whatever the tab was on, so its Back
+ *  returns there (the workshop's list, a story, the card's page). */
+export const editCard = (id: string): Promise<void> => onCard(id, "manuscript", () => false)
+/** The workshop's New: a blank card on the shelf under `title`, open as a manuscript at once. A card from its first
+ *  moment: nothing is kept anywhere but the shelf. */
+export const newCard = async (title: string): Promise<void> => editCard((await wire.newCard(title)).id)
 /** A tab clicked: another one is switched to; the active one again is nothing (each page has its own Back). */
 export const pick = (id: number): void => {
   if (id !== tab().id) void select(id)

@@ -131,8 +131,9 @@ export const forget = (ids: readonly Id[]): void => {
 }
 
 /** A card removed from the shelf (it had no story left). A tab on its page is a home tab; a story's tab that was
- *  browsing it (pages.ts `showCard` keeps the story) is back on its story's own card, the removed card's page out of
- *  its stack. The settings page stays up either way: the removal was made from it. */
+ *  browsing it (pages.ts `showCard` keeps the story) is back on its story's own card, the removed card's page and
+ *  manuscript out of its stack. The settings page stays up either way: the removal was made from it. A tab that was in
+ *  the workshop, on its list or on the card, is on the list. */
 export const shed = (card: string): void => {
   const s = now()
   const rows = registry.get(stories)?.stories ?? []
@@ -141,18 +142,19 @@ export const shed = (card: string): void => {
     list: s.list.map((t): Tab => {
       if (t.card !== card) return t
       if (t.story === null) {
-        const page: Page = t.page === "settings" ? "settings" : "home"
-        return { id: t.id, story: null, card: null, page, under: page === "settings" ? ["home"] : [] }
+        const page: Page =
+          t.page === "settings" ? "settings" : t.page === "workshop" || t.page === "manuscript" ? "workshop" : "home"
+        return { id: t.id, story: null, card: null, page, under: page === "home" ? [] : ["home"] }
       }
       const own = rows.find((x) => x.id === t.story)?.card ?? null
-      return t.page === "card"
+      return t.page === "card" || t.page === "manuscript"
         ? { ...t, card: own, page: "reader", under: [] }
-        : { ...t, card: own, under: t.under.filter((p) => p !== "card") }
+        : { ...t, card: own, under: t.under.filter((p) => p !== "card" && p !== "manuscript") }
     }),
   })
 }
 
-const PAGES = new Set(["home", "reader", "card", "workshop", "timeline", "settings", "writing", "status"])
+const PAGES = new Set(["home", "reader", "card", "workshop", "manuscript", "timeline", "settings", "writing", "status"])
 const isPage = (p: unknown): p is Page =>
   (typeof p === "string" && PAGES.has(p)) ||
   (typeof p === "object" && p !== null && typeof (p as { inspect?: unknown }).inspect === "number")
@@ -187,10 +189,14 @@ export const restore = (
         const under = stackOf(x?.under, false)
         list.push({ id, story: row.id, card: cardId, page, under })
       } else if (x?.story === null && x.card === null) {
-        const page: Page = x.page === "settings" ? "settings" : "home"
-        list.push({ id, story: null, card: null, page, under: page === "settings" ? ["home"] : [] })
+        // the two pages that need no card: the settings and the workshop's list
+        const page: Page = x.page === "settings" || x.page === "workshop" ? x.page : "home"
+        list.push({ id, story: null, card: null, page, under: page === "home" ? [] : ["home"] })
       } else if (x?.story === null && shelf.some((c) => c.id === x.card)) {
-        const page: Page = x.page === "workshop" || x.page === "writing" || x.page === "settings" ? x.page : "card"
+        const page: Page =
+          x.page === "workshop" || x.page === "manuscript" || x.page === "writing" || x.page === "settings"
+            ? x.page
+            : "card"
         const rawUnder = stackOf(x.under, true)
         const under: Page[] = rawUnder[0] === "home" ? rawUnder : page === "card" ? ["home"] : ["home", "card"]
         list.push({ id, story: null, card: x.card as string, page, under })

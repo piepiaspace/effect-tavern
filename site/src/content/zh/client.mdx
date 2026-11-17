@@ -32,7 +32,8 @@ Web 客户端（`packages/client`）是基于 **Solid 2.0** 与 **UI SDK（`@ui-
 - **回合检查器（`inspector.tsx`、`inspect.ts`）：** 站在 Harness 视角审视任意回合（支持 `[` / `]` 沿路径翻页），左右双栏对照：
   - **管线调用栏：** 仅列出实际触发的阶段调用（含 `lookup` 与 `check` 的**决策模型预检**行），固定列宽对齐耗时、`↑` 输入 Token、`↓` 输出 Token 与 `↻`/`+` KV 缓存读写；点开单行可切换 **Result**（结构化判据与相对 `LO`/`HI`/`LOOKUP` 阈值的概率刻度条）、**Prompt**（服务端开启 `TAVERN_INSPECT=1` / `--inspect` 时展示带缓存断点细线的完整装配消息）与 **JSON**。
   - **节点状态栏：** 展示本轮输入通道、待揭示钩子、相对父节点的状态增量，以及按声明形态渲染的 `world` / `chronicle` / `theater` 产物。
-- **卡片详情页与工坊（`card.tsx`、`home.tsx`）：** 预览模块结构与头区 Token 预算，在开局前配置 `Field.start` 初始参数与动态开场附言，并提供草稿 `compile`、`sort`、`review` 交互式制卡工作流。
+- **卡片详情页（`card.tsx`）：** 预览模块结构与头区 Token 预算，在开局前配置 `Field.start` 初始参数与动态开场附言。
+- **制卡工坊（`workshop.tsx`、`manuscript.ts`）：** 自己的一页卡片列表与「新建卡片」，以及把一张卡当作纯文本打开的编辑页：每轮常驻的设定、开场、按需读取的单层条目。没有草稿：新建即上架，编辑自动过闸写回卡本身。编辑页不显示的部分（规则、条件、多层条目）原样保留。
 
 ## 4. Solid 2.0 + UI SDK（`@ui-sdk`）行为底座与验证闭环
 

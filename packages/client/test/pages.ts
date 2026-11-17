@@ -4,8 +4,8 @@ import { timelineNode } from "./fixtures.ts"
 // story's card and picks up its turn in flight; no story at all lands on the first card's page; a delete of another
 // story moves nothing, of the open one leaves its tab on the card's page with nothing in the slots; one Escape rule.
 import assert from "node:assert/strict"
-import { backOf, close, deleteStory, escaping, land, open, openStory } from "../src/pages.ts"
-import { activeOf, card, focus, layer, log, page, registry, stories, type StoryRow, tabs } from "../src/store.ts"
+import { backOf, close, deleteStory, editCard, escaping, land, newCard, open, openStory, toHome } from "../src/pages.ts"
+import { activeOf, card, cards, focus, layer, log, page, registry, stories, type StoryRow, tabs } from "../src/store.ts"
 import { fetchCard, fetchCardOf, fetchNodes } from "../src/wire.ts"
 import { turn } from "../src/turn.ts"
 
@@ -22,13 +22,18 @@ const asked: string[] = [] // every path requested
       ? { nodes, head: nodes.length ? (nodes.at(-1) as { id: number }).id : null }
       : path === "/api/cards"
         ? [{ id: "first", title: "一" }]
-        : path.startsWith("/api/cards/")
-          ? { id: path.split("/").at(-1), greetings: [] }
-          : path.startsWith("/api/stories/") && init?.method === "DELETE"
-            ? listing(2) // the server's pick: never followed
-            : path.startsWith("/api/stories/")
-              ? listing(Number(path.split("/").at(-1)))
-              : [] // the settings' lists
+        : path === "/api/cards/new"
+          ? {
+              card: { id: "made", title: JSON.parse(init?.body as string).title },
+              cards: [{ id: "first" }, { id: "made" }],
+            }
+          : path.startsWith("/api/cards/")
+            ? { id: path.split("/").at(-1), greetings: [] }
+            : path.startsWith("/api/stories/") && init?.method === "DELETE"
+              ? listing(2) // the server's pick: never followed
+              : path.startsWith("/api/stories/")
+                ? listing(Number(path.split("/").at(-1)))
+                : [] // the settings' lists
   return new Response(JSON.stringify(body))
 }
 let abandoned = 0
@@ -119,6 +124,29 @@ assert.deepEqual([at(), registry.get(focus), registry.get(layer)], ["home", null
 nodes = [node(0, null), node(1, 0)]
 await openStory(1)
 assert.deepEqual([at(), abandoned, registry.get(log).nodes.size], ["reader", 8, 2])
+
+// The workshop: its list is a page on a tab with no card; New is a card on the shelf at once, the tab's card, open in
+// the editor over the list; Back is the list, then home with the card let go. From a story, a card opens in the editor
+// over the reader and Back is the story again.
+await toHome()
+open("workshop")
+assert.deepEqual([at(), registry.get(focus), asked.at(-1)], ["workshop", null, "/api/cards"])
+await newCard("未命名卡片")
+assert.deepEqual(
+  [at(), registry.get(focus), activeOf(registry.get(tabs)).under, registry.get(cards).map((c) => c.id)],
+  ["manuscript", "made", ["home", "workshop"], ["first", "made"]],
+)
+assert.equal(registry.get(card)?.id, "made") // the sidebar's workspace is on the card being written
+close()
+assert.deepEqual([at(), registry.get(focus)], ["workshop", "made"])
+close()
+assert.deepEqual([at(), registry.get(focus), registry.get(layer)], ["home", null, "shelf"])
+await openStory(1)
+await editCard("first")
+assert.deepEqual([at(), registry.get(focus), activeOf(registry.get(tabs)).story], ["manuscript", "first", 1])
+close()
+await openStory(1) // the way back reads the story's own card again: wait for it
+assert.deepEqual([at(), registry.get(log).nodes.size], ["reader", 2])
 
 // Escape: a field that prevents it keeps it; a popover, dialog or drawer takes it; a field is left first; else close
 const target = (tagName: string, isContentEditable = false) =>

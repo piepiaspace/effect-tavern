@@ -89,7 +89,9 @@
 //                 past that it is a 413 {code: "too-large"}, as is any other body past 1 MB.
 //                 POST /cards/link {url, replace?} is the same for one card at its own https link: the server reads
 //                 the link once (502 {code: "link-unreadable"} when it cannot) and keeps it as the card's origin.
-//                 DELETE /cards/<id> removes it with its draft and the player's row on
+//                 POST /cards/new {title?} puts a blank card of a fresh id on the shelf (the workshop's New) and
+//                 answers {card, cards}: every section empty, playable as it stands, named `title` when given.
+//                 DELETE /cards/<id> removes it with the player's row on
 //                 it and answers the shelf; 409 {code: "card-in-use"} while it has stories.
 //                 GET /cards/<id>/export.yaml is the card as a file (an attachment): what POST /cards reads back.
 //                 GET /cards/<id> is what a client draws that card by (404 when there is none), before any
@@ -103,11 +105,13 @@
 //                 dropped, each item with its `from`), a card's item without its `text`, a card's lexicon entry not at all.
 //                 A client merges nothing.
 //                 The card's fragment bodies, guard lines and lore leave the server two ways only, both the owner's
-//                 asking: the export, and the draft.
-//                 GET /cards/<id>/draft is the workshop's copy {card, draft, layout?, diagnostics}: the stored draft, or
-//                 the installed card where there is none (`draft` says which), with what the gate says of it. PUT
-//                 writes {card?, layout?} and answers the same; DELETE discards the content and keeps the layout;
-//                 POST /cards/<id>/draft/install puts the stored draft through the gate onto the shelf, {card, cards}.
+//                 asking: the export, and the workshop's read (`whole`).
+//                 GET /cards/<id>/whole is {card, rev}: the card whole, as the workshop edits it, and its revision
+//                 (404 when there is none). PUT {card, rev?} writes the card whole over it through the gate
+//                 (shelf.ts `save`) and answers {card, cards, rev}, its row, the shelf and the new revision; 400 {code:
+//                 "card-invalid"} with every error line, 409 {code: "card-changed"} when `rev` is not the card's
+//                 revision any more, and either way the card on the shelf stands. There is no copy kept beside the
+//                 card: what is saved is the card, in force from the next request.
 //                 GET /cards/<id>/local is that row alone, PUT /cards/<id>/local writes it whole (decoded as `Local`,
 //                 its card the URL's; in force from the next request; 404 when there is no such card, a bad body a 400).
 //   GET  /depots  the card libraries the install knows (depot.ts), {id, name, location}[]; none until one is added.
@@ -186,6 +190,10 @@ const StoryBody = Schema.decodeUnknownSync(
 )
 const IdsBody = Schema.decodeUnknownSync(Schema.Struct({ ids: Schema.Array(Schema.Number) }))
 const NewStory = Schema.decodeUnknownSync(Schema.Struct({ card: Schema.String }))
+const NewCard = Schema.decodeUnknownSync(Schema.Struct({ title: Schema.optionalKey(Schema.String) }))
+const WholeBody = Schema.decodeUnknownSync(
+  Schema.Struct({ card: Schema.Unknown, rev: Schema.optionalKey(Schema.String) }),
+)
 const DepotBody = Schema.decodeUnknownSync(Schema.Struct({ location: Schema.String }))
 const LinkBody = Schema.decodeUnknownSync(
   Schema.Struct({ url: Schema.String, replace: Schema.optionalKey(Schema.Boolean) }),
@@ -351,6 +359,8 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
         card: lib.cards.install(await body(req, CARD_BYTES), { via: "file" }, { replace: !!installing[1] }),
         cards: lib.cards.list(),
       }))
+    if (req.method === "POST" && req.url === "/cards/new")
+      return reply(async () => ({ card: lib.cards.create((await read(NewCard, "{}")).title), cards: lib.cards.list() }))
     if (req.method === "POST" && req.url === "/cards/link")
       return reply(async () => {
         const { url, replace } = await read(LinkBody)
@@ -389,18 +399,15 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
       res.end(text)
       return
     }
-    const draftAt = /^\/cards\/([^/]+)\/draft(\/install)?$/.exec(req.url ?? "")
-    if (draftAt) {
-      const id = decodeURIComponent(draftAt[1]!)
-      if (draftAt[2]) {
-        if (req.method === "POST") return reply(() => ({ card: lib.cards.draft.install(id), cards: lib.cards.list() }))
-      } else if (req.method === "GET") return reply(() => lib.cards.draft.open(id), 404)
-      else if (req.method === "PUT") return reply(async () => lib.cards.draft.save(id, await card((u) => u)))
-      else if (req.method === "DELETE")
-        return reply(() => {
-          lib.cards.draft.discard(id)
-          return { deleted: true }
-        })
+    const wholeAt = /^\/cards\/([^/]+)\/whole$/.exec(req.url ?? "")
+    if (wholeAt && (req.method === "GET" || req.method === "PUT")) {
+      const id = decodeURIComponent(wholeAt[1]!)
+      if (!lib.cards.has(id)) return json(404, { error: `no card ${id}` })
+      if (req.method === "GET") return reply(() => lib.cards.whole(id))
+      return reply(async () => {
+        const { card: value, rev } = await card(WholeBody)
+        return { card: lib.cards.save(id, value, rev), cards: lib.cards.list(), rev: lib.cards.whole(id).rev }
+      })
     }
     const localAt = /^\/cards\/([^/]+)\/local$/.exec(req.url ?? "")
     if (localAt && (req.method === "GET" || req.method === "PUT")) {

@@ -1,6 +1,6 @@
 // `vp run verify:ui`: the browser fixtures in headless Chrome, each posting its result back here: the shared controls
 // through the agent bridge (test/controls.tsx), then the settings page's 卡片 section over a stand-in server
-// (test/cards.tsx). Not in `verify`: it needs a browser. CHROME names the binary when it is not the macOS default.
+// (test/cards.tsx), then the workshop's two pages the same way (test/workshop.tsx). Not in `verify`: it needs a browser. CHROME names the binary when it is not the macOS default.
 import assert from "node:assert/strict"
 import { existsSync, rmSync } from "node:fs"
 import { dirname } from "node:path"
@@ -11,6 +11,7 @@ assert.ok(existsSync(chrome), `no Chrome at ${chrome}; set CHROME`)
 const fixtures: [file: string, passed: (snapshot: unknown[]) => string][] = [
   ["test/controls.tsx", (s) => `the controls and dialogs answer the agent bridge, ${s.length} still on the page`],
   ["test/cards.tsx", (s) => `the shelf and a card library work through the page, in ${s.length} requests`],
+  ["test/workshop.tsx", (s) => `a card is made, written and saved through the workshop, in ${s.length} requests`],
 ]
 for (const [fixture, passed] of fixtures) {
   const page = (await $`bun test/build-browser.ts ${fixture}`.text()).trim()

@@ -22,6 +22,7 @@ import {
   Prev,
   Settings,
   Shade,
+  Sliders,
   Snippets,
   Tag,
   Translate,
@@ -29,7 +30,7 @@ import {
   Write,
 } from "./icons.tsx"
 import { openSettings } from "./settings.tsx"
-import { browse, close, open, openStory, showCard, toHome } from "./pages.ts"
+import { browse, close, editCard, open, openStory, showCard, toHome } from "./pages.ts"
 import {
   admits,
   facetCounts,
@@ -283,8 +284,15 @@ export const Sidebar = (props: {
     props.onLeave?.()
     openSettings("cards")
   }
+  /** The card's head: the card open in the workshop. */
+  const toEditor = () => {
+    const id = at()
+    if (id === null) return
+    props.onLeave?.()
+    void editCard(id)
+  }
+  /** The workshop itself, from the shelf: its list of every card, and New. */
   const toWorkshop = () => {
-    if (at() === null) return
     props.onLeave?.()
     open("workshop")
   }
@@ -302,6 +310,9 @@ export const Sidebar = (props: {
         </Show>
         <span class="side-top-end">
           <Show when={which() === "shelf"}>
+            <button type="button" class="icon sm" aria-label={t("side.workshop")} onClick={toWorkshop}>
+              <Sliders />
+            </button>
             <button type="button" class="icon sm" aria-label={t("side.manageCards")} onClick={toCards}>
               <CardIcon />
             </button>
@@ -453,7 +464,7 @@ export const Sidebar = (props: {
           </section>
           {/* layer B, the workspace: one card's stories */}
           <section class="pane workspace" aria-label={t("side.workspace")} inert={which() !== "workspace"}>
-            <button type="button" class="cardhead" disabled={!card()} onClick={toWorkshop}>
+            <button type="button" class="cardhead" disabled={!card()} onClick={toEditor}>
               <h1>{card()?.title ?? at() ?? ""}</h1>
               <span class="enter" aria-hidden="true">
                 <Next />

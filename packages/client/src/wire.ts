@@ -18,6 +18,7 @@ type Change = L.Change<Node>
 // stream); `GET /turn` picks up the turn in flight on a story the client lands on (204 when there is none).
 import type { DecisionConfig } from "@effect-tavern/provider/src/decision.ts"
 import type { Probe, Provider, SecretView } from "@effect-tavern/provider/src/providers.ts"
+import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
@@ -219,6 +220,27 @@ export const importCard = (text: string, replace = false): Promise<ShelfCard> =>
 /** One card at its own https link: the server reads it once and it goes through the same gate as a file. */
 export const importLink = (url: string, replace = false): Promise<ShelfCard> =>
   shelved(call(`${base}/cards/link`, json("POST", { url, replace })))
+// The workshop (server shelf.ts `create`, `whole`, `save`): a blank card, the card whole with its revision, and the
+// card written whole from that revision. There is no copy beside the card, so a save is the card from then on; it
+// answers the shelf like any other arrival, and the revision the next save is written from. `last` is a save on the
+// way out of the window: sent `keepalive`, so it outlives the page, where the body is small enough to be allowed to.
+export const newCard = (title: string): Promise<ShelfCard> =>
+  shelved(call(`${base}/cards/new`, json("POST", { title })))
+export const wholeCard = (id: string): Promise<{ card: Card; rev: string }> =>
+  got(call(`${base}/cards/${enc(id)}/whole`))
+const KEEPALIVE = 60_000 // a browser's ceiling on keepalive bodies is 64 KiB, all such requests together
+export const saveCard = async (card: Card, rev: string, last = false): Promise<string> => {
+  const init = json("PUT", { card, rev })
+  const answer = await got<{ cards: readonly ShelfCard[]; rev: string }>(
+    call(`${base}/cards/${enc(card.id)}/whole`, {
+      ...init,
+      ...(last && (init.body as string).length < KEEPALIVE && { keepalive: true }),
+    }),
+  )
+  registry.set(cards, answer.cards)
+  await refreshActiveCard().catch(() => {}) // the write stands whatever becomes of this read
+  return answer.rev
+}
 /** Gone from the shelf (refused with `card-in-use` while it has stories). pages.ts `removeCard` is the caller: a tab
  *  on the card goes home with it. */
 export const removeCard = async (id: string): Promise<void> => {

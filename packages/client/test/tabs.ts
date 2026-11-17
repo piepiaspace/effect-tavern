@@ -10,7 +10,7 @@ import { composition, updateComposition } from "../src/store.ts"
 // start lands on a home tab beside the remembered ones.
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import assert from "node:assert/strict"
-import { backOf, browse, close, onDelete, open, openStory, pick, showCard, toHome } from "../src/pages.ts"
+import { backOf, browse, close, editCard, onDelete, open, openStory, pick, showCard, toHome } from "../src/pages.ts"
 import { createReading, reading } from "../src/reading.ts"
 import {
   activeOf,
@@ -230,6 +230,9 @@ const stacked = restore(
       { story: 1, card: "a", page: { inspect: 0 }, under: ["timeline"] },
       { story: null, card: "b", page: "workshop", under: ["home", "card"] },
       { story: null, card: null, page: "settings", under: ["home"] },
+      { story: null, card: null, page: "workshop", under: ["home"] }, // the workshop's list needs no card
+      { story: null, card: "b", page: "manuscript", under: ["home", "workshop"] }, // a card open in it
+      { story: null, card: null, page: "manuscript" }, // an editor with no card to edit: home
     ],
     active: 0,
   }),
@@ -242,6 +245,9 @@ assert.deepEqual(
     [1, "a", { inspect: 0 }, ["timeline"]],
     [null, "b", "workshop", ["home", "card"]],
     [null, null, "settings", ["home"]],
+    [null, null, "workshop", ["home"]],
+    [null, "b", "manuscript", ["home", "workshop"]],
+    [null, null, "home", []],
   ],
 )
 assert.equal(restore("not json", lib, []), null)
@@ -347,4 +353,18 @@ assert.notEqual(registry.get(page), "card")
 await showCard("b")
 shed("b") // removed while its page is the one showing
 assert.deepEqual([tab().story, tab().card, registry.get(page), tab().under], [1, own, "reader", []])
+// a card open in the workshop when it is removed: a story's tab is back on its story, a tab with no story on the
+// workshop's list (a home tab under it)
+await editCard("b")
+assert.deepEqual([tab().story, tab().card, registry.get(page)], [1, "b", "manuscript"])
+shed("b")
+assert.deepEqual([tab().story, tab().card, registry.get(page), tab().under], [1, own, "reader", []])
+await toHome()
+open("workshop")
+await editCard("b")
+assert.deepEqual([tab().card, registry.get(page), tab().under], ["b", "manuscript", ["home", "workshop"]])
+shed("b")
+assert.deepEqual([isHome(tab()), registry.get(page), tab().under], [true, "workshop", ["home"]])
+close()
+assert.deepEqual([registry.get(page), registry.get(layer)], ["home", "shelf"])
 console.log("tabs ok")

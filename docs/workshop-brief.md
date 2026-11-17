@@ -1,6 +1,40 @@
 # 制卡工坊（Workshop）：三个受锁的 AI 操作，长在卡页的编辑态上
 
-状态（2026-11-09）：后端 Step 2.1、2.2、2.4 已实现；Step 2.3 编辑态待实现。前置：Phase 1 全部落地（`docs/headless-cli-brief.md`、`docs/card-cli.md`、`docs/tavern-cli.md`）。追踪见 Issue #155 阶段二。
+状态（2026-11-17）：V0 已落地（§0）：工坊是独立的页，纯文本编辑，直接写书架，没有草稿。后端 Step 2.1、2.2（草稿与布局部分已移除）、2.4 已实现；Step 2.3 的其余部分（按声明露出的结构区、三个 AI 操作的界面、diff 面板）待做。前置：Phase 1 全部落地（`docs/headless-cli-brief.md`、`docs/card-cli.md`、`docs/tavern-cli.md`）。追踪见 Issue #155 阶段二。
+
+## 0. V0：纯文本的工坊（2026-11-17）
+
+卡库与程序分开之后，新装的书架是空的，工坊先做最简单的一版：只读写纯文本，不引入解析器，不做严格校验。下文 §1 起的设计不变，是它往后长的方向；与本节冲突处以本节为准。
+
+**没有草稿。** 一张卡从新建的那一刻起就是书架上的卡（SillyTavern 的做法：编辑即写卡文件，没有暂存区）。`POST /cards/new` 上架一张各节皆空的卡，空卡过得了闸，也能直接开聊：没有开场就从玩家的第一句话开始。此后每次编辑在停手约 0.8 秒后整卡写回（`PUT /cards/<id>/whole`，过同一道闸），下一轮起生效。`draft` 表、四条草稿路由和画布布局存储已删除（`user_version` 步骤 `drop table draft`）。代价是没有"放弃修改回到已安装版本"；别处来的卡被改过后，书架行记 `edited`。
+
+**不覆盖没见过的卡。** 页面读卡时拿到它的版本（`rev`，存储内容的摘要），保存时报回；卡在此期间被别处改过（终端里 `tavern card install`、另一个窗口）就是 409 `card-changed`，书架上的卡不动，页面说明并提供「重新读取」。保存没成功（被闸拒绝、请求失败、别处改过）时，「返回」与「去游玩」留在本页；从别的路离开时仍会尽力保存，但那次失败不再有地方显示。
+
+**闸不放宽。** 纯文本卡能撞上的 error 只有空文本块、空开场和旧酒馆宏。编辑器不把空块写进卡（空块留在页面上，有字才入卡），所以前两条撞不上；闸拒绝时页面原样显示它的理由，书架上的卡不动。warn 不显示。
+
+**卡在这一页上是三种纯文本**（`packages/client/src/manuscript.ts`）：
+
+| 页面上 | 卡里 | 说明 |
+| --- | --- | --- |
+| 设定 | 不带 `when` 的 `fiction[]`，标题即 `label` | 每轮常驻 |
+| 开场 | `greetings[].text` | 可以没有 |
+| 条目 | 单层的 `lore[]`，名称即 `id` | 按需读取，首句是目录里的那一行；新条目 `unlock: {all: []}`、`offer: {any: []}` |
+
+页面不显示的东西（带条件的片段、只有 `note` 的开场、多层条目、`rules`、`guard`，以及所显示之物的其余键）原位原样带过：`cardOf(card, manuscriptOf(card))` 与 `card` 逐键相同，四张测试卡都如此（`packages/client/test/manuscript.ts`）。每一块记得自己读自卡里的哪一项，写回时落在那一项的位置：删掉的让出位置，新建的排到末尾，别的都不动；作者没碰过的值（空的、带空格的标题也算）按读到的样子原样写回，所以打开一张卡不会改它。CLI 做出的完整卡在这里只看得到纯文本部分，这是接受的。尚未做出来的功能在界面上不出现，没有占位。
+
+**阶段不在编辑区声明，也没有另设的统一开关。** 一轮跑哪些阶段由卡里有什么派生（`session.ts`），所以纯文本卡的答案是现成的：
+
+| 阶段 | 何时运行 | 谁决定 |
+| --- | --- | --- |
+| narrate | 每轮 | harness |
+| record | 每轮：默认产物「事件摘要」开着，是上下文压缩的来源 | harness |
+| lookup | 本轮有输入，且有可读条目：卡的条目、挂载写作包的词条、可回溯的产物行 | 作者写了条目，或玩家挂了包 |
+| polish | 禁词表扫到命中才调用；禁词来自玩家、写作包或卡，harness 自带的是空的；`switches.polish: false` 可关 | 玩家 |
+| check / decide / direct | 卡有 `guard` 或 offer 窗口 / 有 `actions` / `director: true` 且有窗口 | 卡；V0 写不出这些 |
+
+空白卡只跑 narrate 与 record，存进一条条目后下一轮自动出现 lookup（`packages/server/test/library.ts`）。lookup 没有玩家侧开关：要常驻的写进设定，要按需的写成条目。
+
+**页面与入口。** 工坊是独立的页，有自己的卡片列表（就是书架）和「新建卡片」；入口在侧栏书架层的顶部、空书架时的主页。游玩界面里卡名旁的入口只是进到同一个编辑页的捷径。编辑页右上「去游玩」先存再到卡页。删除卡片仍在 设置 → 卡片。
 
 ## 1. 它是什么
 
@@ -46,7 +80,7 @@ Phase 1 已经给了每一环，工坊不新建平行机制：
 | 候选卡校验 | `checkCard(source)`（`runtime/support/author.ts`） | 候选序列化为 YAML 后过它；`diagnostics` 进 diff 面板，`sections` / `total` 显示候选的 token 变化 |
 | 解释为什么没生效 | `card view --json`（子句求值、槽位来源、分段与断点） | 候选与当前卡各跑一次，并排显示同一 `--state` 下哪些 band / window / readout 变了 |
 | 零 token 回归 | `runScenario`（`runtime/support/scenario.ts`） | 卡旁若有 `*.scenario.yaml`，候选触及 `rules` 时自动跑一遍；失败列入 diff 面板，不阻止采纳 |
-| 入库 | `shelf.install`（`packages/server/src/shelf.ts`）/ `POST /cards` / `POST /cards/:id/draft/install` / `tavern card install` | 候选不直接入库；作者采纳后页面保存草稿，install 时才 put。`cards.put` 复用完整值级校验，拒绝所有 error |
+| 入库 | `shelf.install` / `shelf.save`（`packages/server/src/shelf.ts`）/ `POST /cards` / `PUT /cards/:id/whole` / `tavern card install` | 候选不直接入库；作者采纳并填完判据后才写回卡（§0：没有草稿，未填完的候选留在页面上）。两条路过同一道闸，拒绝所有 error |
 | 模型 | `library.routing`、`provider.object` | 三个操作用一个新路由键 `author`（缺省落 `default`）；都是单次 `object()`，compile 多一次回喂。不用 `runStageTools`：没有工具，没有事务 |
 | 双模 | `tavern` 宿主的本地 / `--url` | 三个操作住在宿主（需要模型），不住离线 `card` 命令；`--url` 模式走三条 POST 路由 |
 | 测试 | aimock（`bun run verify`，不花钱） | 每个操作一组 fixture：正常、越界（模型夹带正文 → schema 丢弃，候选保持作者文本）、回喂修正 |
@@ -70,12 +104,12 @@ HTTP（`serve.ts`，供 `--url` 与客户端）：
 POST /author/compile  { card, select: path[], intent }        → { candidate, diagnostics }
 POST /author/sort     { card, source, paragraphs?: string[] } → { candidate, placements }
 POST /author/review   { card }                                → { diagnostics }
-GET  /cards/:id/draft                                         → { card, draft: boolean, layout?, diagnostics }：有草稿返回草稿，否则返回已安装的完整 Card；diagnostics 是闸对它此刻的判断
-PUT  /cards/:id/draft { card?, layout? }                       → 至少一项；分别更新，未提供的一项保留
-DELETE /cards/:id/draft                                       → 放弃内容草稿，回到正式卡，保留布局
+POST /cards/new       { title? }                              → { card, cards }：一张各节皆空的卡上架（§0）
+GET  /cards/:id/whole                                         → { card, rev }：整卡原文与它的版本，工坊的读
+PUT  /cards/:id/whole   { card, rev? }                        → { card, cards, rev }：整卡过闸写回；被拒（400 card-invalid）或卡已在别处改过（409 card-changed）则书架上的卡不动
 ```
 
-`GET /cards/:id` 返回的是脱敏的 `cardView`（不带 frame / fiction / lore / guard 正文），编辑态不能从它起步，所以 draft 的 GET 是唯一返回整卡原文的路由；库是本地私有的，这与 #121 的披露开关同一理由。`cards.put` 成功只清该行的 `card`，保留 `layout`；没有布局时才删行。布局只属于编辑画布，GET 的 `draft` 标志由内容草稿是否存在决定。
+`GET /cards/:id` 返回的是脱敏的 `cardView`（不带 frame / fiction / lore / guard 正文），编辑态不能从它起步，所以 `whole` 的 GET 是导出之外唯一返回整卡原文的路由；库是本地私有的，这与 #121 的披露开关同一理由。
 
 `paragraphs` 省略时按空行切源稿；客户端把作者在编辑器里的划选结果作为 `paragraphs` 传入，这样 GUI 里的"拆"始终是人做的。
 
@@ -85,7 +119,7 @@ DELETE /cards/:id/draft                                       → 放弃内容�
 - 结构区：只在卡声明了 `rules` / `products` 时出现；每个 Action、Readout 行左边是 `phrase.ts` 的机械标注，右边是作者的判据输入框，空的标红（即 `empty-text`）。
 - 三颗按钮长在它们作用的节上：compile 在选中段落的浮条上，sort 在导入入口（#31 卸载器的出口），review 在页顶。
 - diff 面板：逐块采纳；每次采纳后重跑 `checkCard`，采纳一条写字段的动作而丢弃该字段会立刻显示 `unknown-path`。块之间不独立，lint 是仲裁。
-- 草稿：一卡一行（`draft` 表），自动保存；install 按钮 = `cards.put`，error 时按钮禁用并指向第一条诊断。
+- 保存：没有草稿（§0）。编辑自动写回卡本身；带空判据的 compile 候选过不了闸，留在页面上，填完才写回，页面指向第一条诊断。
 
 ## 6. 不做
 
@@ -108,14 +142,14 @@ DELETE /cards/:id/draft                                       → 放弃内容�
 ### Step 2.2 三个操作（server 宿主）
 - [x] `library.cards.put` 加 `rpg.validate(rpg.initial)` 与 `lint` 无 error 校验，error 抛出；`server/test/author.ts` 断言带 `empty-text` 的卡被 HTTP 与直接调用同样拒绝。
 - [x] `library.author.{compile,sort,review}`：`object()` 一次，compile 过滤 `empty-text` 后最多回喂一次；路由键 `author`。
-- [x] `serve.ts` 三条 POST + `draft` 表与 `GET/PUT/DELETE /cards/:id/draft`（GET 回退到完整已安装卡，put 成功清内容草稿并保留布局）；`tavern card compile|sort|review` 本地与 `--url` 两模。
+- [x] `serve.ts` 三条 POST；`tavern card compile|sort|review` 本地与 `--url` 两模。（原有的 `draft` 表与 `/cards/:id/draft` 路由已于 2026-11-17 移除，见 §0。）
 - [x] aimock fixtures：每操作三组；`server/test/author.ts` 覆盖 CLI 本地与 `--url` 往返。
 - [x] `docs/tavern-cli.md` 补三条命令。
 
 ### Step 2.3 编辑态（client，#121 的编辑那一轮）
-- [ ] 卡页编辑态：按声明露出；文稿流直接写；划选拆段；结构区的判据输入框。
+- [x] V0（§0）：独立的工坊页与列表，新建即上架，设定 / 开场 / 条目三种纯文本直接写，自动写回卡本身（`PUT /cards/:id/whole`）。
+- [ ] 按声明露出的结构区；划选拆段；判据输入框。
 - [ ] diff 面板与逐块采纳，采纳后重跑 check；候选 vs 当前的 view 并排。
-- [ ] 草稿自动保存，install 走 `POST /cards/:id/draft/install`（服务端把自己存的草稿过闸上架；2026-11-17 起 `PUT /cards/:id` 已移除）。
 - [ ] #31 卸载器的碎片进 sort 的入口。
 
 ### Step 2.4 把立场写给外部 agent

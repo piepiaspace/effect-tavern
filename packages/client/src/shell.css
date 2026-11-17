@@ -884,12 +884,6 @@
   font-size: var(--text-body);
   color: var(--ink-3);
 }
-.workshop-body {
-  flex: 1;
-  display: grid;
-  place-items: center;
-  color: var(--ink-3);
-}
 
 .status-page {
   position: absolute;
@@ -1315,4 +1309,9 @@
 }
 .home-mark .btn {
   margin-top: var(--space-2);
+}
+/* an empty shelf's two ways to a first card, side by side */
+.home-first {
+  display: flex;
+  gap: var(--space-2);
 }

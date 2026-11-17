@@ -69,61 +69,81 @@ const file = { via: "file" } as const
   }
   assert.throws(() => cards.text("none"), refused("no-card"))
 
-  // remove: refused while a story of the card exists; with the card go its draft and the player's row on it
+  // remove: refused while a story of the card exists; with the card goes the player's row on it
   const story = data.stories.create("ri", null, false)
   data.locals.put({ id: "local", name: "ri", card: "ri", tags: ["x"] })
-  cards.draft.save("ri", { card: { ...cards.get("ri"), title: "稿" }, layout: { rows: [] } })
   assert.throws(() => cards.remove("ri"), refused("card-in-use"))
   assert.throws(() => cards.remove("ri"), /card ri has 1 story$/)
   assert.ok(cards.has("ri"))
   data.stories.del(story)
   changes.length = 0
   cards.remove("ri")
-  assert.deepEqual(
-    [cards.has("ri"), data.locals.get("ri"), data.drafts.get("ri"), changes],
-    [false, undefined, undefined, ["ri"]],
-  )
+  assert.deepEqual([cards.has("ri"), data.locals.get("ri"), changes], [false, undefined, ["ri"]])
   assert.throws(() => cards.remove("ri"), refused("no-card"))
-  assert.throws(() => cards.draft.open("ri"), refused("no-card"))
 }
 
-// A draft: the workshop's copy, with what the gate says of it. Installed from the stored copy, a card that arrived from
-// elsewhere keeps its origin and is marked edited; one that began as a draft is the workshop's.
+// The workshop writes the shelf itself: a blank card is a card at once, and a save is the card whole through the gate.
+// A card that arrived from elsewhere keeps its origin and is marked edited; one that began here is the workshop's.
 {
   const data = open(":memory:")
-  const cards = shelf(data)
-  cards.install(chat, { via: "depot", depot: "https://cards.example/", version: "1.0" })
-  const opened = cards.draft.open(chat.id)
-  assert.deepEqual([opened.card, opened.draft], [chat, false])
-  assert.ok(opened.diagnostics.every((d) => d.level !== "error")) // what the gate says of an installed card: no error
-  const blank: Card = { ...chat, guard: [" "] }
-  const saved = cards.draft.save(chat.id, { card: blank })
+  const changes: string[] = []
+  const cards = shelf(data, { changed: (id) => changes.push(id) })
+  // New: on the shelf with nothing in it, under an id of its own, and the gate has nothing to say of it
+  const made = cards.create()
+  const empty: Card = {
+    id: made.id,
+    frame: [],
+    fiction: [],
+    greetings: [],
+    rules: { fields: [], actions: [] },
+    lore: [],
+    guard: [],
+  }
+  assert.match(made.id, /^card-[0-9a-f]{8}$/)
+  assert.deepEqual([made.title, made.origin, cards.get(made.id)], [made.id, { via: "workshop" }, empty])
+  const named = cards.create(" 未命名卡片 ") // the client's word for a card without a name, until its author gives one
+  assert.deepEqual([named.id === made.id, named.title, cards.get(named.id).title], [false, "未命名卡片", "未命名卡片"])
+  // a save is the card: prose, an opening and an entry, in force as written; saved again unchanged it writes nothing
+  const written: Card = {
+    ...empty,
+    title: "雨夜",
+    fiction: [{ id: "s1", label: "镇子", text: "雨停了。" }],
+    greetings: [{ text: "门开了。" }],
+    lore: [{ id: "盐帮", layers: ["盐帮是城里最大的帮会。"], unlock: { all: [] }, offer: { any: [] } }],
+  }
+  changes.length = 0
   assert.deepEqual(
-    [saved.draft, saved.diagnostics.filter((d) => d.level === "error").map((d) => d.rule)],
-    [true, ["empty-text"]],
+    [cards.save(made.id, written).title, cards.get(made.id), cards.save(made.id, written).origin, changes],
+    ["雨夜", written, { via: "workshop" }, [made.id]],
   )
-  assert.throws(() => cards.draft.install(chat.id), refused("card-invalid"))
-  assert.equal(cards.draft.open(chat.id).draft, true) // a refused install keeps the draft
-  cards.draft.save(chat.id, { card: { ...chat, title: "改过" } })
-  assert.deepEqual(cards.draft.install(chat.id).origin, {
+  // what the gate refuses is not written, and the card on the shelf stands: an empty block, another card's id
+  assert.throws(() => cards.save(made.id, { ...written, fiction: [{ id: "s1", text: " " }] }), refused("card-invalid"))
+  assert.throws(() => cards.save(made.id, { ...written, id: "other" }), refused("card-invalid"))
+  assert.throws(() => cards.save("none", { ...written, id: "none" }), refused("no-card"))
+  assert.deepEqual(cards.get(made.id), written)
+  // a save names the revision it was written from: one that the card has moved past is refused, and a save that
+  // changes nothing moves no revision
+  const { rev } = cards.whole(made.id)
+  assert.deepEqual(
+    [cards.whole(made.id).card, cards.save(made.id, written, rev).id, cards.whole(made.id).rev],
+    [written, made.id, rev],
+  )
+  cards.save(made.id, { ...written, title: "雨夜二" }, rev)
+  assert.notEqual(cards.whole(made.id).rev, rev)
+  assert.throws(() => cards.save(made.id, { ...written, title: "旧页" }, rev), refused("card-changed"))
+  assert.equal(cards.get(made.id).title, "雨夜二")
+  cards.install({ ...written, title: "终端装的" }, { via: "file" }, { replace: true }) // from a terminal, meanwhile
+  assert.throws(() => cards.save(made.id, written, rev), refused("card-changed"))
+
+  cards.install(chat, { via: "depot", depot: "https://cards.example/", version: "1.0" })
+  assert.deepEqual(cards.save(chat.id, chat).origin, { via: "depot", depot: "https://cards.example/", version: "1.0" })
+  assert.deepEqual(cards.save(chat.id, { ...chat, title: "改过" }).origin, {
     via: "depot",
     depot: "https://cards.example/",
     version: "1.0",
     edited: true,
   })
-  assert.deepEqual([cards.get(chat.id).title, cards.draft.open(chat.id).draft], ["改过", false])
-  assert.throws(() => cards.draft.install(chat.id), refused("no-card")) // no stored draft
-
-  const made: Card = { ...chat, id: "made", title: "新卡" }
-  assert.throws(() => cards.draft.save("made", { layout: { rows: [] } }), refused("no-card")) // nothing to lay out yet
-  cards.draft.save("made", { card: made })
-  assert.ok(!cards.has("made")) // a draft is not on the shelf
-  assert.deepEqual(cards.draft.install("made").origin, { via: "workshop" })
-  cards.draft.save("made", { card: { ...made, title: "再改" } })
-  assert.deepEqual(cards.draft.install("made").origin, { via: "workshop" })
-  cards.draft.save("made", { card: made })
-  cards.draft.discard("made")
-  assert.deepEqual([cards.draft.open("made").draft, cards.get("made").title], [false, "再改"])
+  assert.equal(cards.get(chat.id).title, "改过")
 }
 
 // The routes: the same refusals by status and code, the export as a file, and a card's view carrying whose it is.
@@ -173,6 +193,39 @@ const file = { via: "file" } as const
       [404, "no-card"],
     )
     assert.equal((await call("GET", "/cards/yandao"))[0], 404)
+    // the workshop's three: a blank card on the shelf, the card whole, and the card written whole through the gate
+    const [, fresh] = await call("POST", "/cards/new", JSON.stringify({ title: "未命名卡片" }))
+    const id = (fresh["card"] as { id: string }).id
+    assert.deepEqual(
+      [fresh["card"], (fresh["cards"] as unknown[]).length],
+      [{ id, title: "未命名卡片", facets: t.lib.cards.list()[0]!.facets, origin: { via: "workshop" } }, 1],
+    )
+    assert.equal((await call("POST", "/cards/new"))[0], 200) // no body: a card named by its id
+    t.lib.cards.remove(t.lib.cards.list().find((c) => c.id !== id)!.id)
+    const whole = `/cards/${id}/whole`
+    const [, read] = await call("GET", whole)
+    assert.deepEqual(read, { ...t.lib.cards.whole(id) })
+    const next = { ...(read["card"] as Card), title: "雨夜", fiction: [{ id: "s1", text: "雨停了。" }] }
+    const put = (card: unknown, rev?: unknown) => call("PUT", whole, JSON.stringify({ card, rev }))
+    const [saved, answer] = await put(next, read["rev"])
+    assert.deepEqual([saved, (answer["card"] as { title: string }).title, t.lib.cards.get(id)], [200, "雨夜", next])
+    assert.deepEqual([answer["rev"] === read["rev"], answer["rev"]], [false, t.lib.cards.whole(id).rev])
+    // the revision it was read at is gone: a page that has not seen this save does not write over it
+    assert.deepEqual(
+      (await put({ ...next, title: "旧页" }, read["rev"])).map((x) => (typeof x === "number" ? x : x["code"])),
+      [409, "card-changed"],
+    )
+    assert.equal(t.lib.cards.get(id).title, "雨夜")
+    assert.equal((await put({ ...next, title: "雨夜二" }))[0], 200) // no revision named: the caller's own word
+    assert.equal((await put(next, t.lib.cards.whole(id).rev))[0], 200)
+    assert.deepEqual(
+      (await put({ ...next, greetings: [{ text: "" }] })).map((x) => (typeof x === "number" ? x : x["code"])),
+      [400, "card-invalid"],
+    )
+    assert.deepEqual(t.lib.cards.get(id), next) // a refused save leaves the card as it was
+    assert.equal((await call("GET", "/cards/none/whole"))[0], 404)
+    assert.equal((await call("PUT", "/cards/none/whole", JSON.stringify({ card: next })))[0], 404)
+    assert.deepEqual(await call("DELETE", `/cards/${id}`), [200, [] as never])
     // a heavy card is a card: several MB of an author's text installs, exports and comes back the same
     const heavy: Card = {
       ...chat,
@@ -193,7 +246,9 @@ const file = { via: "file" } as const
     for (const [method, path] of [
       ["PUT", "/cards/yandao"],
       ["POST", "/cards?replace=true"],
-      ["GET", "/cards/yandao/draft/install"],
+      ["GET", "/cards/yandao/draft"],
+      ["POST", "/cards/yandao/whole"],
+      ["GET", "/cards/yandao/source"], // the read is `whole`
       ["PUT", "/depots/x"],
     ] as const)
       assert.deepEqual(await call(method, path), [404, { error: "not found" }], `${method} ${path}`)

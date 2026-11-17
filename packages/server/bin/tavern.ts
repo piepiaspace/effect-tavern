@@ -49,7 +49,7 @@ const install = Command.make(
     }),
 ).pipe(
   Command.withDescription(
-    "Validate and install a card onto the shelf from a YAML file or its https link, over the card of that id (clears any saved draft)",
+    "Validate and install a card onto the shelf from a YAML file or its https link, over the card of that id",
   ),
 )
 const cardId = Argument.String("id").pipe(Argument.withDescription("installed card id"))
@@ -70,7 +70,7 @@ const cardRemove = Command.make("remove", { id: cardId, url, json }, ({ id, url,
       console.log(json ? JSON.stringify({ id, removed: true }) : `Removed ${id}`)
     }),
   ),
-).pipe(Command.withDescription("Remove an installed card with its draft; refused while it has stories"))
+).pipe(Command.withDescription("Remove an installed card; refused while it has stories"))
 const output = Flag.String("output").pipe(
   Flag.withAlias("o"),
   Flag.withDescription("write candidate YAML to file instead of stdout"),

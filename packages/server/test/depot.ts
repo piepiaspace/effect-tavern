@@ -167,8 +167,7 @@ try {
   assert.deepEqual((await states(remote.id))[0], ["one", "update", false])
   await assert.rejects(depots.pull(remote.id, "one"), refused("card-exists"))
   assert.equal(cards.list()[0]!.origin.version, "1.0")
-  cards.draft.save("one", { card: { ...one, title: "我改的" } })
-  cards.draft.install("one")
+  cards.save("one", { ...one, title: "我改的" })
   assert.deepEqual((await states(remote.id))[0], ["one", "update", true]) // the player's edit is what an update would replace
   assert.deepEqual((await depots.pull(remote.id, "one", { replace: true })).origin, {
     via: "depot",

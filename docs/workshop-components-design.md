@@ -1,6 +1,7 @@
 # Workshop 前端组件化构建设计（Component-Based Workshop Architecture）
 
 > 状态：设计定稿（2026-11-09，三方评审与交互原型 [`docs/workshop-prototype.html`](./workshop-prototype.html) 两轮对齐后修订；组件 2 已裁掉，见 §5.1）。正文槽只装散文与 Markdown：不再有 YAML、JSON 或键值缩进。本文修正 #121 的导航句：卡页按**已声明的组件**组织，不按 schema 顶层；#121 的披露开关不变。
+> 2026-11-17 更新：工坊先落了纯文本的 V0（[`docs/workshop-brief.md`](./workshop-brief.md) §0），没有草稿：`drafts` 表、`/api/cards/:id/draft` 路由与画布布局存储已移除，编辑直接写卡。本文凡提到草稿持久化与 `layout` 存储之处（§2.1 顶栏、§4 末行、§5.3）都要在做画布时重新决定落点；其余设计不变。
 > 关联文档：[`docs/workshop-prototype.html`](./workshop-prototype.html)、[`docs/workshop-brief.md`](./workshop-brief.md)、[`docs/card-reading.md`](./card-reading.md)、[`docs/packs-brief.md`](./packs-brief.md)
 > 关联已落地后端：[`packages/runtime/src/workshop.ts`](../packages/runtime/src/workshop.ts)、[`packages/server/src/author.ts`](../packages/server/src/author.ts)、[`packages/runtime/src/lint.ts`](../packages/runtime/src/lint.ts)
 

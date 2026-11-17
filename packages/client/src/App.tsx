@@ -19,13 +19,14 @@ import { read } from "./bridge.ts"
 import { CardPage } from "./card.tsx"
 import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
-import { Home, Workshop } from "./home.tsx"
+import { Home } from "./home.tsx"
 import { imeController } from "./ime.ts"
 import { Check, Close, Copy, DieFill, Down, Edit, Insert, Next, Prev, Record, Warning } from "./icons.tsx"
 import { Inspect } from "./inspector.tsx"
 import { blocks } from "./markdown.ts"
 import { plain, Prose } from "./prose.tsx"
 import { Settings } from "./settings.tsx"
+import { ManuscriptPage, Workshop } from "./workshop.tsx"
 import { Timeline } from "./timeline.tsx"
 import { WritingPage } from "./writing.tsx"
 import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
@@ -624,6 +625,9 @@ export const App = () => {
         </Show>
         <Show when={pg() === "workshop"}>
           <Workshop />
+        </Show>
+        <Show when={pg() === "manuscript"}>
+          <ManuscriptPage />
         </Show>
         <Show when={pg() === "timeline"}>
           <Timeline />

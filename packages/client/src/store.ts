@@ -112,12 +112,14 @@ export const working = Atom.make((get) => (get(draft) !== null && get(error) ===
  *  Inspect page on one node. The reader stays mounted under it, so a turn in flight keeps streaming. "home" is no page
  *  over a story: the bottom of a home tab's stack (`isHome`), where a fresh start and "+" land (pages.ts, tabs.ts).
  *  "settings" is an install-wide layer over the canvas (App.tsx, settings.css), with its own three-column skeleton and
- *  a Back strip in `.shell-top`, returning to the page that opened it. */
+ *  a Back strip in `.shell-top`, returning to the page that opened it. "workshop" is the workshop's own list of the
+ *  install's cards, on any tab; "manuscript" is one card open in it, the tab's card (workshop.tsx). */
 export type Page =
   | "home"
   | "reader"
   | "card"
   | "workshop"
+  | "manuscript"
   | "timeline"
   | "settings"
   | "writing"

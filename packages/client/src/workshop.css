@@ -1,0 +1,162 @@
+/* The workshop (workshop.tsx): its list of cards, and one card open as plain text. Both wear the status page's
+   chrome (a head with Back over a body); the body is one bounded column that scrolls. A text field here grows with
+   what is in it (`field-sizing`), so a long chapter is read down the page, not inside a box. */
+.workshop-page > header {
+  justify-content: flex-start;
+}
+.workshop-end {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.workshop-standing {
+  font-size: var(--text-footnote);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+.workshop-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-5) calc(var(--space-6) + var(--safe-bottom));
+}
+.workshop-body > * {
+  box-sizing: border-box;
+  max-width: 44rem;
+  margin: 0 auto;
+}
+/* nothing to list, or a card that could not be read: one line in the middle, the way on under it */
+.workshop-none {
+  min-height: 60%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  color: var(--ink-3);
+}
+.workshop-none p {
+  margin: 0;
+}
+.workshop-list {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.workshop-card {
+  box-sizing: border-box;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+  transition: background var(--dur-2) var(--ease);
+}
+.workshop-card:hover {
+  background: var(--ghost-hover);
+}
+.workshop-card .title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.workshop-card .summary {
+  font-size: var(--text-footnote);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+/* one card open: its name, its line, then the three kinds of text, each a head, a line on what it is, its blocks */
+.workshop-manuscript {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.workshop-manuscript .workshop-title {
+  font-size: var(--text-title);
+  font-weight: 600;
+}
+.workshop-manuscript section {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: var(--space-4);
+}
+.workshop-manuscript .hint {
+  margin: 0;
+  font-size: var(--text-footnote);
+  color: var(--ink-3);
+}
+.workshop-manuscript section > ul {
+  align-self: stretch;
+  list-style: none;
+  margin: var(--space-2) 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.workshop-manuscript section > ul:empty {
+  display: none;
+}
+.workshop-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.workshop-block .row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.workshop-block .row .field {
+  flex: 1;
+  min-width: 0;
+}
+.workshop-block textarea.field {
+  field-sizing: content;
+  min-height: 6lh;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+/* what the shelf refused, or a save that did not go through: the reason as it came, held over the text as it scrolls */
+.workshop-notice {
+  flex: none;
+  box-sizing: border-box;
+  width: min(44rem, calc(100% - 2 * var(--space-5)));
+  max-height: 30%;
+  overflow-y: auto;
+  margin: 0 auto var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.workshop-notice .row {
+  display: flex;
+  gap: var(--space-2);
+}
+.workshop-notice p {
+  margin: 0;
+  font-weight: 600;
+}
+.workshop-notice pre {
+  margin: 0;
+  max-width: 100%;
+  font-size: var(--text-footnote);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 40rem) {
+  .workshop-body {
+    padding-inline: var(--space-3);
+  }
+}

@@ -32,7 +32,8 @@ On desktop viewports (`≥ 72rem`), `shell.tsx` organizes the workspace into thr
 - **Turn Inspector (`inspector.tsx`, `inspect.ts`):** Inspects any node from the harness's point of view (`[` / `]` to walk the path) across two side-by-side panes:
   - **Pipeline pane:** Lists only the calls that ran—including `DecisionModel` pre-check passes for `lookup` and `check`—with aligned metric columns (latency, `↑` input tokens, `↓` output tokens, and `↻`/`+` KV cache reads/writes). Expanding a row offers **Result** (verdicts, tool steps, and probability bars against `LO` / `HI` / `LOOKUP` thresholds), **Prompt** (assembled messages with KV cache breakpoints marked as hairlines when `TAVERN_INSPECT=1` / `tavern serve --inspect` is active), and **JSON**.
   - **Node pane:** Displays input channel, untold lore hooks, state deltas against the parent node, and shaped `world` / `chronicle` / `theater` products.
-- **Card Page & Workshop (`card.tsx`, `home.tsx`):** Previews card modules and token budgets, configures `Field.start` parameters and dynamic opening notes before `greet`, and drives draft `compile`, `sort`, and `review` authoring flows.
+- **Card Page (`card.tsx`):** Previews card modules and token budgets, and configures `Field.start` parameters and dynamic opening notes before `greet`.
+- **Workshop (`workshop.tsx`, `manuscript.ts`):** Its own list of the install's cards with New, and one card open as plain text: always-on setting sections, openings, and single-layer entries read on demand. There is no draft: New is a card on the shelf at once, and edits autosave to the card through the install gate. Anything the editor does not show (rules, conditions, layered entries) is carried through untouched.
 
 ## 4. Solid 2.0 + UI SDK (`@ui-sdk`) Behavioral Substrate
 

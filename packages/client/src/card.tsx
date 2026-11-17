@@ -128,7 +128,13 @@ export const CardPage = () => {
                     <button
                       type="button"
                       class="icon"
-                      aria-label={to() === "home" ? t("common.backToHome") : t("common.backToStory")}
+                      aria-label={
+                        to() === "home"
+                          ? t("common.backToHome")
+                          : to() === "workshop"
+                            ? t("common.back")
+                            : t("common.backToStory")
+                      }
                       onClick={close}
                     >
                       <Back />

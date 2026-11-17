@@ -5,10 +5,9 @@
 // view, the drawer's key with it.
 import { createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { Back, Sliders } from "./icons.tsx"
-import { close } from "./pages.ts"
+import { open } from "./pages.ts"
 import { openSettings } from "./settings.tsx"
-import { cards, focus } from "./store.ts"
+import { cards } from "./store.ts"
 import { theme } from "./theme.ts"
 import { t } from "./i18n.ts"
 
@@ -122,12 +121,17 @@ export const Home = () => {
           <img class={{ "home-emblem": true, tall: Boolean(cur().tall) }} src={cur().src} alt="" aria-hidden="true" />
         </Show>
         <h1>{t("home.title")}</h1>
-        {/* a new install has no card: the one thing to do first is to bring one in */}
+        {/* a new install has no card: the one thing to do first is to bring one in, or to write one */}
         <Show when={!shelf().length}>
           <p>{t("side.noCards")}</p>
-          <button type="button" class="btn" onClick={() => openSettings("cards")}>
-            {t("side.addCards")}
-          </button>
+          <div class="home-first">
+            <button type="button" class="btn" onClick={() => openSettings("cards")}>
+              {t("side.addCards")}
+            </button>
+            <button type="button" class="btn" onClick={() => open("workshop")}>
+              {t("side.workshop")}
+            </button>
+          </div>
         </Show>
       </div>
       <nav class="home-Direction-picker" aria-label={t("home.title")}>
@@ -144,30 +148,6 @@ export const Home = () => {
           )}
         </For>
       </nav>
-    </div>
-  )
-}
-
-/** The card workshop placeholder: opened from the workspace's card head, never a second entry to New story. */
-export const Workshop = () => {
-  const shelf = read(cards)
-  const at = read(focus)
-  const title = () => shelf().find((c) => c.id === at())?.title ?? at() ?? ""
-  return (
-    <div class="status-page workshop-page">
-      <header>
-        <button type="button" class="icon" aria-label={t("common.back")} onClick={close}>
-          <Back />
-        </button>
-        <h1>{t("side.workshop")}</h1>
-      </header>
-      <div class="workshop-body">
-        <div class="home-mark">
-          <Sliders aria-hidden="true" />
-          <h1>{title()}</h1>
-          <p>{t("side.workshopPending")}</p>
-        </div>
-      </div>
     </div>
   )
 }

@@ -24,7 +24,8 @@ export default {
     calls: [{ callee: "t" }],
     // keys a table holds as data and `t()` reads where the word is drawn (the switches, the tabs, the stages, the
     // phases, the card page's spec rows, the shelf query's facet words, the refused rows' and URLs' sentences by code,
-    // what the shelf or a card library refused by code and a library card's key by its state):
+    // what the shelf or a card library refused by code and a library card's key by its state, the workshop's notice
+    // by why a save did not go through):
     // used, though no call names them
     keysInUse: [
       "switches.*",
@@ -49,6 +50,9 @@ export default {
       "cards.installed",
       "cards.update",
       "cards.replace",
+      "workshop.refused",
+      "workshop.failed",
+      "workshop.changed",
       "app.phase*",
       "card.spec*",
       "card.facet*",

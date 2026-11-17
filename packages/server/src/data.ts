@@ -24,7 +24,6 @@
 // the prose with `instr`, enough for a phone's stories. A story listing, search or batch delete takes a card as an optional
 // filter: absent, every card's. Ceilings: an FTS5 index over nodes once a
 // library holds hundreds of long stories; sync between two installs (the Android copy is a copy of this file).
-import type { CardDraft } from "@effect-tavern/runtime/src/workshop.ts"
 import type { Input } from "@effect-tavern/runtime/src/journal.ts"
 import type {
   CardRow,
@@ -58,7 +57,6 @@ create table if not exists secret (id text primary key, name text not null, json
 create table if not exists provider (id text primary key, name text not null, json text not null);
 create table if not exists routing (id integer primary key check (id = 1), json text not null);
 create table if not exists names (id integer primary key check (id = 1), etag text, json text not null);
-create table if not exists draft (id text primary key, json text not null);
 create table if not exists card (id text primary key, title text not null, json text not null, updated integer not null, summary text, facets text);
 create table if not exists story (${storyColumns});
 create table if not exists node (story integer not null references story (id) on delete cascade, id integer not null,
@@ -271,6 +269,8 @@ const steps = [
   "alter table card add column origin text",
   // the card libraries the install knows (depot.ts): a name and a location, the cards themselves stay where they are
   "create table if not exists depot (id text primary key, name text not null, json text not null)",
+  // the workshop's draft copies are gone (shelf.ts): it writes the card itself, so nothing reads this table
+  "drop table if exists draft",
 ]
 const latest = baseline + steps.length
 const upgrade = (db: DatabaseSync) => {
@@ -430,23 +430,6 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
       void q(`insert or replace into ${table} (id, name, json) values (?, ?, ?)`).run(id, name, JSON.stringify(rest)),
     del: (id: string) => void q(`delete from ${table} where id = ?`).run(id),
   })
-  const drafts = {
-    get: (id: string): CardDraft | undefined => {
-      const value = parse<Card | CardDraft>(q("select json from draft where id = ?").get(id) as Row | undefined)
-      // Existing libraries stored a bare Card. Normalize on read; the next write uses the envelope.
-      return value && ("id" in value ? { card: value } : value)
-    },
-    put: (id: string, value: CardDraft) =>
-      void q("insert or replace into draft (id, json) values (?, ?)").run(id, JSON.stringify(value)),
-    /** Discard content edits after install or cancel, retaining the author's canvas. */
-    del: (id: string) => {
-      const layout = drafts.get(id)?.layout
-      if (layout) drafts.put(id, { layout })
-      else drafts.drop(id)
-    },
-    /** The row whole, canvas and all: its card is gone. */
-    drop: (id: string) => void q("delete from draft where id = ?").run(id),
-  }
   return {
     /** The file open: the one asked for, or this process's own when another process holds that one. */
     file,
@@ -510,7 +493,6 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
       write: (t: { etag: string | null; names: Names }) =>
         void q("insert or replace into names (id, etag, json) values (1, ?, ?)").run(t.etag, JSON.stringify(t.names)),
     },
-    drafts,
     cards: {
       /** The install's cards by id and title, with the summary, facets and origin `put` stored beside the json, the Card
        *  in the json column left unread. */
@@ -538,12 +520,11 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
         ),
       /** One card's json column, parsed (decoded by the caller); none when the table has no such id. */
       get: (id: string): unknown => parse<unknown>(q("select json from card where id = ?").get(id) as Row | undefined),
-      /** The card with what is the player's on it alone: its draft and its local row. Its stories are the caller's to
-       *  have refused first (shelf.ts `remove`). */
+      /** The card with what is the player's on it alone, its local row. Its stories are the caller's to have refused
+       *  first (shelf.ts `remove`). */
       del: (id: string) =>
         tx(() => {
           q("delete from card where id = ?").run(id)
-          q("delete from draft where id = ?").run(id)
           q("delete from local where card = ?").run(id)
         }),
     },

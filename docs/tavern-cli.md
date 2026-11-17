@@ -112,9 +112,7 @@ bun run tavern card review my-card.yaml --json --url http://localhost:7777
 
 HTTP 客户端调用 `POST /api/author/compile {card, select, intent}`、`/api/author/sort {card, source, paragraphs?}` 和 `/api/author/review {card}`，分别得到 `{candidate, diagnostics}`、`{candidate, placements}` 和 `{diagnostics}`。传入 `paragraphs` 可保留作者手动划选的段落边界。
 
-草稿在 SQLite 中一卡一行：`GET /api/cards/:id/draft` 返回 `{card, draft, layout?}`，有内容草稿时返回完整草稿，否则返回完整已安装卡；`draft` 只表示有未提交的卡片编辑。`PUT` 接收 `{card?, layout?}`，至少提供一项：只传卡片保留布局，只传布局保留内容草稿。卡片 id 必须与 URL 一致，允许判据未完成；布局为 `{rows: {h, items: {id, w}[]}[]}`，`h`、`w` 是正有限数，`{rows: []}` 可重置布局。
-
-`DELETE` 放弃内容草稿，安装成功也只清内容编辑，两者均保留布局；没有布局时删除整行。草稿与布局重启后仍保留，不影响运行中的故事，旧库的裸 Card 草稿自动按新格式读取。HTTP 与库直接安装都校验初始状态并拒绝所有 lint error，包括空白作者文本。安装失败保留已安装卡、草稿和布局。
+工坊没有草稿，直接写书架（`docs/workshop-brief.md` §0）：`POST /api/cards/new {title?}` 上架一张各节皆空的卡，返回 `{card, cards}`；`GET /api/cards/:id/whole` 返回 `{card, rev}`，整卡原文与它的版本；`PUT /api/cards/:id/whole {card, rev?}` 以整卡过闸写回，卡片 id 必须与 URL 一致，返回 `{card, cards, rev}`。带上 `rev` 时，卡若已不是那个版本则 409 `card-changed`。写回与 `POST /api/cards` 安装是同一道闸：校验初始状态并拒绝所有 lint error，包括空白作者文本；被拒时书架上的卡不动。别处来的卡被改过后，书架行的 `origin` 记 `edited`。
 
 模型输出契约位于 `runtime/src/workshop.ts`：compile 接收 `fields`、`actions`、`readouts`、`products`、`over`、`cap`、`slots` 和必填的 `bindings`。fiction/lore 绑定为 `{to, when}`，开场白绑定为 `{to, do}`。`roll: {judged: true}` 创建空 `judge`；输出 schema 没有正文、判据或展示标签字段。Sort 为 `{paragraphs: number[], to: string}[]`，目标是 `frame.<id>`、`fiction.<new-id>`、`greetings[n]` 或 `lore.<id>.layers[n]`。Review 固定使用 `rule: "review:consistency"` 和 `level: "warn"`。解码丢弃未声明字段；模型夹带的文本不会进入候选，已有作者文本保持原样。
 
@@ -126,4 +124,4 @@ HTTP 客户端调用 `POST /api/author/compile {card, select, intent}`、`/api/a
 
 完整调用正文默认不暴露；`tavern serve --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
 
-未带版本戳的 SQLite 库首次打开时执行既有升级，并在同一事务内写入 `user_version=1`；失败会回滚整批升级，再次打开可重试。已升级库跳过旧表探测和节点 JSON 扫描。新建库使用相同基线；版本高于当前支持范围的库拒绝打开。本次不改变已有草稿 JSON 的按需读取适配。
+未带版本戳的 SQLite 库首次打开时执行既有升级，并在同一事务内写入 `user_version=1`；失败会回滚整批升级，再次打开可重试。已升级库跳过旧表探测和节点 JSON 扫描。新建库使用相同基线；版本高于当前支持范围的库拒绝打开。

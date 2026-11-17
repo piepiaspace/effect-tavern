@@ -22,6 +22,7 @@ import {
   Card as CardGlyph,
   Chat,
   Close,
+  Edit,
   List,
   Probe,
   Settings,
@@ -231,6 +232,8 @@ export const Shell = (props: { children: JSX.Element }) => {
                       return <CardGlyph />
                     case "workshop":
                       return <Sliders />
+                    case "manuscript":
+                      return <Edit />
                     case "reader":
                       return <Chat />
                     case "timeline":

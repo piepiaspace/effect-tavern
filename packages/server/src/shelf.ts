@@ -2,22 +2,23 @@
 // no card and reads none from beside itself, so a card is here because a file, the workshop or a card library (depot.ts)
 // put it here, and the row says which (`Origin`). Everything a card passes on its way in is behind `install`: the text
 // read as YAML or JSON, the gate (runtime author.ts `validateCard`: schema, rules, initial world, lint; one error and
-// nothing is written), the id's collision with a card already here, the facets beside the json, the origin stamped, the
-// content draft cleared. A caller holding a card's text or value knows nothing else.
+// nothing is written), the id's collision with a card already here, the facets beside the json, the origin stamped.
+// A caller holding a card's text or value knows nothing else.
 //
 // `remove` refuses a card that has stories: a story is a log over its card and reads nothing without it. What goes with
-// the card is the player's on it alone, its draft and its local row. `text` is the card as a file again, and
-// `install(text(id))` is the same card. A draft is the workshop's unsaved copy, one a card: `open` answers it (or the
-// installed card as the place to start) with what the gate says of it, `save` writes it, `install` puts the stored
-// draft through the gate onto the shelf, `discard` drops it. The author's canvas layout rides the same row and outlives
-// both an install and a discard.
+// the card is the player's on it alone, its local row. `text` is the card as a file again, and `install(text(id))` is
+// the same card. The workshop writes the shelf itself, with no copy of a card kept beside it: `create` is a blank card
+// of a fresh id (every section empty passes the gate, and a story of it begins on an empty line), `whole` the card as
+// it stands with its revision, `save` the card whole over the one of its id, through the same gate. A card is a card
+// from its first save on. A save names the revision it was written from: the workshop holds a card while its author
+// types, and a card that changed under it meanwhile (an install from a terminal, another window) is `card-changed`,
+// never overwritten by a page that has not seen it.
 import { validateCard } from "@effect-tavern/runtime/src/author.ts"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
 import type { CardRow, Origin } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
-import { WorkshopLayout, type DraftView } from "@effect-tavern/runtime/src/workshop.ts"
 import { parseCard, printCard } from "@effect-tavern/runtime/support/author.ts"
-import { Schema } from "effect"
+import { createHash } from "node:crypto"
 import type { Data } from "./data.ts"
 
 /** What the shelf or a card library refuses, by a code a client draws in its own words and the status the wire answers
@@ -29,6 +30,7 @@ export class Refused extends Error {
       | "card-exists"
       | "card-in-use"
       | "card-invalid"
+      | "card-changed"
       | "no-depot"
       | "depot-unreadable"
       | "depot-is-card"
@@ -43,12 +45,17 @@ export class Refused extends Error {
 const noCard = (id: string) => new Refused("no-card", `no card ${id}`)
 const ID = /^[\p{L}\p{N}_.-]+$/u
 
-const decodeDraftUpdate = Schema.decodeUnknownSync(
-  Schema.Struct({
-    card: Schema.optionalKey(Schema.Unknown),
-    layout: Schema.optionalKey(WorkshopLayout),
-  }),
-)
+/** A card with nothing in it: what the workshop's New puts on the shelf, under the name the shelf is to call it. */
+const blank = (id: string, title?: string): Card => ({
+  id,
+  ...(title && { title }),
+  frame: [],
+  fiction: [],
+  greetings: [],
+  rules: { fields: [], actions: [] },
+  lore: [],
+  guard: [],
+})
 
 export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: string) => void } = {}) => {
   const row = (id: string) => data.cards.list().find((c) => c.id === id)
@@ -68,21 +75,15 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
       throw new Refused("card-invalid", "error schema id: an id is letters, digits, _ - and . only")
     return card
   }
+  /** A card's revision: a digest of it as stored, so it moves with every write and with nothing else. */
+  const rev = (id: string): string =>
+    createHash("sha1")
+      .update(JSON.stringify(data.cards.get(id)))
+      .digest("hex")
   const put = (card: Card, origin: Origin): CardRow => {
     data.cards.put(card, facets(card), origin)
-    data.drafts.del(card.id)
     changed(card.id)
     return row(card.id)!
-  }
-  const draft = (id: string): DraftView => {
-    const saved = data.drafts.get(id)
-    const card = saved?.card ?? get(id)
-    return {
-      card,
-      draft: saved?.card !== undefined,
-      ...(saved?.layout && { layout: saved.layout }),
-      diagnostics: validateCard(card).diagnostics,
-    }
   }
   return {
     /** Every card of the install as a row, by title. */
@@ -104,7 +105,7 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
       if (!replace && row(card.id)) throw new Refused("card-exists", `card ${card.id} is already installed`, 409)
       return put(card, origin)
     },
-    /** Gone, with its draft and the player's row on it; `card-in-use` while a story of it exists. */
+    /** Gone, with the player's row on it; `card-in-use` while a story of it exists. */
     remove: (id: string) => {
       if (!row(id)) throw noCard(id)
       const stories = data.stories.list(id).length
@@ -115,29 +116,29 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
     },
     /** The card as a card file's text: what `install` reads back to the same card. */
     text: (id: string): string => printCard(get(id)),
-    draft: {
-      open: draft,
-      /** The content, the layout or both; what is left out stays as it was. Layout alone needs a card to lay out. */
-      save: (id: string, value: unknown): DraftView => {
-        const update = decodeDraftUpdate(value)
-        if (update.card === undefined && update.layout === undefined) throw new Error("card or layout is required")
-        const saved = data.drafts.get(id)
-        const card = update.card === undefined ? saved?.card : decodeCard(update.card)
-        if (card && card.id !== id) throw new Error("card id does not match URL")
-        if (!card) get(id)
-        const layout = update.layout ?? saved?.layout
-        data.drafts.put(id, { ...(card && { card }), ...(layout && { layout }) })
-        return draft(id)
-      },
-      /** The stored draft through the gate and onto the shelf, over the card it is a draft of. A card that arrived from
-       *  elsewhere keeps where it came from and is marked `edited`; one that began here is the workshop's. */
-      install: (id: string): CardRow => {
-        const saved = data.drafts.get(id)?.card
-        if (!saved) throw new Refused("no-card", `no draft of ${id}`, 404)
-        const had = row(id)?.origin
-        return put(gate(saved), had && had.via !== "workshop" ? { ...had, edited: true } : { via: "workshop" })
-      },
-      discard: (id: string) => data.drafts.del(id),
+    /** A blank card of a fresh id, the workshop's: on the shelf at once, playable as it stands. `title` is what the
+     *  shelf calls it until its author names it (the client's word for a card without a name); none, its id. */
+    create: (title?: string): CardRow => {
+      let id: string
+      do id = `card-${crypto.randomUUID().slice(0, 8)}`
+      while (row(id))
+      return put(gate(blank(id, title?.trim())), { via: "workshop" })
+    },
+    /** The card whole with its revision: what the workshop reads, and names again when it saves. */
+    whole: (id: string): { card: Card; rev: string } => ({ card: get(id), rev: rev(id) }),
+    /** The workshop's save: the card whole, through the gate, over the card of this id. A card that arrived from
+     *  elsewhere keeps where it came from and is marked `edited`; one that began here is the workshop's. A save that
+     *  changes nothing writes nothing: the origin stands and no open session is moved. With `was`, the revision the
+     *  caller read, a card that has changed since is `card-changed` and stands. */
+    save: (id: string, value: unknown, was?: string): CardRow => {
+      const had = row(id)
+      if (!had) throw noCard(id)
+      if (was !== undefined && was !== rev(id))
+        throw new Refused("card-changed", `card ${id} has changed since it was read`, 409)
+      const card = gate(value)
+      if (card.id !== id) throw new Refused("card-invalid", `error schema id: the card is ${card.id}, not ${id}`)
+      if (JSON.stringify(card) === JSON.stringify(get(id))) return had
+      return put(card, had.origin.via === "workshop" ? had.origin : { ...had.origin, edited: true })
     },
   }
 }

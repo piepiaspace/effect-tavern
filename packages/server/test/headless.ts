@@ -75,11 +75,10 @@ try {
     },
   ]) {
     const invalid = { ...card, products: [product] }
-    lib.cards.draft.save(card.id, { card: invalid })
+    assert.throws(() => lib.cards.save(card.id, invalid))
     assert.throws(() => put(invalid))
     assert.equal((await http(remote, "/cards?replace=1", "POST", invalid)).status, 400)
     assert.deepEqual(lib.cards.get(card.id), card) // the installed card stands
-    assert.equal(lib.cards.draft.open(card.id).draft, true)
     assert.equal(lib.session(direct), original)
   }
   put({
