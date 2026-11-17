@@ -12,6 +12,7 @@ import { createSignal, flush, onSettled, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Check, Close, Edit, Insert, Send, Snippets, Stop } from "./icons.tsx"
 import { imeController } from "./ime.ts"
+import { caretOf } from "./inserts.ts"
 import { fillKnown } from "./pack.ts"
 import {
   acting,
@@ -125,11 +126,12 @@ export const Composer = () => {
           class="item"
           value={`snippet/${s().name}`}
           label={s().name}
-          keywords={s().hint ? [s().hint!] : []}
+          keywords={s().text ? [s().text] : []}
           onPointerDown={keep} // a press does not take the focus from the box
         >
           <span class="name">{s().name}</span>
-          <span class="hint">{s().hint}</span>
+          {/* the second line is what it puts in the box: the one description a snippet needs */}
+          <span class="hint">{caretOf(s())}</span>
           {/* a snippet with words fills the box, like an Options row; a mark or the bare channel switch does not */}
           <Show when={s().text && !s().after}>
             <Insert aria-hidden="true" />

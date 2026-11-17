@@ -151,14 +151,18 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* a phone: the tabs take their own full line and share it, so the pill never runs past the header */
+/* a phone: the capsule is one whole rail on its own line under the name row (order puts it after the pack's keys),
+   the tabs share it and shrink, never wrap */
 @media (width < 72rem) {
   .wtabs {
+    order: 1;
     flex: 1 1 100%;
+    flex-wrap: nowrap;
   }
   .wtabs button {
     flex: 1 1 auto;
-    padding-inline: var(--space-2);
+    height: 32px;
+    padding-inline: var(--space-1);
   }
 }
 .wtabs button:hover {
@@ -431,6 +435,7 @@
   flex: 1;
 }
 .field-well {
+  position: relative;
   flex: none;
   min-height: 0;
   display: flex;
@@ -472,6 +477,19 @@
 .field-well textarea:disabled {
   opacity: 0.5;
 }
+/* the well's key to its full-size editor (controls.tsx Well), in the top corner the text keeps clear of */
+.field-well .well-open {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  color: var(--ink-3);
+}
+.field-well:has(.well-open) textarea {
+  padding-right: var(--space-6); /* clear of the 26px key and its 4px inset */
+}
+.field-well:has(textarea:disabled) .well-open {
+  display: none;
+}
 .frag-list {
   flex: 1;
   min-height: 0;
@@ -493,12 +511,26 @@
 }
 .frag-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   min-height: var(--control-sm);
 }
 .frag-bar .spacer {
   flex: 1;
+}
+/* a hint, not a control: the length sits under its text, plain, at the right */
+.frag-count {
+  align-self: flex-end;
+  font-size: var(--text-caption);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+/* a menu in a bar is as wide as its pick, not the bar */
+.frag-bar .select {
+  flex: none;
+  width: auto;
+  max-width: 10rem;
 }
 .at-toggle {
   display: inline-flex;
@@ -649,7 +681,7 @@
   box-sizing: border-box;
   width: 100%;
   display: grid;
-  grid-template-columns: 7rem minmax(0, 1fr) minmax(0, 1.3fr);
+  grid-template-columns: 7rem minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
   padding: 0;
@@ -679,19 +711,38 @@
 .snip-row .sname {
   font-weight: 550;
 }
-.snip-row .stext,
-.snip-row .shint {
+.snip-row .stext {
   color: var(--ink-2);
   font-size: var(--text-footnote);
 }
-.snip-row .shint {
-  justify-content: space-between;
-  color: var(--ink-3);
-}
-.snip-row .shint > span:first-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* a phone: a snippet is a small card, its name and channel on top, what it inserts under them */
+@media (width < 72rem) {
+  .snip-list {
+    gap: var(--space-2);
+  }
+  .snip-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "name tag" "text text";
+    gap: var(--space-1) var(--space-2);
+    padding: var(--space-3);
+    border-radius: var(--radius);
+    background: var(--alpha-1);
+  }
+  .snip-cell,
+  .snip-row:hover:not(.builtin) .snip-cell {
+    height: auto;
+    padding: 0;
+    background: none;
+  }
+  .snip-row .sname {
+    grid-area: name;
+  }
+  .snip-row .stext {
+    grid-area: text;
+  }
+  .snip-row > .tag {
+    grid-area: tag;
+  }
 }
 .builtin {
   opacity: 0.6;

@@ -998,6 +998,34 @@
 .settings .modal.narrow {
   width: min(24rem, calc(100% - 2 * var(--space-4)));
 }
+/* a text read and written at length (controls.tsx Well): a tall sheet, the whole screen on a phone */
+.settings .modal.full {
+  width: min(48rem, calc(100% - 2 * var(--space-4)));
+  height: calc(100dvh - 2 * var(--space-4));
+}
+@media (width < 72rem) {
+  .settings .modal.full {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+}
+.well-full {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: var(--space-4);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-field);
+  line-height: 1.6;
+  resize: none;
+  outline: none;
+  overflow-wrap: anywhere;
+}
 .settings .modal::backdrop {
   background: var(--scrim);
 }

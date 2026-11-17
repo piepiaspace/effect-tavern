@@ -1,6 +1,6 @@
 // The quick inputs as the Writing page edits them (the 快捷输入 tab), pure: a format key and a snippet are both an
 // Insert (`text` before the caret, `after` behind it); the editor holds the two halves and whether the caret lands
-// between them (`after` present, a pair) or at the end (no `after`). A snippet adds its name, its hint and its
+// between them (`after` present, a pair) or at the end (no `after`). A snippet adds its name and its
 // channel (note: a word to the narrator). The player's lists go before the harness defaults (session.ts), so the
 // card view's lists minus the player's own are the defaults, shown but not edited.
 import type { Format, Snippet } from "@effect-tavern/runtime/src/fragment.ts"
@@ -10,7 +10,6 @@ export interface InsertDraft {
   between: boolean // the caret lands between the halves (a pair); off, `after` is dropped
   text: string
   after: string
-  hint: string // snippets only
   note: boolean // snippets only
 }
 export const emptyDraft = (snippet: boolean): InsertDraft => ({
@@ -18,7 +17,6 @@ export const emptyDraft = (snippet: boolean): InsertDraft => ({
   between: !snippet,
   text: "",
   after: "",
-  hint: "",
   note: snippet,
 })
 export const draftOfFormat = (f: Format): InsertDraft => ({
@@ -26,7 +24,6 @@ export const draftOfFormat = (f: Format): InsertDraft => ({
   between: f.after !== undefined,
   text: f.text,
   after: f.after ?? "",
-  hint: "",
   note: false,
 })
 export const draftOfSnippet = (s: Snippet): InsertDraft => ({
@@ -34,7 +31,6 @@ export const draftOfSnippet = (s: Snippet): InsertDraft => ({
   between: s.after !== undefined,
   text: s.text,
   after: s.after ?? "",
-  hint: s.hint ?? "",
   note: !!s.note,
 })
 /** A key from the editor: the glyph is what is typed when the label is blank; nothing to insert is no key. */
@@ -54,7 +50,6 @@ export const snippetOf = (d: InsertDraft): Snippet | undefined => {
     name,
     text: d.text,
     ...(d.between && after && { after }),
-    ...(d.hint.trim() && { hint: d.hint.trim() }),
     ...(d.note && { note: true }),
   }
 }

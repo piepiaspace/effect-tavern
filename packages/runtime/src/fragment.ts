@@ -48,7 +48,6 @@ export const Snippet = Schema.Struct({
   name: Schema.String,
   text: Schema.String,
   after: Schema.optionalKey(Schema.String),
-  hint: Schema.optionalKey(Schema.String), // one line under the name in the menu: what it does
   note: Schema.optionalKey(Schema.Boolean), // on pick the send goes to the narrator (the note channel)
 })
 export type Snippet = typeof Snippet.Type

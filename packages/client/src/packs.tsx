@@ -7,7 +7,7 @@ import { hook } from "@effect-tavern/runtime/src/lore.ts"
 import type { Entry } from "@effect-tavern/runtime/src/polish.ts"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { ask, Modal, Name, newId, Switch, ToList, type Pane, dialogHandle } from "./controls.tsx"
+import { ask, Menu, Modal, Name, newId, Switch, ToList, type Pane, dialogHandle, Well } from "./controls.tsx"
 import { Clue, Close, Export, Import, Snippets as Plus, Trash } from "./icons.tsx"
 import { caretOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf, type InsertDraft } from "./inserts.ts"
 import { FILE, mergeLexicon, parseLexicon, serializeLexicon } from "./lexicon.ts"
@@ -229,8 +229,13 @@ export const Packs = (props: Pane) => {
                     </For>
                   </nav>
                   <Show when={!isReservedPack(p().id)}>
-                    <button type="button" class="btn sm ghost" onClick={() => exportPack(p())}>
-                      <Export /> <span>{t("common.export")}</span>
+                    <button
+                      type="button"
+                      class="icon sm"
+                      aria-label={t("common.export")}
+                      onClick={() => exportPack(p())}
+                    >
+                      <Export />
                     </button>
                     <button
                       type="button"
@@ -351,7 +356,7 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
                   <Close />
                 </button>
               </div>
-              <div class="field-well">
+              <Well label={t("writing.requirement")}>
                 <textarea
                   aria-label={t("writing.requirement")}
                   placeholder={t("writing.requirementPlaceholder")}
@@ -360,7 +365,7 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
                   onInput={(e) => setDraft(e.currentTarget.value)}
                   onKeyDown={leaveArea}
                 />
-              </div>
+              </Well>
             </div>
           </Show>
           <For each={frags()} keyed={false}>
@@ -384,36 +389,29 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
                     </button>
                   </div>
                   <Show when={atOf(f()) === "head"}>
-                    <select
-                      class="field sm"
-                      aria-label={t("packs.slot")}
-                      value={SLOTS.includes(f().id) ? f().id : ""}
-                      onChange={(e) => {
-                        const val = e.currentTarget.value || newId("req")
-                        updateFrag(i, { id: val })
-                      }}
-                    >
-                      <option value="">{t("packs.slotCustom")}</option>
-                      <For each={SLOTS} keyed={(s) => s}>
-                        {(s) => <option value={s()}>{slotName(s())}</option>}
-                      </For>
-                    </select>
-                    <select
-                      class="field sm"
-                      aria-label={t("packs.mode")}
+                    <Menu
+                      small
+                      label={t("packs.slot")}
+                      value={SLOTS.includes(f().id) ? f().id : "custom"}
+                      options={[
+                        { value: "custom", label: t("packs.slotCustom") },
+                        ...SLOTS.map((s) => ({ value: s, label: slotName(s) })),
+                      ]}
+                      onPick={(v) => updateFrag(i, { id: v === "custom" ? newId("req") : v })}
+                    />
+                    <Menu
+                      small
+                      label={t("packs.mode")}
                       value={f().mode ?? noMode()}
-                      onChange={(e) => {
-                        const val = e.currentTarget.value as "override" | "yield" | "both"
-                        updateFrag(i, { mode: val === noMode() ? undefined : val })
-                      }}
-                    >
-                      <option value="override">{t("packs.modeOverride")}</option>
-                      <option value="yield">{t("packs.modeYield")}</option>
-                      <option value="both">{t("packs.modeBoth")}</option>
-                    </select>
+                      options={[
+                        { value: "override", label: t("packs.modeOverride") },
+                        { value: "yield", label: t("packs.modeYield") },
+                        { value: "both", label: t("packs.modeBoth") },
+                      ]}
+                      onPick={(v) => updateFrag(i, { mode: v === noMode() ? undefined : v })}
+                    />
                   </Show>
                   <span class="spacer" />
-                  <span class="tag mono">{t("common.chars", { n: (f().text ?? "").length })}</span>
                   <Switch
                     on={f().enabled !== false}
                     label={f().id}
@@ -428,7 +426,7 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
                     <Close />
                   </button>
                 </div>
-                <div class="field-well">
+                <Well label={t("writing.requirement")}>
                   <textarea
                     aria-label={t("writing.requirement")}
                     value={f().text ?? ""}
@@ -438,7 +436,8 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
                     }}
                     onKeyDown={leaveArea}
                   />
-                </div>
+                </Well>
+                <span class="frag-count">{t("common.chars", { n: (f().text ?? "").length })}</span>
               </div>
             )}
           </For>
@@ -552,7 +551,7 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                     <Close />
                   </button>
                 </div>
-                <div class="field-well">
+                <Well label={t("packs.content")}>
                   <textarea
                     aria-label={t("packs.content")}
                     placeholder={t("packs.content")}
@@ -560,7 +559,7 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                     onInput={(e) => setDraft({ ...d(), text: e.currentTarget.value })}
                     onKeyDown={leaveArea}
                   />
-                </div>
+                </Well>
               </div>
             )}
           </Show>
@@ -599,27 +598,27 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                     />
                     {t("invoke.manual")}
                   </label>
-                  <select
-                    aria-label={t("invoke.mode")}
+                  <Menu
+                    small
+                    label={t("invoke.mode")}
                     value={x().e.activation ?? "on_demand"}
-                    onChange={(e) =>
-                      updateEntry(x().i, { activation: e.currentTarget.value as "always" | "on_demand" })
-                    }
-                  >
-                    <option value="on_demand">{t("packs.onDemand")}</option>
-                    <option value="always">{t("packs.everyTurn")}</option>
-                  </select>
-                  <select
-                    aria-label={t("invoke.residency")}
+                    options={[
+                      { value: "on_demand", label: t("packs.onDemand") },
+                      { value: "always", label: t("packs.everyTurn") },
+                    ]}
+                    onPick={(v) => updateEntry(x().i, { activation: v })}
+                  />
+                  <Menu
+                    small
+                    label={t("invoke.residency")}
                     value={x().e.residency ?? "window"}
-                    onChange={(e) =>
-                      updateEntry(x().i, { residency: e.currentTarget.value as "permanent" | "window" | "turn" })
-                    }
-                  >
-                    <option value="permanent">{t("invoke.permanent")}</option>
-                    <option value="window">{t("invoke.window")}</option>
-                    <option value="turn">{t("invoke.turn")}</option>
-                  </select>
+                    options={[
+                      { value: "permanent", label: t("invoke.permanent") },
+                      { value: "window", label: t("invoke.window") },
+                      { value: "turn", label: t("invoke.turn") },
+                    ]}
+                    onPick={(v) => updateEntry(x().i, { residency: v })}
+                  />
                   <span class="tag">{hook(x().e.text)}</span>
                   <span class="spacer" />
                   <button
@@ -634,14 +633,14 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                     <Close />
                   </button>
                 </div>
-                <div class="field-well">
+                <Well label={t("packs.content")}>
                   <textarea
                     aria-label={t("packs.content")}
                     value={x().e.text}
                     onChange={(e) => updateEntry(x().i, { text: e.currentTarget.value })}
                     onKeyDown={leaveArea}
                   />
-                </div>
+                </Well>
               </div>
             )}
           </For>
@@ -1170,10 +1169,7 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
               >
                 <span class="snip-cell sname">{s().name}</span>
                 <span class="snip-cell stext mono">{caretOf(s()) || "—"}</span>
-                <span class="snip-cell shint">
-                  <span>{s().hint}</span>
-                  <span class="tag">{s().note ? t("composer.noteTag") : t("writing.inStory")}</span>
-                </span>
+                <span class="tag">{s().note ? t("composer.noteTag") : t("writing.inStory")}</span>
               </button>
             )}
           </For>
@@ -1208,14 +1204,6 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
                   />
                 </label>
                 <Show when={e().snippet}>
-                  <label class="mfield">
-                    <span>{t("writing.description")}</span>
-                    <input
-                      class="field"
-                      value={e().draft.hint}
-                      onInput={(ev) => patch({ hint: ev.currentTarget.value })}
-                    />
-                  </label>
                   <div class="mfield">
                     <span>{t("writing.channelLabel")}</span>
                     <div class="at-toggle" role="group" aria-label={t("writing.channelLabel")}>
@@ -1360,7 +1348,7 @@ const AsksTab = (props: { pack: Layer; onSave: Save }) => {
                       </button>
                     </Show>
                   </div>
-                  <div class="field-well">
+                  <Well label={row()[1]}>
                     <textarea
                       aria-label={row()[1]}
                       placeholder={def()}
@@ -1368,7 +1356,7 @@ const AsksTab = (props: { pack: Layer; onSave: Save }) => {
                       onChange={(e) => setAsk(id(), e.currentTarget.value)}
                       onKeyDown={leaveArea}
                     />
-                  </div>
+                  </Well>
                 </div>
               )
             }}
@@ -1394,7 +1382,7 @@ const AsksTab = (props: { pack: Layer; onSave: Save }) => {
                       </button>
                     </Show>
                   </div>
-                  <div class="field-well">
+                  <Well label={row().label}>
                     <textarea
                       aria-label={row().label}
                       placeholder={def()}
@@ -1402,7 +1390,7 @@ const AsksTab = (props: { pack: Layer; onSave: Save }) => {
                       onChange={(e) => setAsk(id(), e.currentTarget.value)}
                       onKeyDown={leaveArea}
                     />
-                  </div>
+                  </Well>
                 </div>
               )
             }}

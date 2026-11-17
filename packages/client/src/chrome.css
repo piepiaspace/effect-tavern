@@ -585,6 +585,12 @@
   cursor: default;
   outline: none;
 }
+/* the pick is the lit row: a list needs no check column to say which one it holds */
+.popup-list .item[data-selected] {
+  background: var(--alpha-1);
+  color: var(--ink);
+  font-weight: 600;
+}
 .popup-list .item[data-highlighted] {
   background: var(--ghost-hover);
 }
@@ -609,7 +615,8 @@
 .popup-list[data-presentation="sheet"] {
   width: 100%;
   max-width: none;
-  max-height: 70dvh;
+  /* up to the screen less a strip of scrim above it: a list that nearly fits must not scroll its last few pixels */
+  max-height: calc(100dvh - 3 * var(--space-6));
   padding-bottom: max(env(safe-area-inset-bottom), var(--space-4));
   border-radius: var(--radius-card) var(--radius-card) 0 0;
 }

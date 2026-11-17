@@ -49,11 +49,13 @@
 }
 
 /* ── the phone's strip: the reader's head, inside the stage card ── */
+/* three columns, the outer two equal: the name sits on the screen's centre line whatever keys flank it */
 .strip {
   box-sizing: border-box;
   height: calc(var(--strip) + var(--safe-top));
   padding: var(--safe-top) var(--space-2) 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: var(--space-2);
   flex: none;
@@ -75,6 +77,11 @@
 }
 .strip .icon {
   flex: none;
+}
+.strip-end {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
 }
 /* the card's name gives way before the story's: capped, it ends in an ellipsis */
 .strip .c,
@@ -829,17 +836,25 @@
 .shell-tab[aria-current="page"] .brand-glyph {
   opacity: 0.92;
 }
+/* equal cells, so every row starts and ends on the same edges: four across, two on a phone */
 .home-Direction-picker {
   position: absolute;
   bottom: var(--space-5);
   left: var(--space-4);
   right: var(--space-4);
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  max-width: 44rem;
+  margin-inline: auto;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-1);
 }
+@media (width < 72rem) {
+  .home-Direction-picker {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .home-Direction-picker .chip {
+  justify-content: center;
   padding: 0 var(--space-2);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
@@ -964,6 +979,53 @@
   margin-top: auto;
   height: 48px;
   font-size: var(--text-body);
+}
+/* the shelf in the drawer: each card a raised tile with a body, two lines of its summary, a press that gives */
+.drawer .shelf-list {
+  gap: var(--space-2);
+}
+.drawer .shelf-item {
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow:
+    var(--shadow-1),
+    inset 0 0 0 var(--hairline) var(--line);
+  transition:
+    background var(--dur-2) var(--ease),
+    scale var(--dur-1) var(--ease);
+}
+.drawer .shelf-item:active {
+  scale: 0.98;
+}
+.drawer .shelf-item[aria-current] {
+  box-shadow:
+    var(--shadow-1),
+    inset 0 0 0 1px var(--ink-3);
+}
+.drawer .shelf-item .summary {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+/* the install's keys at the drawer's foot: thumb-sized */
+.drawer .side-foot {
+  height: calc(56px + var(--safe-bottom));
+}
+.drawer .side-foot .left {
+  gap: var(--space-2);
+}
+.drawer .side-foot .icon.sm {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius);
+}
+.drawer .side-foot .icon.sm svg {
+  width: 20px;
+  height: 20px;
 }
 .nav-scrim {
   position: fixed;

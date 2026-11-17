@@ -140,11 +140,10 @@ assert.deepEqual(formatOf({ ...emptyDraft(false), text: "「", after: "」", bet
   text: "「",
 })
 assert.equal(formatOf(emptyDraft(false)), undefined)
-assert.deepEqual(snippetOf(draftOfSnippet({ name: "心声", text: "⦅", after: "⦆", hint: "h" })), {
+assert.deepEqual(snippetOf(draftOfSnippet({ name: "心声", text: "⦅", after: "⦆" })), {
   name: "心声",
   text: "⦅",
   after: "⦆",
-  hint: "h",
 })
 assert.deepEqual(snippetOf({ ...emptyDraft(true), label: " 场外 " }), { name: "场外", text: "", note: true })
 assert.deepEqual(snippetOf({ ...emptyDraft(true), label: "x", text: "a", after: "b", between: false, note: false }), {

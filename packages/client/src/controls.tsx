@@ -5,7 +5,7 @@
 import { lookup } from "@effect-tavern/provider/src/names.ts"
 import { normalize, plan, UrlError, type Format, type UrlCode } from "@effect-tavern/provider/src/url.ts"
 import type { JSX } from "@solidjs/web"
-import { For, onSettled, Show } from "solid-js"
+import { createSignal, For, onSettled, Show } from "solid-js"
 import {
   AlertDialog,
   AlertDialogClose,
@@ -14,10 +14,10 @@ import {
   createConfirm,
 } from "@ui-sdk/solid/alert-dialog"
 import { createDialogController, Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
-import { Select, SelectContent, SelectItem, SelectItemIndicator, SelectTrigger } from "@ui-sdk/solid/select"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@ui-sdk/solid/select"
 import { Switch as Toggle, SwitchThumb } from "@ui-sdk/solid/switch"
 import { Family } from "./family.tsx"
-import { Back, Caret, Check, Close } from "./icons.tsx"
+import { Back, Caret, Close, Expand } from "./icons.tsx"
 import { names } from "./store.ts"
 import { type Key, t } from "./i18n.ts"
 
@@ -84,7 +84,7 @@ export interface Option<T extends string> {
   label: string
   glyph?: string // a model id: its family glyph leads the row
 }
-/** A select without <select>, on @ui-sdk/solid/select: a trigger and its list, the pick checked, a bottom sheet on a
+/** A select without <select>, on @ui-sdk/solid/select: a trigger and its list, the pick lit (no check column), a bottom sheet on a
  *  small touch screen. With nothing to pick, the trigger is disabled and still names the pick it holds (a stale one
  *  too). */
 export const Menu = <T extends string>(props: {
@@ -125,9 +125,6 @@ export const Menu = <T extends string>(props: {
                 <Show when={o().glyph}>{(g) => <Family id={g()} />}</Show>
                 <span class="text">{o().label}</span>
               </span>
-              <SelectItemIndicator>
-                <Check />
-              </SelectItemIndicator>
             </SelectItem>
           )}
         </For>
@@ -210,12 +207,14 @@ export type DialogHandle = ReturnType<typeof dialogHandle>
 export const Modal = (props: {
   title: string
   narrow?: boolean
+  /** the whole screen on a phone, a tall sheet beside it: a text read and written at length */
+  full?: boolean
   controller: DialogHandle
   onClose?: () => void
   children: JSX.Element
 }) => (
   <Dialog controller={props.controller} onOpenChangeComplete={(open) => !open && props.onClose?.()}>
-    <DialogContent class={{ modal: true, narrow: !!props.narrow }}>
+    <DialogContent class={{ modal: true, narrow: !!props.narrow, full: !!props.full }}>
       <div class="modal-head">
         <DialogTitle render={(part) => <h3 {...part} />}>{props.title}</DialogTitle>
         <DialogClose class="icon sm" aria-label={t("common.close")}>
@@ -226,6 +225,46 @@ export const Modal = (props: {
     </DialogContent>
   </Dialog>
 )
+/** A text well (one textarea) with a key that opens its text full size, since a well shows a few lines. The edit
+ *  lands back in the textarea as input and change when the editor closes, so the textarea's own handler keeps it. */
+export const Well = (props: { label: string; children: JSX.Element }) => {
+  let box: HTMLDivElement | undefined
+  const dlg = dialogHandle()
+  const [text, setText] = createSignal("")
+  const [hint, setHint] = createSignal("")
+  const area = () => box?.querySelector("textarea")
+  const show = () => {
+    setText(area()?.value ?? "")
+    setHint(area()?.placeholder ?? "")
+    void dlg.open()
+  }
+  const land = () => {
+    const a = area()
+    if (!a || a.value === text()) return
+    a.value = text()
+    a.dispatchEvent(new Event("input", { bubbles: true }))
+    a.dispatchEvent(new Event("change", { bubbles: true }))
+  }
+  return (
+    <>
+      <div class="field-well" ref={(el) => (box = el)}>
+        {props.children}
+        <button type="button" class="icon sm well-open" aria-label={t("common.expand")} onClick={show}>
+          <Expand />
+        </button>
+      </div>
+      <Modal title={props.label} full controller={dlg} onClose={land}>
+        <textarea
+          class="well-full"
+          aria-label={props.label}
+          placeholder={hint()}
+          value={text()}
+          onInput={(e) => setText(e.currentTarget.value)}
+        />
+      </Modal>
+    </>
+  )
+}
 /** A small centred dialog on the confirm's surface: the question, which names it, then the caller's fields and
  *  buttons. Scrim click and Escape close it. */
 export const Prompt = (props: { controller: DialogHandle; title: JSX.Element; children: JSX.Element }) => (

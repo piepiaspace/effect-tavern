@@ -348,9 +348,11 @@ export const Shell = (props: { children: JSX.Element }) => {
                       <span class={{ s: true, unnamed: current()?.title === null }}>{storyTitle()}</span>
                     </Show>
                   </div>
-                  <Show when={pg() !== "home"}>
-                    <Keys />
-                  </Show>
+                  <span class="strip-end">
+                    <Show when={pg() !== "home"}>
+                      <Keys />
+                    </Show>
+                  </span>
                 </header>
               }
             >
