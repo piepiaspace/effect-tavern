@@ -1,0 +1,42 @@
+name: Release
+
+# A tag v* builds the phone's binary (server + client page + template cards, Bun's android runtime) and publishes it
+# with start.sh as the release that start.sh downloads from (releases/latest/download).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the page
+        working-directory: packages/client
+        run: bun --bun vp build
+
+      - name: Compile for Android
+        working-directory: packages/server
+        run: |
+          bun run compile:android
+          gzip -9 -c dist/tavern-android > dist/tavern-android.gz
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" packages/server/dist/tavern-android.gz start.sh --generate-notes
