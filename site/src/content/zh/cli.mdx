@@ -82,6 +82,7 @@ bun packages/runtime/bin/unroll.ts card.json --json
 ```sh
 # 书架：新库里没有卡片。从文件安装、列出、导出、移除
 bun run tavern card install ./my-card.yaml     # 已有同 id 的卡时覆盖它
+bun run tavern card install https://example.com/cards/my-card.yaml   # 单张卡自己的链接
 bun run tavern card list
 bun run tavern card export my-card -o my-card.yaml
 bun run tavern card remove my-card             # 这张卡还有故事时拒绝

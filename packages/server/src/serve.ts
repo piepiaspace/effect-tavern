@@ -85,7 +85,11 @@
 //                 POST /cards installs the card whose text is the body (YAML or JSON, the file as it is) and answers
 //                 {card, cards}: its row and the shelf. A card that fails the gate is a 400 {error, code:
 //                 "card-invalid"} with every error line; an id already on the shelf is a 409 {code: "card-exists"}
-//                 until asked with ?replace=1. DELETE /cards/<id> removes it with its draft and the player's row on
+//                 until asked with ?replace=1. A card file may weigh up to 32 MB (runtime library.ts `CARD_BYTES`);
+//                 past that it is a 413 {code: "too-large"}, as is any other body past 1 MB.
+//                 POST /cards/link {url, replace?} is the same for one card at its own https link: the server reads
+//                 the link once (502 {code: "link-unreadable"} when it cannot) and keeps it as the card's origin.
+//                 DELETE /cards/<id> removes it with its draft and the player's row on
 //                 it and answers the shelf; 409 {code: "card-in-use"} while it has stories.
 //                 GET /cards/<id>/export.yaml is the card as a file (an attachment): what POST /cards reads back.
 //                 GET /cards/<id> is what a client draws that card by (404 when there is none), before any
@@ -108,7 +112,8 @@
 //                 its card the URL's; in force from the next request; 404 when there is no such card, a bad body a 400).
 //   GET  /depots  the card libraries the install knows (depot.ts), {id, name, location}[]; none until one is added.
 //                 POST /depots {location} adds one, an https URL (its index is read once: 502 {code:
-//                 "depot-unreadable"} when it is not a library); DELETE /depots/<id> forgets it, the cards taken from it
+//                 "depot-unreadable"} when it is not a library, 400 {code: "depot-is-card"} when the address is one
+//                 card's own link, which POST /cards/link takes); DELETE /depots/<id> forgets it, the cards taken from it
 //                 stay. Both answer the list. GET /depots/<id> reads its index now: {id, name, location, entries}, each
 //                 entry {id, title, summary?, creator?, version?, file, state, edited?} with `state` against the shelf
 //                 (absent | installed | update | taken). POST /depots/<id>/pull {entry, replace?} copies that card onto
@@ -127,21 +132,29 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { extname, join, resolve, sep } from "node:path"
 import { attachment, backup, disposition, markdown } from "./export.ts"
 import { Routing, type Library, type PublicEvent } from "./library.ts"
+import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { Refused } from "./shelf.ts"
 import { Busy } from "./turn.ts"
 
+/** A request's body as text, up to `limit` bytes: 1 MB for what is a setting or an action, the card ceiling
+ *  (`CARD_BYTES`) on a route that carries a card. A body over its limit is not kept but is heard out, so the answer is
+ *  a 413 `too-large` the client can read and word; one that keeps coming far past it (`SLACK` more) is cut off. */
+const SLACK = 8 << 20
 const body = (req: IncomingMessage, limit = 1 << 20) =>
   new Promise<string>((resolve, reject) => {
-    let s = ""
-    req.setEncoding("utf8")
-    req.on("data", (c: string) => {
-      s += c
-      if (s.length > limit) {
-        reject(new Error("body too large"))
+    const chunks: Buffer[] = []
+    let size = 0
+    const over = () => new Refused("too-large", `body over ${Math.floor(limit / (1 << 20))} MB`, 413)
+    req.on("data", (c: Buffer) => {
+      size += c.length
+      if (size <= limit) return void chunks.push(c)
+      chunks.length = 0
+      if (size > limit + SLACK) {
+        reject(over())
         req.destroy()
       }
     })
-    req.on("end", () => resolve(s))
+    req.on("end", () => (size > limit ? reject(over()) : resolve(Buffer.concat(chunks).toString("utf8"))))
     req.on("error", reject)
   })
 // The body besides Action and the player's rows, decoded here like them.
@@ -174,6 +187,9 @@ const StoryBody = Schema.decodeUnknownSync(
 const IdsBody = Schema.decodeUnknownSync(Schema.Struct({ ids: Schema.Array(Schema.Number) }))
 const NewStory = Schema.decodeUnknownSync(Schema.Struct({ card: Schema.String }))
 const DepotBody = Schema.decodeUnknownSync(Schema.Struct({ location: Schema.String }))
+const LinkBody = Schema.decodeUnknownSync(
+  Schema.Struct({ url: Schema.String, replace: Schema.optionalKey(Schema.Boolean) }),
+)
 const PullBody = Schema.decodeUnknownSync(
   Schema.Struct({ entry: Schema.String, replace: Schema.optionalKey(Schema.Boolean) }),
 )
@@ -181,7 +197,7 @@ const PullBody = Schema.decodeUnknownSync(
 export const handle = (lib: Library, { inspect = false } = {}) => {
   return async (req: IncomingMessage, res: ServerResponse) => {
     const json = (status: number, v: unknown) => {
-      if (req.socket.destroyed || res.destroyed) return // body() already closed an oversized request's socket
+      if (req.socket.destroyed || res.destroyed) return // body() cut off a request that kept coming far past its limit
       res.writeHead(status, { "content-type": "application/json" })
       res.end(JSON.stringify(v))
     }
@@ -196,8 +212,10 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
       return bad(e)
     }
     /** The body, decoded; `empty` stands in for a blank one. Throws on a bad or too-large body, for `reply`. */
-    const read = async <T>(decode: (u: unknown) => T, empty?: string): Promise<T> =>
-      decode(JSON.parse((await body(req)) || (empty ?? "")))
+    const read = async <T>(decode: (u: unknown) => T, empty?: string, limit?: number): Promise<T> =>
+      decode(JSON.parse((await body(req, limit)) || (empty ?? "")))
+    /** The same for a body that holds a whole card. */
+    const card = <T>(decode: (u: unknown) => T) => read(decode, undefined, CARD_BYTES)
     /** What `f` gives as 200, or what it throws as `status`. */
     const reply = async (f: () => unknown, status = 400) => {
       try {
@@ -330,12 +348,17 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
     const installing = req.method === "POST" && /^\/cards(\?replace=1)?$/.exec(req.url ?? "")
     if (installing)
       return reply(async () => ({
-        card: lib.cards.install(await body(req), { via: "file" }, { replace: !!installing[1] }),
+        card: lib.cards.install(await body(req, CARD_BYTES), { via: "file" }, { replace: !!installing[1] }),
         cards: lib.cards.list(),
       }))
+    if (req.method === "POST" && req.url === "/cards/link")
+      return reply(async () => {
+        const { url, replace } = await read(LinkBody)
+        return { card: await lib.importLink(url, { replace }), cards: lib.cards.list() }
+      })
     const authorAt = req.method === "POST" && /^\/author\/(compile|sort|review)$/.exec(req.url ?? "")
     if (authorAt)
-      return reply(async () => lib.author[authorAt[1] as "compile" | "sort" | "review"](await read((u) => u)))
+      return reply(async () => lib.author[authorAt[1] as "compile" | "sort" | "review"](await card((u) => u)))
     if (req.method === "GET" && req.url === "/depots") return json(200, lib.depots.list())
     if (req.method === "POST" && req.url === "/depots")
       return reply(async () => (await lib.depots.add((await read(DepotBody)).location), lib.depots.list()))
@@ -372,7 +395,7 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
       if (draftAt[2]) {
         if (req.method === "POST") return reply(() => ({ card: lib.cards.draft.install(id), cards: lib.cards.list() }))
       } else if (req.method === "GET") return reply(() => lib.cards.draft.open(id), 404)
-      else if (req.method === "PUT") return reply(async () => lib.cards.draft.save(id, await read((u) => u)))
+      else if (req.method === "PUT") return reply(async () => lib.cards.draft.save(id, await card((u) => u)))
       else if (req.method === "DELETE")
         return reply(() => {
           lib.cards.draft.discard(id)

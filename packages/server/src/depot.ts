@@ -12,19 +12,22 @@
 // pull over the card, asked for by the player; nothing here checks or fetches on its own.
 // The registry (`depots`) is the install's list of locations (data.ts `depot`). A directory is named from the CLI
 // only: the wire takes https alone, so a browser never points the server at a path.
-import type { CardRow, DepotEntry, DepotRow, DepotView } from "@effect-tavern/runtime/src/library.ts"
+import {
+  CARD_BYTES,
+  type CardRow,
+  type DepotEntry,
+  type DepotRow,
+  type DepotView,
+} from "@effect-tavern/runtime/src/library.ts"
 import { parseCard } from "@effect-tavern/runtime/support/author.ts"
 import { Schema } from "effect"
 import { createHash } from "node:crypto"
 import { readFileSync, statSync } from "node:fs"
 import { isAbsolute, join, relative, resolve, sep } from "node:path"
 import type { Data } from "./data.ts"
+import { readHttps, remote } from "./remote.ts"
 import { Refused, type Shelf } from "./shelf.ts"
 
-/** An index or a card file larger than this many bytes is not read. */
-const LIMIT = 1 << 20
-/** A library that has not answered in this long is unreadable: a read never hangs the page that asked. */
-const TIMEOUT = 15_000
 const Entry = Schema.Struct({
   id: Schema.String,
   type: Schema.optionalKey(Schema.String),
@@ -45,7 +48,6 @@ export interface Depot {
   /** One entry's card file as text. */
   text(entry: DepotEntry): Promise<string>
 }
-export const remote = (location: string) => /^https:\/\//i.test(location)
 
 export const depot = (location: string, io: { fetch?: typeof fetch } = {}): Depot => {
   const read = remote(location)
@@ -66,14 +68,7 @@ export const depot = (location: string, io: { fetch?: typeof fetch } = {}): Depo
           const url = file === undefined ? index : new URL(file, base)
           if (!url.href.startsWith(base)) throw unreadable(`${file}: outside the library`)
           if (file !== undefined) url.search = index.search
-          const res = await (io.fetch ?? fetch)(url, { redirect: "follow", signal: AbortSignal.timeout(TIMEOUT) })
-          // a redirect may leave the library's host (a forge's raw links do) but never https
-          if (res.url && !remote(res.url)) throw unreadable(`${url.href}: redirected off https`)
-          if (!res.ok) throw unreadable(`${url.href}: HTTP ${res.status}`)
-          if (Number(res.headers.get("content-length") ?? 0) > LIMIT) throw unreadable(`${url.href}: too large`)
-          const bytes = await res.arrayBuffer()
-          if (bytes.byteLength > LIMIT) throw unreadable(`${url.href}: too large`)
-          return new TextDecoder().decode(bytes)
+          return readHttps(url, { fetch: io.fetch })
         }
       })()
     : (() => {
@@ -83,7 +78,7 @@ export const depot = (location: string, io: { fetch?: typeof fetch } = {}): Depo
           const inside = relative(root, path)
           if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside))
             throw unreadable(`${file}: outside the library`)
-          if (statSync(path).size > LIMIT) throw unreadable(`${path}: too large`)
+          if (statSync(path).size > CARD_BYTES) throw unreadable(`${path}: too large`)
           return readFileSync(path, "utf8")
         }
       })()
@@ -111,6 +106,21 @@ export const depot = (location: string, io: { fetch?: typeof fetch } = {}): Depo
   }
 }
 
+/** A document that is a card as far as a glance tells: an id and one of a card's own sections. The gate decides the rest. */
+const looksLikeCard = (text: string): boolean => {
+  try {
+    const v = parseCard(text) as Record<string, unknown> | null
+    return (
+      !!v &&
+      typeof v === "object" &&
+      typeof v["id"] === "string" &&
+      ("fiction" in v || "frame" in v || "greetings" in v)
+    )
+  } catch {
+    return false
+  }
+}
+
 export const depots = ({ data, shelf, fetch }: { data: Data; shelf: Shelf; fetch?: typeof globalThis.fetch }) => {
   const row = (id: string): DepotRow => {
     const r = data.depots.list().find((d) => d.id === id)
@@ -125,7 +135,16 @@ export const depots = ({ data, shelf, fetch }: { data: Data; shelf: Shelf; fetch
     add: async (location: string, { dirs = false } = {}): Promise<DepotRow> => {
       const at = remote(location) ? location.trim() : resolve(location)
       if (!remote(location) && !dirs) throw new Refused("depot-unreadable", "a card library is an https URL")
-      const { name } = await depot(at, { fetch }).index()
+      const { name } = await depot(at, { fetch })
+        .index()
+        .catch(async (e: unknown) => {
+          // the address may be one card's own link, pasted where a library goes: said as that, so the page can offer
+          // to import it. Read once more, at the address itself, only on this failure.
+          const text = remote(at) ? await readHttps(at, { fetch }).catch(() => undefined) : undefined
+          if (text !== undefined && looksLikeCard(text))
+            throw new Refused("depot-is-card", `${at} is a card, not a card library`)
+          throw e
+        })
       const r = { id: createHash("sha1").update(at).digest("hex").slice(0, 10), name, location: at }
       data.depots.put(r)
       return r

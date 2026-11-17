@@ -24,7 +24,16 @@ import type { Data } from "./data.ts"
  *  with. `card-exists` is the one a caller answers by asking again with `replace`. */
 export class Refused extends Error {
   constructor(
-    readonly code: "no-card" | "card-exists" | "card-in-use" | "card-invalid" | "no-depot" | "depot-unreadable",
+    readonly code:
+      | "no-card"
+      | "card-exists"
+      | "card-in-use"
+      | "card-invalid"
+      | "no-depot"
+      | "depot-unreadable"
+      | "depot-is-card"
+      | "link-unreadable"
+      | "too-large",
     message: string,
     readonly status?: number, // absent: the route's own (a missing card is a 404 where it is the URL, a 400 in a body)
   ) {

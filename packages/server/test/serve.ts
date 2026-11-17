@@ -683,10 +683,12 @@ await run(false)
   }
 }
 
-// An oversized body closes its socket; the handler must finish without writing headers to that closed response.
+// A body over its route's limit (1 MB here; a card route has the card ceiling) is heard out and answered 413 with a
+// code the client words. One that keeps coming far past the limit is cut off: its socket closes, and the handler must
+// finish without writing headers to that closed response.
 {
   let writes = 0
-  const done = Promise.withResolvers<void>()
+  let done = Promise.withResolvers<void>()
   const api = handle(lib)
   const server = createServer((req, res) => {
     const write = res.writeHead.bind(res)
@@ -697,21 +699,31 @@ await run(false)
     void api(req, res).then(done.resolve, done.reject)
   }).listen(0, "127.0.0.1")
   await new Promise<void>((resolve) => server.once("listening", resolve))
-  try {
-    const code = await new Promise<string | undefined>((resolve) => {
+  const send = (bytes: number) =>
+    new Promise<{ status?: number; body?: string; code?: string }>((resolve) => {
       const req = request(
         { host: "127.0.0.1", port: (server.address() as AddressInfo).port, path: "/stories", method: "POST" },
         (res) => {
-          res.resume()
-          res.on("end", () => resolve(undefined))
+          let text = ""
+          res.setEncoding("utf8")
+          res.on("data", (c: string) => (text += c))
+          res.on("end", () => resolve({ status: res.statusCode, body: text }))
         },
       )
-      req.on("error", (e: NodeJS.ErrnoException) => resolve(e.code))
-      req.end(JSON.stringify({ card: "x".repeat((1 << 20) + 1) }))
+      req.on("error", (e: NodeJS.ErrnoException) => resolve({ code: e.code }))
+      req.end(JSON.stringify({ card: "x".repeat(bytes) }))
     })
+  try {
+    const over = await send((1 << 20) + 1)
     await done.promise
-    assert.equal(code, "ECONNRESET")
-    assert.equal(writes, 0)
+    assert.deepEqual(
+      [over.status, JSON.parse(over.body!), writes],
+      [413, { error: "body over 1 MB", code: "too-large" }, 1],
+    )
+    done = Promise.withResolvers<void>()
+    const flood = await send(10 << 20)
+    await done.promise
+    assert.deepEqual([flood.code, writes], ["ECONNRESET", 1])
   } finally {
     server.close()
   }

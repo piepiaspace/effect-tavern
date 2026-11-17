@@ -24,7 +24,7 @@ MODEL=fake bun run tavern serve --headless --port 7777
 
 没有 `--url` 时，直接打开 `DATA/tavern.db`；`DATA` 默认是当前目录的 `.tavern`。
 程序不带任何卡片，新库的书架是空的：卡片只能由 `card install`、卡库（`depot pull`）或工坊放上去。
-`card install` 覆盖同 id 的已安装卡；`card remove` 在这张卡还有故事时拒绝。已有服务占用这个库会报错，
+`card install` 接受一个 YAML 文件，或一张卡自己的 https 链接（由宿主读取一次），覆盖同 id 的已安装卡；`card remove` 在这张卡还有故事时拒绝。已有服务占用这个库会报错，
 提示进程、库路径及 `--url`；不会自动切换到另一个库。
 
 给 install、play、story 子命令传 `--url http://127.0.0.1:7777`（末尾带 `/api` 也可），

@@ -82,6 +82,7 @@ Run `bun run tavern <subcommand>` from the repository root (`packages/server/bin
 ```sh
 # The shelf: a new library has no cards. Install from a file, list, export, remove
 bun run tavern card install ./my-card.yaml     # over the card of that id, when there is one
+bun run tavern card install https://example.com/cards/my-card.yaml   # one card by its own link
 bun run tavern card list
 bun run tavern card export my-card -o my-card.yaml
 bun run tavern card remove my-card             # refused while the card has stories

@@ -1401,6 +1401,61 @@
 .cards-foot .row {
   align-self: stretch;
 }
+/* what the address was refused for, and beside it the way on when it was a card's own link */
+.cards-foot .refused-url {
+  flex-wrap: wrap;
+}
+.cards-foot .refused-url .btn {
+  height: auto;
+}
+/* the import dialog: where a card file lands, then the field for a card's link, then what came of it */
+.import-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+.import-card .dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-4);
+  border-radius: var(--radius-card);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  text-align: center;
+}
+.import-card .dropzone > svg {
+  width: 24px;
+  height: 24px;
+  color: var(--ink-3);
+}
+.import-card .dropzone p {
+  margin: 0;
+}
+.import-card .dropzone .hint {
+  font-size: var(--text-caption);
+  color: var(--ink-3);
+}
+/* a file held over the zone: the zone answers before the drop does */
+.import-card .dropzone[data-dragging] {
+  background: var(--ghost-hover);
+  box-shadow: inset 0 0 0 2px var(--ink-3);
+}
+.import-card .dropzone[data-drag-reject] {
+  box-shadow: inset 0 0 0 2px var(--warn);
+}
+.import-card .input-box.sm input {
+  font-size: var(--text-footnote);
+}
+.import-card .asking {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  color: inherit;
+}
 .cards-foot .input-box {
   flex: 1;
   min-width: 0;
@@ -1424,7 +1479,9 @@
 }
 /* the word for a read in flight, for a read slow enough to want one: under that it never shows, so a quick answer
    does not flicker */
-.cards-detail .late {
+.cards-detail .late,
+.import-card .late {
+  margin: 0;
   animation: cards-late 0s linear 250ms both;
 }
 @keyframes cards-late {
@@ -1458,7 +1515,7 @@
   color: var(--ink-3);
 }
 /* what the server refused: the client's words, and under a card that failed the gate the lines it failed on */
-.refusal {
+.setting-card.refusal {
   color: var(--warn);
 }
 .refusal pre {

@@ -6,11 +6,18 @@ import type { Id } from "./log.ts"
 import type { Local, shown } from "./layer.ts"
 import type { Facets, Phase } from "./session.ts"
 
+/** The most a card file may weigh, in bytes, wherever one travels: an upload, a link, a card library's file. Not a
+ *  limit of anything underneath (the store and the gate take more): a ceiling so that no request can ask the host to
+ *  hold an unbounded body. Cards in the wild run to several MB, a dozen with what some authors inline; this is well
+ *  clear of them. */
+export const CARD_BYTES = 32 * 1024 * 1024
 /** How a card reached this install, the install's own fact beside the author's `creator` / `version` / `source` in the
- *  card: a file the player gave, the workshop, or a card library (`depot`, its location; `version` the entry's when it
- *  was taken). `edited`: the player has since installed their own changes over what arrived. */
+ *  card: a file the player gave, a single card's link (`url`), the workshop, or a card library (`depot`, its location;
+ *  `version` the entry's when it was taken). `edited`: the player has since installed their own changes over what
+ *  arrived. */
 export interface Origin {
-  via: "file" | "workshop" | "depot"
+  via: "file" | "link" | "workshop" | "depot"
+  url?: string
   depot?: string
   version?: string
   edited?: boolean

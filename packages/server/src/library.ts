@@ -76,6 +76,7 @@ import type { Data } from "./data.ts"
 import { depots } from "./depot.ts"
 import type { Exported } from "./export.ts"
 import { names } from "./names.ts"
+import { readHttps } from "./remote.ts"
 import { shelf } from "./shelf.ts"
 import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
 
@@ -600,6 +601,13 @@ export const library = ({
     /** The install's cards (shelf.ts) and the card libraries it knows (depot.ts). */
     cards,
     depots: depots({ data, shelf: cards, fetch }),
+    /** One card by its own link: fetched once, through the same gate as a file, the link kept as its origin. */
+    importLink: async (url: string, { replace = false } = {}) =>
+      cards.install(
+        await readHttps(url.trim(), { fetch, code: "link-unreadable" }),
+        { via: "link", url: url.trim() },
+        { replace },
+      ),
     personas: {
       /** By name, the install's default marked. */
       list: (): Persona[] => {

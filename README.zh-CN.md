@@ -75,7 +75,7 @@ curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/downloa
 
 它会下载最新 Release 的手机版（约 50 MB），启动后自动打开浏览器 `http://127.0.0.1:7777`。以后输入 `effect-tavern` 启动，`effect-tavern update` 更新；数据在 `~/.tavern`。
 
-程序本身不带任何卡片，新安装的书架是空的：在 **设置 → 卡片** 里导入卡片文件（`.yaml` / `.json`），或填入卡库的 `https` 地址后从中安装。
+程序本身不带任何卡片，新安装的书架是空的：在 **设置 → 卡片** 里导入单张卡片（拖入或选择 `.yaml` / `.json` 文件，或粘贴这张卡自己的 `https` 链接），或填入卡库的 `https` 地址后从中安装。
 
 ### 环境要求
 

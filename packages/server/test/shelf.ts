@@ -2,6 +2,7 @@
 // as text or as a value through one gate, an id is never taken over without being asked, a card with stories stays, and
 // what a card was is what it exports as.
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
+import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
 import { printCard } from "@effect-tavern/runtime/support/author.ts"
 import { cardFile, chat } from "@effect-tavern/runtime/test/cards/index.ts"
@@ -172,6 +173,22 @@ const file = { via: "file" } as const
       [404, "no-card"],
     )
     assert.equal((await call("GET", "/cards/yandao"))[0], 404)
+    // a heavy card is a card: several MB of an author's text installs, exports and comes back the same
+    const heavy: Card = {
+      ...chat,
+      id: "heavy",
+      fiction: [{ id: "tome", text: "山川异域，风月同天。".repeat(400_000) }],
+    } // ~12 MB as UTF-8
+    const sent = await call("POST", "/cards", JSON.stringify(heavy))
+    assert.deepEqual([sent[0], (sent[1]["card"] as { id: string }).id], [200, "heavy"])
+    const back = await (await fetch(`${base}/cards/heavy/export.yaml`)).text()
+    assert.ok(back.length > 4_000_000)
+    assert.equal((await call("POST", "/cards?replace=1", back))[0], 200)
+    assert.equal(t.lib.cards.get("heavy").fiction[0]!.text!.length, 4_000_000)
+    // past the ceiling it is refused in words, not by a dropped connection
+    const huge = await call("POST", "/cards", "x".repeat(CARD_BYTES + 1))
+    assert.deepEqual(huge, [413, { error: "body over 32 MB", code: "too-large" }])
+    assert.deepEqual(await call("DELETE", "/cards/heavy"), [200, [] as never])
     // a card route with a method it has no use for (the old PUT install among them) is not a story's to answer
     for (const [method, path] of [
       ["PUT", "/cards/yandao"],

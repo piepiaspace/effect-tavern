@@ -47,6 +47,14 @@ globalThis.fetch = Object.assign(
       shelf = [...shelf.filter((c) => c.id !== row.id), row]
       return Response.json({ card: row, cards: shelf })
     }
+    if (method === "POST" && path === "/cards/link") {
+      const { url, replace } = JSON.parse(body) as { url: string; replace?: boolean }
+      const id = /\/cards\/(\w+)\.yaml$/.exec(url)?.[1]
+      if (!url.startsWith(LOCATION) || !id) return refuse(502, "link-unreadable", `${url}: HTTP 404`)
+      if (shelf.some((c) => c.id === id) && !replace)
+        return refuse(409, "card-exists", `card ${id} is already installed`)
+      return put({ id, title: id.toUpperCase(), origin: { via: "link", url } })
+    }
     if (method === "POST" && path.startsWith("/cards")) {
       const id = /^id: (\S+)/m.exec(body)?.[1]
       if (!id) return refuse(400, "card-invalid", "error schema $: no id\nerror schema $: not a card")
@@ -62,6 +70,7 @@ globalThis.fetch = Object.assign(
     }
     if (method === "POST" && path === "/depots") {
       const { location } = JSON.parse(body) as { location: string }
+      if (location.endsWith(".yaml")) return refuse(400, "depot-is-card", `${location} is a card, not a card library`)
       if (location !== LOCATION) return refuse(502, "depot-unreadable", `${location}: HTTP 404`)
       libs = [{ id: "d1", name: "样例卡库", location }]
       return Response.json(libs)
@@ -123,13 +132,39 @@ const answer = (name: string) => press(name, document.querySelector(".confirm") 
 const toList = async () => {
   if (key("返回列表")) await press("返回列表")
 }
-const give = async (name: string, body: string) => {
-  const input = document.querySelector<HTMLInputElement>('.cards-detail input[type="file"]')!
+/** The import dialog, opened from the shelf's head when it is not up already. */
+const dialog = async () => {
+  if (!document.querySelector(".import-card")) await press("导入卡片")
+  return document.querySelector<HTMLElement>(".import-card")!
+}
+const holding = (name: string, body: string) => {
   const files = new DataTransfer()
   files.items.add(new File([body], name))
-  input.files = files.files
+  return files
+}
+/** A file picked in the dialog: the picker's own input, as the browser fills it. */
+const give = async (name: string, body: string) => {
+  const input = (await dialog()).querySelector<HTMLInputElement>('input[type="file"]')!
+  input.files = holding(name, body).files
   input.dispatchEvent(new Event("change", { bubbles: true }))
-  await wait(350)
+  await wait(450)
+}
+/** A file dragged from outside and let go over the dialog's zone. */
+const drop = async (name: string, body: string) => {
+  const zone = (await dialog()).querySelector<HTMLElement>(".dropzone")!
+  const dataTransfer = holding(name, body)
+  for (const type of ["dragenter", "dragover", "drop"])
+    zone.dispatchEvent(new DragEvent(type, { dataTransfer, bubbles: true, cancelable: true }))
+  await wait(450)
+}
+const shut = async () => {
+  if (document.querySelector(".import-card")) await press("关闭", document.querySelector(".modal")!)
+}
+const typeInto = async (sel: string, v: string) => {
+  const input = document.querySelector<HTMLInputElement>(sel)!
+  input.value = v
+  input.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  await wait(50)
 }
 const rows = () => [...detail().querySelectorAll<HTMLElement>(".card-row")].map((r) => flat(r.innerText))
 const row = (title: string) =>
@@ -144,49 +179,99 @@ const run = async () => {
   await press("已安装0")
   check(flat(detail().innerText).includes("尚未安装卡片"), `an empty shelf says so: ${detail().innerText}`)
 
-  // a card file: on the shelf, saying it came as a file, with its export link
+  // 导入卡片 is a dialog with the two ways one card comes in: its file, dropped or picked, and its own link
+  const box = await dialog()
+  check(
+    flat(box.innerText).includes("把卡片文件拖到这里") && key("选择文件", box) && box.querySelector("#card-link"),
+    `the import dialog offers a file and a link: ${flat(box.innerText)}`,
+  )
+  // a file picked: on the shelf, saying it came as a file, with its export link, and the dialog has left
   await give("alpha.yaml", "id: alpha\ntitle: 甲\n")
   check(rows().join("|") === "甲文件", `the imported card's row: ${rows().join("|")}`)
+  check(!document.querySelector(".import-card"), "a card that came in closes the dialog")
   check(
     key("导出卡片", row("甲"))?.getAttribute("href") === "/api/cards/alpha/export.yaml",
     `the export is a plain link: ${key("导出卡片", row("甲"))?.getAttribute("href")}`,
   )
-  // the same file again: asked first, under the word for what happens, and Cancel keeps the card
+  // the same file again: asked in the dialog under the word for what happens; leaving the dialog keeps the card
   await give("alpha.yaml", "id: alpha\ntitle: 甲二\n")
   check(
-    text(".confirm p")[0] === "「alpha.yaml」已安装，替换？" && key("替换") && !key("删除"),
-    `a second import asks to replace: ${text(".confirm").join(" | ")}`,
+    text(".import-card .asking span")[0] === "「alpha.yaml」已安装，替换？" && key("替换", await dialog()),
+    `a second import asks to replace: ${text(".import-card .asking").join(" | ")}`,
   )
-  await answer("取消")
-  check(rows().join("|") === "甲文件", `Cancel keeps the card: ${rows().join("|")}`)
+  await shut()
+  check(rows().join("|") === "甲文件", `leaving keeps the card: ${rows().join("|")}`)
   await give("alpha.yaml", "id: alpha\ntitle: 甲二\n")
-  await answer("替换")
+  await press("替换", await dialog())
   check(rows().join("|") === "甲二文件", `Replace takes the new file: ${rows().join("|")}`)
-  check(!document.querySelector(".confirm"), "an answered confirm leaves the page")
-  // a file that is no card: the client's words, and the lines it failed on under them
+  check(!document.querySelector(".import-card"), "and the dialog leaves")
+  // a file dropped on the zone comes in the same way
+  await drop("beta.yaml", "id: beta\ntitle: 乙\n")
+  check(rows().join("|") === "甲二文件|乙文件", `a dropped file is imported: ${rows().join("|")}`)
+  // a file that is no card: the client's words, and the lines it failed on under them, in the dialog
   await give("bad.yaml", "nothing here")
   check(
-    text(".refusal span")[0] === "不是可用的卡片" && text(".refusal pre")[0]?.includes("errorschema$:noid"),
-    `a refused file says why: ${text(".refusal").join(" | ")}`,
+    text(".import-card .refusal span")[0] === "不是可用的卡片" &&
+      text(".import-card .refusal pre")[0]?.includes("errorschema$:noid"),
+    `a refused file says why: ${text(".import-card .refusal").join(" | ")}`,
   )
+  // a file of another kind never leaves the browser
+  const sent = requests.length
+  await give("card.png", "PNG")
+  check(
+    text(".import-card .refusal span")[0] === "不是可用的卡片" && requests.length === sent,
+    `a file that is no card file is refused in place: ${text(".import-card .refusal").join(" | ")}`,
+  )
+  // one card by its own link: a link that cannot be read says so, one that can lands with where it came from
+  await typeInto("#card-link", "https://nowhere.example/x.yaml")
+  check(!document.querySelector(".import-card .refusal"), "typing a link clears the last refusal")
+  await press("导入", await dialog())
+  check(
+    text(".import-card .refusal span")[0] === "读不到这个链接",
+    `an unreadable link: ${text(".import-card .refusal").join(" | ")}`,
+  )
+  await typeInto("#card-link", `${LOCATION}cards/linked.yaml`)
+  await press("导入", await dialog())
+  check(rows().includes("LINKEDcards.example"), `a linked card says its host: ${rows().join("|")}`)
+  check(!document.querySelector(".import-card"), "and the dialog leaves")
+  await press("删除卡片", row("乙"))
+  await answer("删除")
+  await press("删除卡片", row("LINKED"))
+  await answer("删除")
+  check(rows().join("|") === "甲二文件", `back to one card: ${rows().join("|")}`)
 
   // a library by its address, from the list: a wrong one is refused beside the field, the right one opens on its cards
   await toList()
   const address = document.querySelector<HTMLInputElement>(".cards-foot input")!
-  const type = async (v: string) => {
-    address.value = v
-    address.dispatchEvent(new InputEvent("input", { bubbles: true }))
-    await wait(50)
-  }
+  const foot = document.querySelector<HTMLElement>(".cards-foot")!
+  const type = (v: string) => typeInto(".cards-foot input", v)
+  check(flat(foot.querySelector("label")?.innerText) === "添加卡库", "the address field says what it adds")
+  // a card's own link pasted here is said to be a card, and one press imports it
+  await type(`${LOCATION}cards/stray.yaml`)
+  await press("添加", foot)
+  check(
+    text(".cards-foot .tag")[0] === "这是一张卡片，不是卡库" && key("导入这张卡", foot) && !libs.length,
+    `a card's link in the library box: ${text(".cards-foot").join(" | ")}`,
+  )
+  await press("导入这张卡", foot)
+  check(
+    shelf.some((c) => c.id === "stray" && c.origin.via === "link") && address.value === "",
+    `the card behind the link is imported: ${shelf.map((c) => c.id).join(",")}`,
+  )
+  check(
+    !document.querySelector(".cards-foot .tag") && !document.querySelector(".import-card"),
+    "and nothing is left over",
+  )
+  shelf = shelf.filter((c) => c.id !== "stray")
   await type("https://nowhere.example/")
-  await press("添加卡库")
+  await press("添加", foot)
   check(
     text(".cards-foot .tag")[0] === "读不到这个卡库" && !libs.length,
     `a wrong address: ${text(".cards-foot").join(" | ")}`,
   )
   await type(LOCATION)
   check(!document.querySelector(".cards-foot .tag"), "typing again clears the refusal")
-  await press("添加卡库")
+  await press("添加", foot)
   check(text(".detail-header h2")[0] === "样例卡库", `the new library opens: ${text(".detail-header h2").join(" | ")}`)
   check(!document.querySelector(".refusal") && address.value === "", "the last refusal and the address are cleared")
   // its cards against the shelf: two not here, and one whose id a card from elsewhere holds

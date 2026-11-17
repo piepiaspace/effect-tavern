@@ -2,6 +2,7 @@
 // and over https; nothing of it is on the shelf until a card is pulled, what is pulled is a copy that says where it came
 // from, and an update is the same pull, asked for.
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
+import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { printCard } from "@effect-tavern/runtime/support/author.ts"
 import { chat } from "@effect-tavern/runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
@@ -12,6 +13,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { open } from "../src/data.ts"
 import { depot } from "../src/depot.ts"
+import { readHttps } from "../src/remote.ts"
 import { Refused } from "../src/shelf.ts"
 import { tavern } from "../src/tavern.ts"
 
@@ -55,7 +57,8 @@ const web = (async (input: string | URL | Request) => {
     Object.defineProperty(res, "url", { value: "http://elsewhere.example/index.json" }) // as after a redirect
     return res
   }
-  if (at.pathname === "/lib/huge.json") return new Response("{}", { headers: { "content-length": String(2 << 20) } })
+  if (at.pathname === "/lib/huge.json")
+    return new Response("{}", { headers: { "content-length": String(CARD_BYTES + 1) } })
   const body = files(served.version)[at.pathname.replace("/lib/", "")]
   return body === undefined ? new Response("no", { status: 404 }) : new Response(body)
 }) as typeof fetch
@@ -93,6 +96,20 @@ try {
   await assert.rejects(depot("https://cards.example/lib/moved.json", { fetch: web }).index(), /redirected off https/)
   await assert.rejects(depot("https://cards.example/lib/huge.json", { fetch: web }).index(), /too large/)
   await assert.rejects(depot("https://", { fetch: web }).index(), refused("depot-unreadable"))
+  // a host that never begins to answer, and one whose answer never ends: each is given up on, in its own time
+  const silent = ((_url: URL, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) =>
+      init!.signal!.addEventListener("abort", () => reject(init!.signal!.reason as Error)),
+    )) as unknown as typeof fetch
+  const endless = (async (_url: URL, init?: RequestInit) =>
+    new Response(
+      new ReadableStream({
+        start: (c) => init!.signal!.addEventListener("abort", () => c.error(init!.signal!.reason)),
+      }),
+    )) as unknown as typeof fetch
+  const quick = { answer: 30, whole: 30 }
+  await assert.rejects(readHttps("https://cards.example/x", { fetch: silent, patience: quick }), /no answer/)
+  await assert.rejects(readHttps("https://cards.example/x", { fetch: endless, patience: quick }), /took too long/)
   // a directory whose name merely starts with dots is inside the library
   mkdirSync(join(dir, "lib/..drafts"))
   writeFileSync(join(dir, "lib/..drafts/one.yaml"), printCard(one))
@@ -168,6 +185,26 @@ try {
   assert.deepEqual([depots.list(), cards.list().map((c) => c.id)], [[local], ["one", "two"]])
   assert.throws(() => depots.remove(remote.id), refused("no-depot"))
 
+  // one card by its own link: the same gate as a file, the link kept as where it came from, and never a library
+  cards.remove("two")
+  const link = "https://cards.example/lib/cards/two.yaml"
+  assert.deepEqual((await t.lib.importLink(` ${link} `)).origin, { via: "link", url: link })
+  assert.deepEqual(cards.get("two"), two)
+  await assert.rejects(t.lib.importLink(link), refused("card-exists"))
+  assert.deepEqual((await t.lib.importLink(link, { replace: true })).origin, { via: "link", url: link })
+  for (const bad of [
+    "http://cards.example/lib/cards/two.yaml",
+    "https://cards.example/lib/none.yaml",
+    "cards/two.yaml",
+  ])
+    await assert.rejects(t.lib.importLink(bad), refused("link-unreadable"), bad)
+  await assert.rejects(t.lib.importLink("https://cards.example/lib/index.json"), refused("card-invalid")) // a library is no card
+  // and the other way round: a card's link where a library goes is said to be a card, so the page can offer the import
+  await assert.rejects(depots.add(link), refused("depot-is-card"))
+  await assert.rejects(depots.add("https://cards.example/lib/cards/"), refused("depot-unreadable"))
+  assert.deepEqual(depots.list(), [local])
+  assert.deepEqual((await states(local.id))[1], ["two", "taken", false]) // a linked card is not the library's copy
+
   // the routes
   const server = createServer(t.handler).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
@@ -197,6 +234,14 @@ try {
       [pulled[0], (pulled[1]["card"] as { origin: unknown }).origin, (pulled[1]["cards"] as unknown[]).length],
       [200, { via: "depot", depot: "https://cards.example/lib/", version: "2.0" }, 2],
     )
+    const isCard = await call("POST", "/depots", { location: link })
+    assert.deepEqual([isCard[0], isCard[1]["code"]], [400, "depot-is-card"])
+    const linked = await call("POST", "/cards/link", { url: link, replace: true })
+    assert.deepEqual([linked[0], (linked[1]["card"] as { origin: unknown }).origin], [200, { via: "link", url: link }])
+    const twice = await call("POST", "/cards/link", { url: link })
+    assert.deepEqual([twice[0], twice[1]["code"]], [409, "card-exists"])
+    const gone = await call("POST", "/cards/link", { url: "https://cards.example/lib/none.yaml" })
+    assert.deepEqual([gone[0], gone[1]["code"]], [502, "link-unreadable"])
     assert.deepEqual(await call("DELETE", `/depots/${remote.id}`), [200, [local] as never])
     assert.equal((await call("DELETE", `/depots/${remote.id}`))[0], 404)
   } finally {

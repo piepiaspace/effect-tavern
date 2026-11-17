@@ -75,7 +75,7 @@ curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/downloa
 
 It downloads the latest release's phone build (~50 MB), starts it and opens the browser on `http://127.0.0.1:7777`. After that, `effect-tavern` starts it and `effect-tavern update` shows what the latest release changes and asks before replacing the binary; the library lives in `~/.tavern`.
 
-The program ships with no cards. A new install's shelf is empty: open **Settings → Cards** to import a card file (`.yaml` / `.json`) or to add a card library by its `https` address and install cards from it.
+The program ships with no cards. A new install's shelf is empty: open **Settings → Cards** to import one card (drop or pick a `.yaml` / `.json` file, or paste the card's own `https` link), or to add a card library by its `https` address and install cards from it.
 
 ### Prerequisites
 

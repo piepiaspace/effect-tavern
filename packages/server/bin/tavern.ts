@@ -28,25 +28,28 @@ const withHost = async (url: Option.Option<string>, work: (host: CliHost) => Pro
 const install = Command.make(
   "install",
   {
-    file: Argument.String("file").pipe(Argument.withDescription("path to a .yaml card file")),
+    file: Argument.String("file").pipe(Argument.withDescription("path to a .yaml card file, or one card's https link")),
     url,
     json,
   },
   ({ file, url, json }) =>
     task(async () => {
-      const source = readFileSync(file, "utf8")
-      const report = checkCard(source)
-      for (const d of report.diagnostics)
-        console.error(`${d.level} ${d.path}: ${d.message}${d.hint ? `\n  hint: ${d.hint}` : ""}`)
-      if (report.diagnostics.some((d) => d.level === "error")) throw new Error("card check failed")
+      const linked = /^https:\/\//i.test(file)
+      const source = linked ? undefined : readFileSync(file, "utf8")
+      if (source !== undefined) {
+        const report = checkCard(source)
+        for (const d of report.diagnostics)
+          console.error(`${d.level} ${d.path}: ${d.message}${d.hint ? `\n  hint: ${d.hint}` : ""}`)
+        if (report.diagnostics.some((d) => d.level === "error")) throw new Error("card check failed")
+      }
       await withHost(url, async (host) => {
-        const card = await host.install(source)
+        const card = source === undefined ? await host.link(file) : await host.install(source)
         console.log(json ? JSON.stringify({ id: card.id, installed: true }) : `Installed ${card.id}`)
       })
     }),
 ).pipe(
   Command.withDescription(
-    "Validate and install a YAML card onto the shelf, over the card of that id (clears any saved draft)",
+    "Validate and install a card onto the shelf from a YAML file or its https link, over the card of that id (clears any saved draft)",
   ),
 )
 const cardId = Argument.String("id").pipe(Argument.withDescription("installed card id"))

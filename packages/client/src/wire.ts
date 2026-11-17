@@ -216,6 +216,9 @@ const shelved = async (res: Promise<Response>): Promise<ShelfCard> => {
 }
 export const importCard = (text: string, replace = false): Promise<ShelfCard> =>
   shelved(call(`${base}/cards${replace ? "?replace=1" : ""}`, { method: "POST", body: text }))
+/** One card at its own https link: the server reads it once and it goes through the same gate as a file. */
+export const importLink = (url: string, replace = false): Promise<ShelfCard> =>
+  shelved(call(`${base}/cards/link`, json("POST", { url, replace })))
 /** Gone from the shelf (refused with `card-in-use` while it has stories). pages.ts `removeCard` is the caller: a tab
  *  on the card goes home with it. */
 export const removeCard = async (id: string): Promise<void> => {

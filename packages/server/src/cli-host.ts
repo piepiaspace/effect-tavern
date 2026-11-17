@@ -16,6 +16,8 @@ export interface CliHost {
   author: Library["author"]
   /** A card file's text onto the shelf, over the card of that id when there is one: the author's own loop. */
   install(text: string): Promise<CardRow>
+  /** The same for one card at its own https link, read by the host. */
+  link(url: string): Promise<CardRow>
   cards(): Promise<readonly CardRow[]>
   remove(card: string): Promise<void>
   /** The card as a card file's text. */
@@ -80,6 +82,7 @@ export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHos
     return {
       author: lib.author,
       install: async (text) => lib.cards.install(text, { via: "file" }, { replace: true }),
+      link: (url) => lib.importLink(url, { replace: true }),
       cards: async () => lib.cards.list(),
       remove: async (card) => lib.cards.remove(card),
       source: async (card) => lib.cards.text(card),
@@ -143,6 +146,7 @@ export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHos
     install: async (text) =>
       ((await (await request("/cards?replace=1", "POST", undefined, undefined, text)).json()) as { card: CardRow })
         .card,
+    link: async (url) => (await json<{ card: CardRow }>("/cards/link", "POST", { url, replace: true })).card,
     cards: () => json("/cards"),
     remove: async (card) => {
       await request(`/cards/${encodeURIComponent(card)}`, "DELETE")
