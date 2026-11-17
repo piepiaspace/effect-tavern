@@ -30,21 +30,30 @@ if ! command -v curl >/dev/null; then
   pkg install -y curl
 fi
 
-# the binary and this script, from the release, written whole before they replace what is there
+# the binary, from the release, written whole before it replaces what is there
 fetch() {
   mkdir -p "$DATA/bin"
   say "下载 Effect Tavern / downloading Effect Tavern (~50 MB)…"
   curl -fL --progress-bar "$URL/tavern-android.gz" | gzip -d >"$BIN.part" || die "下载失败，检查网络后重试 / download failed: check the network and run again"
   chmod +x "$BIN.part" && mv "$BIN.part" "$BIN"
-  if [ -n "$PREFIX" ] && curl -fsSL "$URL/start.sh" -o "$PREFIX/bin/effect-tavern.part"; then
-    chmod +x "$PREFIX/bin/effect-tavern.part" && mv "$PREFIX/bin/effect-tavern.part" "$PREFIX/bin/effect-tavern"
+}
+# the `effect-tavern` command: this script from the release, beside sh on the PATH (Termux's $PREFIX/bin); checked on
+# every run, so a run that missed it (or an install from before it existed) gets it the next time
+command_dir=$(dirname "$(command -v sh)")
+install_command() {
+  cmd="$command_dir/effect-tavern"
+  if curl -fsSL "$URL/start.sh" -o "$cmd.part" && chmod +x "$cmd.part" && mv "$cmd.part" "$cmd"; then
     say "以后输入 effect-tavern 即可启动 / from now on, type: effect-tavern"
+  else
+    rm -f "$cmd.part"
+    say "没能安装 effect-tavern 命令，下次仍用上面那行启动 / could not install the effect-tavern command: start with the same line next time"
   fi
 }
 
 here=$(dirname "$0")
 if [ "$1" = update ]; then
   fetch
+  install_command
 elif [ -f "$here/tavern-android" ]; then
   BIN="$here/tavern-android"
   # /sdcard is noexec and adb push drops the mode
@@ -52,6 +61,7 @@ elif [ -f "$here/tavern-android" ]; then
 elif [ ! -x "$BIN" ]; then
   fetch
 fi
+[ -x "$command_dir/effect-tavern" ] || install_command
 
 # Android stops a backgrounded Termux; the wake lock keeps the server alive while the browser is in front.
 if command -v termux-wake-lock >/dev/null; then
