@@ -5,8 +5,11 @@ import { readFileSync } from "node:fs"
 import { decodeCard, type Card } from "../src/card.ts"
 import type { Rows } from "../src/layer.ts"
 
-// a compiled binary (server `bun run compile`) embeds this directory as cards/ beside its entry
-const dir = new URL(import.meta.url.includes("$bunfs") ? "cards/" : "../cards/", import.meta.url)
+// a compiled binary (server `bun run compile`) embeds this directory as cards/ beside its entry: resolved from the
+// entry (Bun.main), since under `bun compile` (AOT) each module keeps its own path instead of the entry's
+const dir = import.meta.url.includes("$bunfs")
+  ? new URL("cards/", Bun.pathToFileURL(Bun.main))
+  : new URL("../cards/", import.meta.url)
 /** A card file: YAML, decoded through the Card schema. A missing file fails naming it (ENOENT, with the path). */
 export const readCard = (path: string | URL): Card => decodeCard(Bun.YAML.parse(readFileSync(path, "utf8")))
 
