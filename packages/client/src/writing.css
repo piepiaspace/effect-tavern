@@ -151,6 +151,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* a phone: the tabs take their own full line and share it, so the pill never runs past the header */
+@media (width < 72rem) {
+  .wtabs {
+    flex: 1 1 100%;
+  }
+  .wtabs button {
+    flex: 1 1 auto;
+    padding-inline: var(--space-2);
+  }
+}
 .wtabs button:hover {
   color: var(--ink);
 }
