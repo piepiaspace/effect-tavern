@@ -603,7 +603,7 @@ export const Sidebar = (props: {
           </section>
         </div>
       </div>
-      <Show when={props.inDrawer}>
+      <Show when={props.inDrawer && which() !== "workspace"}>
         <footer class="side-foot">
           {/* the phone has no top strip: the install's keys stay at the drawer's foot */}
           <span class="left">

@@ -941,12 +941,29 @@
 /* @ui-sdk's drawer places it, slides it under the hand and fades the scrim: the size and the surface are ours */
 .drawer {
   display: flex;
-  width: min(17rem, 84vw);
+  width: 100%;
   height: 100%;
   background: var(--surface-1);
   color: var(--ink);
   box-shadow: var(--shadow-pop);
   outline: none;
+}
+/* a card's stories in the drawer: one screen, the list as tall as it gets, 新建故事 at the thumb's foot (no install
+   keys under it: the shelf's foot holds them) */
+.drawer .workspace {
+  gap: var(--space-3);
+  padding-bottom: calc(var(--space-3) + var(--safe-bottom));
+}
+.drawer .story-list {
+  max-height: none;
+}
+.drawer .story-row {
+  min-height: 44px;
+}
+.drawer .new-story {
+  margin-top: auto;
+  height: 48px;
+  font-size: var(--text-body);
 }
 .nav-scrim {
   position: fixed;
