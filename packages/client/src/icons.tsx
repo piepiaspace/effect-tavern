@@ -27,6 +27,7 @@ export { default as Clue } from "~icons/ph/magnifying-glass"
 export { default as Read } from "~icons/ph/book-open-text" // lookup's read of entries (inspector.tsx), distinct from Notes
 export { default as Record } from "~icons/ph/notepad"
 export { default as Snippets } from "~icons/ph/plus"
+export { default as Plus } from "~icons/ph/plus" // one more of a list
 export { default as Stop } from "~icons/ph/stop"
 export { default as Close } from "~icons/ph/x"
 export { default as Settings } from "~icons/ph/gear-six"

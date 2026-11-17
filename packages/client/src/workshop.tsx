@@ -16,8 +16,8 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import type { JSX } from "@solidjs/web"
 import { createEffect, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { ask, Confirm } from "./controls.tsx"
-import { Back, Trash } from "./icons.tsx"
+import { ask, Confirm, dialogHandle, Modal } from "./controls.tsx"
+import { Back, Plus, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./manuscript.ts"
 import { close, editCard, newCard, showCard } from "./pages.ts"
@@ -157,29 +157,42 @@ export const Workshop = () => {
 }
 
 /** One of the manuscript's three kinds of text: its head, a line on what it is, its blocks, the key for one more. */
-const Part = (props: {
-  id: string
-  title: string
-  hint: string
-  add: string
-  onAdd: () => void
-  children: JSX.Element
-}) => (
+const Part = (props: { id: string; title: string; add: string; onAdd: () => void; children: JSX.Element }) => (
   <section aria-labelledby={props.id}>
-    <h2 id={props.id}>{props.title}</h2>
-    <p class="hint">{props.hint}</p>
+    <div class="workshop-head">
+      <h2 id={props.id}>{props.title}</h2>
+      <button type="button" class="icon sm" aria-label={props.add} onClick={() => props.onAdd()}>
+        <Plus />
+      </button>
+    </div>
     <ul>{props.children}</ul>
-    <button type="button" class="btn sm" onClick={() => props.onAdd()}>
-      {props.add}
-    </button>
   </section>
 )
-const Remove = (props: { onClick: () => void }) => (
-  <button type="button" class="icon sm" aria-label={t("common.delete")} onClick={() => props.onClick()}>
-    <Trash />
-  </button>
+/** One block in its part's list: what it says, cut to a line or two, opening it in the editor; its remove beside it. */
+const Row = (props: { name?: string; text: string; empty: string; onOpen: () => void; onRemove: () => void }) => (
+  <li class="workshop-block">
+    <button type="button" class="workshop-open" onClick={() => props.onOpen()}>
+      <Show when={props.name !== undefined}>
+        <span class={{ name: true, empty: !props.name }}>{props.name || t("workshop.entryName")}</span>
+      </Show>
+      <span class={{ gist: true, empty: !props.text.trim() }}>{props.text.trim() || props.empty}</span>
+    </button>
+    <button type="button" class="icon sm" aria-label={t("common.delete")} onClick={() => props.onRemove()}>
+      <Trash />
+    </button>
+  </li>
 )
 
+const TITLE: Record<Blocks, Key> = {
+  chapters: "workshop.chapters",
+  openings: "workshop.openings",
+  entries: "workshop.entries",
+}
+const TEXT: Record<Blocks, Key> = {
+  chapters: "workshop.chapterText",
+  openings: "workshop.openingText",
+  entries: "workshop.entryText",
+}
 const EMPTY: Manuscript = { title: "", summary: "", chapters: [], openings: [], entries: [] }
 
 export const ManuscriptPage = () => {
@@ -238,6 +251,35 @@ export const ManuscriptPage = () => {
     const run = () => write((m) => ({ ...m, [blocks]: m[blocks].filter((x) => x.key !== key) }))
     if (text.trim()) ask(t("workshop.confirmRemove"), run)
     else run()
+  }
+  // the editor: one block's whole text (an entry's name over it), written as it is typed like any edit
+  const editor = dialogHandle()
+  const [editing, setEditing] = createSignal<{ blocks: Blocks; key: number } | null>(null)
+  const open = (blocks: Blocks, key: number) => {
+    setEditing({ blocks, key })
+    void editor.open()
+  }
+  /** A new block at the end of its part, open in the editor at once. */
+  const add = (blocks: Blocks, f: (m: Manuscript, card: Card) => Manuscript) => {
+    write(f)
+    const last = here()?.desk?.manuscript()[blocks].at(-1)
+    if (last) open(blocks, last.key)
+  }
+  const block = () => {
+    const e = editing()
+    return e ? manuscript()[e.blocks].find((x) => x.key === e.key) : undefined
+  }
+  const entry = () => {
+    const e = editing()
+    return e?.blocks === "entries" ? manuscript().entries.find((x) => x.key === e.key) : undefined
+  }
+  /** A name is the entry's id: shown as it will be written (one read under an id it could not be given here keeps it
+   *  until it is renamed). */
+  const named = () => {
+    const x = entry()
+    if (!x) return
+    const name = x.name === x.from?.id ? x.name : token(x.name)
+    if (name !== x.name) set("entries", x.key, { name })
   }
   /** Off the page by one of its own keys, once the shelf holds what it shows: a save that does not go through keeps
    *  the page, with the notice saying why. */
@@ -314,14 +356,14 @@ export const ManuscriptPage = () => {
         <Show when={here()?.desk}>
           <div class="workshop-manuscript">
             <input
-              class="field workshop-title"
+              class="workshop-title"
               aria-label={t("workshop.name")}
               placeholder={t("workshop.name")}
               value={manuscript().title}
               onInput={(e) => write((m) => ({ ...m, title: e.currentTarget.value }))}
             />
             <input
-              class="field"
+              class="workshop-summary"
               aria-label={t("workshop.summary")}
               placeholder={t("workshop.summary")}
               value={manuscript().summary}
@@ -331,31 +373,17 @@ export const ManuscriptPage = () => {
             <Part
               id="workshop-chapters"
               title={t("workshop.chapters")}
-              hint={t("workshop.chaptersHint")}
               add={t("workshop.addChapter")}
-              onAdd={() => write((m, card) => added.chapter(card, m))}
+              onAdd={() => add("chapters", (m, card) => added.chapter(card, m))}
             >
               <For each={manuscript().chapters} keyed={(c) => c.key}>
                 {(c) => (
-                  <li class="workshop-block">
-                    <div class="row">
-                      <input
-                        class="field"
-                        aria-label={t("workshop.chapterTitle")}
-                        placeholder={t("workshop.chapterTitle")}
-                        value={c().label}
-                        onInput={(e) => set("chapters", c().key, { label: e.currentTarget.value })}
-                      />
-                      <Remove onClick={() => drop("chapters", c().key, c().text)} />
-                    </div>
-                    <textarea
-                      class="field"
-                      aria-label={t("workshop.chapterText")}
-                      placeholder={t("workshop.chapterText")}
-                      value={c().text}
-                      onInput={(e) => set("chapters", c().key, { text: e.currentTarget.value })}
-                    />
-                  </li>
+                  <Row
+                    text={c().text}
+                    empty={t("workshop.chapterText")}
+                    onOpen={() => open("chapters", c().key)}
+                    onRemove={() => drop("chapters", c().key, c().text)}
+                  />
                 )}
               </For>
             </Part>
@@ -363,24 +391,17 @@ export const ManuscriptPage = () => {
             <Part
               id="workshop-openings"
               title={t("workshop.openings")}
-              hint={t("workshop.openingsHint")}
               add={t("workshop.addOpening")}
-              onAdd={() => write((m) => added.opening(m))}
+              onAdd={() => add("openings", (m) => added.opening(m))}
             >
               <For each={manuscript().openings} keyed={(o) => o.key}>
                 {(o) => (
-                  <li class="workshop-block">
-                    <div class="row">
-                      <textarea
-                        class="field"
-                        aria-label={t("workshop.openingText")}
-                        placeholder={t("workshop.openingText")}
-                        value={o().text}
-                        onInput={(e) => set("openings", o().key, { text: e.currentTarget.value })}
-                      />
-                      <Remove onClick={() => drop("openings", o().key, o().text)} />
-                    </div>
-                  </li>
+                  <Row
+                    text={o().text}
+                    empty={t("workshop.openingText")}
+                    onOpen={() => open("openings", o().key)}
+                    onRemove={() => drop("openings", o().key, o().text)}
+                  />
                 )}
               </For>
             </Part>
@@ -388,44 +409,59 @@ export const ManuscriptPage = () => {
             <Part
               id="workshop-entries"
               title={t("workshop.entries")}
-              hint={t("workshop.entriesHint")}
               add={t("workshop.addEntry")}
-              onAdd={() => write((m, card) => added.entry(card, m))}
+              onAdd={() => add("entries", (m, card) => added.entry(card, m))}
             >
-              <For each={manuscript().entries} keyed={(e) => e.key}>
+              <For each={manuscript().entries} keyed={(x) => x.key}>
                 {(x) => (
-                  <li class="workshop-block">
-                    <div class="row">
-                      <input
-                        class="field"
-                        aria-label={t("workshop.entryName")}
-                        placeholder={t("workshop.entryName")}
-                        value={x().name}
-                        onInput={(e) => set("entries", x().key, { name: e.currentTarget.value })}
-                        onBlur={(e) => {
-                          // a name is the entry's id: shown as it will be written (one read under an id it could not
-                          // be given here keeps it until it is renamed)
-                          const typed = e.currentTarget.value
-                          const name = typed === x().from?.id ? typed : token(typed)
-                          if (name !== x().name) set("entries", x().key, { name })
-                        }}
-                      />
-                      <Remove onClick={() => drop("entries", x().key, x().text)} />
-                    </div>
-                    <textarea
-                      class="field"
-                      aria-label={t("workshop.entryText")}
-                      placeholder={t("workshop.entryText")}
-                      value={x().text}
-                      onInput={(e) => set("entries", x().key, { text: e.currentTarget.value })}
-                    />
-                  </li>
+                  <Row
+                    name={x().name}
+                    text={x().text}
+                    empty={t("workshop.entryText")}
+                    onOpen={() => open("entries", x().key)}
+                    onRemove={() => drop("entries", x().key, x().text)}
+                  />
                 )}
               </For>
             </Part>
           </div>
         </Show>
       </div>
+      <Modal
+        title={t(TITLE[editing()?.blocks ?? "chapters"])}
+        full
+        controller={editor}
+        onClose={() => {
+          named()
+          setEditing(null)
+        }}
+      >
+        <Show when={editing()}>
+          {(e) => (
+            <div class="workshop-editor">
+              <Show when={entry()}>
+                {(x) => (
+                  <input
+                    class="workshop-name"
+                    aria-label={t("workshop.entryName")}
+                    placeholder={t("workshop.entryName")}
+                    value={x().name}
+                    onInput={(ev) => set("entries", x().key, { name: ev.currentTarget.value })}
+                    onBlur={named}
+                  />
+                )}
+              </Show>
+              <textarea
+                class="well-full"
+                aria-label={t(TEXT[e().blocks])}
+                placeholder={t(TEXT[e().blocks])}
+                value={block()?.text ?? ""}
+                onInput={(ev) => set(e().blocks, e().key, { text: ev.currentTarget.value })}
+              />
+            </div>
+          )}
+        </Show>
+      </Modal>
       <Confirm />
     </div>
   )

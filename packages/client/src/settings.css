@@ -976,7 +976,7 @@
 }
 
 /* the dialogs: the confirm's surface and width rule, a head, a body that scrolls, a foot */
-.settings .modal {
+:is(.settings, .workshop-page) .modal {
   position: fixed;
   inset: 0;
   height: fit-content;
@@ -995,16 +995,16 @@
   outline: none;
   overflow: hidden;
 }
-.settings .modal.narrow {
+:is(.settings, .workshop-page) .modal.narrow {
   width: min(24rem, calc(100% - 2 * var(--space-4)));
 }
 /* a text read and written at length (controls.tsx Well): a tall sheet, the whole screen on a phone */
-.settings .modal.full {
+:is(.settings, .workshop-page) .modal.full {
   width: min(48rem, calc(100% - 2 * var(--space-4)));
   height: calc(100dvh - 2 * var(--space-4));
 }
 @media (width < 72rem) {
-  .settings .modal.full {
+  :is(.settings, .workshop-page) .modal.full {
     width: 100%;
     height: 100dvh;
     max-height: 100dvh;
@@ -1026,7 +1026,7 @@
   outline: none;
   overflow-wrap: anywhere;
 }
-.settings .modal::backdrop {
+:is(.settings, .workshop-page) .modal::backdrop {
   background: var(--scrim);
 }
 .settings .modal form {

@@ -16,11 +16,19 @@
   color: var(--ink-3);
   white-space: nowrap;
 }
+/* the reader's thin hover-only bar (settings.css .scroller) */
 .workshop-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color var(--dur-3) var(--ease);
   padding: var(--space-3) var(--space-5) calc(var(--space-6) + var(--safe-bottom));
+}
+.workshop-body:hover {
+  scrollbar-color: var(--alpha-2) transparent;
 }
 .workshop-body > * {
   box-sizing: border-box;
@@ -71,59 +79,144 @@
   color: var(--ink-2);
   overflow-wrap: anywhere;
 }
-/* one card open: its name, its line, then the three kinds of text, each a head, a line on what it is, its blocks */
+/* one card open: its name and line bare at the top, then three parts, each a head with its + key over one grouped
+   list of its blocks. A row is what the block says cut short (an entry: its name, then its first line), the whole of
+   it opening in the editor; its remove shows on the row (always on touch). */
 .workshop-manuscript {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
 }
-.workshop-manuscript .workshop-title {
-  font-size: var(--text-title);
-  font-weight: 600;
+.workshop-manuscript > input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  outline: none;
 }
-.workshop-manuscript section {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  margin-top: var(--space-4);
-}
-.workshop-manuscript .hint {
-  margin: 0;
-  font-size: var(--text-footnote);
+.workshop-manuscript ::placeholder {
   color: var(--ink-3);
 }
-.workshop-manuscript section > ul {
-  align-self: stretch;
-  list-style: none;
-  margin: var(--space-2) 0;
-  padding: 0;
+.workshop-manuscript > .workshop-title {
+  font-size: 1.75rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: var(--leading-tight);
+}
+.workshop-manuscript > .workshop-summary {
+  margin-top: var(--space-2);
+  font-size: var(--text-field);
+  color: var(--ink-2);
+}
+.workshop-manuscript section {
+  margin-top: var(--space-6);
+}
+.workshop-head {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--control-sm);
+  padding-left: var(--space-1);
+}
+.workshop-head h2 {
+  margin: 0;
+  font-size: var(--text-heading);
+  font-weight: 650;
+}
+.workshop-manuscript section > ul {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line);
+  overflow: hidden;
 }
 .workshop-manuscript section > ul:empty {
   display: none;
 }
 .workshop-block {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  align-items: center;
+  padding-right: var(--space-2);
+  transition: background var(--dur-2) var(--ease);
 }
-.workshop-block .row {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
+.workshop-block + .workshop-block {
+  box-shadow: inset 0 var(--hairline) 0 var(--line);
 }
-.workshop-block .row .field {
+.workshop-block:hover {
+  background: var(--ghost-hover);
+}
+.workshop-open {
   flex: 1;
   min-width: 0;
-}
-.workshop-block textarea.field {
-  field-sizing: content;
-  min-height: 6lh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+  padding: var(--space-3) var(--space-2) var(--space-3) var(--space-4);
+  text-align: left;
   line-height: 1.6;
+}
+.workshop-open .name {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workshop-open .gist {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
   overflow-wrap: anywhere;
 }
+.workshop-open .name + .gist {
+  -webkit-line-clamp: 1;
+  color: var(--ink-2);
+  font-size: var(--text-footnote);
+}
+.workshop-open .empty {
+  color: var(--ink-3);
+}
+.workshop-block .icon.sm {
+  flex: none;
+  color: var(--ink-3);
+  opacity: 0;
+  transition: opacity var(--dur-2) var(--ease);
+}
+.workshop-block:is(:hover, :focus-within) .icon.sm {
+  opacity: 1;
+}
+@media (hover: none) {
+  .workshop-block .icon.sm {
+    opacity: 1;
+  }
+}
+/* the editor: an entry's name over the whole text, both bare on the sheet */
+.workshop-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.workshop-name {
+  box-sizing: border-box;
+  margin: 0 var(--space-4);
+  padding: var(--space-2) 0;
+  border: 0;
+  border-bottom: var(--hairline) solid var(--line);
+  background: none;
+  color: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--text-field);
+  font-weight: 600;
+  outline: none;
+}
+
 /* what the shelf refused, or a save that did not go through: the reason as it came, held over the text as it scrolls */
 .workshop-notice {
   flex: none;

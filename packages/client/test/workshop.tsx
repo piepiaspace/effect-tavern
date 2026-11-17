@@ -154,6 +154,15 @@ const type = async (name: string, value: string, nth = 0) => {
   f.dispatchEvent(new InputEvent("input", { bubbles: true }))
   await wait(30)
 }
+/** The blocks on the page, in page order; those of one part. */
+const blocks = (part?: string) => [
+  ...document.querySelectorAll<HTMLElement>(`${part ? `[aria-labelledby="workshop-${part}"] ` : ""}.workshop-block`),
+]
+/** A block open in the editor, by its place on the page. */
+const edit = async (nth: number) => {
+  blocks()[nth]?.querySelector<HTMLElement>(".workshop-open")?.click()
+  await wait(350)
+}
 /** Past the save's delay and its answer. */
 const settled = () => wait(1300)
 const last = () => saves.at(-1)!
@@ -180,24 +189,29 @@ const run = async () => {
   check(saves.length === 1 && last().title === "雨夜", `a name typed is saved: ${JSON.stringify(saves)}`)
   check(flat(document.querySelector(".workshop-standing")?.textContent) === "已保存", "the page says it is saved")
 
-  // a block added is on the page and not in the card until it says something
+  // a block added is a row on the page, open in the editor, and not in the card until it says something
   await press("添加一段")
   await settled()
-  check(saves.length === 1 && document.querySelectorAll(".workshop-block").length === 1, "an empty block is not saved")
-  await type("标题（可不填）", "镇子")
+  check(saves.length === 1 && blocks().length === 1, "an empty block is not saved")
+  check(fields("世界、人物、此刻的处境，想写什么都可以").length === 1, "a block added opens in the editor")
   await type("世界、人物、此刻的处境，想写什么都可以", "雨停了。")
+  await press("关闭")
   await press("添加开场")
   await type("开场白", "门开了。")
+  await press("关闭")
   await press("添加条目")
   await type("名称", "盐 帮")
   fields("名称")[0]?.dispatchEvent(new FocusEvent("blur"))
   await type("条目内容", "盐帮是城里最大的帮会。")
+  await press("关闭")
   await settled()
-  check(fields("名称")[0]?.value === "盐-帮", `a name is shown as the id it is: ${fields("名称")[0]?.value}`)
+  const entryName = flat(blocks("entries")[0]?.querySelector(".name")?.textContent)
+  check(entryName === "盐-帮", `a name is shown as the id it is: ${entryName}`)
+  check(flat(blocks("chapters")[0]?.innerText).includes("雨停了"), "a row shows what its block says")
   check(
     JSON.stringify([last().fiction, last().greetings, last().lore]) ===
       JSON.stringify([
-        [{ id: "chapter-1", text: "雨停了。", label: "镇子" }],
+        [{ id: "chapter-1", text: "雨停了。" }],
         [{ text: "门开了。" }],
         [{ unlock: { all: [] }, offer: { any: [] }, id: "盐-帮", layers: ["盐帮是城里最大的帮会。"] }],
       ]),
@@ -206,6 +220,7 @@ const run = async () => {
 
   // what the shelf refuses is said with its reason; the card on the shelf stands, and the next good text saves
   const before = saves.length
+  await edit(0)
   await type("世界、人物、此刻的处境，想写什么都可以", "雨停了。{{setvar::x::1}}")
   await settled()
   const notice = flat(document.querySelector<HTMLElement>(".workshop-notice")?.innerText)
@@ -214,12 +229,14 @@ const run = async () => {
     `a refused save says why: ${notice}`,
   )
   // Play saves first: a save that does not go through keeps the page, the notice saying why
+  await press("关闭")
   await press("去游玩")
   check(
     document.querySelector(".workshop-manuscript") && document.querySelector(".workshop-notice"),
     "Play stays on a refused save",
   )
   // the text put back as the shelf holds it: nothing to save, and nothing left to say
+  await edit(0)
   await type("世界、人物、此刻的处境，想写什么都可以", "雨停了。")
   await settled()
   check(!document.querySelector(".workshop-notice") && saves.length === before, "text put back clears the notice")
@@ -234,16 +251,17 @@ const run = async () => {
   )
 
   // a block that says something asks before it goes; an empty one just goes
+  await press("关闭")
   await press("添加开场")
-  check(fields("开场白").length === 2, "a second opening is on the page")
-  const blocks = () => [...document.querySelectorAll<HTMLElement>(".workshop-block")]
+  await press("关闭")
+  check(blocks("openings").length === 2, "a second opening is on the page")
   await press("删除", blocks().at(2)) // the empty second opening
-  check(fields("开场白").length === 1 && !document.querySelector(".confirm"), "an empty block goes unasked")
+  check(blocks("openings").length === 1 && !document.querySelector(".confirm"), "an empty block goes unasked")
   await press("删除", blocks().at(1)) // the opening that says something
   check(document.querySelector(".confirm"), "a block with text asks first")
   await press("删除", document.querySelector(".confirm")!)
   await settled()
-  check(fields("开场白").length === 0 && last().greetings.length === 0, "confirmed, it is gone from the card")
+  check(blocks("openings").length === 0 && last().greetings.length === 0, "confirmed, it is gone from the card")
 
   // every control has a name
   for (const b of document.querySelectorAll<HTMLElement>(
@@ -260,12 +278,13 @@ const run = async () => {
   await press("盐道")
   await wait(200)
   check(
-    fields("世界、人物、此刻的处境，想写什么都可以").length === 1 && fields("条目内容").length === 0,
+    blocks("chapters").length === 1 && blocks("entries").length === 0,
     "the banded fragment and the layered entry are not on the page",
   )
   const untouched = saves.length
   await settled()
   check(saves.length === untouched, "opening a card saves nothing")
+  await edit(0)
   await type("世界、人物、此刻的处境，想写什么都可以", "盐道上的镇子，雨季。")
   await settled()
   check(
@@ -275,6 +294,7 @@ const run = async () => {
   )
   // the card changed elsewhere while it is open here (an install from a terminal): this page's next save is refused,
   // never written over it; reading again shows the card as the shelf holds it
+  await press("关闭")
   const elsewhere = { ...last(), title: "终端装的", guard: ["不替玩家说话"] }
   put(elsewhere)
   const stood = saves.length
