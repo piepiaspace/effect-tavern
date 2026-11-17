@@ -10,7 +10,7 @@
 // are the install's (`InstallKeys`): the canvas's top strip holds them, the phone's drawer its foot. On the desktop
 // it stands in the canvas's left space; under 72rem the same component is the phone's drawer. A row only switches
 // the story: the rename, star, export and delete live in the manager (manager.tsx, dialogs.tsx).
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
+import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
 import { Archive, Clue, Close, Next, Prev, Settings, Shade, Snippets, Tag, Translate, User, Write } from "./icons.tsx"
@@ -214,35 +214,34 @@ export const Sidebar = (props: {
   const facetId = () => (props.inDrawer ? "facets-drawer" : "facets-side") // as `tagPop`: both may be mounted
   // the workspace's search: the title here, the turns on the server after a pause in the typing (the manager's
   // way: an answer to an older query than the one typed is dropped); a hit shows its line under the row
-  const [sq, setSq] = createSignal("")
-  const [hits, setHits] = createSignal<ReadonlyMap<number, Hit>>(new Map())
+  // The query and its hits belong to the card they were typed on: another card reads an empty search in the same flush
+  // (no effect resets them, so no frame shows one card's rows against another's hits).
+  const [search, setSearch] = createSignal<{ card: string | null; q: string; hits: ReadonlyMap<number, Hit> }>({
+    card: null,
+    q: "",
+    hits: new Map(),
+  })
+  const sq = () => (search().card === at() ? search().q : "")
+  const hits = (): ReadonlyMap<number, Hit> => (search().card === at() ? search().hits : new Map())
   let timer: ReturnType<typeof setTimeout> | undefined
   let seq = 0
   const ask = (text: string) => {
-    setSq(text)
-    setHits(new Map())
+    setSearch({ card: at(), q: text, hits: new Map() })
     clearTimeout(timer)
     const n = ++seq
     const q = text.trim()
     if (!q) return
     timer = setTimeout(() => {
       void searchStories(q).then((found) => {
-        if (n === seq) setHits(new Map(found.filter((h) => rows().some((s) => s.id === h.id)).map((h) => [h.id, h])))
+        if (n === seq)
+          setSearch((s) => ({
+            ...s,
+            hits: new Map(found.filter((h) => rows().some((r) => r.id === h.id)).map((h) => [h.id, h])),
+          }))
       })
     }, 200)
   }
   const mine = createMemo(() => arranged(rows().filter((s) => s.card === at())).filter((s) => matches(s, sq(), hits())))
-  // another card's workspace: its search starts over
-  let storySearch: HTMLInputElement | undefined
-  createEffect(
-    () => at(),
-    (now, before) => {
-      if (before !== undefined && now !== before) {
-        ask("")
-        if (storySearch) storySearch.value = ""
-      }
-    },
-  )
   // a turn in flight anywhere on the shelf: the listing is read again every few seconds while a dot shows, so the
   // dots go out when the turns land (the open story's own stream refreshes it on its own)
   onSettled(() => {
@@ -542,7 +541,7 @@ export const Sidebar = (props: {
               <Clue aria-hidden="true" />
               <input
                 type="search"
-                ref={(el) => (storySearch = el)}
+                value={sq()}
                 placeholder={t("side.searchStories")}
                 aria-label={t("side.searchStories")}
                 onInput={(e) => ask(e.currentTarget.value)}
