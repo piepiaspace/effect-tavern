@@ -126,7 +126,8 @@ elif [ ! -x "$BIN" ]; then
   installed=$latest
   ok "$(w 已安装到 'installed in') $(tilde "$DATA/bin")"
 fi
-if [ ! -x "$cmd" ] && install_command; then
+# any run that is not the command itself (curl | sh, ./start.sh) puts the release's script in its place
+if [ "$0" != "$cmd" ] && install_command; then
   ok "$(w '以后输入 effect-tavern 即可启动' 'from now on, type: effect-tavern')"
 fi
 
