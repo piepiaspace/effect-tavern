@@ -20,7 +20,7 @@ import { checkQuestions, checkVerdict } from "@effect-tavern/runtime/src/decisio
 import { harness, worldOf } from "@effect-tavern/runtime/src/layer.ts"
 import { worldBlock } from "@effect-tavern/runtime/src/request.ts"
 import { expand } from "@effect-tavern/runtime/src/names.ts"
-import { readCard } from "@effect-tavern/runtime/support/cards.ts"
+import { readCard } from "@effect-tavern/runtime/support/author.ts"
 import { Effect } from "effect"
 
 const args = process.argv.slice(2)

@@ -6,10 +6,23 @@ import type { Id } from "./log.ts"
 import type { Local, shown } from "./layer.ts"
 import type { Facets, Phase } from "./session.ts"
 
+/** How a card reached this install, the install's own fact beside the author's `creator` / `version` / `source` in the
+ *  card: a file the player gave, the workshop, or a card library (`depot`, its location; `version` the entry's when it
+ *  was taken). `edited`: the player has since installed their own changes over what arrived. */
+export interface Origin {
+  via: "file" | "workshop" | "depot"
+  depot?: string
+  version?: string
+  edited?: boolean
+}
 export interface CardView {
   id: string
   title: string
   summary?: string // one line on what this card is
+  creator?: string
+  version?: string
+  source?: string
+  origin: Origin
   facets: Facets // what the card is, off its structure (session.ts `facets`): the keys a client draws in its own words
   heading?: string // what titles a turn (Card.heading); absent, turns have no titles
   input: "act" | "note" // the default channel: participant mode (act) or author mode (note), fixed for the session
@@ -44,7 +57,27 @@ export interface Listing {
   current: Id | null
   stories: readonly StoryRow[]
 }
-export type CardRow = { id: string; title: string; summary?: string; facets?: Facets }
+export type CardRow = { id: string; title: string; summary?: string; facets?: Facets; origin: Origin }
+/** One card of a card library's index (server depot.ts): what the library says of it, and where its file is. */
+export interface DepotEntry {
+  id: string
+  title: string
+  summary?: string
+  creator?: string
+  version?: string
+  file: string
+}
+/** A card library the install knows: a name and where it is (a directory, or the https URL of its index). */
+export interface DepotRow {
+  id: string
+  name: string
+  location: string
+}
+/** A library's cards against the shelf: `absent`, `installed` from this library at this version, `update` (from this
+ *  library, another version), or `taken` (the id is a card that came from somewhere else). */
+export interface DepotView extends DepotRow {
+  entries: readonly (DepotEntry & { state: "absent" | "installed" | "update" | "taken"; edited?: boolean })[]
+}
 export interface Hit {
   id: Id
   turn: number

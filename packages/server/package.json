@@ -7,13 +7,13 @@
   },
   "type": "module",
   "scripts": {
-    "verify": "bun check && bun test/data.ts && bun test/export.ts && bun test/tavern.ts && bun test/library.ts && bun test/serve.ts && bun test/headless.ts && bun test/cli.ts && bun test/author.ts",
+    "verify": "bun check && bun test/data.ts && bun test/export.ts && bun test/tavern.ts && bun test/library.ts && bun test/shelf.ts && bun test/depot.ts && bun test/serve.ts && bun test/headless.ts && bun test/cli.ts && bun test/author.ts",
     "start": "bun src/main.ts",
     "names": "bun src/names.ts",
-    "compile": "bun build --compile src/main.ts --asset ../client/dist --asset ../runtime/cards --outfile dist/tavern && rm -f .*.bun-build",
-    "compile:android": "bun build --compile --target=bun-linux-arm64-android src/main.ts --asset ../client/dist --asset ../runtime/cards --outfile dist/tavern-android && rm -f .*.bun-build",
+    "compile": "bun build --compile src/main.ts --asset ../client/dist --outfile dist/tavern && rm -f .*.bun-build",
+    "compile:android": "bun build --compile --target=bun-linux-arm64-android src/main.ts --asset ../client/dist --outfile dist/tavern-android && rm -f .*.bun-build",
     "start:headless": "bun src/headless.ts",
-    "compile:headless": "bun build --compile src/headless.ts --asset ../runtime/cards --outfile dist/tavern-headless && rm -f .*.bun-build",
+    "compile:headless": "bun build --compile src/headless.ts --outfile dist/tavern-headless && rm -f .*.bun-build",
     "cli": "bun bin/tavern.ts"
   },
   "dependencies": {

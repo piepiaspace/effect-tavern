@@ -2,7 +2,7 @@
 import { Schema } from "effect"
 import { type Card, Field } from "./card.ts"
 import { type Cond } from "./cond.ts"
-import { identifier } from "./lint.ts"
+import { identifier, type Diagnostic } from "./lint.ts"
 import { Product, Col, type RecordShape } from "./product.ts"
 
 /** Author chrome, stored beside the editable card; it never enters a runtime Card. */
@@ -20,9 +20,12 @@ export interface CardDraft {
   card?: Card
   layout?: WorkshopLayout
 }
+/** A card as the workshop opens it: the draft, or the installed card where there is none (`draft` says which), with
+ *  what the installation gate says of it as it stands. */
 export interface DraftView extends CardDraft {
   card: Card
   draft: boolean
+  diagnostics: readonly Diagnostic[]
 }
 
 /** The model sees wiring and empty prose slots; authored values are only sent through an explicit selection. */

@@ -51,8 +51,9 @@ Instead of relying on prompt incantations, chat-depth injections, and regex scra
   </Step>
   <Step title="Or play and inspect from the terminal">
     ```sh
+    bun run tavern card install packages/runtime/test/cards/wuxia.yaml
     MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
-    bun packages/runtime/bin/card.ts check wuxia
+    bun packages/runtime/bin/card.ts check packages/runtime/test/cards/wuxia.yaml
     ```
   </Step>
   <Step title="Run static checks & verification">
@@ -64,9 +65,9 @@ Instead of relying on prompt incantations, chat-depth injections, and regex scra
   </Step>
 </Steps>
 
-## Built-in Template & Sample Cards
+## Fixture & Sample Cards
 
-Four canonical YAML template cards live in `packages/runtime/cards/` (with full-length remasters such as `samples/life-of-pi/life-of-pi.yaml` alongside them)—serving simultaneously as starter scaffolds, architectural exemplars, and live regression suites:
+The program ships with no cards: a new install's shelf is empty, and cards arrive as files or from a card library the player adds. The repository keeps four YAML cards as test fixtures in `packages/runtime/test/cards/` (with full-length remasters such as `samples/life-of-pi/life-of-pi.yaml` alongside them)—architectural exemplars and live regression suites, installed like any other card file:
 
 | Card ID | Mode & Channel | Demonstrates |
 | --- | --- | --- |

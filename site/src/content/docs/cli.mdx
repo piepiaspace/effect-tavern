@@ -80,15 +80,28 @@ Run `bun run tavern <subcommand>` from the repository root (`packages/server/bin
 - **Remote attach mode (`--url`):** Pass `--url http://127.0.0.1:7777` to connect over HTTP/SSE to a running `vp run dev` or `tavern serve` instance without touching local `DATA`.
 
 ```sh
-# Install & Workshop operations
-bun run tavern card install ./my-card.yaml
+# The shelf: a new library has no cards. Install from a file, list, export, remove
+bun run tavern card install ./my-card.yaml     # over the card of that id, when there is one
+bun run tavern card list
+bun run tavern card export my-card -o my-card.yaml
+bun run tavern card remove my-card             # refused while the card has stories
+
+# Card libraries: an optional place to take cards from (a directory or https URL holding index.json)
+bun run tavern depot add https://example.com/cards/
+bun run tavern depot add ./my-cards            # a directory: local library mode only
+bun run tavern depot list
+bun run tavern depot show <library-id>         # its cards, each against the shelf
+bun run tavern depot pull <library-id> <card>  # copy one onto the shelf; --replace to update
+bun run tavern depot remove <library-id>       # the cards taken from it stay
+
+# Workshop operations
 bun run tavern card compile ./my-card.yaml --select fiction.setting --intent "Add a bond readout" -o candidate.yaml
 bun run tavern card sort ./my-card.yaml ./notes.md -o candidate.yaml
 bun run tavern card review ./my-card.yaml --json
 
 # Story lifecycle
 bun run tavern story list --json
-bun run tavern story new wuxia
+bun run tavern story new my-card
 bun run tavern story show 1
 bun run tavern story export 1 --format md > story.md
 bun run tavern story delete 1
@@ -100,10 +113,10 @@ cd packages/server && bun run compile:headless
 
 ## 4. Terminal Play (`tavern play`)
 
-Pass a numeric story ID to resume an existing story, or a card ID to create a new story (add `--card` to force card ID interpretation for numeric card names). Supports interactive readline, single-shot `--input`, stdin pipes, `--user <name>` (persisting `{{user}}` on the card for this and subsequent stories), and `--jsonl` event streaming:
+Pass a numeric story ID to resume an existing story, or an installed card's ID to create a new story (add `--card` to force card ID interpretation for numeric card names). Supports interactive readline, single-shot `--input`, stdin pipes, `--user <name>` (persisting `{{user}}` on the card for this and subsequent stories), and `--jsonl` event streaming:
 
 ```sh
-MODEL=fake bun run tavern play wuxia --greeting 1 --set bond=3 --user "陆沉" --note "雨夜初见"
+MODEL=fake bun run tavern play my-card --greeting 1 --set bond=3 --user "陆沉" --note "雨夜初见"
 ```
 
 | Slash Command | Action |

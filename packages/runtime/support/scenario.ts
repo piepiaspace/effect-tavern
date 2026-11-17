@@ -4,7 +4,7 @@ import { fake, type FakeReply } from "@effect-tavern/provider"
 import { Effect, Schema, Stream } from "effect"
 import { makeCard, type Card } from "../src/card.ts"
 import { makeSession, type Phase } from "../src/session.ts"
-import { plain } from "./cards.ts"
+import { plain } from "./rows.ts"
 import { defaultAnswer, readStage } from "./script.ts"
 
 const Expect = Schema.Struct({

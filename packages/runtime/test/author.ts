@@ -200,7 +200,7 @@ try {
 
   writeFileSync(join(dir, "contract.yml"), Bun.YAML.stringify(card))
   writeFileSync(join(dir, "scenario.yaml"), Bun.YAML.stringify(scenario))
-  assert.match(run("check", "wuxia").stdout.toString(), /hint:/)
+  assert.match(run("check", new URL("./cards/wuxia.yaml", import.meta.url).pathname).stdout.toString(), /hint:/)
   const tested = run("test", "contract.yml", "scenario.yaml")
   assert.equal(tested.exitCode, 0, tested.stderr.toString())
 } finally {

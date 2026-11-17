@@ -1,7 +1,7 @@
 // The wire adapter at the session's seam: one process, a session per story, no logic of its own. A request names its
 // story in `x-tavern-story` (the client's `stories.current`); a story route (/card, /nodes, /context, /turn, /stop,
 // POST /, DELETE /nodes/<id>) without the header, or with one naming no story, is a 404. The rest (/stories, /cards,
-// /personas, /hats, /packs, /secrets, /providers, /routing) is the install's, the same for every story. A story runs
+// /depots, /personas, /hats, /packs, /secrets, /providers, /routing) is the install's, the same for every story. A story runs
 // one turn at a time (turn.ts): an action on a story whose turn is in flight, a synchronous one too (greet, checkout,
 // setField, a node dropped), is a 409 {error, code: "busy"}, and so is deleting the story (the batch delete skips it);
 // stories run side by side, with no lock across them.
@@ -80,10 +80,17 @@
 //   GET  /nodes/<id>/trace  the selected node's `call` events: the inspector's trace. The turn files them in the library
 //                 under the node they made once it lands (turn.ts), whoever listened; they go with the node, and only
 //                 a story's last 200 nodes keep theirs.
-//   GET  /cards   every card the install knows, as {id, title}; a card file's row adds its summary and facets
-//                 (library.ts `CardRow`): the card files, then the library's table (tavern.ts `shelf`).
+//   GET  /cards   the shelf (shelf.ts): every card of the install as {id, title, summary?, facets?, origin} (library.ts
+//                 `CardRow`; `origin` is how it got here: a file, the workshop or a card library). A new install's is [].
+//                 POST /cards installs the card whose text is the body (YAML or JSON, the file as it is) and answers
+//                 {card, cards}: its row and the shelf. A card that fails the gate is a 400 {error, code:
+//                 "card-invalid"} with every error line; an id already on the shelf is a 409 {code: "card-exists"}
+//                 until asked with ?replace=1. DELETE /cards/<id> removes it with its draft and the player's row on
+//                 it and answers the shelf; 409 {code: "card-in-use"} while it has stories.
+//                 GET /cards/<id>/export.yaml is the card as a file (an attachment): what POST /cards reads back.
 //                 GET /cards/<id> is what a client draws that card by (404 when there is none), before any
-//                 story of it exists: id, title and summary, the default channel, the rules as data (field bounds,
+//                 story of it exists: id, title, summary and the author's creator, version and source, `origin`, the
+//                 default channel, the rules as data (field bounds,
 //                 options, action ids), the openings whole, the fiction's modules without their text, the guard and
 //                 lore as counts, what the card's text costs each turn, estimated (session.ts `cardView`); `local`, the
 //                 player's row on the card; `mounts`, its packs as {id, name}; `persona`, the persona the view wears (the
@@ -91,9 +98,24 @@
 //                 `Resolved`: frame, tail, asks, products, entries, lexicon, snippets, format, names, holes, switches,
 //                 dropped, each item with its `from`), a card's item without its `text`, a card's lexicon entry not at all.
 //                 A client merges nothing.
-//                 The card's fragment bodies, guard lines and lore never leave the server.
+//                 The card's fragment bodies, guard lines and lore leave the server two ways only, both the owner's
+//                 asking: the export, and the draft.
+//                 GET /cards/<id>/draft is the workshop's copy {card, draft, layout?, diagnostics}: the stored draft, or
+//                 the installed card where there is none (`draft` says which), with what the gate says of it. PUT
+//                 writes {card?, layout?} and answers the same; DELETE discards the content and keeps the layout;
+//                 POST /cards/<id>/draft/install puts the stored draft through the gate onto the shelf, {card, cards}.
 //                 GET /cards/<id>/local is that row alone, PUT /cards/<id>/local writes it whole (decoded as `Local`,
 //                 its card the URL's; in force from the next request; 404 when there is no such card, a bad body a 400).
+//   GET  /depots  the card libraries the install knows (depot.ts), {id, name, location}[]; none until one is added.
+//                 POST /depots {location} adds one, an https URL (its index is read once: 502 {code:
+//                 "depot-unreadable"} when it is not a library); DELETE /depots/<id> forgets it, the cards taken from it
+//                 stay. Both answer the list. GET /depots/<id> reads its index now: {id, name, location, entries}, each
+//                 entry {id, title, summary?, creator?, version?, file, state, edited?} with `state` against the shelf
+//                 (absent | installed | update | taken). POST /depots/<id>/pull {entry, replace?} copies that card onto
+//                 the shelf and answers {card, cards}; over a card already there it is 409 "card-exists" until
+//                 `replace`. Nothing is fetched except on these two requests.
+//   POST /author/(compile|sort|review)  the workshop's three model operations (author.ts), each answering a candidate
+//                 or diagnostics; nothing is installed here.
 //   GET  /card    the same for the story's own card.
 // Calls never travel on SSE. `inspect` includes request and result bodies in the selected trace; otherwise only
 // phase and metrics leave this endpoint, since tool arguments and results can contain private card text.
@@ -103,8 +125,9 @@ import { Effect, Fiber, Schema, Stream, Struct } from "effect"
 import { readFile } from "node:fs/promises"
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
 import { extname, join, resolve, sep } from "node:path"
-import { backup, disposition, markdown } from "./export.ts"
+import { attachment, backup, disposition, markdown } from "./export.ts"
 import { Routing, type Library, type PublicEvent } from "./library.ts"
+import { Refused } from "./shelf.ts"
 import { Busy } from "./turn.ts"
 
 const body = (req: IncomingMessage, limit = 1 << 20) =>
@@ -150,6 +173,10 @@ const StoryBody = Schema.decodeUnknownSync(
 )
 const IdsBody = Schema.decodeUnknownSync(Schema.Struct({ ids: Schema.Array(Schema.Number) }))
 const NewStory = Schema.decodeUnknownSync(Schema.Struct({ card: Schema.String }))
+const DepotBody = Schema.decodeUnknownSync(Schema.Struct({ location: Schema.String }))
+const PullBody = Schema.decodeUnknownSync(
+  Schema.Struct({ entry: Schema.String, replace: Schema.optionalKey(Schema.Boolean) }),
+)
 
 export const handle = (lib: Library, { inspect = false } = {}) => {
   return async (req: IncomingMessage, res: ServerResponse) => {
@@ -159,9 +186,9 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
       res.end(JSON.stringify(v))
     }
     const bad = (e: unknown, status = 400) =>
-      json(e instanceof Busy ? 409 : status, {
+      json(e instanceof Busy ? 409 : (e instanceof Refused && e.status) || status, {
         error: e instanceof Error ? e.message : String(e),
-        ...(e instanceof Busy && { code: e.code }),
+        ...((e instanceof Busy || e instanceof Refused) && { code: e.code }),
       })
     try {
       decodeURIComponent((req.url ?? "").split("?")[0]!)
@@ -300,28 +327,62 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
     if (req.method === "PUT" && req.url === "/routing")
       return reply(async () => (lib.routing.write(await read(RoutingBody)), lib.routing.read()))
     if (req.method === "GET" && req.url === "/cards") return json(200, lib.cards.list())
+    const installing = req.method === "POST" && /^\/cards(\?replace=1)?$/.exec(req.url ?? "")
+    if (installing)
+      return reply(async () => ({
+        card: lib.cards.install(await body(req), { via: "file" }, { replace: !!installing[1] }),
+        cards: lib.cards.list(),
+      }))
     const authorAt = req.method === "POST" && /^\/author\/(compile|sort|review)$/.exec(req.url ?? "")
     if (authorAt)
       return reply(async () => lib.author[authorAt[1] as "compile" | "sort" | "review"](await read((u) => u)))
-    const draftAt = /^\/cards\/([^/]+)\/draft$/.exec(req.url ?? "")
+    if (req.method === "GET" && req.url === "/depots") return json(200, lib.depots.list())
+    if (req.method === "POST" && req.url === "/depots")
+      return reply(async () => (await lib.depots.add((await read(DepotBody)).location), lib.depots.list()))
+    const depotAt = /^\/depots\/([^/]+)(\/pull)?$/.exec(req.url ?? "")
+    if (depotAt) {
+      const id = decodeURIComponent(depotAt[1]!)
+      if (depotAt[2] && req.method === "POST")
+        return reply(async () => {
+          const { entry, replace } = await read(PullBody)
+          return { card: await lib.depots.pull(id, entry, { replace }), cards: lib.cards.list() }
+        })
+      if (!depotAt[2] && req.method === "GET") return reply(() => lib.depots.view(id))
+      if (!depotAt[2] && req.method === "DELETE") return reply(() => (lib.depots.remove(id), lib.depots.list()))
+    }
+    const cardFile = req.method === "GET" && /^\/cards\/([^/]+)\/export\.yaml$/.exec(req.url ?? "")
+    if (cardFile) {
+      const id = decodeURIComponent(cardFile[1]!)
+      let text
+      try {
+        text = lib.cards.text(id)
+      } catch (e) {
+        return bad(e, 404)
+      }
+      res.writeHead(200, {
+        "content-type": "application/yaml; charset=utf-8",
+        "content-disposition": attachment(`${id}.yaml`),
+      })
+      res.end(text)
+      return
+    }
+    const draftAt = /^\/cards\/([^/]+)\/draft(\/install)?$/.exec(req.url ?? "")
     if (draftAt) {
       const id = decodeURIComponent(draftAt[1]!)
-      if (req.method === "GET") return reply(() => lib.drafts.get(id), 404)
-      if (req.method === "PUT")
-        return reply(async () => {
-          lib.drafts.put(id, await read((u) => u))
-          return lib.drafts.get(id)
-        })
-      if (req.method === "DELETE")
+      if (draftAt[2]) {
+        if (req.method === "POST") return reply(() => ({ card: lib.cards.draft.install(id), cards: lib.cards.list() }))
+      } else if (req.method === "GET") return reply(() => lib.cards.draft.open(id), 404)
+      else if (req.method === "PUT") return reply(async () => lib.cards.draft.save(id, await read((u) => u)))
+      else if (req.method === "DELETE")
         return reply(() => {
-          lib.drafts.del(id)
+          lib.cards.draft.discard(id)
           return { deleted: true }
         })
     }
     const localAt = /^\/cards\/([^/]+)\/local$/.exec(req.url ?? "")
     if (localAt && (req.method === "GET" || req.method === "PUT")) {
       const card = decodeURIComponent(localAt[1]!)
-      if (!lib.cards.list().some((c) => c.id === card)) return json(404, { error: `no card ${card}` })
+      if (!lib.cards.has(card)) return json(404, { error: `no card ${card}` })
       return reply(async () => {
         if (req.method === "PUT") {
           const raw = (await read((u) => u)) as object
@@ -330,16 +391,13 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
         return lib.locals.read(card)
       })
     }
-    const installAt = req.method === "PUT" && /^\/cards\/([^/]+)$/.exec(req.url ?? "")
-    if (installAt)
-      return reply(async () => {
-        const card = (await read((u) => u)) as { id?: string }
-        if (card.id !== decodeURIComponent(installAt[1]!)) throw new Error("card id does not match URL")
-        lib.cards.put(card)
-        return lib.cards.list()
-      })
+    const removing = req.method === "DELETE" && /^\/cards\/([^/]+)$/.exec(req.url ?? "")
+    if (removing) return reply(() => (lib.cards.remove(decodeURIComponent(removing[1]!)), lib.cards.list()), 404)
     const cardAt = req.method === "GET" && /^\/cards\/([^/]+)$/.exec(req.url ?? "")
     if (cardAt) return reply(() => lib.view(decodeURIComponent(cardAt[1]!)), 404)
+    // a card or library route none of the above took (a method it has no use for, a route that is gone): said here,
+    // before the story's routes answer it with "no story"
+    if (/^\/(cards|depots)(?:[/?]|$)/.test(req.url ?? "")) return json(404, { error: "not found" })
     // Everything below is one story's: the one the request names.
     if (asked === undefined || !lib.exists(asked)) return json(404, { error: `no story ${asked ?? ""}`.trim() })
     const story = asked

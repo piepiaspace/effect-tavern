@@ -7,6 +7,7 @@ import { createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Back, Sliders } from "./icons.tsx"
 import { close } from "./pages.ts"
+import { openSettings } from "./settings.tsx"
 import { cards, focus } from "./store.ts"
 import { theme } from "./theme.ts"
 import { t } from "./i18n.ts"
@@ -105,6 +106,7 @@ export const BrandGlyph = () => {
 }
 
 export const Home = () => {
+  const shelf = read(cards)
   const cur = () => BRAND_OPTIONS.find((o) => o.id === activeBrand()) ?? BRAND_OPTIONS[0]!
   return (
     <div class="home-page" data-dark={theme() === "dark" ? "true" : "false"}>
@@ -120,6 +122,13 @@ export const Home = () => {
           <img class={{ "home-emblem": true, tall: Boolean(cur().tall) }} src={cur().src} alt="" aria-hidden="true" />
         </Show>
         <h1>{t("home.title")}</h1>
+        {/* a new install has no card: the one thing to do first is to bring one in */}
+        <Show when={!shelf().length}>
+          <p>{t("side.noCards")}</p>
+          <button type="button" class="btn" onClick={() => openSettings("cards")}>
+            {t("side.addCards")}
+          </button>
+        </Show>
       </div>
       <nav class="home-Direction-picker" aria-label={t("home.title")}>
         <For each={BRAND_OPTIONS} keyed={(o) => o.id}>

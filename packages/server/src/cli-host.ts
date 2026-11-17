@@ -1,12 +1,11 @@
 // Only the operations the terminal uses. No retry policy or independent client package.
 import { Effect, Stream } from "effect"
-import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import type { Local } from "@effect-tavern/runtime/src/layer.ts"
 import type { ActiveContextView, TimelineNode, TurnDetail } from "@effect-tavern/runtime/src/projection.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
 import type { Library, PublicEvent } from "./library.ts"
 import type { Attach } from "@effect-tavern/runtime/src/projection.ts"
-import type { Listing, CardView } from "@effect-tavern/runtime/src/library.ts"
+import type { CardRow, CardView, DepotRow, DepotView, Listing } from "@effect-tavern/runtime/src/library.ts"
 import { backup, markdown } from "./export.ts"
 import { openHost } from "./host.ts"
 
@@ -15,7 +14,20 @@ export type CliEvent = PublicEvent | Attach
 type Emit = (event: CliEvent) => void
 export interface CliHost {
   author: Library["author"]
-  install(card: Card): Promise<void>
+  /** A card file's text onto the shelf, over the card of that id when there is one: the author's own loop. */
+  install(text: string): Promise<CardRow>
+  cards(): Promise<readonly CardRow[]>
+  remove(card: string): Promise<void>
+  /** The card as a card file's text. */
+  source(card: string): Promise<string>
+  depots: {
+    list(): Promise<readonly DepotRow[]>
+    /** A directory only where the CLI opens the library itself: a server takes https alone. */
+    add(location: string): Promise<DepotRow>
+    view(id: string): Promise<DepotView>
+    pull(id: string, entry: string, replace: boolean): Promise<CardRow>
+    remove(id: string): Promise<void>
+  }
   list(): Promise<Listing["stories"]>
   create(card: string): Promise<number>
   /** The player's own name on a card (`local.names.user`): what fills `{{user}}` where no persona does. */
@@ -67,8 +79,16 @@ export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHos
       Effect.runPromise(Stream.runForEach(stream, (e) => Effect.sync(() => emit(e))))
     return {
       author: lib.author,
-      install: async (card) => {
-        lib.cards.put(card)
+      install: async (text) => lib.cards.install(text, { via: "file" }, { replace: true }),
+      cards: async () => lib.cards.list(),
+      remove: async (card) => lib.cards.remove(card),
+      source: async (card) => lib.cards.text(card),
+      depots: {
+        list: async () => lib.depots.list(),
+        add: (location) => lib.depots.add(location, { dirs: true }),
+        view: (id) => lib.depots.view(id),
+        pull: (id, entry, replace) => lib.depots.pull(id, entry, { replace }),
+        remove: async (id) => lib.depots.remove(id),
       },
       list: async () => lib.stories.list(),
       create: async (card) => lib.stories.create(card),
@@ -100,14 +120,14 @@ export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHos
   }
   if (fakeModel) throw new Error("--model fake applies to local play; configure MODEL on the remote server")
   const base = url.replace(/\/$/, "").replace(/\/api$/, "") + "/api"
-  const request = async (path: string, method = "GET", body?: unknown, story?: number) => {
+  const request = async (path: string, method = "GET", body?: unknown, story?: number, text?: string) => {
     const response = await fetch(base + path, {
       method,
       headers: {
-        "content-type": "application/json",
+        "content-type": text === undefined ? "application/json" : "application/yaml",
         ...(story === undefined ? {} : { "x-tavern-story": String(story) }),
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(text !== undefined ? { body: text } : body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`)
     return response
@@ -120,8 +140,26 @@ export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHos
       sort: (input) => json("/author/sort", "POST", input),
       review: (input) => json("/author/review", "POST", input),
     },
-    install: async (card) => {
-      await request(`/cards/${encodeURIComponent(card.id)}`, "PUT", card)
+    install: async (text) =>
+      ((await (await request("/cards?replace=1", "POST", undefined, undefined, text)).json()) as { card: CardRow })
+        .card,
+    cards: () => json("/cards"),
+    remove: async (card) => {
+      await request(`/cards/${encodeURIComponent(card)}`, "DELETE")
+    },
+    source: async (card) => (await request(`/cards/${encodeURIComponent(card)}/export.yaml`)).text(),
+    depots: {
+      list: () => json("/depots"),
+      add: async (location) => {
+        const rows = await json<DepotRow[]>("/depots", "POST", { location })
+        return rows.find((d) => d.location === location.trim())!
+      },
+      view: (id) => json(`/depots/${encodeURIComponent(id)}`),
+      pull: async (id, entry, replace) =>
+        (await json<{ card: CardRow }>(`/depots/${encodeURIComponent(id)}/pull`, "POST", { entry, replace })).card,
+      remove: async (id) => {
+        await request(`/depots/${encodeURIComponent(id)}`, "DELETE")
+      },
     },
     list: async () => (await json<Listing>("/stories")).stories,
     create: async (card) => (await json<Listing>("/stories", "POST", { card })).current!,

@@ -80,15 +80,28 @@ bun packages/runtime/bin/unroll.ts card.json --json
 - **远程连接模式（`--url`）：** 传入 `--url http://127.0.0.1:7777` 即可通过 HTTP/SSE 连接运行中的 `vp run dev` 或 `tavern serve` 服务。
 
 ```sh
-# 卡片安装与工坊三件套
-bun run tavern card install ./my-card.yaml
+# 书架：新库里没有卡片。从文件安装、列出、导出、移除
+bun run tavern card install ./my-card.yaml     # 已有同 id 的卡时覆盖它
+bun run tavern card list
+bun run tavern card export my-card -o my-card.yaml
+bun run tavern card remove my-card             # 这张卡还有故事时拒绝
+
+# 卡库：可选的取卡来源（含 index.json 的目录或 https 地址）
+bun run tavern depot add https://example.com/cards/
+bun run tavern depot add ./my-cards            # 目录仅限本地直连模式
+bun run tavern depot list
+bun run tavern depot show <卡库 id>            # 卡库里的卡，以及各自在书架上的状态
+bun run tavern depot pull <卡库 id> <卡片 id>  # 复制一张到书架；更新时加 --replace
+bun run tavern depot remove <卡库 id>          # 已取的卡片保留
+
+# 工坊三件套
 bun run tavern card compile ./my-card.yaml --select fiction.setting --intent "交情达到 8 时开启信件第 2 层" -o candidate.yaml
 bun run tavern card sort ./my-card.yaml ./notes.md -o candidate.yaml
 bun run tavern card review ./my-card.yaml --json
 
 # 故事生命周期管理
 bun run tavern story list --json
-bun run tavern story new wuxia
+bun run tavern story new my-card
 bun run tavern story show 1
 bun run tavern story export 1 --format md > story.md
 bun run tavern story delete 1
@@ -100,10 +113,10 @@ cd packages/server && bun run compile:headless
 
 ## 4. 终端交互与管道游玩（`tavern play`）
 
-纯数字参数表示续玩已有故事 ID，其余参数作为卡片 ID 新建故事（数字卡片名可加 `--card` 强制新建）。支持交互式行输入、`--input` 单步执行、stdin 管道、`--user <name>`（写入该卡上的玩家名 `{{user}}` 并对该卡后续新局生效）以及 `--jsonl` 事件流输出：
+纯数字参数表示续玩已有故事 ID，其余参数作为已安装卡片的 ID 新建故事（数字卡片名可加 `--card` 强制新建）。支持交互式行输入、`--input` 单步执行、stdin 管道、`--user <name>`（写入该卡上的玩家名 `{{user}}` 并对该卡后续新局生效）以及 `--jsonl` 事件流输出：
 
 ```sh
-MODEL=fake bun run tavern play wuxia --greeting 1 --set bond=3 --user "陆沉" --note "雨夜初见"
+MODEL=fake bun run tavern play my-card --greeting 1 --set bond=3 --user "陆沉" --note "雨夜初见"
 ```
 
 | 斜杠命令 | 行为 |

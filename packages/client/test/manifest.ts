@@ -1,4 +1,4 @@
-// The card page's chips and opening lines on the template cards' shapes: a fiction label is not a chip, a hidden
+// The card page's chips and opening lines on the fixture cards' shapes: a fiction label is not a chip, a hidden
 // field is not a state, an opening's tag prefers the route it sets.
 import { full } from "@effect-tavern/runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
@@ -8,6 +8,7 @@ import type { CardView } from "../src/store.ts"
 const view = (over: Partial<CardView>): CardView => ({
   id: "t",
   title: "t",
+  origin: { via: "file" },
   input: "act",
   greetings: [],
   director: false,

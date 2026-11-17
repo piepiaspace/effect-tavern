@@ -1,6 +1,6 @@
 // src/view.ts against the real thing: the documents a session sends for a turn, captured off a scripted model, hold
 // exactly the head fragments, the lookup index and the record asks view prints for the same state. Then bin/card.ts
-// through a process: check's exit code on the template cards and on a bad one, an unknown card, and --help.
+// through a process: check's exit code on the fixture cards and on a bad one, an unknown card, and --help.
 import { fake, type Message } from "@effect-tavern/provider"
 import { Effect, Stream } from "effect"
 import assert from "node:assert/strict"
@@ -11,7 +11,7 @@ import type { Card } from "../src/card.ts"
 import { makeSession } from "../src/session.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 import { fields, openings, view } from "../src/view.ts"
-import { cardNames, loadCard, player } from "./cards/index.ts"
+import { cardFile, cardNames, loadCard, player } from "./cards/index.ts"
 
 // A real turn on 盐道 from its second greeting, with 局势 set on the greeting node: every call's messages kept.
 const yandao = await loadCard("yandao")
@@ -121,8 +121,11 @@ assert.throws(() => view(yandao, player, { greeting: 5 }), /greeting 5/)
 // the bin, as a process: exit codes and help
 const bin = new URL("../bin/card.ts", import.meta.url).pathname
 const run = (...args: string[]) => Bun.spawnSync(["bun", bin, ...args], { stdout: "pipe", stderr: "pipe" })
-for (const name of cardNames) assert.equal(run("check", name).exitCode, 0, name)
-assert.match(run("check", "yandao").stdout.toString(), /^greeting 1 {2}局势=7 起点=血案 {2}bands: tense, blood/m)
+for (const name of cardNames) assert.equal(run("check", cardFile(name).pathname).exitCode, 0, name)
+assert.match(
+  run("check", cardFile("yandao").pathname).stdout.toString(),
+  /^greeting 1 {2}局势=7 起点=血案 {2}bands: tense, blood/m,
+)
 const bad: Card = {
   id: "bad",
   frame: [],

@@ -12,7 +12,7 @@ import type { CliEvent } from "../src/cli-host.ts"
 
 const dir = mkdtempSync(join(tmpdir(), "tavern-cli-"))
 const bin = new URL("../bin/tavern.ts", import.meta.url).pathname
-const env = { ...process.env, DATA: dir, MODEL: "fake", CARDS: "" }
+const env = { ...process.env, DATA: dir, MODEL: "fake" }
 const run = async (...args: string[]) => {
   const child = Bun.spawn(["bun", bin, ...args], { cwd: dir, env, stdout: "pipe", stderr: "pipe" })
   const [code, out, err] = await Promise.all([
@@ -110,7 +110,7 @@ try {
     deleted: true,
   })
   assert.equal((await run("story", "show", String(remote), "--url", url)).code, 1)
-  const invalid = await fetch(`${url}/cards/bad`, { method: "PUT", body: JSON.stringify({ id: "bad" }) })
+  const invalid = await fetch(`${url}/cards`, { method: "POST", body: JSON.stringify({ id: "bad" }) })
   assert.equal(invalid.status, 400)
   server.kill("SIGTERM")
   assert.equal(await server.exited, 0)

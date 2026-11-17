@@ -25,12 +25,9 @@ const model = fake((call) => {
   const doc = readStage(call)
   return { ...defaultAnswer(doc, { notes: "N" }), ...(doc.phase === "record" && { delay: 100 }) }
 })
-// A file-only source: installing must work without relying on tavern.shelf's database composition.
-const lib = library({
-  data,
-  cards: { list: () => [{ id: card.id, title: card.title! }], get: () => card },
-  model: () => model,
-})
+const lib = library({ data, model: () => model })
+lib.cards.install(card, { via: "file" })
+const put = (value: unknown) => lib.cards.install(value, { via: "file" }, { replace: true })
 const server = serve(lib)
 await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
 const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -65,7 +62,7 @@ try {
   assert.ok(!JSON.stringify(localEvents).includes("PRIVATE FICTION"))
 
   const original = lib.session(direct)
-  assert.throws(() => lib.cards.put({ ...card, rules: { fields: "wrong" } }))
+  assert.throws(() => put({ ...card, rules: { fields: "wrong" } }))
   assert.equal(lib.session(direct), original) // rejected writes do not evict
   for (const product of [
     { id: "aside", role: "theater", text: "Aside", shape: { kind: "text" }, feed: true },
@@ -78,14 +75,14 @@ try {
     },
   ]) {
     const invalid = { ...card, products: [product] }
-    lib.drafts.put(card.id, { card: invalid })
-    assert.throws(() => lib.cards.put(invalid))
-    assert.equal((await http(remote, `/cards/${card.id}`, "PUT", invalid)).status, 400)
-    assert.equal(data.cards.get(card.id), undefined)
-    assert.equal(lib.drafts.get(card.id).draft, true)
+    lib.cards.draft.save(card.id, { card: invalid })
+    assert.throws(() => put(invalid))
+    assert.equal((await http(remote, "/cards?replace=1", "POST", invalid)).status, 400)
+    assert.deepEqual(lib.cards.get(card.id), card) // the installed card stands
+    assert.equal(lib.cards.draft.open(card.id).draft, true)
     assert.equal(lib.session(direct), original)
   }
-  lib.cards.put({
+  put({
     ...card,
     title: "Installed",
     rules: { ...card.rules, fields: [{ ...card.rules.fields[0]!, initial: 7 }] },
@@ -123,7 +120,7 @@ try {
   const attachment = lib.attach(direct)!
   assert.equal(attachment.phase, "record")
   const attached = collect(attachment.events)
-  lib.cards.put({
+  put({
     ...card,
     title: "Next",
     rules: { ...card.rules, fields: [{ ...card.rules.fields[0]!, initial: 9 }] },

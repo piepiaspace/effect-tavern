@@ -25,7 +25,6 @@ import { resolve, worldOf, type Layer, type Local, type Resolved } from "@effect
 import { worldBlock } from "@effect-tavern/runtime/src/request.ts"
 import { HI, LO, checkQuestions, checkVerdict } from "@effect-tavern/runtime/src/decision.ts"
 import { lines } from "@effect-tavern/runtime/src/names.ts"
-import { cardNames, loadCard } from "@effect-tavern/runtime/support/cards.ts"
 import { Effect } from "effect"
 
 const args = process.argv.slice(2)
@@ -51,7 +50,6 @@ const secret = all("select id, name, json from secret")
   .find((s) => s.id === config.secret)
 
 const cards = new Map<string, Card>()
-for (const name of cardNames) cards.set(name, await loadCard(name))
 for (const r of all("select id, json from card"))
   cards.set(r["id"] as string, decodeCard({ ...json<object>(r), id: r["id"] }))
 

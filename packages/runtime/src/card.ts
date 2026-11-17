@@ -308,8 +308,9 @@ export const Card = Schema.Struct({
   title: Schema.optionalKey(Schema.String), // shown in the client's header; the id when absent. Never reaches the model
   summary: Schema.optionalKey(Schema.String), // one line on what this card is, for the card page and a gallery. Never reaches the model
   heading: Schema.optionalKey(Schema.String), // what titles a turn: a field path or `<product>.<key>` (a text key of a record product), read off the node; no declaration, no turn titles
+  creator: Schema.optionalKey(Schema.String), // who wrote it, in their own words: the card is theirs. Never reaches the model
   version: Schema.optionalKey(Schema.String), // the author's; a changed card under a running log is the client's call to notice
-  source: Schema.optionalKey(Schema.String), // where it came from: a URL, a file, "hand"
+  source: Schema.optionalKey(Schema.String), // what the author made it from: a URL, a file, "hand". How it reached this install is the shelf row's `origin`
   frame: Schema.Array(Fragment), // slots: persona, voice, style, setting …
   fiction: Schema.Array(Fragment), // a character, a cast or a world; variants carry `when`
   greetings: Schema.Array(Greeting),

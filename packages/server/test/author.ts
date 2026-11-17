@@ -5,7 +5,6 @@ import { decodeCard } from "@effect-tavern/runtime/src/card.ts"
 import { scaffold } from "@effect-tavern/runtime/support/author.ts"
 import { open } from "../src/data.ts"
 import { library, Routing } from "../src/library.ts"
-import { shelf } from "../src/tavern.ts"
 import { app, handle } from "../src/serve.ts"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
@@ -32,7 +31,15 @@ const configure = (db: typeof data) => {
   db.routing.write(Schema.decodeUnknownSync(Routing)({ stages: { author: { provider: "p", model: "author-model" } } }))
 }
 configure(data)
-const lib = library({ data, cards: shelf([card]) })
+const lib = library({ data })
+lib.cards.install(card, { via: "file" }) // the workshop edits a card of the shelf
+/** The draft without what the gate says of it: what the store holds, the card it falls back to. */
+const drafted = (id: string) => {
+  const { diagnostics: _, ...d } = lib.cards.draft.open(id)
+  return d
+}
+/** A card's text to the install route, over the card of that id. */
+const install = (value: unknown) => request("/cards?replace=1", "POST", value)
 const server = createServer(app(handle(lib)))
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
 const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -132,27 +139,37 @@ try {
   fixture([{ ...warning, level: "error" }])
   await assert.rejects(lib.author.review({ card }))
   // Direct and HTTP installation have the same gate; failed installs retain the draft.
-  lib.drafts.put(card.id, { card: result.candidate })
-  assert.equal(lib.drafts.get(card.id).draft, true)
-  assert.throws(() => lib.cards.put(result.candidate), /empty-text/)
-  const rejected = await request(`/cards/${card.id}`, "PUT", result.candidate)
+  const saved = lib.cards.draft.save(card.id, { card: result.candidate })
+  assert.equal(saved.draft, true)
+  // the draft answers what the gate says of it as it stands: the author's blank is the one error
+  assert.deepEqual(
+    saved.diagnostics.filter((d) => d.level === "error").map((d) => [d.rule, d.path]),
+    [["empty-text", "rules.actions.close.text"]],
+  )
+  assert.throws(() => lib.cards.install(result.candidate, { via: "file" }, { replace: true }), /empty-text/)
+  assert.throws(() => lib.cards.draft.install(card.id), /empty-text/)
+  assert.equal((await request(`/cards/${card.id}/draft/install`, "POST")).status, 400)
+  const rejected = await install(result.candidate)
   assert.equal(rejected.status, 400)
-  assert.deepEqual(await rejected.json(), { error: "error empty-text rules.actions.close.text: author text is empty" })
-  assert.equal(lib.drafts.get(card.id).draft, true)
+  assert.deepEqual(await rejected.json(), {
+    error: "error empty-text rules.actions.close.text: author text is empty",
+    code: "card-invalid",
+  })
+  assert.equal(drafted(card.id).draft, true)
   const invalidInitial = {
     ...card,
     rules: { fields: [{ path: "x", type: "int", min: 0, max: 1, initial: 2 }], actions: [] },
   }
-  assert.throws(() => lib.cards.put(invalidInitial))
-  assert.equal((await request(`/cards/${card.id}`, "PUT", invalidInitial)).status, 400)
+  assert.throws(() => lib.cards.install(invalidInitial, { via: "file" }, { replace: true }))
+  assert.equal((await install(invalidInitial)).status, 400)
   assert.equal((await request(`/cards/${card.id}/draft`)).status, 200)
   assert.equal((await request(`/cards/${card.id}/draft`, "PUT", { card: result.candidate })).status, 200)
   assert.equal((await request(`/cards/${card.id}/draft`, "PUT", { card: { ...card, id: "wrong" } })).status, 400)
-  assert.equal((await request(`/cards/${card.id}`, "PUT", card)).status, 200)
-  assert.deepEqual(await (await request(`/cards/${card.id}/draft`)).json(), { card, draft: false })
+  assert.equal((await install(card)).status, 200)
+  assert.deepEqual(await (await request(`/cards/${card.id}/draft`)).json(), { card, draft: false, diagnostics: [] })
   await request(`/cards/${card.id}/draft`, "PUT", { card: result.candidate })
   assert.equal((await request(`/cards/${card.id}/draft`, "DELETE")).status, 200)
-  assert.equal(lib.drafts.get(card.id).draft, false)
+  assert.equal(drafted(card.id).draft, false)
   assert.equal((await request("/cards/missing/draft")).status, 404)
   // Canvas updates merge independently of content edits and survive both install and discard.
   const layout = {
@@ -168,13 +185,13 @@ try {
   }
   const draftUrl = `/cards/${card.id}/draft`
   assert.equal((await request(draftUrl, "PUT", { layout })).status, 200)
-  assert.deepEqual(lib.drafts.get(card.id), { card, draft: false, layout })
+  assert.deepEqual(drafted(card.id), { card, draft: false, layout })
   await request(draftUrl, "PUT", { card: result.candidate })
-  assert.deepEqual(lib.drafts.get(card.id), { card: result.candidate, draft: true, layout })
+  assert.deepEqual(drafted(card.id), { card: result.candidate, draft: true, layout })
   const moved = { rows: [{ h: 1, items: [{ id: "fiction", w: 1 }] }] }
   await request(draftUrl, "PUT", { layout: moved })
   const editing = { card: result.candidate, draft: true, layout: moved }
-  assert.deepEqual(lib.drafts.get(card.id), editing)
+  assert.deepEqual(drafted(card.id), editing)
   for (const value of [
     {},
     { layout: null },
@@ -183,18 +200,32 @@ try {
     { card: { ...card, id: "wrong" }, layout },
   ]) {
     assert.equal((await request(draftUrl, "PUT", value)).status, 400)
-    assert.deepEqual(lib.drafts.get(card.id), editing)
+    assert.deepEqual(drafted(card.id), editing)
   }
-  assert.equal((await request(`/cards/${card.id}`, "PUT", result.candidate)).status, 400)
-  assert.deepEqual(lib.drafts.get(card.id), editing)
-  await request(`/cards/${card.id}`, "PUT", card)
-  assert.deepEqual(lib.drafts.get(card.id), { card, draft: false, layout: moved })
+  assert.equal((await install(result.candidate)).status, 400)
+  assert.deepEqual(drafted(card.id), editing)
+  await install(card)
+  assert.deepEqual(drafted(card.id), { card, draft: false, layout: moved })
   assert.deepEqual(data.drafts.get(card.id), { layout: moved })
   await request(draftUrl, "PUT", { card: result.candidate })
   await request(draftUrl, "DELETE")
-  assert.deepEqual(lib.drafts.get(card.id), { card, draft: false, layout: moved })
+  assert.deepEqual(drafted(card.id), { card, draft: false, layout: moved })
   await request(draftUrl, "PUT", { layout: { rows: [] } })
-  assert.deepEqual(lib.drafts.get(card.id).layout, { rows: [] })
+  assert.deepEqual(drafted(card.id).layout, { rows: [] })
+  // A draft that passes the gate goes onto the shelf from the server's own copy: the card that arrived as a file is
+  // still that file's, now edited; the content draft is gone and the canvas stays.
+  const retitled = { ...card, title: "Retitled" }
+  await request(draftUrl, "PUT", { card: retitled })
+  const published = await request(`${draftUrl}/install`, "POST")
+  assert.equal(published.status, 200)
+  assert.deepEqual(((await published.json()) as { card: unknown }).card, {
+    ...lib.cards.list().find((c) => c.id === card.id)!,
+    title: "Retitled",
+    origin: { via: "file", edited: true },
+  })
+  assert.deepEqual(drafted(card.id), { card: retitled, draft: false, layout: { rows: [] } })
+  assert.equal((await request(`${draftUrl}/install`, "POST")).status, 404) // nothing left to install
+  await install(card)
   // CLI runs the same fixtures through both local SQLite routing and --url HTTP.
   const local = open(join(dir, "tavern.db"))
   configure(local)
@@ -222,7 +253,7 @@ try {
   const bin = new URL("../bin/tavern.ts", import.meta.url).pathname
   const run = async (...args: string[]) => {
     const child = Bun.spawn([process.execPath, bin, "card", ...args], {
-      env: { ...process.env, DATA: dir, MODEL: "", CARDS: "" },
+      env: { ...process.env, DATA: dir, MODEL: "" },
       stdout: "pipe",
       stderr: "pipe",
     })

@@ -23,7 +23,8 @@ export default {
     exclude: ["src/locales/**"],
     calls: [{ callee: "t" }],
     // keys a table holds as data and `t()` reads where the word is drawn (the switches, the tabs, the stages, the
-    // phases, the card page's spec rows, the shelf query's facet words, the refused rows' and URLs' sentences by code):
+    // phases, the card page's spec rows, the shelf query's facet words, the refused rows' and URLs' sentences by code,
+    // what the shelf or a card library refused by code and a library card's key by its state):
     // used, though no call names them
     keysInUse: [
       "switches.*",
@@ -36,6 +37,15 @@ export default {
       "settings.templates",
       "settings.personas",
       "settings.packs",
+      "settings.cards",
+      "cards.exists",
+      "cards.inUse",
+      "cards.invalid",
+      "cards.unreadable",
+      "cards.install",
+      "cards.installed",
+      "cards.update",
+      "cards.replace",
       "app.phase*",
       "card.spec*",
       "card.facet*",
@@ -74,6 +84,12 @@ export default {
       note: "the note channel; 场外指导 only as a hit label",
     },
     { term: "场内", translations: { en: "In story" } },
+    {
+      term: "卡库",
+      translations: { en: "library" },
+      forms: { en: ["Library", "library"] },
+      note: "a card library: a place cards are taken from, never the install's own cards (those are the shelf)",
+    },
     { term: "叙事者", translations: { en: "narrator" } },
     { term: "轮", translations: { en: "turn" }, forms: { en: ["turn"] }, note: "a turn's depth; never 回合" },
     {

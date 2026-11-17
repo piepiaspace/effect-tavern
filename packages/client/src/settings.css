@@ -1389,3 +1389,81 @@
     display: flex;
   }
 }
+
+/* ── 卡片: the shelf and the card libraries (cards.tsx) ── */
+/* the library's address beside its Add, on one line; the foot's wide button rule is for a lone button */
+.cards-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+.cards-foot .row {
+  align-self: stretch;
+}
+.cards-foot .input-box {
+  flex: 1;
+  min-width: 0;
+}
+/* the address beside its key reads at the key's size */
+.cards-foot .input-box.sm input {
+  font-size: var(--text-footnote);
+}
+.cards-foot .btn {
+  flex: none;
+  height: var(--control-sm);
+}
+.cards-detail .detail-scroll {
+  gap: var(--space-3);
+}
+.cards-detail .location {
+  margin: 0;
+  font-size: var(--text-footnote);
+  color: var(--ink-3);
+  overflow-wrap: anywhere;
+}
+/* the word for a read in flight, for a read slow enough to want one: under that it never shows, so a quick answer
+   does not flicker */
+.cards-detail .late {
+  animation: cards-late 0s linear 250ms both;
+}
+@keyframes cards-late {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
+  }
+}
+/* a card: its name, where it came from, and its keys at the row's end; its one line under them */
+.card-row {
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+.card-row .row {
+  flex-wrap: wrap;
+}
+/* the name takes what it needs and gives way first; its tags follow it, the keys sit at the far end */
+.card-name {
+  flex: 0 1 auto;
+  min-width: 3rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-row .hint {
+  margin: 0;
+  font-size: var(--text-footnote);
+  color: var(--ink-3);
+}
+/* what the server refused: the client's words, and under a card that failed the gate the lines it failed on */
+.refusal {
+  color: var(--warn);
+}
+.refusal pre {
+  margin: var(--space-2) 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--text-caption);
+}

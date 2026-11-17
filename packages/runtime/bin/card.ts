@@ -4,17 +4,15 @@ import { BunServices } from "@effect/platform-bun"
 import { Cause, Console, Effect, Exit, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { readFileSync, writeFileSync } from "node:fs"
-import { checkCard, scaffold, templates } from "../support/author.ts"
+import { checkCard, readCard, scaffold, templates } from "../support/author.ts"
 import { runScenario } from "../support/scenario.ts"
 import { stages, view } from "../src/view.ts"
-import { loadCard, player, readCard, cardNames } from "../support/cards.ts"
+import { player } from "../support/rows.ts"
 
-const card = Argument.String("card").pipe(
-  Argument.withDescription("a template card by name (wuxia, yandao, ri, banxing), or a path to a .yaml card"),
-)
+const card = Argument.String("card").pipe(Argument.withDescription("path to a .yaml card file"))
 const load = (name: string) =>
   Effect.tryPromise({
-    try: async () => (cardNames.includes(name) ? loadCard(name) : readCard(name)),
+    try: async () => readCard(name),
     catch: (e) => (e as Error).message,
   })
 
@@ -22,9 +20,7 @@ const json = Flag.Boolean("json").pipe(Flag.withDefault(false), Flag.withDescrip
 const attempt = <A>(f: () => A) => Effect.try({ try: f, catch: (e) => String(e) })
 const check = Command.make("check", { card, json }, ({ card: name, json }) =>
   Effect.gen(function* () {
-    const report = yield* attempt(() =>
-      readFileSync(cardNames.includes(name) ? new URL(`../cards/${name}.yaml`, import.meta.url) : name, "utf8"),
-    ).pipe(
+    const report = yield* attempt(() => readFileSync(name, "utf8")).pipe(
       Effect.match({
         onSuccess: checkCard,
         onFailure: (message): ReturnType<typeof checkCard> => ({

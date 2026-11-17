@@ -13,7 +13,7 @@
 import { latestOf } from "./stories.ts"
 import { reading } from "./reading.ts"
 import { activeOf, card, cards, isHome, log, page, type Page, registry, stories, type Tab, tabs } from "./store.ts"
-import { edit, forget, home, load, navigate, remembered, select } from "./tabs.ts"
+import { edit, forget, home, load, navigate, remembered, select, shed } from "./tabs.ts"
 import * as wire from "./wire.ts"
 import type { Listing } from "./wire.ts"
 
@@ -179,6 +179,12 @@ export const newStory = async (card: string): Promise<boolean> => {
     landed = valid()
   })
   return landed
+}
+/** A card off the shelf, with the tabs that were on its page (it has no story left, or the server refuses). */
+export const removeCard = async (id: string): Promise<void> => {
+  await wire.removeCard(id)
+  shed(id)
+  await wire.refreshActiveCard().catch(() => {}) // a story's tab that was browsing it is on its own card again
 }
 export const deleteStory = async (id: number): Promise<void> => onDelete(await wire.deleteStory(id), [id])
 export const deleteStories = async (ids: readonly number[]): Promise<void> =>

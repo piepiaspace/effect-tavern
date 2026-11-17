@@ -1,6 +1,6 @@
 name: Release
 
-# A tag v* builds the phone's binary (server + client page + template cards, Bun's android runtime) and publishes it
+# A tag v* builds the phone's binary (server + client page, no cards; Bun's android runtime) and publishes it
 # with start.sh as the release that start.sh downloads from (releases/latest/download).
 on:
   push:

@@ -1,17 +1,6 @@
-/// <reference types="bun" />
-// The four template cards by name, and the player layers the live scripts, the tests and the server share. A card is one
-// YAML file in ../cards (`<name>.yaml`, prose in block scalars), parsed by Bun and decoded by `decodeCard`.
-import { readFileSync } from "node:fs"
-import { decodeCard, type Card } from "../src/card.ts"
+// The reference player rows the authoring tools, the hosts and the tests share: a card is linted, previewed and played
+// under a player, and these are the two the project uses. They are the harness's own words, never a card's.
 import type { Rows } from "../src/layer.ts"
-
-// a compiled binary (server `bun run compile`) embeds this directory as cards/ beside its entry: resolved from the
-// entry (Bun.main), since under `bun compile` (AOT) each module keeps its own path instead of the entry's
-const dir = import.meta.url.includes("$bunfs")
-  ? new URL("cards/", Bun.pathToFileURL(Bun.main))
-  : new URL("../cards/", import.meta.url)
-/** A card file: YAML, decoded through the Card schema. A missing file fails naming it (ENOENT, with the path). */
-export const readCard = (path: string | URL): Card => decodeCard(Bun.YAML.parse(readFileSync(path, "utf8")))
 
 // The minimal player: language only, options on (the card declares nothing about options).
 const language = { id: "language", text: "使用自然、舒展的现代中文写作。", mode: "yield" as const }
@@ -42,6 +31,3 @@ export const lexicon = [
 export const player: Rows = {
   harness: { ...plain.harness!, switches: { pov: "second", echo: true, agency: "strict" }, lexicon },
 }
-
-export const cardNames = ["wuxia", "yandao", "banxing", "ri"]
-export const loadCard = async (name: string): Promise<Card> => readCard(new URL(`${name}.yaml`, dir))

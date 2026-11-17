@@ -18,7 +18,8 @@ import type { Unit } from "@effect-tavern/runtime/src/context.ts"
 import { LOOKUP, lookupQuestions } from "@effect-tavern/runtime/src/decision.ts"
 import { resolve, type Layer, type Local, type Rows } from "@effect-tavern/runtime/src/layer.ts"
 import { makeSession } from "@effect-tavern/runtime/src/session.ts"
-import { cardNames, loadCard, plain, readCard } from "@effect-tavern/runtime/support/cards.ts"
+import { plain } from "@effect-tavern/runtime/support/rows.ts"
+import { readCard } from "@effect-tavern/runtime/support/author.ts"
 import { Effect } from "effect"
 
 const args = process.argv.slice(2)
@@ -67,7 +68,6 @@ const secret = all("select id, name, json from secret")
 const model = dry ? undefined : compileDecision(config, secret)
 
 const cards = new Map<string, Card>()
-for (const name of cardNames) cards.set(name, await loadCard(name))
 for (const r of all("select id, json from card"))
   cards.set(r["id"] as string, decodeCard({ ...json<object>(r), id: r["id"] }))
 const packs = all("select id, name, json from pack").map(

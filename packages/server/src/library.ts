@@ -1,5 +1,5 @@
 // The library behind the wire: every card's stories and the player's personas. A story is a session over its rows in
-// data.ts on the card its row names (`story.card`, resolved through `cards` when the session opens), with the player's
+// data.ts on the card its row names (`story.card`, read off the shelf when the session opens), with the player's
 // rows the library stores (runtime layer.ts; the overlay given stands until one is stored), and the turn in flight beside it (turn.ts): a
 // turn is the story's, it runs to its end whoever listens, one at a time per story and with no lock across stories.
 // A persona is the player's, a sibling of the card, not a step of a story: a story's row names the one in force on it
@@ -19,7 +19,7 @@
 // from the tables on every call the same way: a routing or provider edit is in force from the next request. A pair
 // that does not resolve (provider gone, disabled, no key, no endpoint) fails that request naming the provider. A stage
 // the row does not name runs on `model`, the environment's (dev.ts); `pinned` puts it over the row (MODEL=fake).
-import type { CardView, CardRow, Persona, StoryRow } from "@effect-tavern/runtime/src/library.ts"
+import type { CardView, Persona, StoryRow } from "@effect-tavern/runtime/src/library.ts"
 export type { CardRow } from "@effect-tavern/runtime/src/library.ts"
 export { Routing } from "@effect-tavern/runtime/src/session.ts"
 import {
@@ -47,10 +47,8 @@ import {
   type Secret,
   type Trace,
 } from "@effect-tavern/provider"
-import { WorkshopLayout, type DraftView } from "@effect-tavern/runtime/src/workshop.ts"
 import { author } from "./author.ts"
-import { validateCard } from "@effect-tavern/runtime/src/author.ts"
-import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
+import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import {
   decodeLayer,
   decodeLocal,
@@ -66,18 +64,19 @@ import { policyFor } from "@effect-tavern/runtime/src/history.ts"
 import {
   Routing,
   cardView,
-  facets,
   makeSession,
   type Phase,
   type Pair,
   type Session,
   type Turn as Logged,
 } from "@effect-tavern/runtime/src/session.ts"
-import { Cause, Effect, Stream, Schema } from "effect"
+import { Cause, Effect, Stream } from "effect"
 import type { TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
 import type { Data } from "./data.ts"
+import { depots } from "./depot.ts"
 import type { Exported } from "./export.ts"
 import { names } from "./names.ts"
+import { shelf } from "./shelf.ts"
 import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
 
 export type PublicEvent = TimelineEvent | { kind: "error"; message: string; code?: string; phase: Phase }
@@ -95,47 +94,34 @@ export class NoModel extends Error {
   }
 }
 
-/** A card as the shelf lists it: id and title, its one-line summary and its facets (session.ts `facets`), what the
- *  client's shelf shows and filters by: a card file's read off the decoded card, a table card's stored when it was
- *  written (data.ts `cards.put`; a row from before has neither). */
-
-/** Where cards come from (tavern.ts `shelf`: a directory of YAML and the library's table): every one as a row, and
- *  one whole by id (throws when there is none). */
-export interface Cards {
-  list(): CardRow[]
-  get(id: string): Card
-}
-
 /** The rows of the `pack` table that are ranks, not packs. */
 const RESERVED = ["harness"]
-const decodeDraftUpdate = Schema.decodeUnknownSync(
-  Schema.Struct({
-    card: Schema.optionalKey(Schema.Unknown),
-    layout: Schema.optionalKey(WorkshopLayout),
-  }),
-)
 
 export const library = ({
   data,
-  cards: source,
   overlay: given,
   model: env,
   pinned = false,
+  fetch,
 }: {
   data: Data
-  cards: Cards
   overlay?: Layer // the harness overlay until one is stored
   model?: (phase: Phase) => Model
   pinned?: boolean
+  fetch?: typeof globalThis.fetch // what a card library is read over (depot.ts); a test's own
 }) => {
-  // Installed cards override templates, including when the caller supplies a file-only shelf.
-  const cards: Cards = {
-    list: () => [...new Map([...source.list(), ...data.cards.list()].map((c) => [c.id, c])).values()],
-    get: (id) => {
-      const raw = data.cards.get(id)
-      return raw === undefined ? source.get(id) : decodeCard({ ...(raw as object), id })
+  const sessions = new Map<Id, { session: Session; turn: Turn; stale?: boolean }>()
+  // The install's cards (shelf.ts). A card replaced or removed takes the open sessions on it along: an idle one is
+  // dropped and reopens on the new card, one with a turn in flight finishes on the card it began on.
+  const cards = shelf(data, {
+    changed: (card) => {
+      for (const [id, cached] of sessions) {
+        if (data.stories.get(id)?.card !== card) continue
+        if (cached.turn.busy !== null || cached.turn.pendingFailure) cached.stale = true
+        else sessions.delete(id)
+      }
     },
-  }
+  })
   const routing = (): Routing => (data.routing.read() as Routing | undefined) ?? {}
   const providerOf = (id: string): Provider => {
     const p = data.providers.list().find((x) => x.id === id)
@@ -281,7 +267,6 @@ export const library = ({
       if (next !== l) data.locals.put(next)
     }
   }
-  const sessions = new Map<Id, { session: Session; turn: Turn; stale?: boolean }>()
   const row = (id: Id) => data.stories.get(id)
   const exists = (id: Id) => row(id) !== undefined
   /** A story's session and its turn, opened on its first request on the story's card, the same ones after. */
@@ -339,27 +324,6 @@ export const library = ({
     /** The model a stage runs on and the fold policy, as every session reads them on its next request. */
     model,
     author: author(() => model("author")),
-    drafts: {
-      get: (id: string): DraftView => {
-        const saved = data.drafts.get(id)
-        return {
-          card: saved?.card ?? cards.get(id),
-          draft: saved?.card !== undefined,
-          ...(saved?.layout && { layout: saved.layout }),
-        }
-      },
-      put: (id: string, value: unknown) => {
-        const update = decodeDraftUpdate(value)
-        if (update.card === undefined && update.layout === undefined) throw new Error("card or layout is required")
-        const saved = data.drafts.get(id)
-        const card = update.card === undefined ? saved?.card : decodeCard(update.card)
-        if (card && card.id !== id) throw new Error("card id does not match URL")
-        if (!card) cards.get(id) // Layout alone needs an installed card or an existing content draft.
-        const layout = update.layout ?? saved?.layout
-        data.drafts.put(id, { ...(card && { card }), ...(layout && { layout }) })
-      },
-      del: data.drafts.del,
-    },
     policy,
     session,
     /** A story's turn in flight (turn.ts), beside its session. */
@@ -472,11 +436,20 @@ export const library = ({
       const picked = personaOf(on.id, on.yields)
       const rows = rowsOf(card, picked)
       const { meta, ...rest } = cardView(c, rows)
+      const origin = cards.list().find((x) => x.id === card)!.origin
       const mounts = [...new Set(local.mounts)].flatMap((id) => {
         const p = rows.packs!.find((x) => x.id === id)
         return p ? [{ id: p.id, name: p.name }] : []
       })
-      return { ...meta, ...rest, local, mounts, persona: picked?.id ?? null, follows: personaFor(c, undefined).id }
+      return {
+        ...meta,
+        ...rest,
+        origin,
+        local,
+        mounts,
+        persona: picked?.id ?? null,
+        follows: personaFor(c, undefined).id,
+      }
     },
     hats: data.hats,
     packs: {
@@ -624,24 +597,9 @@ export const library = ({
     },
     /** The model-name table in force (names.ts). */
     names: () => names(data),
-    /** Every card the install knows, by id and title (`Cards`). */
-    cards: {
-      list: () => cards.list(),
-      put: (value: unknown) => {
-        const { card, diagnostics } = validateCard(value)
-        const errors = diagnostics.filter((d) => d.level === "error")
-        if (!card || errors.length)
-          throw new Error(errors.map((d) => `${d.level} ${d.rule} ${d.path}: ${d.message}`).join("\n"))
-        const flags = facets(card)
-        data.cards.put(card, flags)
-        data.drafts.del(card.id)
-        for (const [id, cached] of sessions) {
-          if (row(id)?.card !== card.id) continue
-          if (cached.turn.busy !== null || cached.turn.pendingFailure) cached.stale = true
-          else sessions.delete(id)
-        }
-      },
-    },
+    /** The install's cards (shelf.ts) and the card libraries it knows (depot.ts). */
+    cards,
+    depots: depots({ data, shelf: cards, fetch }),
     personas: {
       /** By name, the install's default marked. */
       list: (): Persona[] => {

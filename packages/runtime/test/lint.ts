@@ -1,4 +1,4 @@
-// src/lint.ts: one bad card per rule, and the four template cards with every warning they carry listed.
+// src/lint.ts: one bad card per rule, and the four fixture cards with every warning they carry listed.
 import assert from "node:assert/strict"
 import type { Card } from "../src/card.ts"
 import { lint } from "../src/lint.ts"
@@ -347,7 +347,7 @@ assert.deepEqual(of({ ...base, greetings: [{ text: "开场。" }, { note: "由�
 ])
 assert.ok(of({ ...base, greetings: [{ text: "  " }] }).includes("error empty-greeting greetings[0]"))
 
-// The template cards: no errors, and exactly these warnings (a new one fails here until it is meant).
+// The fixture cards (test/cards): no errors, and exactly these warnings (a new one fails here until it is meant).
 const templates: Record<string, string[]> = {
   wuxia: [
     "warn orphan-event rules.actions.strike.miss[1]", // the miss reaches the narrator as a ledger line; nothing opens on it

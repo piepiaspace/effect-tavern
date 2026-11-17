@@ -2,8 +2,16 @@
 // (src/log.ts: the same code, fed by the snapshot and by `change` events; head is where the reader is, and the server
 // keeps it). `draft` is the node being written: its prose grows by `delta`; a second draft (check failed) starts it over
 // and keeps the first as `prev`, greyed in place until the node lands. A failed turn keeps its draft as a ghost under `error`.
-import type { CardView, StoryRow, Persona, CardRow as ShelfCard } from "@effect-tavern/runtime/src/library.ts"
-export type { CardView, StoryRow, Persona, CardRow as ShelfCard } from "@effect-tavern/runtime/src/library.ts"
+import type { CardView, DepotRow, StoryRow, Persona, CardRow as ShelfCard } from "@effect-tavern/runtime/src/library.ts"
+export type {
+  CardView,
+  DepotRow,
+  DepotView,
+  Origin,
+  StoryRow,
+  Persona,
+  CardRow as ShelfCard,
+} from "@effect-tavern/runtime/src/library.ts"
 import type { Routing } from "@effect-tavern/runtime/src/session.ts"
 export type { Pair, Routing } from "@effect-tavern/runtime/src/session.ts"
 import { emptyDraft, hasDraft, type DraftModel } from "./composition.ts"
@@ -54,11 +62,12 @@ export const locals = Atom.make<Readonly<Record<string, Local>>>({}).pipe(Atom.k
 /** The player's settings (GET /providers, /secrets, /routing, /hats, /packs): the model providers, the key vault as hints,
  *  which (provider, model) runs each stage, the hats (提示词模板 in the UI), and the player's rows ([harness, ...packs]). */
 export const providers = Atom.make<readonly Provider[]>([]).pipe(Atom.keepAlive)
-/** A card as GET /cards lists it (server library.ts `CardRow`): a card file's row adds its summary and facets; a
- *  library-table card's row has id and title alone. */
-/** Every card the install knows (GET /cards): the sidebar's shelf (side.tsx, searched by query.ts), and what a
- *  persona's picks are named by. */
+/** Every card of the install (GET /cards, server shelf.ts): the sidebar's shelf (side.tsx, searched by query.ts), and
+ *  what a persona's picks are named by. A row says how its card got here (`origin`); a new install has none. */
 export const cards = Atom.make<readonly ShelfCard[]>([]).pipe(Atom.keepAlive)
+/** The card libraries the install knows (GET /depots, server depot.ts): places cards can be taken from, none until the
+ *  player adds one. What a library holds is read when it is opened (wire.ts `viewDepot`), never kept. */
+export const depots = Atom.make<readonly DepotRow[]>([]).pipe(Atom.keepAlive)
 export const secrets = Atom.make<readonly SecretView[]>([]).pipe(Atom.keepAlive)
 /** The model-name table (GET /models/names), read through provider names.ts `lookup`: a model id's name, owner, family. */
 export const names = Atom.make<Names>({}).pipe(Atom.keepAlive)

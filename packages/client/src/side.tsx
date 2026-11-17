@@ -13,7 +13,21 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
-import { Archive, Clue, Close, Next, Prev, Settings, Shade, Snippets, Tag, Translate, User, Write } from "./icons.tsx"
+import {
+  Archive,
+  Card as CardIcon,
+  Clue,
+  Close,
+  Next,
+  Prev,
+  Settings,
+  Shade,
+  Snippets,
+  Tag,
+  Translate,
+  User,
+  Write,
+} from "./icons.tsx"
 import { openSettings } from "./settings.tsx"
 import { browse, close, open, openStory, showCard, toHome } from "./pages.ts"
 import {
@@ -265,6 +279,10 @@ export const Sidebar = (props: {
     props.onLeave?.()
     void showCard(id)
   }
+  const toCards = () => {
+    props.onLeave?.()
+    openSettings("cards")
+  }
   const toWorkshop = () => {
     if (at() === null) return
     props.onLeave?.()
@@ -283,6 +301,11 @@ export const Sidebar = (props: {
           </button>
         </Show>
         <span class="side-top-end">
+          <Show when={which() === "shelf"}>
+            <button type="button" class="icon sm" aria-label={t("side.manageCards")} onClick={toCards}>
+              <CardIcon />
+            </button>
+          </Show>
           <Show when={which() === "workspace"}>
             <button
               type="button"
@@ -416,7 +439,15 @@ export const Sidebar = (props: {
                 )}
               </For>
               <Show when={!shown().length}>
-                <li class="none">{cq().trim() || picked().length ? t("side.noCardMatch") : t("side.noCards")}</li>
+                <li class="none">
+                  <span>{cq().trim() || picked().length ? t("side.noCardMatch") : t("side.noCards")}</span>
+                  {/* an empty shelf (not an empty search): the way to the first card */}
+                  <Show when={!shelf().length}>
+                    <button type="button" class="btn sm" onClick={toCards}>
+                      {t("side.addCards")}
+                    </button>
+                  </Show>
+                </li>
               </Show>
             </ul>
           </section>

@@ -1,6 +1,6 @@
 ---
 name: card-author
-description: Author, revise, test, or remaster cards for Effect Tavern. Trigger whenever a task touches a card YAML (`packages/runtime/cards/*.yaml` or user cards), asks how a card expresses state/lore/products/openings, unrolls a SillyTavern card, or runs `card` / `tavern card` workshop tools.
+description: Author, revise, test, or remaster cards for Effect Tavern. Trigger whenever a task touches a card YAML (a user's card file, or the fixtures in `packages/runtime/test/cards/*.yaml`), asks how a card expresses state/lore/products/openings, unrolls a SillyTavern card, or runs `card` / `tavern card` workshop tools.
 ---
 
 # Card Author
@@ -67,5 +67,5 @@ All CLIs expose full flag documentation via `--help` and machine-readable output
 Load **only** the reference file required by your current task:
 
 - **[references/schema.md](references/schema.md)** — Read when mapping concepts to `Card` fields (`frame` slots, `fiction` bands, `greetings`, `rules`, `drawn` gauge/scale heuristics, `lore` + `sections` + `ContextPolicy`, `products` `world`/`chronicle`/`theater`, `catalogs`, `Cond`, `names`, and static `lint` codes).
-- **[references/pitfalls.md](references/pitfalls.md)** — Read before designing `readouts`, multi-opening state, `frame` vs. `fiction` placement, or inspecting the four canonical cards (`packages/runtime/cards/*.yaml`).
+- **[references/pitfalls.md](references/pitfalls.md)** — Read before designing `readouts`, multi-opening state, `frame` vs. `fiction` placement, or inspecting the four fixture cards (`packages/runtime/test/cards/*.yaml`).
 - **[references/workshop-and-testing.md](references/workshop-and-testing.md)** — Read when porting/remastering SillyTavern cards with `unroll`, running `tavern card compile|sort|review`, or writing `scenario.yaml` assertions.

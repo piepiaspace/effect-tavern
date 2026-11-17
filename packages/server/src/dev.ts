@@ -1,5 +1,5 @@
-// The developer's session: every card of the shelf (the YAML files in CARDS, by default the runtime's templates in
-// packages/runtime/cards, then the library's `card` table) on the local Anthropic connection, or on a scripted
+// The developer's session: the library's own shelf (shelf.ts; a new library has no card until one is installed, from a
+// file, the workshop or a card library) on the local Anthropic connection, or on a scripted
 // model (MODEL=fake) that answers every stage well enough to drive the client; served in inspector mode. The library
 // (data.ts) is `tavern.db` under DATA, by default .dev/ at the repo root, so Vite re-evaluating this module after a
 // runtime/server edit, or a restart, keeps the stories; a second process on the same DATA fails fast on the lock
@@ -17,14 +17,13 @@ import {
   type FakeCall,
   type Model,
 } from "@effect-tavern/provider"
-import { cardNames, loadCard, player, readCard } from "@effect-tavern/runtime/support/cards.ts"
+import { player } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
-import { mkdirSync, readdirSync } from "node:fs"
-import { join } from "node:path"
+import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { open } from "./data.ts"
 import { refresh } from "./names.ts"
-import { shelf, tavern } from "./tavern.ts"
+import { tavern } from "./tavern.ts"
 
 // a compiled binary (bun build --compile) has no checkout around it: its library lives where it is run
 const dir =
@@ -56,28 +55,26 @@ const answer = (o: FakeCall) => {
         delay: demo ? 1000 : 0,
       }
     case "record": {
-      // ponytail: canned rows for the harness defaults and wuxia's products; another card's product decodes to nothing
+      // canned rows for the harness's own products; a card's product is asked of the model alone and decodes to nothing here
       const canned: Record<string, unknown> = {
-        notes: `第${n}幕：玩家与裴青舟在苦竹岭茶亭中隔桌相对，试探彼此来意。`,
+        notes: `第${n}幕：两人隔着一张桌子说话，各自试探对方的来意。`,
         options: [
-          "我解下腰间那柄旧短剑放在石桌上：「我是替李鹤来送还故物的。」",
-          "「既然裴兄不愿提他，那我便向阁下讨教几招。」我按住剑柄往前踏出一步。",
-          "我看着亭外未干的泥土，轻声问：「这竹亭外的孤坟，埋的真是李鹤吗？」",
-          "我拱了拱手：「今日冒昧打扰，改日再来拜会。」",
+          "我把带来的东西放在桌上：「我是来还这个的。」",
+          "「既然不愿多说，那就换个问法。」我往前走了一步。",
+          "我看着门外，轻声问：「这里以前住过别人吗？」",
+          "我点了点头：「今天打扰了，改日再来。」",
         ],
-        scene: { place: `苦竹岭茶亭 ${n}`, present: [{ name: "裴青舟", mood: "calm" }] },
-        people: [],
       }
       return { ...defaultAnswer(doc, canned), delay: demo ? 1000 : 0 }
     }
     case "narrate": {
       // inner is a narrate-stage product: asked for on the turn (an `inner:` ask line) it follows the prose as a block;
       // demanded on a node ("Write no prose") the block is the whole answer
-      const inner = "裴青舟垂眼看着石桌上的雨水，心里暗自思量你究竟是从何处得知李鹤的名字。"
+      const inner = "对方垂眼看着桌面，心里在想你究竟是从哪里听来这件事的。"
       if (text.includes("Write no prose")) return { text: `<<aside>> inner\n${inner}`, delay: 20 }
       const block = /^inner: /m.test(text) ? `\n<<aside>> inner\n${inner}` : ""
       return {
-        text: `第${++n}段。${text.includes("Previous draft broke") ? "二稿。" : demo ? "一稿。" : ""}${"雨后的苦竹林里雾气未散，竹叶上的水珠顺着亭檐一滴滴落在青石板上。"}${"裴青舟按着乌木剑鞘站在三步开外，目光静静地落在你腰间的旧短剑上。".repeat(demo ? 6 : 2)}${block}`,
+        text: `第${++n}段。${text.includes("Previous draft broke") ? "二稿。" : demo ? "一稿。" : ""}${"雨刚停，屋檐上的水还在一滴一滴往下落。"}${"对方站在三步开外，没有说话，目光落在你带来的东西上。".repeat(demo ? 6 : 2)}${block}`,
         delay: demo ? 120 : 20,
       }
     }
@@ -100,17 +97,8 @@ const one = scripted ? { ...fake(answer), hat: process.env["HAT"] } : live() // 
 const model = one && (() => one)
 
 const key = localAnthropicKey()
-// the card files, read once at start: a directory's YAML, or the templates by name (a compiled binary embeds those,
-// where a directory has no listing)
-const at = process.env["CARDS"]
-const files = at
-  ? readdirSync(at)
-      .filter((f) => f.endsWith(".yaml"))
-      .map((f) => readCard(join(at, f)))
-  : await Promise.all(cardNames.map(loadCard))
 export const { handler } = tavern({
   data,
-  cards: shelf(files),
   overlay: player.harness,
   model,
   pinned: scripted, // MODEL=fake scripts every stage, whatever the routing says

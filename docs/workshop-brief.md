@@ -46,7 +46,7 @@ Phase 1 已经给了每一环，工坊不新建平行机制：
 | 候选卡校验 | `checkCard(source)`（`runtime/support/author.ts`） | 候选序列化为 YAML 后过它；`diagnostics` 进 diff 面板，`sections` / `total` 显示候选的 token 变化 |
 | 解释为什么没生效 | `card view --json`（子句求值、槽位来源、分段与断点） | 候选与当前卡各跑一次，并排显示同一 `--state` 下哪些 band / window / readout 变了 |
 | 零 token 回归 | `runScenario`（`runtime/support/scenario.ts`） | 卡旁若有 `*.scenario.yaml`，候选触及 `rules` 时自动跑一遍；失败列入 diff 面板，不阻止采纳 |
-| 入库 | `library.cards.put` / `PUT /cards/:id` / `tavern card install` | 候选不直接入库；作者采纳后页面保存草稿，install 时才 put。`cards.put` 复用完整值级校验，拒绝所有 error |
+| 入库 | `shelf.install`（`packages/server/src/shelf.ts`）/ `POST /cards` / `POST /cards/:id/draft/install` / `tavern card install` | 候选不直接入库；作者采纳后页面保存草稿，install 时才 put。`cards.put` 复用完整值级校验，拒绝所有 error |
 | 模型 | `library.routing`、`provider.object` | 三个操作用一个新路由键 `author`（缺省落 `default`）；都是单次 `object()`，compile 多一次回喂。不用 `runStageTools`：没有工具，没有事务 |
 | 双模 | `tavern` 宿主的本地 / `--url` | 三个操作住在宿主（需要模型），不住离线 `card` 命令；`--url` 模式走三条 POST 路由 |
 | 测试 | aimock（`bun run verify`，不花钱） | 每个操作一组 fixture：正常、越界（模型夹带正文 → schema 丢弃，候选保持作者文本）、回喂修正 |
@@ -70,7 +70,7 @@ HTTP（`serve.ts`，供 `--url` 与客户端）：
 POST /author/compile  { card, select: path[], intent }        → { candidate, diagnostics }
 POST /author/sort     { card, source, paragraphs?: string[] } → { candidate, placements }
 POST /author/review   { card }                                → { diagnostics }
-GET  /cards/:id/draft                                         → { card, draft: boolean, layout? }：有草稿返回草稿，否则返回已安装的完整 Card
+GET  /cards/:id/draft                                         → { card, draft: boolean, layout?, diagnostics }：有草稿返回草稿，否则返回已安装的完整 Card；diagnostics 是闸对它此刻的判断
 PUT  /cards/:id/draft { card?, layout? }                       → 至少一项；分别更新，未提供的一项保留
 DELETE /cards/:id/draft                                       → 放弃内容草稿，回到正式卡，保留布局
 ```
@@ -115,7 +115,7 @@ DELETE /cards/:id/draft                                       → 放弃内容�
 ### Step 2.3 编辑态（client，#121 的编辑那一轮）
 - [ ] 卡页编辑态：按声明露出；文稿流直接写；划选拆段；结构区的判据输入框。
 - [ ] diff 面板与逐块采纳，采纳后重跑 check；候选 vs 当前的 view 并排。
-- [ ] 草稿自动保存，install 走 `PUT /cards/:id`。
+- [ ] 草稿自动保存，install 走 `POST /cards/:id/draft/install`（服务端把自己存的草稿过闸上架；2026-11-17 起 `PUT /cards/:id` 已移除）。
 - [ ] #31 卸载器的碎片进 sort 的入口。
 
 ### Step 2.4 把立场写给外部 agent

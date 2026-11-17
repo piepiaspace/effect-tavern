@@ -52,7 +52,7 @@ lookup → (decide → settle)* → gate → direct → narrate → check → po
 packages/
   runtime/    回合管线、Card/Layer/Product Schema、决策模型快筛、日志树、派生折叠、静态 lint 与离线制卡 CLI
   provider/   语言模型与决策模型连接、AI SDK 编译（Anthropic / OpenAI 兼容 / Gemini）、缓存断点与流式原语
-  server/     SQLite 文档库、HTTP + SSE 服务端、制卡工坊接口（compile / sort / review）与 `tavern` CLI
+  server/     SQLite 文档库、卡片书架与可选的卡库、HTTP + SSE 服务端、制卡工坊接口（compile / sort / review）与 `tavern` CLI
   client/     Solid 2.0 + @ui-sdk Web 客户端：空间画布壳层、阅读器、卡片详情、读数与小剧场、检查器、时间轴与设置
 skills/
   card-author/  渐进式披露（Progressive Disclosure）制卡与旧卡重制 Agent Skill
@@ -75,6 +75,8 @@ curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/downloa
 
 它会下载最新 Release 的手机版（约 50 MB），启动后自动打开浏览器 `http://127.0.0.1:7777`。以后输入 `effect-tavern` 启动，`effect-tavern update` 更新；数据在 `~/.tavern`。
 
+程序本身不带任何卡片，新安装的书架是空的：在 **设置 → 卡片** 里导入卡片文件（`.yaml` / `.json`），或填入卡库的 `https` 地址后从中安装。
+
 ### 环境要求
 
 - **Bun** `>= 1.4.4` 且 **Node.js** `>= 24`
@@ -90,8 +92,14 @@ vp install
 # 启动全栈开发服务（前端 HMR + 进程内 /api 会话，默认库为 .dev/tavern.db）
 bun --bun vp run dev
 
-# 使用零 Token 脚本模型或自定义 YAML 卡片目录启动
-MODEL=fake CARDS=./my-cards bun --bun vp run dev
+# 使用零 Token 脚本模型启动
+MODEL=fake bun --bun vp run dev
+
+# 新库里没有卡片：从文件安装一张，或从卡库里取一张
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml --url http://localhost:5173
+bun run tavern depot add ./my-cards            # 含 index.json 的目录，或 https 地址
+bun run tavern depot show <卡库 id>            # 卡库里的卡，以及各自在书架上的状态
+bun run tavern depot pull <卡库 id> <卡片 id>  # 复制一张到书架
 
 # 构建前端并以单端口启动整座酒馆（:7777 同时服务 /api 与静态前端）
 cd packages/client && bun --bun vp build
@@ -101,7 +109,8 @@ bun run tavern serve --port 7777
 ### 终端游玩与无头宿主（`tavern`）
 
 ```sh
-# 终端直接开局游玩（传 MODEL=fake 或 --model fake 即可零 Token 验证）
+# 终端游玩一张已安装的卡（传 MODEL=fake 或 --model fake 即可零 Token 验证）
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml
 MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
 # 管理故事库或单独启动无头 API 服务（默认库 .tavern/tavern.db；传 --url 连接运行中服务）
@@ -114,9 +123,9 @@ bun run tavern serve --headless --port 7777
 ```sh
 # 离线零 Token 制卡闭环（脚手架、静态 lint 检查、阶段请求预览、场景回归断言）
 bun packages/runtime/bin/card.ts init my-card --template readout
-bun packages/runtime/bin/card.ts check wuxia
-bun packages/runtime/bin/card.ts view ri --stage record --state affection=60
-bun packages/runtime/bin/card.ts test wuxia
+bun packages/runtime/bin/card.ts check my-card.yaml
+bun packages/runtime/bin/card.ts view my-card.yaml --stage record --state affection=60
+bun packages/runtime/bin/card.ts test my-card.yaml
 
 # 按装配顺序只读展开 SillyTavern V2/V3（PNG 或 JSON）旧卡
 bun packages/runtime/bin/unroll.ts path/to/card.png

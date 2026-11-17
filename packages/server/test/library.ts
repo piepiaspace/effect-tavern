@@ -6,21 +6,17 @@ import { LLMock } from "@copilotkit/aimock"
 import { fake, fakeText, type Model } from "@effect-tavern/provider"
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { policyFor } from "@effect-tavern/runtime/src/history.ts"
-import { facets, makeSession } from "@effect-tavern/runtime/src/session.ts"
+import { makeSession } from "@effect-tavern/runtime/src/session.ts"
 import { harness } from "@effect-tavern/runtime/src/layer.ts"
 import { chat, plain as player } from "@effect-tavern/runtime/test/cards/index.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { Effect, Fiber, Stream } from "effect"
 import assert from "node:assert/strict"
-import { mkdtemp, rm } from "node:fs/promises"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
-import { tmpdir } from "node:os"
-import { join } from "node:path"
-import { DatabaseSync } from "node:sqlite"
 import { open, type Data } from "../src/data.ts"
 import { library, NoModel } from "../src/library.ts"
-import { shelf } from "../src/tavern.ts"
+import { shelf } from "../src/shelf.ts"
 import { makeTurn, type Call, type Out } from "../src/turn.ts"
 
 // the localhost upstreams below stay off a shell proxy: through one, a refused socket comes back as the proxy's 502
@@ -28,13 +24,17 @@ process.env.NO_PROXY = "localhost,127.0.0.1"
 const env = fake(() => ({ text: "hello world" }))
 const model = () => env
 const at = (s: { address: () => unknown }) => `http://localhost:${(s.address() as AddressInfo).port}`
-const chats = shelf([chat]) // a shelf of one, where the card does not matter
+/** `data` with `cards` on its shelf: a test installs what it plays, the program comes with none. */
+const stocked = (data: Data, ...cards: Card[]) => {
+  for (const c of cards) shelf(data).install(c, { via: "file" }, { replace: true })
+  return data
+}
 const canned = { notes: "N1", options: ["A", "B", "C", "D"], people: [], scene: { place: "P", present: [] } }
 
-/** A library over `data` with chat and `other` on its shelf (no table cards unless the test writes some). */
+/** A library over `data` with chat and `other` on its shelf. */
 const other: Card = { ...chat, id: "other", title: "别处" }
 const over = (data: Data, m: () => Model = model) =>
-  library({ data, cards: shelf([chat, other]), overlay: player.harness, model: m })
+  library({ data: stocked(data, chat, other), overlay: player.harness, model: m })
 
 // The library holds no open story and binds no card: a session per story, on the card its row names, opened on first
 // use and kept. The player's rows are read per request, so a write reaches every open session. The listing is every card's, each row naming its card and
@@ -151,11 +151,11 @@ const over = (data: Data, m: () => Model = model) =>
   const bad = Effect.runFork(Stream.runDrain(t.start({ kind: "act", input: { text: "lost" } })))
   await Effect.runPromise(Fiber.interrupt(bad)) // gone before narrate is through, so before record fails
   const beforeReload = lib.session(p)
-  lib.cards.put(chat) // mark the in-flight session stale before its unheard failure
+  lib.cards.install(chat, { via: "file" }, { replace: true }) // mark the in-flight session stale before its unheard failure
   while (t.busy) await new Promise((f) => setTimeout(f, 5))
   assert.equal(t.pendingFailure, true)
   assert.equal(lib.session(p), beforeReload) // reads must not discard the pending error
-  lib.cards.put(chat) // replacing again after failure must preserve it too
+  lib.cards.install(chat, { via: "file" }, { replace: true }) // replacing again after failure must preserve it too
   assert.equal(lib.session(p), beforeReload)
   const failed = lib.attach(p)
   assert.notEqual(lib.session(p), beforeReload) // consumed: the next access reloads the card
@@ -204,7 +204,7 @@ const over = (data: Data, m: () => Model = model) =>
   const plain: Card = { ...chat, id: "plain", frame: chat.frame.filter((f) => f.id !== "persona") }
   const note: Card = { ...plain, id: "note", input: "note" }
   const data = open(":memory:")
-  const lib = library({ data, cards: shelf([chat, plain, note]), overlay: player.harness, model })
+  const lib = library({ data: stocked(data, chat, plain, note), overlay: player.harness, model })
   const persona = (id: number) => lib.stories.list().find((x) => x.id === id)!.persona
   const marked = () => lib.personas.list().flatMap((p) => (p.default ? [p.id] : []))
   assert.equal(persona(lib.stories.create(plain.id)), null) // no persona yet: nothing to inherit
@@ -257,7 +257,7 @@ const over = (data: Data, m: () => Model = model) =>
   const data = open(":memory:")
   const lib = over(data)
   lib.personas.put({ id: "monk", name: "行脚僧", text: "你是路过的行脚僧。" })
-  lib.cards.put({ ...chat, id: "third" })
+  lib.cards.install({ ...chat, id: "third" }, { via: "file" })
   for (const [card, persona] of [
     [chat.id, "monk"],
     ["other", "monk"],
@@ -316,7 +316,7 @@ const over = (data: Data, m: () => Model = model) =>
   assert.deepEqual(rest[0]!.fragments, player.harness!.fragments)
   assert.ok(lib.session(a).layer.frame.some((f) => f.text === player.harness!.fragments![0]!.text))
   // the harness row: the whole row back stores nothing, one change stores that, and it is in the session
-  const bare = library({ data: open(":memory:"), cards: shelf([chat]) })
+  const bare = library({ data: open(":memory:") })
   const code = bare.packs.list()[0]!
   assert.deepEqual(code.fragments, undefined)
   bare.packs.put(code)
@@ -339,7 +339,7 @@ const over = (data: Data, m: () => Model = model) =>
 // the one reveal. A write with a value and no type reads the type off the key: an OAuth token is a bearer, anything else
 // a key; a rename without a value keeps the type it had.
 {
-  const lib = library({ data: open(":memory:"), cards: chats, overlay: player.harness })
+  const lib = library({ data: stocked(open(":memory:"), chat), overlay: player.harness })
   const VALUE = "sk-test-0123456789abcdef"
   const made = lib.secrets.add({ name: "Relay key", type: "api_key", value: VALUE })
   assert.deepEqual(made, { id: made.id, name: "Relay key", type: "api_key", hint: "sk-tes****cdef" })
@@ -379,7 +379,7 @@ const over = (data: Data, m: () => Model = model) =>
     secret: "k",
     models: [{ id: "m", contextTokens: 16000 }, { id: "n" }],
   }
-  const lib = library({ data, cards: chats, overlay: player.harness, model })
+  const lib = library({ data: stocked(data, chat), overlay: player.harness, model })
   const on = (m: Model) => (m === env ? "env" : (m.model as { modelId: string }).modelId)
   const pair = (model: string) => ({ provider: "relay", model })
   assert.equal(on(lib.model("narrate")), "env")
@@ -422,10 +422,10 @@ const over = (data: Data, m: () => Model = model) =>
   data.providers.list = list
   data.stories.list = stories
   lib.routing.write({ default: pair("m"), stages: { lookup: pair("n") } })
-  const pinned = library({ data, cards: chats, overlay: player.harness, model, pinned: true })
+  const pinned = library({ data: stocked(data, chat), overlay: player.harness, model, pinned: true })
   assert.deepEqual([on(pinned.model("lookup")), pinned.policy().budget], ["env", 8000])
   assert.throws(
-    () => library({ data: open(":memory:"), cards: chats, overlay: player.harness }).model("narrate"),
+    () => library({ data: stocked(open(":memory:"), chat), overlay: player.harness }).model("narrate"),
     NoModel,
   )
 
@@ -479,7 +479,7 @@ const over = (data: Data, m: () => Model = model) =>
   dead.close()
   const host = createServer((_, res) => res.end(JSON.stringify({ data: [{ id: "o" }, { id: "m" }] }))).listen(0)
   const hostUrl = at(host)
-  const lib = library({ data: open(":memory:"), cards: chats, overlay: player.harness, model })
+  const lib = library({ data: stocked(open(":memory:"), chat), overlay: player.harness, model })
   const made = lib.secrets.add({ name: "Relay key", type: "api_key", value: VALUE })
   const relay = {
     id: "relay",
@@ -559,7 +559,7 @@ const over = (data: Data, m: () => Model = model) =>
     secret: "k",
     models: [],
   })
-  const lib = library({ data, cards: chats, overlay: player.harness, model })
+  const lib = library({ data: stocked(data, chat), overlay: player.harness, model })
   try {
     assert.deepEqual(await lib.providers.models("a"), [{ id: "claude-haiku-5-5" }])
     const [listed] = await lib.providers.test("a")
@@ -581,46 +581,6 @@ const over = (data: Data, m: () => Model = model) =>
   }
 }
 
-// The cards: file order then installed entries, one row per id (installed wins), the id where
-// there is no title. A table card opens a story like a file card; one that does not decode fails when asked for.
-{
-  const dir = await mkdtemp(join(tmpdir(), "tavern-cards-"))
-  const file = join(dir, "t.db")
-  const data = open(file)
-  // "mine" through the writer, its facets stored beside the json; the other two as rows written before the facets
-  // column, which list bare
-  data.cards.put({ ...chat, id: "mine", title: "我的" }, facets(chat))
-  new DatabaseSync(file)
-    .prepare("insert into card (id, title, json, updated) values (?, ?, '{}', 0), (?, ?, '{}', 0)")
-    .run(chat.id, "dup", "broken", "坏的")
-  const lib = library({
-    data,
-    cards: shelf([chat, { ...chat, id: "bare", title: undefined }]),
-    overlay: player.harness,
-    model,
-  })
-  try {
-    // a card's summary and facets ride on its row (the client's shelf shows them and its `#状态`-style words match
-    // on them, query.ts `admits`): a YAML card's read off it, a table card's as `put` stored them; an older row none
-    const line = { summary: chat.summary, facets: facets(chat) }
-    const { tokens, ...flags } = lib.cards.list().find((c) => c.id === "mine")!.facets!
-    assert.deepEqual(flags, { mode: "act", fields: true, actions: false, readouts: false, lore: false, openings: true })
-    assert.ok(tokens > 0)
-    assert.deepEqual(lib.cards.list(), [
-      { id: chat.id, title: "dup" },
-      { id: "bare", title: "bare", ...line },
-      { id: "broken", title: "坏的" },
-      { id: "mine", title: "我的", ...line },
-    ])
-    const mine = lib.stories.create("mine")
-    assert.deepEqual([lib.session(mine).meta.id, lib.view("mine").id], ["mine", "mine"])
-    assert.throws(() => lib.stories.create("broken"))
-    assert.throws(() => lib.stories.create(chat.id)) // installed definitions win, even malformed legacy rows
-    assert.throws(() => lib.view("none"), /no card none/)
-  } finally {
-    await rm(dir, { recursive: true })
-  }
-}
 console.log("library ok")
 
 // Cancelling or explicitly skipping a slow record preserves prose and broadcasts the final node before SSE closes.
@@ -706,7 +666,7 @@ for (const skip of [false, true]) {
 {
   const guarded: Card = { ...chat, id: "guarded", guard: ["Rule."] }
   const M = fake((o) => defaultAnswer(readStage(o), canned))
-  const lib = library({ data: open(":memory:"), cards: shelf([guarded]), overlay: player.harness, model: () => M })
+  const lib = library({ data: stocked(open(":memory:"), guarded), overlay: player.harness, model: () => M })
   const key = lib.secrets.add({ name: "D", value: "decision-test-key" })
   const dec = {
     enabled: false,

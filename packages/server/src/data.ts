@@ -7,8 +7,9 @@
 // the key vault (provider providers.ts `Secret`), the only table holding key material; `provider`: the player's model
 // providers, each naming a secret by id; `routing`: one row, which (provider, model) each stage runs on; `names`: one row,
 // the model-name table last fetched from models.dev and its ETag (names.ts). Export of cards
-// and stories never reads the three. `card`: a Card as the workshop will write it (the YAML templates are a directory beside
-// it, server tavern.ts `shelf`); what the json holds is decoded by the caller.
+// and stories never reads the three. `card`: the install's cards, every one of them (shelf.ts): a Card as a file, the
+// workshop or a card library gave it, its `origin` beside it; what the json holds is decoded by the caller. `depot`: the
+// card libraries the install knows, by location (depot.ts); their cards are not here until one is taken.
 // `story`: one log tree of a card, with the log's head and next beside it so an id never comes back after a drop. `node`: a
 // Turn per row, appended by the store's write. `call`: a node's `call` events (the Inspector's trace), appended when the
 // node lands or is amended, gone with the node, and kept for a story's last `traced` nodes only. The runtime never sees SQL: `store(story)` is log.ts's Store, whose
@@ -25,7 +26,14 @@
 // library holds hundreds of long stories; sync between two installs (the Android copy is a copy of this file).
 import type { CardDraft } from "@effect-tavern/runtime/src/workshop.ts"
 import type { Input } from "@effect-tavern/runtime/src/journal.ts"
-import type { StoredStory as StoryRow, Hit, Persona } from "@effect-tavern/runtime/src/library.ts"
+import type {
+  CardRow,
+  DepotRow,
+  Hit,
+  Origin,
+  Persona,
+  StoredStory as StoryRow,
+} from "@effect-tavern/runtime/src/library.ts"
 export type { StoredStory as StoryRow, Hit, Persona } from "@effect-tavern/runtime/src/library.ts"
 import type { Names } from "@effect-tavern/provider/src/names.ts"
 import type { Provider, Secret } from "@effect-tavern/provider/src/providers.ts"
@@ -259,6 +267,10 @@ const steps = [
   "create table if not exists persona_default (id integer primary key check (id = 1), persona text not null)",
   // a story on the default by inheritance, not by a pick: its persona yields to the card's own (layer.ts `yields`)
   "alter table story add column yields integer not null default 0",
+  // how a card reached the install (runtime library.ts `Origin`); a row from before reads as a file the player gave
+  "alter table card add column origin text",
+  // the card libraries the install knows (depot.ts): a name and a location, the cards themselves stay where they are
+  "create table if not exists depot (id text primary key, name text not null, json text not null)",
 ]
 const latest = baseline + steps.length
 const upgrade = (db: DatabaseSync) => {
@@ -430,8 +442,10 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
     del: (id: string) => {
       const layout = drafts.get(id)?.layout
       if (layout) drafts.put(id, { layout })
-      else q("delete from draft where id = ?").run(id)
+      else drafts.drop(id)
     },
+    /** The row whole, canvas and all: its card is gone. */
+    drop: (id: string) => void q("delete from draft where id = ?").run(id),
   }
   return {
     /** The file open: the one asked for, or this process's own when another process holds that one. */
@@ -498,29 +512,42 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
     },
     drafts,
     cards: {
-      /** The library's cards by id and title, with the summary and facets `put` stored beside the json (a row written
-       *  before those columns has neither), the Card in the json column left unread. */
-      list: (): { id: string; title: string; summary?: string; facets?: Facets }[] =>
-        (q("select id, title, summary, facets from card order by title").all() as Row[]).map((r) => ({
+      /** The install's cards by id and title, with the summary, facets and origin `put` stored beside the json, the Card
+       *  in the json column left unread. */
+      list: (): CardRow[] =>
+        (q("select id, title, summary, facets, origin from card order by title").all() as Row[]).map((r) => ({
           id: r["id"] as string,
           title: r["title"] as string,
           ...(r["summary"] ? { summary: r["summary"] as string } : {}),
           ...(r["facets"] ? { facets: JSON.parse(r["facets"] as string) as Facets } : {}),
+          origin: r["origin"] ? (JSON.parse(r["origin"] as string) as Origin) : { via: "file" },
         })),
-      /** A card written whole, with its facets (session.ts `facets`, the caller's reading) as a projection beside the
-       *  json, so the shelf's rows never decode a card. */
-      put: ({ id, ...card }: Card, facets: Facets) =>
-        void q("insert or replace into card (id, title, json, updated, summary, facets) values (?, ?, ?, ?, ?, ?)").run(
+      /** A card written whole, with its facets (session.ts `facets`, the caller's reading) and its origin as projections
+       *  beside the json, so the shelf's rows never decode a card. */
+      put: ({ id, ...card }: Card, facets: Facets, origin: Origin) =>
+        void q(
+          "insert or replace into card (id, title, json, updated, summary, facets, origin) values (?, ?, ?, ?, ?, ?, ?)",
+        ).run(
           id,
           card.title ?? id,
           JSON.stringify(card),
           Date.now(),
           card.summary ?? null,
           JSON.stringify(facets),
+          JSON.stringify(origin),
         ),
       /** One card's json column, parsed (decoded by the caller); none when the table has no such id. */
       get: (id: string): unknown => parse<unknown>(q("select json from card where id = ?").get(id) as Row | undefined),
+      /** The card with what is the player's on it alone: its draft and its local row. Its stories are the caller's to
+       *  have refused first (shelf.ts `remove`). */
+      del: (id: string) =>
+        tx(() => {
+          q("delete from card where id = ?").run(id)
+          q("delete from draft where id = ?").run(id)
+          q("delete from local where card = ?").run(id)
+        }),
     },
+    depots: named<DepotRow>("depot"),
     /** Stories, a card's or every card's, newest first, each with its title (the player's, or none), its star, its turns and the
      *  last of them. The turns are on the head's line (head, its parent, up to the root): the nodes with a player
      *  input, a line or a note to the narrator (a note-only turn has `text: ""`). So a greeting is not a turn, a

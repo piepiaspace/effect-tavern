@@ -5,6 +5,12 @@
 
 ```sh
 bun run tavern card install ./my-card.yaml
+bun run tavern card list
+bun run tavern card export my-card -o my-card.yaml
+bun run tavern card remove my-card
+bun run tavern depot add ./my-cards
+bun run tavern depot show <卡库 id>
+bun run tavern depot pull <卡库 id> my-card
 bun run tavern story list --json
 bun run tavern story new my-card
 MODEL=fake bun run tavern play my-card --input '你好' --jsonl
@@ -17,7 +23,8 @@ MODEL=fake bun run tavern serve --headless --port 7777
 ```
 
 没有 `--url` 时，直接打开 `DATA/tavern.db`；`DATA` 默认是当前目录的 `.tavern`。
-`CARDS` 可指定模板 YAML 目录。安装卡覆盖同 id 模板。已有服务占用这个库会报错，
+程序不带任何卡片，新库的书架是空的：卡片只能由 `card install`、卡库（`depot pull`）或工坊放上去。
+`card install` 覆盖同 id 的已安装卡；`card remove` 在这张卡还有故事时拒绝。已有服务占用这个库会报错，
 提示进程、库路径及 `--url`；不会自动切换到另一个库。
 
 给 install、play、story 子命令传 `--url http://127.0.0.1:7777`（末尾带 `/api` 也可），
@@ -79,7 +86,13 @@ MODEL=fake bun run tavern play my-card --greeting 1 --set world=古风 --set bon
 输入按行串行处理。交互终端中 `/stop` 可直接打断正在运行的回合，错误打印后可继续输入；
 管道模式遇到首个错误即返回非零退出码，后续已缓冲的指令也不会执行。`/quit` 等此前排队输入完成后退出。
 
-`card install` 先通过 checkCard，再调用 library.cards.put；失败不会安装。
+`card install` 先通过 checkCard，再把文件原文交给书架（`shelf.ts` 的 `install`，带 `replace`）；失败不会安装。
+
+卡库（`depot`，实现见 `packages/server/src/depot.ts`）是一个含 `index.json` 的目录或 https 地址，只读、可选：
+`depot add <位置>` 登记（读一次 index 确认它是卡库；目录只在本地直连模式可用，`--url` 模式只收 https），
+`depot list` 列出已登记的卡库，`depot show <id>` 现读 index 并标出每张卡相对书架的状态
+（absent / installed / update / taken），`depot pull <id> <卡片 id> [--replace]` 把一张卡复制到书架，
+`depot remove <id>` 只忘掉这个卡库，已取的卡片保留。除 `show` 与 `pull` 外不发任何请求。
 安装期间的回合仍使用原卡；如果无人订阅的回合失败，缓存保留到下一次 attach 消费错误，
 随后才加载新卡。不会因读取节点或再次装卡而丢失该错误。
 

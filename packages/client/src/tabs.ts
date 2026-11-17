@@ -130,6 +130,28 @@ export const forget = (ids: readonly Id[]): void => {
   })
 }
 
+/** A card removed from the shelf (it had no story left). A tab on its page is a home tab; a story's tab that was
+ *  browsing it (pages.ts `showCard` keeps the story) is back on its story's own card, the removed card's page out of
+ *  its stack. The settings page stays up either way: the removal was made from it. */
+export const shed = (card: string): void => {
+  const s = now()
+  const rows = registry.get(stories)?.stories ?? []
+  registry.set(tabs, {
+    ...s,
+    list: s.list.map((t): Tab => {
+      if (t.card !== card) return t
+      if (t.story === null) {
+        const page: Page = t.page === "settings" ? "settings" : "home"
+        return { id: t.id, story: null, card: null, page, under: page === "settings" ? ["home"] : [] }
+      }
+      const own = rows.find((x) => x.id === t.story)?.card ?? null
+      return t.page === "card"
+        ? { ...t, card: own, page: "reader", under: [] }
+        : { ...t, card: own, under: t.under.filter((p) => p !== "card") }
+    }),
+  })
+}
+
 const PAGES = new Set(["home", "reader", "card", "workshop", "timeline", "settings", "writing", "status"])
 const isPage = (p: unknown): p is Page =>
   (typeof p === "string" && PAGES.has(p)) ||

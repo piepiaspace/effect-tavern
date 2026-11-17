@@ -28,6 +28,9 @@ import {
   apply,
   card,
   cards,
+  depots,
+  type DepotRow,
+  type DepotView,
   hats,
   locals,
   log,
@@ -42,6 +45,7 @@ import {
   decision,
   stories,
   type CardView,
+  type ShelfCard,
   type Routing,
   type Wire,
   activeOf,
@@ -201,6 +205,40 @@ export const putLocal = (cardId: string, edit: (l: Local) => Local): Promise<voi
 const json = (method: string, v: unknown): RequestInit => ({ method, body: JSON.stringify(v) })
 const enc = encodeURIComponent
 export const fetchCards = async (): Promise<void> => registry.set(cards, await got(call(`${base}/cards`)))
+// The shelf and the card libraries (server shelf.ts, depot.ts). A card arrives as a file's text or from a library; both
+// answer the shelf with the card's row, and both refuse an id already there (`card-exists`) until asked with `replace`.
+// The card under the page may be the one replaced, so its view is read again.
+const shelved = async (res: Promise<Response>): Promise<ShelfCard> => {
+  const { card: row, cards: list } = await got<{ card: ShelfCard; cards: readonly ShelfCard[] }>(res)
+  registry.set(cards, list)
+  await refreshActiveCard().catch(() => {}) // the write stands whatever becomes of this read
+  return row
+}
+export const importCard = (text: string, replace = false): Promise<ShelfCard> =>
+  shelved(call(`${base}/cards${replace ? "?replace=1" : ""}`, { method: "POST", body: text }))
+/** Gone from the shelf (refused with `card-in-use` while it has stories). pages.ts `removeCard` is the caller: a tab
+ *  on the card goes home with it. */
+export const removeCard = async (id: string): Promise<void> => {
+  registry.set(cards, await got(call(`${base}/cards/${enc(id)}`, { method: "DELETE" })))
+  if (registry.get(card)?.id === id) registry.set(card, null)
+  // the player's row on it went with it on the server: a card of this id that comes back starts without one
+  registry.update(locals, ({ [id]: _gone, ...rest }) => rest)
+}
+/** Where a card downloads from as a file: a plain link, the browser's own download. */
+export const cardFile = (id: string): string => `${base}/cards/${enc(id)}/export.yaml`
+export const fetchDepots = async (): Promise<void> => registry.set(depots, await got(call(`${base}/depots`)))
+/** Adds a library by its address and answers the list as it now stands. */
+export const addDepot = async (location: string): Promise<readonly DepotRow[]> => {
+  const rows = await got<readonly DepotRow[]>(call(`${base}/depots`, json("POST", { location })))
+  registry.set(depots, rows)
+  return rows
+}
+export const removeDepot = async (id: string): Promise<void> =>
+  registry.set(depots, await got(call(`${base}/depots/${enc(id)}`, { method: "DELETE" })))
+/** A library's cards as they stand now, each against the shelf: read from the library on every call. */
+export const viewDepot = (id: string): Promise<DepotView> => got(call(`${base}/depots/${enc(id)}`))
+export const pullCard = (depot: string, entry: string, replace = false): Promise<ShelfCard> =>
+  shelved(call(`${base}/depots/${enc(depot)}/pull`, json("POST", { entry, replace })))
 export const fetchNames = async (): Promise<void> => registry.set(names, await got(call(`${base}/models/names`)))
 export const fetchProviders = async (): Promise<void> => registry.set(providers, await got(call(`${base}/providers`)))
 export const putProvider = async ({ id, ...body }: Provider): Promise<void> => {
@@ -276,6 +314,7 @@ export const fetchSettings = (): Promise<unknown> =>
     fetchHats(),
     fetchPacks(),
     fetchCards().then(fetchLocals),
+    fetchDepots(),
     fetchNames(),
   ])
 

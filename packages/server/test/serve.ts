@@ -15,10 +15,12 @@ import { createServer, request } from "node:http"
 import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { open } from "../src/data.ts"
+import type { Card } from "@effect-tavern/runtime/src/card.ts"
+import { open, type Data } from "../src/data.ts"
 import { library } from "../src/library.ts"
 import { app, handle, serve } from "../src/serve.ts"
-import { shelf, tavern } from "../src/tavern.ts"
+import { shelf } from "../src/shelf.ts"
+import { tavern } from "../src/tavern.ts"
 
 // the localhost upstreams below stay off a shell proxy: through one, a refused socket comes back as the proxy's 502
 process.env.NO_PROXY = "localhost,127.0.0.1"
@@ -34,11 +36,14 @@ const scripted = {
   hat: "h",
 }
 const model = () => scripted
-const shared = open(":memory:")
-const chats = shelf([chat]) // a shelf of one, for the taverns whose card does not matter
+/** `data` with `cards` on its shelf: a test installs what it plays, the program comes with none. */
+const stocked = (data: Data, ...cards: Card[]) => {
+  for (const c of cards) shelf(data).install(c, { via: "file" }, { replace: true })
+  return data
+}
+const shared = stocked(open(":memory:"), { ...chat, greetings: [{ text: "G" }], lexicon: [{ pattern: "CARD-BAN" }] })
 const lib = library({
   data: shared,
-  cards: shelf([{ ...chat, greetings: [{ text: "G" }], lexicon: [{ pattern: "CARD-BAN" }] }]),
   overlay: player.harness,
   model,
 })
@@ -526,10 +531,9 @@ await run(false)
     }),
     hat: "h",
   }
-  const data = open(":memory:")
+  const data = stocked(open(":memory:"), { ...chat, guard: ["R"] })
   const { lib: guarded, handler } = tavern({
     data,
-    cards: shelf([{ ...chat, guard: ["R"] }]),
     overlay: player.harness,
     model: () => drafts,
   })
@@ -570,16 +574,16 @@ await run(false)
     const doc = readStage(o)
     return doc.phase === "narrate" ? { text: "hello world ".repeat(5), delay: 20 } : defaultAnswer(doc, canned)
   })
-  const { handler } = tavern({ data, cards: shelf([chat, two]), overlay: player.harness, model: () => slowly })
+  const { handler } = tavern({ data: stocked(data, chat, two), overlay: player.harness, model: () => slowly })
   const server = createServer(handler).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   const on = (id: number, init: RequestInit = {}) => ({ ...init, headers: { "x-tavern-story": String(id) } })
   try {
     assert.deepEqual(await (await fetch(`${base}/stories`)).json(), { current: null, stories: [] })
-    const line = { summary: chat.summary } // a YAML card's summary and facets ride on its row
+    const line = { summary: chat.summary, origin: { via: "file" } } // a card's summary, facets and origin ride on its row
     assert.deepEqual(await (await fetch(`${base}/cards`)).json(), [
-      { id: chat.id, title: chat.title, ...line, facets: facets(chat) },
       { id: "two", title: "二", ...line, facets: facets(two) },
+      { id: chat.id, title: chat.title, ...line, facets: facets(chat) },
     ])
     const page = (await (await fetch(`${base}/cards/two`)).json()) as { id: string; greetings: unknown[] }
     assert.deepEqual([page.id, page.greetings], ["two", [{ text: "G2" }]])
@@ -619,7 +623,7 @@ await run(false)
   const deadUrl = `http://localhost:${(dead.address() as AddressInfo).port}`
   dead.close()
   const server = createServer(
-    tavern({ data: open(":memory:"), cards: chats, overlay: player.harness, model }).handler,
+    tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness, model }).handler,
   ).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   const call = async (method: string, path: string, v?: unknown) => {
@@ -753,7 +757,7 @@ await run(false)
 // it is sent fails with the code the client links to Settings → 默认模型 by (issue #61); a pair on a disabled provider
 // with the code it links to Settings → 服务商 by (#189).
 {
-  const t = tavern({ data: open(":memory:"), cards: chats, overlay: player.harness })
+  const t = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness })
   const headers = { "x-tavern-story": String(t.lib.stories.create(chat.id)) }
   const bare = createServer(t.handler).listen(0)
   const base = `http://localhost:${(bare.address() as AddressInfo).port}`

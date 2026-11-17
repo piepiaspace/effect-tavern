@@ -37,8 +37,8 @@ function here(r: Partial<Local> = {}): Local {
 
 // ───────── resolve(card, {}): the request bytes of the code before layer.ts ─────────
 // test/fixtures/requests.json was captured from that code (the commit before this module, player `{global: [], forCard:
-// {}}`), over the template cards: one greeting, one act, one demand; `wuxia+` adds a director, the note channel and a
-// lexicon, so direct and polish go out too. An edit of a template card moves its bytes: `CAPTURE=1 bun test/layer.ts`
+// {}}`), over the fixture cards (test/cards): one greeting, one act, one demand; `wuxia+` adds a director, the note channel and a
+// lexicon, so direct and polish go out too. An edit of a fixture card moves its bytes: `CAPTURE=1 bun test/layer.ts`
 // rewrites the turns' half of the file, and the diff is the review.
 {
   const file = new URL("fixtures/requests.json", import.meta.url)

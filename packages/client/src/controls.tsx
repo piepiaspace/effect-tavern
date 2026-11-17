@@ -276,20 +276,22 @@ export const Prompt = (props: { controller: DialogHandle; title: JSX.Element; ch
   </Dialog>
 )
 
-// The one delete confirm on the page: `ask` opens it with the question and what Delete then does. Escape and Cancel
-// keep the record; a press outside leaves the question open (an alert dialog wants an answer).
-const confirm = createConfirm<string>()
-export const ask = (text: string, run: () => void) => void confirm(text).then((yes) => yes && run())
+// The one confirm on the page: `ask` opens it with the question and what its action then does. The action is Delete
+// unless the caller names another word for it (a card replaced, cards.tsx). Escape and Cancel keep the record; a press
+// outside leaves the question open (an alert dialog wants an answer).
+const confirm = createConfirm<{ text: string; action: Key }>()
+export const ask = (text: string, run: () => void, action: Key = "common.delete") =>
+  void confirm({ text, action }).then((yes) => yes && run())
 export const Confirm = () => (
   <AlertDialog controller={confirm.controller}>
-    <AlertDialogContent<string> class="confirm">
+    <AlertDialogContent<{ text: string; action: Key }> class="confirm">
       {(state) => (
         <>
-          <AlertDialogTitle render={(part) => <p {...part} />}>{state.payload}</AlertDialogTitle>
+          <AlertDialogTitle render={(part) => <p {...part} />}>{state.payload?.text}</AlertDialogTitle>
           <div class="row">
             <AlertDialogClose class="chip state">{t("common.cancel")}</AlertDialogClose>
-            <AlertDialogClose class="chip danger" value="confirm" data-agent-confirm={state.payload}>
-              {t("common.delete")}
+            <AlertDialogClose class="chip danger" value="confirm" data-agent-confirm={state.payload?.text}>
+              {t(state.payload?.action ?? "common.delete")}
             </AlertDialogClose>
           </div>
         </>

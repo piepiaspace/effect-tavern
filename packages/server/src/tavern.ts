@@ -1,30 +1,10 @@
-// A tavern from an open library store, the cards and a model: the library over them, seeded on a first run when given a
-// key, behind the HTTP handler. No card is bound: a story names its own (library.ts). The environment is the caller's:
-// dev.ts reads it (CARDS, DATA, MODEL, HAT, the local key), loads the card files and opens the store; a test passes
-// `open(":memory:")` and a shelf of its own.
-import type { Card } from "@effect-tavern/runtime/src/card.ts"
-import { facets } from "@effect-tavern/runtime/src/session.ts"
+// A tavern from an open library store and a model: the library over them, seeded on a first run when given a key,
+// behind the HTTP handler. It comes with no card: the shelf is the store's `card` table (shelf.ts), empty on a new
+// install, and a story names its own card (library.ts). The environment is the caller's: dev.ts reads it (DATA, MODEL,
+// HAT, the local key) and opens the store; a test passes `open(":memory:")` and installs the cards it plays.
 import type { Data } from "./data.ts"
-import { library, type Cards } from "./library.ts"
+import { library } from "./library.ts"
 import { handle } from "./serve.ts"
-
-/** The file templates. The library merges installed definitions over this source. */
-export const shelf = (files: readonly Card[]): Cards => ({
-  list: () =>
-    files
-      .filter((c, i) => files.findIndex((x) => x.id === c.id) === i)
-      .map((c) => ({
-        id: c.id,
-        title: c.title ?? c.id,
-        ...(c.summary ? { summary: c.summary } : {}),
-        facets: facets(c),
-      })),
-  get: (id) => {
-    const card = files.find((c) => c.id === id)
-    if (!card) throw new Error(`no card ${id}`)
-    return card
-  },
-})
 
 /** First run on a developer machine: the key becomes the vault's one secret and the library's one provider, its
  *  Haiku the default, so the settings page opens on what the dev loop already ran on. Only on an empty install: once

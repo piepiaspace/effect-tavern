@@ -39,13 +39,35 @@ const install = Command.make(
       for (const d of report.diagnostics)
         console.error(`${d.level} ${d.path}: ${d.message}${d.hint ? `\n  hint: ${d.hint}` : ""}`)
       if (report.diagnostics.some((d) => d.level === "error")) throw new Error("card check failed")
-      const card = decodeCard(Bun.YAML.parse(source))
       await withHost(url, async (host) => {
-        await host.install(card)
+        const card = await host.install(source)
+        console.log(json ? JSON.stringify({ id: card.id, installed: true }) : `Installed ${card.id}`)
       })
-      console.log(json ? JSON.stringify({ id: card.id, installed: true }) : `Installed ${card.id}`)
     }),
-).pipe(Command.withDescription("Validate and install a YAML card into the library (clears any saved draft)"))
+).pipe(
+  Command.withDescription(
+    "Validate and install a YAML card onto the shelf, over the card of that id (clears any saved draft)",
+  ),
+)
+const cardId = Argument.String("id").pipe(Argument.withDescription("installed card id"))
+const origin = (o: { via: string; depot?: string; version?: string; edited?: boolean }) =>
+  [o.via === "depot" ? o.depot : o.via, o.version, o.edited ? "edited" : ""].filter(Boolean).join(" ")
+const cardList = Command.make("list", { url, json }, ({ url, json }) =>
+  task(() =>
+    withHost(url, async (host) => {
+      const rows = await host.cards()
+      console.log(json ? JSON.stringify(rows) : rows.map((r) => `${r.id}\t${r.title}\t${origin(r.origin)}`).join("\n"))
+    }),
+  ),
+).pipe(Command.withDescription("List the installed cards and how each reached the install"))
+const cardRemove = Command.make("remove", { id: cardId, url, json }, ({ id, url, json }) =>
+  task(() =>
+    withHost(url, async (host) => {
+      await host.remove(id)
+      console.log(json ? JSON.stringify({ id, removed: true }) : `Removed ${id}`)
+    }),
+  ),
+).pipe(Command.withDescription("Remove an installed card with its draft; refused while it has stories"))
 const output = Flag.String("output").pipe(
   Flag.withAlias("o"),
   Flag.withDescription("write candidate YAML to file instead of stdout"),
@@ -57,6 +79,90 @@ const save = (card: unknown, output: Option.Option<string>) => {
   if (Option.isSome(output)) writeFileSync(output.value, yaml)
   else console.log(yaml)
 }
+const cardExport = Command.make("export", { id: cardId, url, output }, ({ id, url, output }) =>
+  task(() =>
+    withHost(url, async (host) => {
+      const text = await host.source(id)
+      if (Option.isSome(output)) writeFileSync(output.value, text)
+      else console.log(text)
+    }),
+  ),
+).pipe(Command.withDescription("Print an installed card as a YAML card file"))
+const depotId = Argument.String("library").pipe(Argument.withDescription("card library id (see depot list)"))
+const depot = Command.make("depot").pipe(
+  Command.withDescription("Card libraries: add, list, browse, take a card from one, forget"),
+  Command.withSubcommands([
+    Command.make("list", { url, json }, ({ url, json }) =>
+      task(() =>
+        withHost(url, async (host) => {
+          const rows = await host.depots.list()
+          console.log(json ? JSON.stringify(rows) : rows.map((d) => `${d.id}\t${d.name}\t${d.location}`).join("\n"))
+        }),
+      ),
+    ).pipe(Command.withDescription("List the card libraries the install knows")),
+    Command.make(
+      "add",
+      {
+        location: Argument.String("location").pipe(
+          Argument.withDescription(
+            "an https URL of a library (its index.json or the directory above it), or a local directory",
+          ),
+        ),
+        url,
+        json,
+      },
+      ({ location, url, json }) =>
+        task(() =>
+          withHost(url, async (host) => {
+            const d = await host.depots.add(location)
+            console.log(json ? JSON.stringify(d) : `Added ${d.id}\t${d.name}`)
+          }),
+        ),
+    ).pipe(Command.withDescription("Add a card library; a directory only without --url")),
+    Command.make("show", { id: depotId, url, json }, ({ id, url, json }) =>
+      task(() =>
+        withHost(url, async (host) => {
+          const d = await host.depots.view(id)
+          console.log(
+            json
+              ? JSON.stringify(d)
+              : d.entries
+                  .map((e) => `${e.id}\t${e.title}\t${e.version ?? ""}\t${e.state}${e.edited ? " edited" : ""}`)
+                  .join("\n"),
+          )
+        }),
+      ),
+    ).pipe(Command.withDescription("Read a card library's index: its cards, each against the shelf")),
+    Command.make(
+      "pull",
+      {
+        id: depotId,
+        entry: Argument.String("card").pipe(Argument.withDescription("card id in the library")),
+        replace: Flag.Boolean("replace").pipe(
+          Flag.withDefault(false),
+          Flag.withDescription("take it over a card of that id already installed (an update)"),
+        ),
+        url,
+        json,
+      },
+      ({ id, entry, replace, url, json }) =>
+        task(() =>
+          withHost(url, async (host) => {
+            const card = await host.depots.pull(id, entry, replace)
+            console.log(json ? JSON.stringify({ id: card.id, installed: true }) : `Installed ${card.id}`)
+          }),
+        ),
+    ).pipe(Command.withDescription("Copy one card of a library onto the shelf")),
+    Command.make("remove", { id: depotId, url, json }, ({ id, url, json }) =>
+      task(() =>
+        withHost(url, async (host) => {
+          await host.depots.remove(id)
+          console.log(json ? JSON.stringify({ id, removed: true }) : `Removed ${id}`)
+        }),
+      ),
+    ).pipe(Command.withDescription("Forget a card library; the cards taken from it stay")),
+  ]),
+)
 const compile = Command.make(
   "compile",
   {
@@ -153,7 +259,7 @@ const story = Command.make("story").pipe(
       "new",
       {
         url,
-        card: Argument.String("card").pipe(Argument.withDescription("installed or template card id")),
+        card: Argument.String("card").pipe(Argument.withDescription("installed card id")),
         json,
       },
       ({ url, card, json }) =>
@@ -285,12 +391,17 @@ const serving = Command.make(
     ),
 ).pipe(Command.withDescription("Start the tavern HTTP/SSE server (serves client/dist too unless --headless)"))
 const cli = Command.make("tavern").pipe(
-  Command.withDescription("Effect Tavern CLI: card toolchain & workshop, story management, terminal play and server"),
+  Command.withDescription(
+    "Effect Tavern CLI: card toolchain & workshop, card libraries, story management, terminal play and server",
+  ),
   Command.withSubcommands([
     Command.make("card").pipe(
-      Command.withDescription("Author, check, preview, test, compile, sort, review and install cards"),
-      Command.withSubcommands([...authorCommands, install, compile, sort, review]),
+      Command.withDescription(
+        "Author, check, preview, test, compile, sort, review, install, list, export and remove cards",
+      ),
+      Command.withSubcommands([...authorCommands, install, cardList, cardExport, cardRemove, compile, sort, review]),
     ),
+    depot,
     story,
     playing,
     serving,

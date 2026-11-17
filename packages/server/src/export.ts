@@ -71,6 +71,11 @@ export const markdown = (x: Exported, at = new Date()): string => {
 }
 
 const graphemes = new Intl.Segmenter()
+/** A `content-disposition` for a download named `name`: the plain form for old clients, the UTF-8 one beside it. */
+export const attachment = (name: string): string => {
+  const ascii = name.replace(/[\\/:*?"<>|\p{Cc}]+/gu, " ").replace(/[^\x20-\x7e]/gu, "_") // one mark per code point, not per UTF-16 unit
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`
+}
 /** A download's file name from the story's title (or its id): the characters a file system refuses taken out, cut
  *  to a sensible length by grapheme (a cut inside a surrogate pair would be no UTF-8 at all, and half an emoji is
  *  no better); `filename*` carries it UTF-8 encoded, `filename` an ASCII fallback. */
@@ -80,7 +85,5 @@ export const disposition = (story: StoryRow, ext: "md" | "json"): string => {
     .slice(0, 60)
     .join("")
     .trimEnd()
-  const name = `${base || `story-${story.id}`}.${ext}`
-  const ascii = name.replace(/[^\x20-\x7e]/gu, "_") // one mark per code point, not per UTF-16 unit
-  return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`
+  return attachment(`${base || `story-${story.id}`}.${ext}`)
 }

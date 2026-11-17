@@ -176,6 +176,9 @@ export const cardView = (card: Card, rows: Rows = {}) => {
       id: card.id,
       title: card.title ?? card.id,
       summary: card.summary,
+      creator: card.creator, // the author's three facts about the card, for the card page
+      version: card.version,
+      source: card.source,
       heading: card.heading,
       input: f.mode,
       director: !!card.director,

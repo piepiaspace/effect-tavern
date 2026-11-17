@@ -51,8 +51,9 @@ Effect Tavern 是从零设计的 AI 角色扮演与交互叙事全栈系统，�
   </Step>
   <Step title="或在终端直接游玩与校验卡片">
     ```sh
+    bun run tavern card install packages/runtime/test/cards/wuxia.yaml
     MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
-    bun packages/runtime/bin/card.ts check wuxia
+    bun packages/runtime/bin/card.ts check packages/runtime/test/cards/wuxia.yaml
     ```
   </Step>
   <Step title="运行静态检查与全仓自检">
@@ -64,9 +65,9 @@ Effect Tavern 是从零设计的 AI 角色扮演与交互叙事全栈系统，�
   </Step>
 </Steps>
 
-## 内置标准模板卡与重制样卡
+## 测试夹具卡与重制样卡
 
-`packages/runtime/cards/` 下的四张 YAML 模板卡（配合 `samples/life-of-pi/life-of-pi.yaml` 等完整重制样卡）既是创建脚手架与文档范例，也是运行时的回归基线：
+程序本身不带任何卡片：新安装的书架是空的，卡片来自文件或玩家自己添加的卡库。仓库在 `packages/runtime/test/cards/` 下保留四张 YAML 卡作为测试夹具（配合 `samples/life-of-pi/life-of-pi.yaml` 等完整重制样卡），既是文档范例，也是运行时的回归基线，安装方式与任何卡片文件相同：
 
 | 卡片 ID | 视角与默认通道 | 覆盖机制 |
 | --- | --- | --- |

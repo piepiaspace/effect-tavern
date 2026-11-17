@@ -1308,3 +1308,11 @@
     display: block;
   }
 }
+/* an empty shelf: the way to the first card under the line that says so */
+.shelf-list .none .btn {
+  display: flex;
+  margin: var(--space-3) auto 0;
+}
+.home-mark .btn {
+  margin-top: var(--space-2);
+}

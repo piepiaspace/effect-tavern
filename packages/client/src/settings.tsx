@@ -1,6 +1,7 @@
 // The settings page (issue #33; docs/settings-prototype.html and its brief): the player's assets that hold across cards
-// and stories, in four sections: the model providers (模型服务, providers.tsx), which model runs each stage (默认模型),
-// the hats (提示词模板 in the UI) and the personas (玩家人设). An install-wide configuration layer with its own
+// and stories, in sections: the model providers (模型服务, providers.tsx), which model runs each stage (默认模型),
+// the hats (提示词模板 in the UI), the personas (玩家人设), the writing packs (packs.tsx) and the cards themselves with
+// the card libraries they can be taken from (卡片, cards.tsx). An install-wide configuration layer with its own
 // skeleton: on the desktop three cards fill the canvas under `.shell-top` (nav, list, detail; two for the routing),
 // `.shell-top` showing Back at the left instead of the tab strip; a phone shows the list or the detail under a bar of
 // four icons. Escape or Back returns to the page that opened it. The page holds only the nav, which section is open,
@@ -14,6 +15,7 @@ import { read } from "./bridge.ts"
 import { ask, Avatar, Confirm, Menu, Name, newId, Switch, ToList, type Pane } from "./controls.tsx"
 import {
   Back,
+  Card as CardIcon,
   Close,
   Jump,
   Package,
@@ -27,6 +29,7 @@ import {
   User,
 } from "./icons.tsx"
 import { pairKey, pairOf, stalePair } from "./connections.ts"
+import { Cards } from "./cards.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close, open } from "./pages.ts"
@@ -35,7 +38,7 @@ import { cards, decision, hats, locals, personas, providers, registry, routing, 
 import { type Key, t } from "./i18n.ts"
 import { deleteHat, deletePersona, putDecision, putHat, putPersona, putRouting, refreshActiveCard } from "./wire.ts"
 
-export type Section = "providers" | "routing" | "templates" | "personas" | "packs"
+export type Section = "providers" | "routing" | "templates" | "personas" | "packs" | "cards"
 /** The section shown: written by every way in, so the settings layer moves to the section asked for. */
 const section = Atom.make<Section>("providers").pipe(Atom.keepAlive)
 /** The settings layer on a section, 模型服务 when none is named: a missing model opens it on 默认模型 (the draft's
@@ -51,6 +54,7 @@ const SECTIONS: [Section, Key, (p: JSX.SvgSVGAttributes<SVGSVGElement>) => JSX.E
   ["templates", "settings.templates", Template],
   ["personas", "settings.personas", User],
   ["packs", "settings.packs", Package],
+  ["cards", "settings.cards", CardIcon],
 ]
 
 export const Settings = () => {
@@ -125,6 +129,9 @@ export const Settings = () => {
       </Show>
       <Show when={at() === "packs"}>
         <Packs {...paneOf("packs")} />
+      </Show>
+      <Show when={at() === "cards"}>
+        <Cards {...paneOf("cards")} />
       </Show>
       <Confirm />
     </div>

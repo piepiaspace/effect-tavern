@@ -34,11 +34,12 @@ const off = {
   openings: false,
   tokens: 9,
 } as const
+const origin = { via: "file" } as const
 const shelf: ShelfCard[] = [
-  { id: "wuxia", title: "竹林", summary: "苦竹岭的剑客", facets: { ...off, actions: true, lore: true } },
-  { id: "banxing", title: "伴星 Star", facets: off },
-  { id: "yandao", title: "盐道", facets: { ...off, mode: "note", openings: true } },
-  { id: "table", title: "表里" }, // a library-table row: no facets
+  { id: "wuxia", title: "竹林", summary: "苦竹岭的剑客", facets: { ...off, actions: true, lore: true }, origin },
+  { id: "banxing", title: "伴星 Star", facets: off, origin },
+  { id: "yandao", title: "盐道", facets: { ...off, mode: "note", openings: true }, origin },
+  { id: "table", title: "表里", origin }, // a row with no facets
 ]
 const tags: Record<string, string[]> = { wuxia: ["武侠", "对峙"], banxing: ["日常"] } // the player's, per card
 const ids = (q: string) => shelf.filter((c) => admits(c, parse(q), tags[c.id])).map((c) => c.id)

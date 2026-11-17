@@ -29,7 +29,7 @@ import {
   tabs,
   working,
 } from "../src/store.ts"
-import { add, CAP, home, remove, restore, scroll, select, unread } from "../src/tabs.ts"
+import { add, CAP, home, remove, restore, scroll, select, shed, unread } from "../src/tabs.ts"
 
 const row = (id: number, cardId: string, updated = id): StoryRow =>
   ({
@@ -316,4 +316,35 @@ assert.deepEqual(
 )
 await openStory(1)
 assert.equal(registry.get(composition).text, "留字")
+// a card removed from the shelf (shed): a tab on its page is a home tab, the settings page the removal was made from
+// stays up over home, and a story tab (the server would have refused its card) is left alone
+await select(H)
+await showCard("b")
+open("settings")
+const story = registry.get(tabs).list.find((t) => t.story !== null)!
+shed("b")
+assert.deepEqual([tab().card, tab().story, registry.get(page), tab().under], [null, null, "settings", ["home"]])
+assert.deepEqual(
+  registry.get(tabs).list.find((t) => t.id === story.id),
+  story,
+)
+close()
+assert.deepEqual([isHome(tab()), registry.get(page), registry.get(layer)], [true, "home", "shelf"])
+// a story's tab that was browsing the removed card (showCard keeps the story): back on its story's own card, the
+// removed card's page out of its stack, so closing the settings lands on the story and not on a card that is gone
+await openStory(1)
+const own = tab().card
+await showCard("b")
+open("settings")
+assert.deepEqual([tab().story, tab().card, tab().under.includes("card")], [1, "b", true])
+shed("b")
+assert.deepEqual(
+  [tab().story, tab().card, registry.get(page), tab().under.includes("card")],
+  [1, own, "settings", false],
+)
+close()
+assert.notEqual(registry.get(page), "card")
+await showCard("b")
+shed("b") // removed while its page is the one showing
+assert.deepEqual([tab().story, tab().card, registry.get(page), tab().under], [1, own, "reader", []])
 console.log("tabs ok")

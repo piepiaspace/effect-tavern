@@ -3,7 +3,7 @@
 #
 #   curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/start.sh | sh
 #
-# The first run downloads the latest release's `tavern-android` (one binary: server, page and template cards; no Bun,
+# The first run downloads the latest release's `tavern-android` (one binary: server and page, no cards; no Bun,
 # no Node, no build) into ~/.tavern/bin and installs this script as the `effect-tavern` command. After that:
 #
 #   effect-tavern           start it and open the browser on http://127.0.0.1:7777

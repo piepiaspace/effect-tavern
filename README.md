@@ -52,7 +52,7 @@ lookup → (decide → settle)* → gate → direct → narrate → check → po
 packages/
   runtime/    Turn pipeline, Card/Layer/Product schemas, decision passes, log tree, derived folds, lint & offline card CLI
   provider/   Language & decision model connections, AI SDK compilation (Anthropic / OpenAI / Gemini), cache & stream primitives
-  server/     SQLite library, HTTP + SSE host, Workshop endpoints (compile / sort / review), and `tavern` CLI
+  server/     SQLite library, the card shelf & optional card libraries, HTTP + SSE host, Workshop endpoints (compile / sort / review), and `tavern` CLI
   client/     Solid 2.0 + @ui-sdk web client: spatial Shell, Reader, Card Page, Readings, Inspector, Timeline, Packs & Settings
 skills/
   card-author/  Progressive-disclosure agent skill for authoring, testing, and remastering cards
@@ -75,6 +75,8 @@ curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/downloa
 
 It downloads the latest release's phone build (~50 MB), starts it and opens the browser on `http://127.0.0.1:7777`. After that, `effect-tavern` starts it and `effect-tavern update` shows what the latest release changes and asks before replacing the binary; the library lives in `~/.tavern`.
 
+The program ships with no cards. A new install's shelf is empty: open **Settings → Cards** to import a card file (`.yaml` / `.json`) or to add a card library by its `https` address and install cards from it.
+
 ### Prerequisites
 
 - **Bun** `>= 1.4.4` and **Node.js** `>= 24`
@@ -90,8 +92,14 @@ vp install
 # Full-stack dev server (Vite HMR client + in-process /api session on .dev/tavern.db)
 bun --bun vp run dev
 
-# Use scripted zero-token model or a custom directory of YAML cards
-MODEL=fake CARDS=./my-cards bun --bun vp run dev
+# Use the scripted zero-token model
+MODEL=fake bun --bun vp run dev
+
+# A new library has no cards: install one from a file, or take one from a card library
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml --url http://localhost:5173
+bun run tavern depot add ./my-cards            # a directory holding index.json, or an https URL
+bun run tavern depot show <library-id>         # its cards against the shelf
+bun run tavern depot pull <library-id> <card>  # copy one onto the shelf
 
 # Build client & run single-port server (serves /api + built client on :7777)
 cd packages/client && bun --bun vp build
@@ -101,7 +109,8 @@ bun run tavern serve --port 7777
 ### CLI Host & Headless Play (`tavern`)
 
 ```sh
-# Terminal play (pass MODEL=fake or --model fake for zero-token runs)
+# Terminal play of an installed card (pass MODEL=fake or --model fake for zero-token runs)
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml
 MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
 # Manage stories & headless server (defaults to .tavern/tavern.db; pass --url to attach to a running server)
@@ -114,9 +123,9 @@ bun run tavern serve --headless --port 7777
 ```sh
 # Offline zero-token authoring loop (init, static lint, prompt preview, scenario assertions)
 bun packages/runtime/bin/card.ts init my-card --template readout
-bun packages/runtime/bin/card.ts check wuxia
-bun packages/runtime/bin/card.ts view ri --stage record --state affection=60
-bun packages/runtime/bin/card.ts test wuxia
+bun packages/runtime/bin/card.ts check my-card.yaml
+bun packages/runtime/bin/card.ts view my-card.yaml --stage record --state affection=60
+bun packages/runtime/bin/card.ts test my-card.yaml
 
 # Inspect a legacy SillyTavern V2/V3 PNG or JSON card in assembly order
 bun packages/runtime/bin/unroll.ts path/to/card.png
