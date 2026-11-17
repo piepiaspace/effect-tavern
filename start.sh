@@ -1,7 +1,7 @@
 #!/bin/sh
 # Effect Tavern on an Android phone (Termux): one command, nothing to install by hand.
 #
-#   curl -fsSL https://raw.githubusercontent.com/waylon256yhw/effect-tavern/main/start.sh | sh
+#   curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/start.sh | sh
 #
 # The first run downloads the latest release's `tavern-android` (one binary: server, page and template cards; no Bun,
 # no Node, no build) into ~/.tavern/bin and installs this script as the `effect-tavern` command. After that:
@@ -119,7 +119,8 @@ if [ -f "$here/tavern-android" ]; then
   installed=$(w 本地构建 'local build')
   # /sdcard is noexec and adb push drops the mode
   [ -x "$BIN" ] || die "$(w 'tavern-android 没有执行权限：chmod +x 它（放在 ~ 下，不要放 /sdcard）' 'tavern-android is not executable: chmod +x it (under ~, not /sdcard)')"
-elif [ ! -x "$BIN" ]; then
+# no binary, or one from before versions were recorded: install the latest
+elif [ ! -x "$BIN" ] || [ -z "$installed" ]; then
   release
   title "$(w 安装 Install) Effect Tavern $latest"
   fetch
