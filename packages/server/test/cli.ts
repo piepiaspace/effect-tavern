@@ -126,16 +126,19 @@ try {
     })
     const output = (server.stderr as ReadableStream<Uint8Array>).getReader()
     let announced = ""
-    while (!announced.includes("/api")) {
+    // the page's address when the client build is there, the API's when it is not
+    while (!/http:\/\/\S+\n/.test(announced)) {
       const part = await output.read()
       assert.equal(part.done, false, announced)
       announced += new TextDecoder().decode(part.value)
     }
     output.releaseLock()
-    const api = announced
-      .trim()
-      .split("\n")
-      .find((line) => line.startsWith("http://"))!
+    const api =
+      announced
+        .trim()
+        .split("\n")
+        .find((line) => line.startsWith("http://"))!
+        .replace(/\/api$/, "") + "/api"
     const headers = { "x-tavern-story": String(story) }
     const trace = await (await fetch(`${api}/nodes/0/trace`, { headers })).json()
     assert.ok(trace.length > 0)

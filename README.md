@@ -73,7 +73,7 @@ One line in [Termux](https://termux.dev), no Bun, Node or Vite+ to install:
 curl -fsSL https://raw.githubusercontent.com/waylon256yhw/effect-tavern/main/start.sh | sh
 ```
 
-It downloads the latest release's phone build (~50 MB), starts it and opens the browser on `http://127.0.0.1:7777`. After that, `effect-tavern` starts it and `effect-tavern update` updates it; the library lives in `~/.tavern`.
+It downloads the latest release's phone build (~50 MB), starts it and opens the browser on `http://127.0.0.1:7777`. After that, `effect-tavern` starts it and `effect-tavern update` shows what the latest release changes and asks before replacing the binary; the library lives in `~/.tavern`.
 
 ### Prerequisites
 
