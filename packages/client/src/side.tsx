@@ -76,7 +76,7 @@ export const InstallKeys = (props: { onLeave?: () => void }) => {
       </button>
       <button
         type="button"
-        class="icon sm"
+        class="icon sm flip"
         aria-label={t("side.darkTheme")}
         aria-pressed={theme() === "dark" ? "true" : "false"}
         onClick={flip}

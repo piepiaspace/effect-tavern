@@ -617,7 +617,14 @@ button:focus-visible {
   place-items: center;
   color: var(--ink-2);
 }
-.icon:hover:not(:disabled) {
+/* hover only where a pointer hovers: a touch screen keeps :hover on the last key tapped until the next tap elsewhere;
+   there the press shows instead */
+@media (hover: hover) {
+  .icon:hover:not(:disabled) {
+    background: var(--ghost-hover);
+  }
+}
+.icon:active:not(:disabled) {
   background: var(--ghost-hover);
 }
 .icon svg {

@@ -753,7 +753,8 @@
   align-items: center;
   gap: var(--space-half);
 }
-:is(.shell-top, .side-foot) .icon[aria-pressed="true"] {
+/* a pressed key is where you are (the settings); the theme key's state is the whole screen, so it keeps no fill */
+:is(.shell-top, .side-foot) .icon[aria-pressed="true"]:not(.flip) {
   background: var(--alpha-1);
   color: var(--ink);
 }
