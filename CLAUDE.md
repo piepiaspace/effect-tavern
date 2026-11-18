@@ -61,8 +61,8 @@ Names that no longer exist, and what to use:
 
 Tooling:
 
-- Skills: pnpm links the ones the Solid packages ship into `.claude/skills/pnpm-*` (gitignored, re-created by
-  `vp install`; `permissions.<pkg>.skills` in pnpm-workspace.yaml is the approval): `reactivity-diagnostics` (every
+- Skills: `tools/skills.ts` links the ones the Solid packages ship into `.claude/skills/pkg-*` (gitignored, re-created by
+  `vp install` through `prepare`; its `APPROVED` list is the approval): `reactivity-diagnostics` (every
   warning code and its fix), `agent-loops` (capture evidence, assert budgets), `server-components` (unused, no SSR).
   The `solid-2.0` primer skill ships from rc.16 on; until the pin moves, the cheatsheet is the primer.
 - A console warning with a bracketed code, such as `[REACTIVE_WRITE_IN_OWNED_SCOPE]`, is a defect.
@@ -74,7 +74,7 @@ Tooling:
 
 ## UI SDK (`@ui-sdk`)
 
-Interactive controls, overlays, and gesture primitives in `packages/client` build on `@ui-sdk/solid` and `@ui-sdk/core` (pinned together on Solid 2.0 RC; skill linked at `.claude/skills/pnpm-@ui-sdk+core-ui-sdk` via `pnpm-workspace.yaml`), replacing ad-hoc native `<select>`, `<dialog>`, `[popover]`, Escape/outside-click listeners, and raw pointer drag loops so behavior converges across desktop and touch browsers:
+Interactive controls, overlays, and gesture primitives in `packages/client` build on `@ui-sdk/solid` and `@ui-sdk/core` (pinned together on Solid 2.0 RC; skill linked at `.claude/skills/pkg-@ui-sdk+core-ui-sdk` by `tools/skills.ts`), replacing ad-hoc native `<select>`, `<dialog>`, `[popover]`, Escape/outside-click listeners, and raw pointer drag loops so behavior converges across desktop and touch browsers:
 
 - **Behavior vs. styling:** `@ui-sdk` owns focus management, keyboard navigation, Escape/scrim dismissal, background inertness, popup positioning, pointer velocity/rubber-band/spring physics (`@ui-sdk/core/gesture`), and responsive adaptation (`presentation="auto"`). Styling stays strictly in our stylesheets under the five-layer cascade `@layer ui-sdk, tokens, components, card, user` (`src/app.css`), so component rules override `@ui-sdk` defaults without `!important`.
 - **Shared controls & primitives:** Reuse the wrappers in `src/controls.tsx` (`Menu` on `Select`, `Switch`, `Modal` and `Prompt` on `Dialog` + `createDialogController`, `Confirm` on `AlertDialog` + `createConfirm`), `src/readings.tsx` (`Sheet` on `Dialog`, `Demand` on `Menu`), `src/shell.tsx` (phone `Drawer`), `src/composer.tsx` + `src/invocation-menu.tsx` (`Popover` + multi-page `Command`), and `src/edge.tsx` (`definePrimitive` separator with `bindDrag`, `rubberBand`, and `solveSpring` over `src/fold.ts`). When building a control `@ui-sdk` does not ship, author it with `definePrimitive` and `createParts` rather than raw DOM listeners.
@@ -92,7 +92,7 @@ A card's own text (labels, group names, openings) and the model's words are neve
 
 ## Dev
 
-A pre-push hook (`.vite-hooks/pre-push`, installed by `vp install` through `prepare`) runs `vp check`; the release workflow runs the whole `verify` before it publishes. Tests are `vp run verify` (bun assert scripts per package, `test/*.ts`, and the root's `test/install.ts` for the phone installer `install.sh`); the `vp test` built-in finds no vitest files and exits 1. Run `vp run verify:ui` in `packages/client` whenever client controls, dialogs, popups, or gestures change (see `## UI SDK`).
+Bun is the package manager (`bun.lock`; `bunfig.toml` holds the week-old release floor and its temporary exceptions). A pre-push hook (`.vite-hooks/pre-push`, installed by `vp install` through `prepare`) runs `vp check`; the release workflow runs the whole `verify` before it publishes. Tests are `vp run verify` (bun assert scripts per package, `test/*.ts`, and the root's `test/install.ts` for the phone installer `install.sh`); the `vp test` built-in finds no vitest files and exits 1. Run `vp run verify:ui` in `packages/client` whenever client controls, dialogs, popups, or gestures change (see `## UI SDK`).
 
 `bun --bun vp run dev` at the root (`bun --bun vp dev` in `packages/client`; `--bun` makes the `node` Vite+ launches resolve to Bun) is the whole stack: the session (`packages/server/src/dev.ts`) runs inside the Vite process through its module runner, mounted at `/api`; client edits are HMR, runtime/server edits take effect on the next request. `MODEL=fake` scripts the model, the library lives in `.dev/tavern.db` (gitignored; `DATA=<dir>` moves it; delete it to start every story over). The user starts and stops `vp dev` in their own terminal; an agent uses it and never starts, restarts or kills it.
 

@@ -1,23 +1,35 @@
 {
   "name": "effect-tavern",
   "private": true,
+  "workspaces": {
+    "packages": [
+      "packages/*"
+    ],
+    "catalog": {
+      "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000",
+      "vite-plus": "1.7.0"
+    }
+  },
   "scripts": {
-    "prepare": "vp config --no-agent",
+    "prepare": "vp config --no-agent && bun tools/skills.ts",
     "dev": "cd packages/client && bun --bun vp dev",
-    "verify": "pnpm -r verify && bun test/install.ts && bun test/release.ts",
+    "verify": "bun run --filter './packages/*' verify && bun test/install.ts && bun test/release.ts",
     "tavern": "TAVERN_DATA=${TAVERN_DATA:-${DATA:-.dev}} bun packages/server/bin/tavern.ts",
-    "docs:dev": "pnpm --dir site run dev",
-    "docs:build": "pnpm --dir site run build",
-    "docs:check": "pnpm --dir site exec nimbus-docs check && pnpm --dir site run typecheck && pnpm --dir site run build && pnpm --dir site exec nimbus-docs check"
+    "docs:dev": "bun --cwd site run dev",
+    "docs:build": "bun --cwd site run build",
+    "docs:check": "cd site && bunx nimbus-docs check && bun run typecheck && bun run build && bunx nimbus-docs check"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.94.0",
     "eslint-plugin-solid": "0.19.0",
     "vite-plus": "catalog:"
   },
+  "overrides": {
+    "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000"
+  },
   "engines": {
     "bun": ">=1.4.4",
     "node": ">=24"
   },
-  "packageManager": "pnpm@12.11.1"
+  "packageManager": "bun@1.4.4"
 }

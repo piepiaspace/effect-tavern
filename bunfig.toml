@@ -1,0 +1,31 @@
+[install]
+# a week, in seconds; nothing younger is resolved
+minimumReleaseAge = 604800
+# temporary: fresh pins younger than a week; drop each once it is a week old
+minimumReleaseAgeExcludes = [
+  "vite-plus",
+  "@voidzero-dev/vite-plus-core",
+  "@voidzero-dev/vite-plus-darwin-arm64",
+  "@voidzero-dev/vite-plus-darwin-x64",
+  "@voidzero-dev/vite-plus-linux-arm64-gnu",
+  "@voidzero-dev/vite-plus-linux-arm64-musl",
+  "@voidzero-dev/vite-plus-linux-x64-gnu",
+  "@voidzero-dev/vite-plus-linux-x64-musl",
+  "@voidzero-dev/vite-plus-win32-arm64-msvc",
+  "@voidzero-dev/vite-plus-win32-x64-msvc",
+  "effect",
+  "@effect/platform-bun",
+  "@effect/platform-node-shared",
+  "@copilotkit/aimock",
+  "ai",
+  "@ai-sdk/google",
+  "@ai-sdk/anthropic",
+  "@ai-sdk/openai-compatible",
+  "@ai-sdk/gateway",
+  "@ai-sdk/provider",
+  "@ai-sdk/provider-utils",
+  "@ai-sdk/openai",
+  "@ai-sdk/typesafe-ai",
+  "@ui-sdk/core",
+  "@ui-sdk/solid",
+]

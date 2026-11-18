@@ -80,7 +80,7 @@ curl -fsSL https://github.com/piepiaspace/effect-tavern/releases/latest/download
 ### 环境要求
 
 - **Bun** `>= 1.4.4` 且 **Node.js** `>= 24`
-- **Vite+**（`vp` CLI，`pnpm@12.11.1`）
+- **Vite+**（`vp` CLI；依赖由 Bun 安装）
 
 ```sh
 vp install
@@ -152,8 +152,8 @@ vp check            # oxfmt + oxlint（含 Solid 2.0 规则）+ 类型检查
 vp run verify       # 运行全仓断言自检（runtime、provider、server、client、x18n 词条及前端包边界检查）
 cd packages/client && vp run verify:ui # 基于无头 Chrome 与 @ui-sdk Agent Bridge 的真实控件与 Solid 诊断自检
 
-pnpm run docs:dev   # 本地启动 Nimbus 双语文档站
-pnpm run docs:check # 执行 Nimbus 文档规范检查与静态构建验证
+bun run docs:dev    # 本地启动 Nimbus 双语文档站
+bun run docs:check  # 执行 Nimbus 文档规范检查与静态构建验证
 ```
 
 ---

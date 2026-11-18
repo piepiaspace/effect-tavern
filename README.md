@@ -88,7 +88,7 @@ The program ships with no cards. A new install's shelf is empty: open **Settings
 ### Prerequisites
 
 - **Bun** `>= 1.4.4` and **Node.js** `>= 24`
-- **Vite+** (`vp` CLI, `pnpm@12.11.1`)
+- **Vite+** (`vp` CLI; Bun installs the packages)
 
 ```sh
 vp install
@@ -160,8 +160,8 @@ vp check            # oxfmt + oxlint (with Solid 2.0 rules) + type-aware tsc
 vp run verify       # Full assertion suite across runtime, provider, server, and client (including x18n & import-boundary checks)
 cd packages/client && vp run verify:ui # Headless Chrome control & Solid diagnostics check via @ui-sdk agent bridge
 
-pnpm run docs:dev   # Start the Nimbus documentation site locally
-pnpm run docs:check # Run Nimbus structural/MDX/link checks and static build
+bun run docs:dev    # Start the Nimbus documentation site locally
+bun run docs:check  # Run Nimbus structural/MDX/link checks and static build
 ```
 
 ---
