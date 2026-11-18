@@ -32,8 +32,10 @@
 // request, the answer, the cost: what the inspector shows), `node` when a node is saved or amended. A product's road
 // is its stage: a narrate block streams as `product-delta` parts, split live off the prose (journal.ts `splitter`),
 // a record product arrives whole with record's `call`. The node's reply and blocks come from the landed split.
-// Errors: a model failure is a `ModelError` on the stream; an action that names what does not exist (a node, an
-// option, a product, a value outside a field) is a defect, the caller's bug.
+// Errors: on the stream, a model failure is a `ModelError` and an action the story's state refuses now (empty input, a
+// terminal or unsettled parent, a settlement or passage already running or overtaken, an id not invocable here) is a
+// `Rejected`. An action the session refuses before any stream starts (an unknown product, a field outside its range) is
+// thrown from the call itself.
 // Names (names.ts): no action waits for a name. A hole the card's own text leaves open goes out as the literal `{{key}}`
 // (an opening, a guard line, the fiction); only a player's entry with one stays out, and `demand` on such a product refuses.
 import { timelineNode, turnDetail, type ActiveContextView, type TimelineNode } from "./projection.ts"
@@ -118,7 +120,11 @@ export type Event =
   | ({ kind: "change" } & Change) // the log moved: a node landed or was amended, nodes dropped, and where head is now
 /** A narrate block's text as it streams, beside the provider's `text-delta`: the block `<<aside>> <id>` opened. */
 export type ProductDelta = { type: "product-delta"; id: string; text: string }
-export type Events = Stream.Stream<Event, ModelError>
+/** An action the story's state refuses now; the message is the reason, shown as the turn's error. */
+export class Rejected extends Schema.TaggedError<Rejected>()("Rejected", { message: Schema.String }) {}
+/** What an action's stream can fail with. */
+export type TurnError = ModelError | Rejected
+export type Events = Stream.Stream<Event, TurnError>
 export type Change = Log.Change<Node> & { invalidated?: readonly number[] }
 /** A stop signal: completes when the player halts the prose (a Deferred's await on the wire). Only narrate listens. */
 export type Stop = Effect.Effect<void>
@@ -171,8 +177,8 @@ export const outcome = <E>(events: Stream.Stream<Event, E>): Effect.Effect<Turn,
 /** The events an action causes, as a stream: the body runs forked, emitting as it goes; the stream ends when it does.
  *  A defect in the body (an invalid action found mid-turn, such as an unavailable invocation) fails the stream too;
  *  swallowing it would leave the stream open forever. */
-const emitting = (body: (emit: Emit) => Effect.Effect<unknown, ModelError>): Events =>
-  Stream.callback<Event, ModelError>((q) =>
+const emitting = (body: (emit: Emit) => Effect.Effect<unknown, TurnError>): Events =>
+  Stream.callback<Event, TurnError>((q) =>
     Effect.exit(body((e) => Effect.asVoid(Queue.offer(q, e)))).pipe(
       Effect.andThen((x) => (x._tag === "Success" ? Queue.end(q) : Queue.failCause(q, x.cause))),
     ),
@@ -596,23 +602,24 @@ export const makeSession = ({
     stop?: Stop,
     start?: readonly (typeof Effect_.Type)[], // a new root's opening (a dynamic greet); a sibling carries its base's
     transition?: Partial<Pick<Turn, "boundary" | "passage" | "end" | "products" | "changes">>,
-  ): Effect.Effect<void, ModelError> =>
+  ): Effect.Effect<void, TurnError> =>
     Effect.gen(function* () {
       // no line and no note: nothing to run the narrator from (an act of nothing, or a sibling of an opening; an edit
       // of the prose alone starts at check and needs none)
       if (from !== "check" && !input.text && !input.note && !input.invoke?.length)
-        throw new Error(base ? `node ${base.id}: nothing to rerun` : "empty input")
+        return yield* new Rejected({ message: base ? `node ${base.id}: nothing to rerun` : "empty input" })
       fresh()
       const path = chain(parent)
-      if (parent !== null && turnOf(parent).end === "over") throw new Error("terminal node cannot accept children")
+      if (parent !== null && turnOf(parent).end === "over")
+        return yield* new Rejected({ message: "terminal node cannot accept children" })
       if (path.some((t) => t.settlementStatus === "pending" || t.settlementStatus === "failed"))
-        throw new Error("parent settlement must be completed or explicitly skipped")
+        return yield* new Rejected({ message: "parent settlement must be completed or explicitly skipped" })
       if (
         path.some(
           (t) => (t.passageStatus === "pending" || t.passageStatus === "failed") && !(transition && t.id === parent),
         )
       )
-        throw new Error("parent passage must be completed before continuing")
+        return yield* new Rejected({ message: "parent passage must be completed before continuing" })
       const viewPath = transition ? passageView(path, transition) : path
       const here = derived.at(viewPath)
       // the guard lines expanded, an unnamed hole as written: what the director and check read, and check's enum
@@ -629,7 +636,7 @@ export const makeSession = ({
       const selected = resources.filter((r) => invoked.includes(r.resourceId) && r.access.player)
       for (const id of invoked)
         if (!selected.some((r) => r.resourceId === id) && !(reused && base!.input.invoke?.includes(id)))
-          throw new Error(`${id}: not invocable`)
+          return yield* new Rejected({ message: `${id}: not invocable` })
       const automatic = resources.filter((r) => r.access.model && r.activation === "always")
       let deliveries: DeliverySnapshot[] = reused
         ? [...base!.deliveries]
@@ -1008,7 +1015,7 @@ export const makeSession = ({
       yield* settleRecord(emit, c.node!.id)
     })
   const attempts = new Map<number, Deferred.Deferred<void>>()
-  const settleRecord = (emit: Emit, nodeId: number): Effect.Effect<void, ModelError> =>
+  const settleRecord = (emit: Emit, nodeId: number): Effect.Effect<void, TurnError> =>
     Effect.gen(function* () {
       fresh()
       const original = turnOf(nodeId)
@@ -1020,8 +1027,8 @@ export const makeSession = ({
         return
       }
       if (original.settlementStatus === "committed" || original.settlementStatus === "skipped")
-        throw new Error("settlement is already closed; create a revision branch")
-      if (attempts.has(nodeId)) throw new Error("settlement is already running")
+        return yield* new Rejected({ message: "settlement is already closed; create a revision branch" })
+      if (attempts.has(nodeId)) return yield* new Rejected({ message: "settlement is already running" })
       const path = chain(original.parent)
       const pre = derived.at(path).settle(original).pre
       const viewPath = original.passage ? passageView(path, original) : path
@@ -1061,7 +1068,7 @@ export const makeSession = ({
           original,
           qs ? { schema: qs, lines: rpg.questions(pre, N, context) } : undefined,
         ).pipe(Effect.raceFirst(Deferred.await(cancel).pipe(Effect.andThen(Effect.interrupt))))
-        if (!live()) throw new Error("stale settlement attempt")
+        if (!live()) return yield* new Rejected({ message: "stale settlement attempt" })
         const c = held.commit(
           Log.amend(held.log, nodeId, {
             products: { ...original.products, ...rec.products },
@@ -1142,9 +1149,9 @@ export const makeSession = ({
   }
 
   const transitions = new Map<number, Deferred.Deferred<void>>()
-  const pass = (emit: Emit, nodeId: number): Effect.Effect<void, ModelError> =>
+  const pass = (emit: Emit, nodeId: number): Effect.Effect<void, TurnError> =>
     Effect.gen(function* () {
-      if (transitions.has(nodeId)) throw new Error("passage is already running")
+      if (transitions.has(nodeId)) return yield* new Rejected({ message: "passage is already running" })
       const cancel = yield* Deferred.make<void>()
       transitions.set(nodeId, cancel)
       return yield* Effect.gen(function* () {
@@ -1172,7 +1179,8 @@ export const makeSession = ({
             undefined,
             true,
           )
-          if (snapshot.some((t) => held.log.nodes.get(t.id) !== t)) throw new Error("stale passage attempt")
+          if (snapshot.some((t) => held.log.nodes.get(t.id) !== t))
+            return yield* new Rejected({ message: "stale passage attempt" })
           const transition = {
             passage: true as const,
             ...(p.digest !== undefined && { boundary: true as const }),

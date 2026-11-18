@@ -58,6 +58,7 @@ const shelf = (): ShelfCard[] =>
 const post = globalThis.fetch
 const requests: string[] = []
 const saves: Card[] = []
+let pendingSave: Promise<void> | undefined
 globalThis.fetch = Object.assign(
   async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
@@ -96,7 +97,9 @@ globalThis.fetch = Object.assign(
       saves.push(card)
       put(card)
       if (origins.get(id)!.via !== "workshop") origins.set(id, { ...origins.get(id)!, edited: true })
-      return Response.json({ card: shelf().find((c) => c.id === id), cards: shelf(), rev: revOf(id) })
+      const response = Response.json({ card: shelf().find((c) => c.id === id), cards: shelf(), rev: revOf(id) })
+      await pendingSave
+      return response
     }
     // a card's view, the listing and the rest: nothing these pages draw
     const view = /^\/cards\/([^/]+)$/.exec(path)
@@ -313,6 +316,22 @@ const run = async () => {
       !document.querySelector(".workshop-notice"),
     `read again, the page is the shelf's card: ${fields("卡片名")[0]?.value}`,
   )
+  // Play waits for edits made during the first PUT. A conflicting second PUT keeps the newer text on screen.
+  const first = Promise.withResolvers<void>()
+  pendingSave = first.promise
+  await type("一句话简介", "先写的一行")
+  await press("去游玩")
+  await type("一句话简介", "后来的一行")
+  // The first write succeeds; another editor changes the revision before the follow-up write.
+  put({ ...held.get("made")!, title: "书架上的新名字" })
+  first.resolve()
+  pendingSave = undefined
+  await wait(350)
+  check(
+    fields("一句话简介")[0]?.value === "后来的一行" && words().includes("在别处被改过了"),
+    "Play stays when the edit made during its save is refused",
+  )
+  await press("重新读取")
   // leaving with a keystroke not yet saved writes it on the way out
   await type("一句话简介", "一条盐道")
   await press("返回")

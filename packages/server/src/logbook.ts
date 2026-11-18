@@ -45,6 +45,8 @@ import {
   type Trouble,
 } from "./term/index.ts"
 
+const isRejected = (e: unknown) => typeof e === "object" && e !== null && (e as { _tag?: unknown })._tag === "Rejected"
+
 export type Level = "quiet" | "turn" | "detail"
 export const levels: readonly Level[] = ["quiet", "turn", "detail"]
 
@@ -294,7 +296,9 @@ export const openLogbook = (
               fault: factsOf(exit.cause),
             }),
           }
-          if (calls.length || entry.end !== "landed") keep(entry)
+          // a refused action (session.ts `Rejected`) that called no model is the request's answer, not a turn to report
+          const refused = failed && !calls.length && isRejected(Cause.squash(exit.cause))
+          if (!refused && (calls.length || entry.end !== "landed")) keep(entry)
           else safe(draw)
         }
         return events.pipe(

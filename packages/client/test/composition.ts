@@ -6,7 +6,7 @@ import {
   addInvocation,
   removeInvocation,
   backspaceInvocation,
-  matchingInvocations,
+  availableInvocations,
 } from "../src/composition.ts"
 import { readCache } from "../src/read-cache.ts"
 import {
@@ -30,7 +30,7 @@ const { artifact } = await captureArtifact(
     const a = token("pack:a/guide")
     const b = token("card:action")
     const two = addInvocation(addInvocation(emptyDraft(), a), b)
-    assert.equal(addInvocation(two, a), two)
+    assert.deepEqual(addInvocation(two, a).invocations, [a, b])
     assert.deepEqual(removeInvocation(two, a.resourceId).invocations, [b])
     assert.deepEqual(backspaceInvocation(two, 0, 0, false).invocations, [a])
     for (const [start, end, composing] of [
@@ -38,11 +38,10 @@ const { artifact } = await captureArtifact(
       [0, 1, false],
       [0, 0, true],
     ] as const)
-      assert.equal(backspaceInvocation(two, start, end, composing), two)
+      assert.deepEqual(backspaceInvocation(two, start, end, composing).invocations, [a, b])
     const catalog = [a, b].map((i) => ({ ...i, available: true, category: "guide", summary: "写作技巧" }))
-    assert.deepEqual(matchingInvocations(catalog, [a], "写作"), [catalog[1]])
-    assert.equal(matchingInvocations([{ ...catalog[0]!, available: false }], [], "").length, 0)
-    assert.equal(matchingInvocations(catalog, [], "missing").length, 0)
+    const locked = { ...catalog[0]!, resourceId: "card:locked", available: false }
+    assert.deepEqual(availableInvocations([...catalog, locked], [a]), [catalog[1]])
     registry.set(card, { input: "act" } as CardView)
     registry.set(log, L.of())
     const typed = { ...two, text: "  草稿  ", note: "旁注", noteOpen: true }
@@ -111,10 +110,11 @@ const old = cache(
     }),
 )
 const failure = assert.rejects(old, /late/)
-const newer = cache("same", {}, async () => "new")
+const revision = {}
+await cache("same", revision, async () => "new")
 reject(new Error("late"))
 await failure
-assert.equal(await newer, "new")
+assert.equal(await cache("same", revision, async () => "reloaded"), "new", "a stale failure preserves the newer value")
 console.log("composition and read cache ok")
 
 let sends = 0

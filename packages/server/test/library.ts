@@ -47,10 +47,12 @@ const over = (data: Data, m: () => Model = model) =>
   const a = solo.stories.create(chat.id)
   const b = solo.stories.create(chat.id)
   assert.throws(() => solo.stories.create("nowhere"), /no card nowhere/)
-  assert.equal(solo.session(a), solo.session(a))
-  assert.notEqual(solo.session(a), solo.session(b))
+  const sessions = [solo.session(a), solo.session(b)]
   solo.locals.write({ ...solo.locals.read(chat.id), names: { char: "写入" } })
-  assert.deepEqual([solo.session(a).layer.names["char"], solo.session(b).layer.names["char"]], ["写入", "写入"])
+  assert.deepEqual(
+    sessions.map((s) => s.layer.names["char"]),
+    ["写入", "写入"],
+  )
   solo.stories.del(b)
   assert.throws(() => solo.session(b), /no story/)
   assert.throws(() => solo.stories.del(b), /no story/)
@@ -179,15 +181,14 @@ const over = (data: Data, m: () => Model = model) =>
   // a failure nobody heard: kept for one attach with its draft, then gone
   const bad = Effect.runFork(Stream.runDrain(t.start({ kind: "act", input: { text: "lost" } })))
   await Effect.runPromise(Fiber.interrupt(bad)) // gone before narrate is through, so before record fails
-  const beforeReload = lib.session(p)
-  lib.cards.install(chat, { via: "file" }, { replace: true }) // mark the in-flight session stale before its unheard failure
+  const title = lib.session(p).meta.title
+  lib.cards.install({ ...chat, title: "New edition" }, { via: "file" }, { replace: true })
   while (t.busy) await new Promise((f) => setTimeout(f, 5))
-  assert.equal(t.pendingFailure, true)
-  assert.equal(lib.session(p), beforeReload) // reads must not discard the pending error
-  lib.cards.install(chat, { via: "file" }, { replace: true }) // replacing again after failure must preserve it too
-  assert.equal(lib.session(p), beforeReload)
+  assert.equal(lib.session(p).meta.title, title) // reads must not discard the pending error
+  lib.cards.install({ ...chat, title: "Final edition" }, { via: "file" }, { replace: true })
+  assert.equal(lib.session(p).meta.title, title)
   const failed = lib.attach(p)
-  assert.notEqual(lib.session(p), beforeReload) // consumed: the next access reloads the card
+  assert.equal(lib.session(p).meta.title, "Final edition") // consumed: the next access reloads the card
   assert.equal(failed?.draft, null) // prose is already persisted; it is no longer an unsaved draft
   const failedNode = lib.session(p).log.head!
   assert.equal(lib.session(p).log.nodes.get(failedNode)!.settlementStatus, "failed")
@@ -197,7 +198,7 @@ const over = (data: Data, m: () => Model = model) =>
     told.map((e) => e.kind),
     ["error"],
   )
-  assert.equal(t.attach(), undefined)
+  assert.equal(lib.attach(p), undefined)
 
   // the persona: each story's own pick; the card's default reaches a story only at its creation
   lib.personas.put({ id: "monk", name: "行脚僧", text: "你是路过的行脚僧。" })

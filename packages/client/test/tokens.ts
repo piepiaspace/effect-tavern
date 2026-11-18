@@ -16,11 +16,6 @@ for (const f of readdirSync(src)) {
 const runtime = new Set(["--anchor-width", "--available-height"])
 const missing = [...used].filter(([t]) => !defined.has(t) && !runtime.has(t))
 assert.deepEqual(missing, [], `undefined tokens: ${missing.map(([t, f]) => `${t} (${f})`).join(", ")}`)
-const unused = [...defined].filter(
-  (t) => !used.has(t) && !readFileSync(join(src, "tokens.css"), "utf8").includes(`var(${t})`),
-)
-console.log(`tokens: ${defined.size} defined, ${used.size} used, ${unused.length} not yet used`)
-
 // Radius and spacing come off the rulers: no px or rem literal in a border-radius, padding, margin or gap outside tokens.css.
 const ruled =
   /(?<![\w-])(border(?:-[a-z]+)*-radius|padding(?:-[a-z-]+)?|margin(?:-[a-z-]+)?|gap|row-gap|column-gap)\s*:([^;{}]*)/g

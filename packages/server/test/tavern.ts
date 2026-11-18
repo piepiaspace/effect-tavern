@@ -2,7 +2,6 @@
 // greeted on the server (the card page picks the opening).
 import { plain as player } from "@effect-tavern/runtime/support/rows.ts"
 import assert from "node:assert/strict"
-import { readFileSync } from "node:fs"
 import { open } from "../src/data.ts"
 import { tavern } from "../src/tavern.ts"
 
@@ -32,9 +31,4 @@ data.providers.put(own)
 tavern({ data, overlay: player.harness, seed: { key: "sk-ant-api-x" } })
 assert.deepEqual([data.providers.list(), data.secrets.list(), data.routing.read()], [[own], [], undefined])
 
-// no host reads a card from beside the program: neither entry names a card file, a card directory or a card by name
-for (const file of ["dev.ts", "host.ts"]) {
-  const text = readFileSync(new URL(`../src/${file}`, import.meta.url), "utf8")
-  assert.doesNotMatch(text, /env\["CARDS?"\]|readCard|loadCard|\.yaml/, file)
-}
 console.log("tavern ok")

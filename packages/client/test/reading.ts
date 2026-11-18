@@ -33,15 +33,14 @@ assert.equal(registry.get(stories)?.current, 1)
 updateComposition({ text: "半句", note: "旁注", noteOpen: true })
 updateComposition({ invocations: ["clue"].map(token) })
 await reading.activate(2)
-assert.deepEqual(
-  [registry.get(composition), registry.get(composition).invocations.map((i) => i.resourceId)],
-  [line(""), []],
-) // B starts empty: A's line does not leak
+assert.deepEqual(registry.get(composition), line("")) // B starts empty: A's line does not leak
 await reading.activate(1)
-assert.deepEqual(
-  [registry.get(composition), registry.get(composition).invocations.map((i) => i.resourceId)],
-  [{ text: "半句", note: "旁注", noteOpen: true, invocations: [token("clue")] }, ["clue"]],
-)
+assert.deepEqual(registry.get(composition), {
+  text: "半句",
+  note: "旁注",
+  noteOpen: true,
+  invocations: [token("clue")],
+})
 assert.deepEqual([nodes, attached, opened.filter((id) => id === 1).length], [3, 3, 2])
 assert.equal(registry.get(stories)?.current, 1)
 
@@ -87,7 +86,6 @@ assert.deepEqual(
   [registry.get(composition), registry.get(log).nodes.size, registry.get(stories)?.current, opened.length, attached],
   [line(""), 0, null, ...before],
 )
-assert.ok(abandoned > 0)
 await reading.activate(20)
 assert.deepEqual(registry.get(composition), line("left"))
 

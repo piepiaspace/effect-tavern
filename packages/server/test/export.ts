@@ -82,18 +82,15 @@ assert.equal(
   ].join("\n"),
 )
 assert.equal(markdown({ ...x, story: { ...story, title: null } }, at).split("\n")[0], "# New story")
-const b = backup(x, at)
-assert.deepEqual(
-  [b.format, b.version, b.exported, b.card, b.story, b.snapshot === x.snapshot],
-  [
-    "effect-tavern/story",
-    3,
-    "2026-10-28T12:00:00.000Z",
-    x.card,
-    { id: 7, title: "竹林夜话", starred: true, updated: 1700000000000 },
-    true,
-  ],
-)
+const snapshot = structuredClone(x.snapshot)
+assert.deepEqual(backup(x, at), {
+  format: "effect-tavern/story",
+  version: 3,
+  exported: "2026-10-28T12:00:00.000Z",
+  card: { id: "wuxia", title: "竹林" },
+  story: { id: 7, title: "竹林夜话", starred: true, updated: 1700000000000 },
+  snapshot,
+})
 assert.equal(
   disposition(story, "md"),
   `attachment; filename="____.md"; filename*=UTF-8''${encodeURIComponent("竹林夜话.md")}`,

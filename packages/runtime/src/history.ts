@@ -45,14 +45,6 @@ export const makeSummaries = <B>() => {
       table.set(k, { sum: s, over: range })
       return s
     },
-    summaryFor: (path: readonly Turn<B>[]): Summary | undefined => {
-      let best: Summary | undefined
-      for (const { sum, over } of table.values()) if (current(over, path) && (!best || sum.to > best.to)) best = sum // longest cached prefix wins
-      return best
-    },
-    get size() {
-      return table.size
-    },
   }
 }
 export type Summaries<B> = ReturnType<typeof makeSummaries<B>>

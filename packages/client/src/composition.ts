@@ -23,16 +23,5 @@ export const addInvocation = (d: DraftModel, token: InvocationToken): DraftModel
 export const backspaceInvocation = (d: DraftModel, start: number, end: number, composing: boolean): DraftModel =>
   !composing && start === 0 && end === 0 && d.invocations.length ? { ...d, invocations: d.invocations.slice(0, -1) } : d
 
-export const matchingInvocations = (
-  items: readonly PlayerCatalogItem[],
-  selected: readonly InvocationToken[],
-  query: string,
-) => {
-  const q = query.trim().toLocaleLowerCase()
-  return items.filter(
-    (item) =>
-      item.available &&
-      !selected.some((s) => s.resourceId === item.resourceId) &&
-      (!q || `${item.title} ${item.summary}`.toLocaleLowerCase().includes(q)),
-  )
-}
+export const availableInvocations = (items: readonly PlayerCatalogItem[], selected: readonly InvocationToken[]) =>
+  items.filter((item) => item.available && !selected.some((s) => s.resourceId === item.resourceId))

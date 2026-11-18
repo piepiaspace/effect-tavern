@@ -38,13 +38,12 @@ export const refused = (e: unknown): Probe => ({
   error: e instanceof Error ? e.message : String(e),
 })
 /** What the connectivity answers, and every model's test with it. */
-export const configOf = (p: Provider): string =>
-  JSON.stringify([p.endpoints, p.proxy, p.headers, p.secret, p.defaultFormat])
+const configOf = (p: Provider): string => JSON.stringify([p.endpoints, p.proxy, p.headers, p.secret, p.defaultFormat])
 /** What a model's test answers besides: the protocol it goes under. */
-export const formatsOf = (p: Provider | undefined): Record<string, Format> =>
+const formatsOf = (p: Provider | undefined): Record<string, Format> =>
   Object.fromEntries((p?.models ?? []).map((m) => [m.id, m.format ?? p!.defaultFormat]))
 /** The models whose protocol changed between two readings; one added or removed did not. */
-export const reformatted = (now: Record<string, Format>, prev: Record<string, Format>): string[] =>
+const reformatted = (now: Record<string, Format>, prev: Record<string, Format>): string[] =>
   Object.keys(now).filter((id) => prev[id] !== undefined && prev[id] !== now[id])
 
 export const WORKERS = 3

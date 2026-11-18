@@ -59,15 +59,6 @@ export const makeLore = <S, C>(entries: readonly Entry<S, C>[]) => {
     entries,
     deepest,
     current,
-    /** Hooks of visible entries. */
-    index: (s: S, told: readonly Disclosure[]) => visible(s, told).map((e) => ({ id: e.id, hook: hook(e.layers[0]!) })),
-    /** Visible entries with a layer up to current the window does not hold: the enum the lookup stage picks from. Empty →
-     *  no call. By unseen layers, not depth: a window fires current+1 over an unlocked layer nobody read, and that
-     *  layer stays readable under it (by depth alone it was lost for good once a deeper one fired). */
-    readable: (s: S, told: readonly Disclosure[], held: readonly Disclosure[]) =>
-      visible(s, told)
-        .filter((e) => unread(e, s, told, held).length > 0)
-        .map((e) => e.id),
     /** Layers up to current that the window does not hold yet; undefined when the entry isn't readable at all. */
     read: (s: S, told: readonly Disclosure[], held: readonly Disclosure[], id: string): Disclosure[] | undefined => {
       const e = byId.get(id)

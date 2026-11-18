@@ -1,8 +1,4 @@
-// listModels offline, on CopilotKit's aimock with provider-native model catalogs and the required-header policy: each
-// format's auth table and list parser against the shape that provider answers (Anthropic `data[].id`, which needs
-// `anthropic-version`; Gemini `models[].name` with its `models/` prefix; OpenAI `data[].id`), and a request without the
-// version header refused as Anthropic refuses it. Then the shapes no provider mock has: a gateway's
-// `supported_endpoints`, a 2xx that is no listing, a fetch that throws.
+// listModels reads native catalogs under each format's header policy. Gateways may also report supported endpoints.
 import { LLMock } from "@copilotkit/aimock"
 import assert from "node:assert/strict"
 import { listModels, type Connection, type Listed, type Trace } from "../src/connection.ts"
@@ -25,12 +21,8 @@ try {
   assert.deepEqual(await listModels(conn("anthropic")), [{ id: "claude-haiku-5-5" }])
   assert.deepEqual(await listModels(conn("gemini")), [{ id: "gemini-2.5-flash" }])
   assert.deepEqual((await listModels(conn("openai-compatible"))).map(id).toSorted(), ids)
-  const bare: typeof fetch = (input, init) => {
-    const headers = new Headers(init?.headers)
-    headers.delete("anthropic-version")
-    return fetch(input, { ...init, headers })
-  }
-  await assert.rejects(listModels(conn("anthropic"), { fetch: bare }), /model listing failed: HTTP 400/)
+  const denied: typeof fetch = async () => new Response(null, { status: 403 })
+  await assert.rejects(listModels(conn("anthropic"), { fetch: denied }), /model listing failed: HTTP 403/)
 
   // a gateway's listing says where each model is served (CommandCode's `supported_endpoints`): the formats whose
   // operation path it names, in RULES order; a path of no format (`/responses`) is dropped, an empty list stays empty

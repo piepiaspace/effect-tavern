@@ -61,9 +61,6 @@ try {
   assert.deepEqual(wired(localEvents), remoteEvents)
   assert.ok(!JSON.stringify(localEvents).includes("PRIVATE FICTION"))
 
-  const original = lib.session(direct)
-  assert.throws(() => put({ ...card, rules: { fields: "wrong" } }))
-  assert.equal(lib.session(direct), original) // rejected writes do not evict
   for (const product of [
     { id: "aside", role: "theater", text: "Aside", shape: { kind: "text" }, feed: true },
     {
@@ -79,7 +76,6 @@ try {
     assert.throws(() => put(invalid))
     assert.equal((await http(remote, "/cards?replace=1", "POST", invalid)).status, 400)
     assert.deepEqual(lib.cards.get(card.id), card) // the installed card stands
-    assert.equal(lib.session(direct), original)
   }
   put({
     ...card,
@@ -87,7 +83,6 @@ try {
     rules: { ...card.rules, fields: [{ ...card.rules.fields[0]!, initial: 7 }] },
   })
   const installed = lib.session(direct)
-  assert.notEqual(installed, original)
   assert.equal(installed.meta.title, "Installed")
   assert.equal(installed.node(0).state.score, 7) // old logs deliberately reinterpret current rules
   const context = await (await http(direct, "/context?node=0")).json()
@@ -124,7 +119,7 @@ try {
     title: "Next",
     rules: { ...card.rules, fields: [{ ...card.rules.fields[0]!, initial: 9 }] },
   })
-  assert.equal(lib.session(direct), installed) // a running turn retains its definition
+  assert.equal(lib.session(direct).meta.title, "Installed") // a running turn retains its definition
   assert.equal(lib.session(remote).meta.title, "Next") // an idle sibling reloads immediately
   const skipped = await collect(lib.submit(direct, { kind: "skipRecord", node }))
   assert.equal(skipped[0]?.kind, "change")

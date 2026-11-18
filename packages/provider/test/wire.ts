@@ -1,5 +1,7 @@
 import assert from "node:assert/strict"
-import { breakpoint, wire, type Message } from "../src/call.ts"
+import { Effect, Stream } from "effect"
+import { fake } from "../src/fake.ts"
+import { breakpoint, stream, wire, type Message } from "../src/call.ts"
 
 // [sys, usr, sys, asst, sys]; the last one carries a cache breakpoint, which must survive the role change
 const sys = (content: string): Message => ({ role: "system", content })
@@ -23,7 +25,7 @@ assert.deepEqual(wire("openai-compatible", seq), seq)
 for (const f of ["anthropic", "gemini"] as const) {
   const last = wire(f, seq)[4]!
   assert.equal(last.content, "lore")
-  assert.deepEqual(last.providerOptions, seq[4]!.providerOptions)
+  assert.deepEqual(last.providerOptions, { anthropic: { cacheControl: { type: "ephemeral" } } })
 }
 // a list of system messages only stays system on gemini
 assert.deepEqual(roles(wire("gemini", [sys("a"), sys("b")])), ["system", "system"])
@@ -38,4 +40,18 @@ assert.throws(() => wire("anthropic", ending("assistant"), false), /prefill/)
 assert.equal(wire("anthropic", ending("user"), false).length, 7) // an assistant inside, a user at the end: accepted
 assert.equal(wire("anthropic", ending("assistant"), true).length, 7) // a continuation where the connection takes one
 assert.equal(wire("anthropic", ending("assistant")).length, 7) // a bare Model (no capability said): unchanged
+// A reader that stops after the first text delta must cancel the outstanding provider request.
+let signal: AbortSignal | undefined
+const model = fake((request) => {
+  signal = request.abortSignal
+  return { text: "A response with more text still to come.", delay: 1 }
+})
+await Effect.runPromise(
+  stream(model, seq).pipe(
+    Stream.filter((part) => part.type === "text-delta"),
+    Stream.take(1),
+    Stream.runDrain,
+  ),
+)
+assert.equal(signal?.aborted, true)
 console.log("wire ok")

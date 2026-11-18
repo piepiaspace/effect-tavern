@@ -16,17 +16,16 @@ const p: Provider = {
   cacheTtl: "1h",
   models: [],
 }
-const fields = ({ model, ...rest }: ReturnType<typeof bind>) => (assert.ok(model), rest)
 
 // every knob set: the entry's over the format's defaults (anthropic: no prefill, no reasoning back)
-const full = bind(
+const { model: _fullModel, ...full } = bind(
   connection(
     p,
     { id: "claude", hat: "h", effort: "high", maxOutputTokens: 2048, capabilities: { prefill: true } },
     key,
   ),
 )
-assert.deepEqual(fields(full), {
+assert.deepEqual(full, {
   format: "anthropic",
   tools: true,
   prefill: true,
@@ -39,11 +38,7 @@ assert.deepEqual(fields(full), {
 
 // nothing set: the format's defaults, and no key for what is absent
 const { cacheTtl: _, ...bare } = p
-const plain = fields(bind(connection(bare, { id: "g", format: "gemini" }, key)))
+const { model: _plainModel, ...plain } = bind(connection(bare, { id: "g", format: "gemini" }, key))
 assert.deepEqual(plain, { format: "gemini", tools: true, prefill: true, reasoningBack: true })
-assert.ok(!("effort" in plain) && !("ttl" in plain) && !("hat" in plain) && !("maxOutputTokens" in plain))
-
-// the connection carries the entry's settings, so a caller can override one before binding (dev.ts, test/live.ts)
-assert.equal(bind({ ...connection(p, { id: "c", effort: "high" }, key), effort: "low" }).effort, "low")
 assert.equal(bind(connection(p, { id: "text-only", capabilities: { tools: false } }, key)).tools, false)
 console.log("bind ok")

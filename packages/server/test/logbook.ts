@@ -7,7 +7,14 @@
 // action words are the client's own.
 process.env.TZ = "UTC"
 import { diagnose, ModelError, type Usage } from "@effect-tavern/provider"
-import type { Action, Event, Phase } from "@effect-tavern/runtime/src/session.ts"
+import {
+  Rejected,
+  type Action,
+  type Event,
+  type Events,
+  type Phase,
+  type TurnError,
+} from "@effect-tavern/runtime/src/session.ts"
 import clientEn from "../../client/src/locales/en.ts"
 import clientZh from "../../client/src/locales/zh-CN.ts"
 import assert from "node:assert/strict"
@@ -163,7 +170,7 @@ for (const phase of ["lookup", "decide", "narrate", "check", "polish", "record"]
   }
 }
 
-const streamOf = (s: (typeof scripts)[string]): Stream.Stream<Event, ModelError> => {
+const streamOf = (s: (typeof scripts)[string]): Events => {
   const body = Stream.fromIterable(s.steps).pipe(
     Stream.mapEffect((x) =>
       Effect.sync(() => {
@@ -178,7 +185,7 @@ const streamOf = (s: (typeof scripts)[string]): Stream.Stream<Event, ModelError>
       ? Stream.concat(body, Stream.fromEffect(Effect.interrupt))
       : body
 }
-const run = (stream: Stream.Stream<Event, ModelError>) => {
+const run = (stream: Events) => {
   const seen: Event[] = []
   return Effect.runPromise(
     Effect.exit(Stream.runForEach(stream, (e) => Effect.sync(() => void seen.push(e)))).pipe(
@@ -186,7 +193,7 @@ const run = (stream: Stream.Stream<Event, ModelError>) => {
     ),
   )
 }
-const same = (a: Exit.Exit<void, ModelError>, b: Exit.Exit<void, ModelError>) => {
+const same = (a: Exit.Exit<void, TurnError>, b: Exit.Exit<void, TurnError>) => {
   assert.equal(a._tag, b._tag)
   if (Exit.isFailure(a) && Exit.isFailure(b)) {
     assert.equal(Cause.hasInterruptsOnly(a.cause), Cause.hasInterruptsOnly(b.cause))
@@ -576,4 +583,22 @@ for (const columns of [48, 100])
 }
 
 rmSync(dir, { recursive: true, force: true })
+// A refused action (session.ts `Rejected`: empty input, a settlement already running) is the request's answer, not a
+// turn that failed: the stream fails as it came, and with no call made nothing is said or filed.
+{
+  const dir = mkdtempSync(join(tmpdir(), "tavern-logbook-refused-"))
+  try {
+    const screen = memoryScreen({ columns: 48 })
+    const logbook = openLogbook({ screen, dir, clock: () => 0 })
+    logbook.host({ url: "http://127.0.0.1:7777", data: dir, version: "0.0.0" })
+    const said = screen.shown().length
+    const refused: Events = Stream.fail(new Rejected({ message: "empty input" }))
+    const { exit } = await run(logbook.turn(1, () => {})({ kind: "act", input: { text: "" } }, refused))
+    assert.ok(Exit.isFailure(exit) && Cause.squash(exit.cause) instanceof Rejected)
+    assert.equal(screen.shown().length, said)
+    assert.equal(existsSync(join(dir, "turns.jsonl")), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
 console.log("logbook ok")
