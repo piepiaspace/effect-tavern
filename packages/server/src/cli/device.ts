@@ -4,8 +4,7 @@
 // desktop's opener when there is one; nothing keeps them awake), and none. A tool that is not installed is a no-op that
 // answers false, never an error: the tavern serves the same without it.
 import { spawnSync } from "node:child_process"
-import { existsSync, statfsSync } from "node:fs"
-import { join } from "node:path"
+import { statfsSync } from "node:fs"
 
 export interface Device {
   readonly kind: "termux" | "linux" | "macos" | "none"
@@ -94,16 +93,14 @@ export const noDevice: Device = {
   tools: () => [],
 }
 
-/** Android's loader is also visible in Linux sessions that don't inherit Termux's environment. */
-export const isAndroid = (platform: string, env: Env) =>
-  platform === "android" ||
-  !!env["TERMUX_VERSION"] ||
-  /com\.termux/.test(env["PREFIX"] ?? "") ||
-  (platform === "linux" && existsSync(join(env["ANDROID_ROOT"] || "/system", "bin/linker64")))
+/** Termux is where the termux-api tools are: its own session says so, or one of its tools is on the PATH. Which
+ *  binary runs here is another question, settled by the installer and the build (release/targets.ts). */
+const inTermux = (env: Env) =>
+  !!env["TERMUX_VERSION"] || /com\.termux/.test(env["PREFIX"] ?? "") || !!which("termux-wake-lock", env)
 
 export const deviceOf = (platform: string, env: Env): Device => {
-  if (isAndroid(platform, env)) return termux(env)
+  if (inTermux(env)) return termux(env)
   if (platform === "darwin") return desktop("macos", env)
-  if (platform === "linux") return desktop("linux", env)
+  if (platform === "linux" || platform === "android") return desktop("linux", env)
   return noDevice
 }

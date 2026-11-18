@@ -4,7 +4,8 @@
 //
 // The contract with the installer (install.sh), held by both halves: every asset sits under
 // `releases/latest/download/` and `releases/download/<tag>/`; `release.txt` is the tag on its first line (`v0.9.2`), then
-// the notes, one `- ` line each; a platform's binary is `<asset>.gz`. A mirror replaces the `latest/download` base for
+// the notes, one `- ` line each; a build's binary is `<asset>.gz`, the
+// asset names in release/targets.ts. A mirror replaces the `latest/download` base for
 // every file; without one, after reading release.txt the binary is fetched from that tag's own directory.
 import { createReadStream, statSync } from "node:fs"
 import { open, readFile } from "node:fs/promises"
@@ -14,12 +15,6 @@ import { errno, Failed } from "./failed.ts"
 export const REPO = "waylon256yhw/effect-tavern"
 const LATEST = `https://github.com/${REPO}/releases/latest/download`
 const TAGGED = (tag: string) => `https://github.com/${REPO}/releases/download/${tag}`
-
-/** The release binary for a platform: one line a target, the same table as install.sh's. */
-const ASSETS: Record<string, string> = {
-  "android-arm64": "tavern-android",
-}
-export const assetFor = (platform: string, arch: string): string | undefined => ASSETS[`${platform}-${arch}`]
 
 export interface Latest {
   /** The release's tag, as `v0.9.2`. */

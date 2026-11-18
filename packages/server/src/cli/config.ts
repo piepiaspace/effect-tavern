@@ -1,11 +1,12 @@
 // The one reader of the host's flags and environment: all commands take their settings
 // from `config`, nothing else reads `process.env` for them. Precedence: flag > TAVERN_* > the legacy name > default.
 // The legacy names (DATA, PORT, HOST, TAVERN_URL) stay because people have them exported from the old launcher's days.
+import { realpathSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { levels, type Level } from "../logbook.ts"
-import { deviceOf, isAndroid, type Device } from "./device.ts"
+import { deviceOf, type Device } from "./device.ts"
 import type { Release } from "./release.ts"
 
 /** Where a command writes: the process's stdout or stderr, or a string sink in tests. */
@@ -37,29 +38,52 @@ export interface World {
   readonly signal?: AbortSignal
 }
 
-/** The running program: its file, whether it is the compiled binary, its version, the platform it runs on. */
+/** How this binary was installed, which decides who replaces it: `tavern update` (install.sh, install.ps1), or the
+ *  package manager or image it came with. */
+export type Channel = "script" | "brew" | "docker"
+
+/** The running program: its file, whether it is the compiled binary, its version, the build it is, how it came. */
 export interface Self {
   /** process.execPath: the binary itself when compiled, the Bun running the source otherwise. */
   readonly path: string
   readonly compiled: boolean
   readonly version: string
-  /** `android`, `linux`, `darwin`, ... (Termux counts as android whatever Bun reports). */
+  /** process.platform and process.arch, for a person reading `tavern doctor`. */
   readonly platform: string
   readonly arch: string
+  /** The release asset this binary was compiled as (`tavern-android`, `tavern-darwin-arm64`, ...); none from source
+   *  or a local `compile`. `tavern update` fetches the same one: a build knows what it is, nothing is guessed. */
+  readonly asset?: string
+  readonly channel: Channel
 }
 
 declare const TAVERN_VERSION: string | undefined
+declare const TAVERN_ASSET: string | undefined
 /** Stamped at compile (`bun build --compile --define TAVERN_VERSION='"0.9.2"'`); `dev` from source. */
 export const version: string = typeof TAVERN_VERSION === "string" && TAVERN_VERSION ? TAVERN_VERSION : "dev"
 /** Running as the compiled binary (its modules live under Bun's `$bunfs`), not from source. */
 export const compiled = import.meta.url.includes("$bunfs")
+/** Stamped at compile beside the version (`--define TAVERN_ASSET='"tavern-android"'`, release/targets.ts). */
+const asset = typeof TAVERN_ASSET === "string" && TAVERN_ASSET ? TAVERN_ASSET : undefined
+
+/** The image says so (TAVERN_CHANNEL); Homebrew is where the file lives. */
+const channelOf = (env: World["env"], path: string): Channel => {
+  const named = env["TAVERN_CHANNEL"]
+  if (named === "docker") return named
+  try {
+    if (realpathSync(path).includes("/Cellar/")) return "brew"
+  } catch {}
+  return "script"
+}
 
 export const thisProgram = (env: World["env"]): Self => ({
   path: process.execPath,
   compiled,
   version,
-  platform: isAndroid(process.platform, env) ? "android" : process.platform,
+  platform: process.platform,
   arch: process.arch,
+  ...(asset && { asset }),
+  channel: channelOf(env, process.execPath),
 })
 
 /** A line from stdin, read once and let go, so the process can end after it. */
@@ -85,7 +109,7 @@ export const processWorld = (): World => {
     cwd: process.cwd(),
     out: process.stdout,
     err: process.stderr,
-    device: deviceOf(self.platform, process.env),
+    device: deviceOf(process.platform, process.env),
     self,
     terminal: { in: process.stdin.isTTY === true, err: process.stderr.isTTY === true },
     ask: askStdin,
@@ -124,8 +148,8 @@ export interface Config {
   readonly log: Level
   /** Open the page once a `tavern start` on a terminal answers (`--no-open` turns it off). */
   readonly open: boolean
-  /** The release asset `tavern update` fetches, when the platform table names none (TAVERN_ASSET: a self-built
-   *  mirror for another machine, and the tests). */
+  /** The release asset `tavern update` fetches instead of the binary's own (TAVERN_ASSET: a self-built mirror for
+   *  another machine, and the tests). */
   readonly asset?: string
   readonly version: string
 }

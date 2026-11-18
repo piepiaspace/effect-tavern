@@ -7,13 +7,22 @@ sidebar:
 
 Run `tavern` for the command menu, or `bun run tavern` from the repository root. Use `tavern start --help` to see startup options.
 
-Install the binary in Termux on an Android phone:
+## Install
 
-```sh
-curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
-```
+| Where | Install | Update |
+| --- | --- | --- |
+| Android (Termux), Linux, macOS | `curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh \| sh` | `tavern update` |
+| Windows (PowerShell) | `irm https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.ps1 \| iex` | `tavern update` |
+| Homebrew (macOS, Linux) | `brew install waylon256yhw/tavern/tavern` | `brew upgrade tavern` |
+| Docker | `docker run -d -p 127.0.0.1:7777:7777 -v tavern:/data ghcr.io/waylon256yhw/effect-tavern` | pull the new image, recreate the container |
 
-Run `tavern start` to open the tavern and `tavern update` to update it. Running the install command again replaces an older launcher and keeps your library in `~/.tavern`.
+Run `tavern start` to open the tavern. A binary that came from Homebrew or the image refuses `tavern update` and names its package manager's command instead.
+
+**Which build.** The install script picks the build by the loader the machine has: on Linux glibc's, then musl's, then Android's `/system/bin/linker64`. Native Termux gets the Android build; a GNU/Linux distro on the same phone and a server get the Linux one. macOS goes by architecture (a shell under Rosetta still gets arm64). Each binary carries its own asset name, so `tavern update` fetches the same build.
+
+**Where it goes.** `$PREFIX/bin/tavern` on Termux, `~/.local/bin/tavern` elsewhere (the script says so when that is not on the `PATH`), `%LOCALAPPDATA%\Programs\tavern` on Windows. The library lives in `~/.tavern` (`TAVERN_DATA` moves it; `/data` in the container). Running the install command again replaces an older launcher and keeps the library.
+
+**Uninstall.** A script install: `rm "$(command -v tavern)"`; `rm -r ~/.tavern` removes the library too. Homebrew: `brew uninstall tavern`.
 
 ## 0. Running the Tavern (`start`, `stop`, `status`, `update`, `doctor`)
 
@@ -24,7 +33,7 @@ The player's commands, the same on a phone (Termux) and on a computer. Help (`ta
 | `tavern start` | Serves the page and its API. Holds the device's wake lock while it serves (Termux's `termux-wake-lock`); on a terminal, opens the page once the server answers (`--no-open` turns that off). A second `tavern start` while one serves the same library says where it runs and exits `0`. A busy port is refused with the command to try; the port never moves by itself. | `0`, `1` |
 | `tavern stop` | Stops the tavern serving this data directory (found through its address file and PID) and waits for it to exit. The dev session (`vp dev`) is left to its own terminal. | `0` (also when none runs), `1` |
 | `tavern status` | Instant and offline: running or not, the address, the data directory, the version. `--json` gives `{running, url?, pid?, data, version}`. | `0` running, `3` not |
-| `tavern update [--yes] [--check]` | Reads the release's `release.txt`, shows the current and latest version and what changes, asks (on a terminal only), checks free space, downloads the platform's asset beside the binary, requires the new file's `--version` to answer the expected version, then renames it over the running binary. Any failure leaves the old binary in place. A tavern still serving keeps the old program until restarted. `TAVERN_MIRROR` names a mirror (an https URL or a directory). Refused from source. | `0`, `1`, `2` (no terminal and no `--yes`) |
+| `tavern update [--yes] [--check]` | Reads the release's `release.txt`, shows the current and latest version and what changes, asks (on a terminal only), checks free space, downloads the binary's own build (the asset name stamped into it at compile) beside it, requires the new file's `--version` to answer the expected version, then renames it over the running binary. Any failure leaves the old binary in place. A tavern still serving keeps the old program until restarted. `TAVERN_MIRROR` names a mirror (an https URL or a directory). Refused from source. | `0`, `1`, `2` (no terminal and no `--yes`) |
 | `tavern doctor [--verbose]` | One line per check, marked `✓`, `!` or `✗`, each with one next step: device and platform, the command's location and version, the data directory, free space against an update, the running tavern and its port, the network to the release, the device's tools, leftovers of the old launcher, and the last failed turn from `<data>/log/turns.jsonl`. | `0`, `1` (any `✗`) |
 
 Every failure a person reads is worded in plain language: what happened, the likely cause, the one next step marked `>`, what was left as it was, and one line of raw facts. Under `--json` a failure is one line on stderr: `{"error":{"code","message","next"}}`.

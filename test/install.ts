@@ -69,20 +69,30 @@ interface Box {
   bin: string
   home: string
   log: string
+  /** TAVERN_SYSROOT: the loaders this machine has, as files under it. */
+  sys: string
 }
 
-const box = (shell: string, o: { os?: string; machine?: string } = {}): Box => {
+// A machine: its uname, and the loaders a binary could ask for (a phone's Termux has Android's alone).
+const box = (shell: string, o: { system?: string; machine?: string; loaders?: string[] } = {}): Box => {
   const r = mkdtempSync("/tmp/tv.")
   chmodSync(r, 0o755)
-  const b: Box = { root: r, bin: join(r, "bin"), home: join(r, "home"), log: join(r, "termux.log") }
+  const b: Box = {
+    root: r,
+    bin: join(r, "bin"),
+    home: join(r, "home"),
+    log: join(r, "termux.log"),
+    sys: join(r, "sys"),
+  }
   mkdirSync(b.bin)
   mkdirSync(b.home)
+  for (const l of o.loaders ?? ["/system/bin/linker64"]) {
+    mkdirSync(dirname(join(b.sys, l)), { recursive: true })
+    writeFileSync(join(b.sys, l), "")
+  }
   symlinkSync(shell, join(b.bin, "sh"))
   const tool = (name: string, body: string) => writeFileSync(join(b.bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 })
-  tool(
-    "uname",
-    `case "$1" in -m) echo ${o.machine ?? "aarch64"} ;; -o) echo ${o.os ?? "Android"} ;; *) echo Linux ;; esac`,
-  )
+  tool("uname", `case "$1" in -m) echo ${o.machine ?? "aarch64"} ;; *) echo ${o.system ?? "Linux"} ;; esac`)
   for (const t of ["termux-wake-lock", "termux-wake-unlock", "termux-open-url"]) {
     tool(t, `echo "${t} $*" >>${b.log}`)
   }
@@ -91,13 +101,20 @@ const box = (shell: string, o: { os?: string; machine?: string } = {}): Box => {
 }
 
 // A release directory: release.txt, the gzipped binary (raw bytes when given a Buffer; absent when null), the scripts.
-const release = (b: Box, tag: string, o: { binary?: string | Buffer | null; notes?: string } = {}): string => {
+const release = (
+  b: Box,
+  tag: string,
+  o: { binary?: string | Buffer | null; notes?: string; asset?: string } = {},
+): string => {
   const dir = join(b.root, "rel", tag)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, "release.txt"), o.notes ?? `${tag}\n- feat: a change\n`)
   const binary = o.binary === undefined ? stub(tag.slice(1)) : o.binary
   if (binary !== null) {
-    writeFileSync(join(dir, "tavern-android.gz"), typeof binary === "string" ? gzipSync(binary) : binary)
+    writeFileSync(
+      join(dir, `${o.asset ?? "tavern-android"}.gz`),
+      typeof binary === "string" ? gzipSync(binary) : binary,
+    )
   }
   writeFileSync(join(dir, "install.sh"), script)
   return `file://${dir}`
@@ -114,7 +131,7 @@ const run = (
   argv: readonly string[],
   o: { env?: Record<string, string>; stdin?: string; nobody?: boolean } = {},
 ): Ran => {
-  const env = { HOME: b.home, PATH: `${b.bin}:/usr/bin:/bin`, ...o.env }
+  const env = { HOME: b.home, PATH: `${b.bin}:/usr/bin:/bin`, TAVERN_SYSROOT: b.sys, ...o.env }
   const as = o.nobody && root ? [setpriv!, "--reuid=65534", "--regid=65534", "--clear-groups", "--"] : []
   const cmd = [...(setsid ? [setsid, "-w"] : []), ...as, ...argv]
   const r = spawnSync(cmd[0]!, cmd.slice(1), { env, input: o.stdin ?? "", encoding: "utf8", timeout: 60_000 })
@@ -166,11 +183,11 @@ const installed = (lang: Lang, v: string, where = "<root>/bin") =>
     [`✓ 已安装 tavern ${v}`, `  位置  ${where}`, "  启动  tavern start", "  更新  tavern update", ""],
     [`✓ Installed tavern ${v}`, `  where   ${where}`, "  start   tavern start", "  update  tavern update", ""],
   )
-const fetching = (lang: Lang, tag: string, size: string) =>
+const fetching = (lang: Lang, tag: string, size: string, asset = "tavern-android") =>
   words(
     lang,
-    [`安装 Effect Tavern ${tag}`, `  下载  tavern-android.gz  ${size} MB`],
-    [`Installing Effect Tavern ${tag}`, `  downloading  tavern-android.gz  ${size} MB`],
+    [`安装 Effect Tavern ${tag}`, `  下载  ${asset}.gz  ${size} MB`],
+    [`Installing Effect Tavern ${tag}`, `  downloading  ${asset}.gz  ${size} MB`],
   )
 const env = (lang: Lang, url: string, more: Record<string, string> = {}) => ({
   TAVERN_URL: url,
@@ -184,18 +201,16 @@ for (const shell of shells) {
     const fakes = shell.name !== "busybox sh"
     const machine = fakes ? "aarch64" : spawnSync("uname", ["-m"], { encoding: "utf8" }).stdout.trim()
 
-    // A Termux install replaces the previous launcher and leaves the library in place.
+    // A Termux install (Android's loader alone) replaces the previous launcher and leaves the library in place.
     if (fakes) {
-      const b = box(shell.at, { os: "GNU/Linux" })
+      const b = box(shell.at)
       const url = release(b, "v0.9.2")
       const legacy = join(b.bin, "effect-tavern")
       writeFileSync(legacy, `#!/bin/sh\nexec '${b.bin}/tavern' "$@"\n`)
       mkdirSync(join(b.home, ".tavern/bin"), { recursive: true })
       writeFileSync(join(b.home, ".tavern/bin/tavern-android"), stub("0.1.6"))
       writeFileSync(join(b.home, ".tavern/tavern.db"), "my stories")
-      const termux: Record<string, string> =
-        lang === "zh" ? { PREFIX: "/data/data/com.termux/files/usr" } : { TERMUX_VERSION: "0.118" }
-      const r = run(b, [sh(b)], { stdin: script, env: env(lang, url, termux) })
+      const r = run(b, [sh(b)], { stdin: script, env: env(lang, url) })
       ours(`install on Termux (${at})`, r)
       assert.equal(r.code, 0, r.err.join("\n"))
       assert.equal(r.out, "")
@@ -206,15 +221,24 @@ for (const shell of shells) {
       rmSync(b.root, { recursive: true })
     }
 
-    // Android Linux session: GNU uname, no Termux variables, and a system linker pointing into APEX.
-    if (fakes && lang === "zh") {
-      const b = box(shell.at, { os: "GNU/Linux" })
-      const system = join(b.root, "system")
-      mkdirSync(join(system, "bin"), { recursive: true })
-      symlinkSync(shell.at, join(system, "bin/linker64"))
-      const r = run(b, [sh(b)], { stdin: script, env: env(lang, release(b, "v0.9.2"), { ANDROID_ROOT: system }) })
-      ours(`Android with a GNU/Linux shell (${at})`, r)
+    // Every other machine gets the build its loaders run: a GNU/Linux distro on a phone (both loaders) the glibc one.
+    const machines: [string, Parameters<typeof box>[1], string][] = [
+      [
+        "a GNU/Linux distro on a phone",
+        { loaders: ["/lib/ld-linux-aarch64.so.1", "/system/bin/linker64"] },
+        "tavern-linux-arm64",
+      ],
+      ["an x64 server", { machine: "x86_64", loaders: ["/lib64/ld-linux-x86-64.so.2"] }, "tavern-linux-x64"],
+      ["Alpine on arm64", { loaders: ["/lib/ld-musl-aarch64.so.1"] }, "tavern-linux-arm64-musl"],
+      ["an Apple silicon Mac", { system: "Darwin", machine: "arm64", loaders: [] }, "tavern-darwin-arm64"],
+      ["an Intel Mac", { system: "Darwin", machine: "x86_64", loaders: [] }, "tavern-darwin-x64"],
+    ]
+    for (const [title, machine, asset] of fakes && lang === "zh" ? machines : []) {
+      const b = box(shell.at, machine)
+      const r = run(b, [sh(b)], { stdin: script, env: env(lang, release(b, "v0.9.2", { asset })) })
+      ours(`${title} (${at})`, r)
       assert.equal(r.code, 0, r.err.join("\n"))
+      assert.deepEqual(r.err.slice(0, 2), fetching(lang, "v0.9.2", "0.0", asset))
       assert.equal(version(b, join(b.bin, "tavern")), "tavern 0.9.2")
       rmSync(b.root, { recursive: true })
     }
@@ -224,7 +248,7 @@ for (const shell of shells) {
       title: string,
       setup: (b: Box) => string,
       expected: (string | RegExp)[],
-      o: { box?: { os?: string; machine?: string }; nobody?: boolean } = {},
+      o: { box?: Parameters<typeof box>[1]; nobody?: boolean } = {},
     ) => {
       if (!fakes && title !== "an unsupported machine") return
       const b = box(shell.at, o.box)
@@ -319,20 +343,20 @@ for (const shell of shells) {
         lang,
         [
           "✗ 这台设备没有现成的 tavern",
-          "  只有 64 位 ARM 的安卓手机有，",
-          `  这台是 Linux ${machine}。`,
-          "  > 在电脑上从源码运行，见 GitHub 上的",
+          "  有 64 位的安卓、Linux、macOS 和 Windows",
+          `  版，这台是 Linux ${machine}。`,
+          "  > 从源码运行，见 GitHub 上的",
           "    waylon256yhw/effect-tavern",
         ],
         [
           "✗ No ready-made tavern for this device",
-          "  Only 64-bit ARM Android phones have one;",
-          `  this is Linux ${machine}.`,
-          "  > run it from source on a computer, see",
+          "  There are 64-bit Android, Linux, macOS",
+          `  and Windows builds; this is Linux ${machine}.`,
+          "  > run it from source, see",
           "    waylon256yhw/effect-tavern on GitHub",
         ],
       ),
-      { box: { os: "GNU/Linux", machine: "aarch64" } },
+      { box: { loaders: [] } },
     )
     if (fakes && (!root || setpriv)) {
       failing(

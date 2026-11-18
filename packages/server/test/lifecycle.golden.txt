@@ -319,7 +319,7 @@ What 0.9.2 changes
   want=tavern 0.9.2 got="tavern 9.9.9"
 
 == tavern doctor zh
-✓ 设备      android-arm64，有发布版
+✓ 设备      android-arm64，发布版
 ✓ 命令      $PREFIX/bin/tavern 0.9.1
 ✓ 数据      ~/doctored 可读写，1 MB
 ! 存储      只剩 18 MB
@@ -345,7 +345,7 @@ What 0.9.2 changes
 技术细节：tavern doctor --verbose
 
 == tavern doctor en
-✓ device     android-arm64, has a release build
+✓ device     android-arm64, a release build
 ✓ command    $PREFIX/bin/tavern 0.9.1
 ✓ data       ~/doctored readable and writable,
              1 MB
@@ -376,7 +376,7 @@ What 0.9.2 changes
 Technical details: tavern doctor --verbose
 
 == tavern doctor (offline, a fresh phone) zh
-✓ 设备      android-arm64，有发布版
+✓ 设备      android-arm64，发布版
 ! 命令      PATH 上找不到 tavern
             > 把 ~/self/doctor 放进 PATH，或重
               新运行安装命令
@@ -433,13 +433,18 @@ Technical details: tavern doctor --verbose
   > 用 git pull 更新源码。
 
 == tavern update (an unsupported device) zh
-✗ 这台设备没有现成的发布版
-  发布版只有 64 位 ARM 安卓手机的，这台是
-  linux-x64。
-  > 从源码运行：git pull 后用 bun run tavern
-    start。
+✗ 这个程序不知道该更新成哪个文件
+  它是自己编译的，不是发布版（linux-x64）。
+  > 重新编译它，或用安装脚本装上发布版。
   现在的版本不受影响，照常能用。
   linux-x64
+
+== tavern update (installed by Homebrew) zh
+✗ 这个 tavern 由 Homebrew 管理
+  它不绕过包管理器替换自己。
+  > 输入 brew upgrade tavern。
+  现在的版本不受影响，照常能用。
+  brew
 
 == tavern update (the release unreachable) zh
 ✗ 连不上发布页，没法检查更新
@@ -489,14 +494,24 @@ Technical details: tavern doctor --verbose
   > Update the source with git pull.
 
 == tavern update (an unsupported device) en
-✗ There is no release build for this device
-  Releases are built for 64-bit ARM Android
-  phones only; this is linux-x64.
-  > Run it from source: git pull, then bun run
-    tavern start.
+✗ This program does not know which file to
+  update to
+  It was compiled locally, not released
+  (linux-x64).
+  > Compile it again, or install the release
+    with the install script.
   The version you have is untouched and works
   as before.
   linux-x64
+
+== tavern update (installed by Homebrew) en
+✗ This tavern is managed by Homebrew
+  It does not replace itself behind the package
+  manager's back.
+  > Type brew upgrade tavern.
+  The version you have is untouched and works
+  as before.
+  brew
 
 == tavern update (the release unreachable) en
 ✗ Could not reach the release page

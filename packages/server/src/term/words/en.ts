@@ -6,6 +6,11 @@ import { gateLines, mb, sentence, type Facts, type Table, type Words } from "../
 
 const PROVIDERS = "In Settings, under Providers,"
 const ROUTING = "in Settings, under Default model"
+const channelName = (c?: string) => (c === "docker" ? "its Docker image" : "Homebrew")
+const channelNext = (c?: string) =>
+  c === "docker"
+    ? "Pull the new image (docker pull ghcr.io/waylon256yhw/effect-tavern) and recreate the container; the library stays in its volume."
+    : "Type brew upgrade tavern."
 const wait = (s: number) => (s > 90 ? `${Math.ceil(s / 60)} minutes` : `${s} seconds`)
 const url =
   (why: string): ((f: Facts) => Words) =>
@@ -229,9 +234,9 @@ export const en: Table = {
     kept: "The old version is still there, unchanged.",
   }),
   "unsupported-device": (f) => ({
-    what: "There is no release build for this device",
-    why: `Releases are built for 64-bit ARM Android phones only${f.platform ? `; this is ${f.platform}` : ""}.`,
-    next: "Run it from source: git pull, then bun run tavern start.",
+    what: "This program does not know which file to update to",
+    why: `It was compiled locally, not released${f.platform ? ` (${f.platform})` : ""}.`,
+    next: "Compile it again, or install the release with the install script.",
     kept: "The version you have is untouched and works as before.",
   }),
   "update-bad-binary": () => ({
@@ -245,6 +250,12 @@ export const en: Table = {
     why: "The program's directory cannot be written.",
     next: "Make sure that directory is writable, then tavern update again.",
     kept: "The old version is still there, unchanged.",
+  }),
+  "update-by-channel": (f) => ({
+    what: `This tavern is managed by ${channelName(f.channel)}`,
+    why: "It does not replace itself behind the package manager's back.",
+    next: channelNext(f.channel),
+    kept: "The version you have is untouched and works as before.",
   }),
   "update-from-source": () => ({
     what: "A run from source does not update itself",

@@ -60,6 +60,7 @@ export const factsOf = (error: unknown): Facts => {
         ...(num(e.free) !== undefined && { free: num(e.free) }),
         ...(typeof e.card === "string" && { card: e.card }),
         ...(typeof e.platform === "string" && { platform: e.platform }),
+        ...(typeof e.channel === "string" && { channel: e.channel }),
         ...(typeof e.latest === "string" && { latest: e.latest }),
         ...(typeof e.answered === "string" && { answered: e.answered }),
         ...(typeof e.errno === "string" && { errno: e.errno }),
@@ -105,6 +106,9 @@ const factLine = (f: Facts, lang: Lang): string | undefined => {
       break
     case "unsupported-device":
       parts.push(f.platform)
+      break
+    case "update-by-channel":
+      parts.push(f.channel)
       break
     case "update-bad-binary":
       parts.push(f.latest && `want=tavern ${f.latest}`, `got=${JSON.stringify((f.answered ?? "").slice(0, 60))}`)

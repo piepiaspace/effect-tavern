@@ -1,14 +1,37 @@
 #!/bin/sh
-# Install the released tavern binary beside sh, or in ~/.local/bin.
-# Start it with tavern start.
+# Install the released tavern binary beside sh (Termux), or in ~/.local/bin.
+# Start it with tavern start. Windows: install.ps1.
 
 REPO=waylon256yhw/effect-tavern
 OLD=effect-tavern # the command the old launcher installed beside sh
 
-# One line per published binary: operating system and architecture to the release asset.
+# The release asset this machine runs (names from release/targets.ts). A Linux binary runs where the loader it asks
+# for is: glibc's, musl's, or Android's /system/bin/linker64. That, not uname or Termux's variables, tells a phone's
+# Termux, a GNU/Linux distro on the same phone, and a server apart. TAVERN_SYSROOT is the tests' stand-in for /.
 asset_for() {
-  case "$1" in
-    Android/aarch64 | Android/arm64) echo tavern-android ;;
+  r=${TAVERN_SYSROOT:-}
+  case "$machine" in
+    aarch64 | arm64) cpu=arm64 gnu=/lib/ld-linux-aarch64.so.1 musl=/lib/ld-musl-aarch64.so.1 ;;
+    x86_64 | amd64) cpu=x64 gnu=/lib64/ld-linux-x86-64.so.2 musl=/lib/ld-musl-x86_64.so.1 ;;
+    *) return 1 ;;
+  esac
+  case "$os" in
+    Darwin)
+      # a shell under Rosetta says x86_64 on an Apple silicon Mac
+      [ "$cpu" = x64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = 1 ] && cpu=arm64
+      echo "tavern-darwin-$cpu"
+      ;;
+    Linux)
+      if [ -e "$r$gnu" ]; then
+        echo "tavern-linux-$cpu"
+      elif [ -e "$r$musl" ]; then
+        echo "tavern-linux-$cpu-musl"
+      elif [ "$cpu" = arm64 ] && [ -e "$r/system/bin/linker64" ]; then
+        echo tavern-android
+      else
+        return 1
+      fi
+      ;;
     *) return 1 ;;
   esac
 }
@@ -39,10 +62,12 @@ cleanup() {
   [ -z "$part" ] || rm -rf "$part" "$part.gz" "$part.err" "$part.out" "$part.data"
 }
 
-# Where `tavern` goes: beside sh (on the PATH by definition), else ~/.local/bin. Sets $dir and a temp file $part
+# Where `tavern` goes: beside sh (on the PATH by definition; Termux's $PREFIX/bin) unless that is the system's own
+# directory, else ~/.local/bin. Sets $dir and a temp file $part
 # there, so the download, the unpacking and the final rename all happen in the directory it lands in.
 pick() {
   for dir in "$shdir" "$HOME/.local/bin"; do
+    case "$dir" in /bin | /usr/bin | /sbin | /usr/sbin) continue ;; esac
     [ "$dir" = "$shdir" ] || mkdir -p "$dir" 2>/dev/null
     part=$(mktemp "$dir/.tavern.XXXXXXXX" 2>/dev/null) && return 0
   done
@@ -163,23 +188,14 @@ main() {
   trap 'exit 1' INT TERM HUP
 
   os=$(uname -s 2>/dev/null)
-  # A Linux userspace on Android can lose the Termux variables but still run the Android binary.
-  case "${PREFIX:-}" in
-    */com.termux/files/usr) os=Android ;;
-    *)
-      if [ -n "${TERMUX_VERSION:-}" ] || [ "$(uname -o 2>/dev/null)" = Android ] ||
-        { [ "$os" = Linux ] && [ -x "${ANDROID_ROOT:-/system}/bin/linker64" ]; }; then
-        os=Android
-      fi ;;
-  esac
   machine=$(uname -m 2>/dev/null)
-  asset=$(asset_for "$os/$machine") ||
+  asset=$(asset_for) ||
     fail "$(w "这台设备没有现成的 tavern" "No ready-made tavern for this device")" \
-      "$(w "只有 64 位 ARM 的安卓手机有，
-这台是 $os $machine。" "Only 64-bit ARM Android phones have one;
-this is $os $machine.")" \
-      "$(w "在电脑上从源码运行，见 GitHub 上的
-$REPO" "run it from source on a computer, see
+      "$(w "有 64 位的安卓、Linux、macOS 和 Windows
+版，这台是 $os $machine。" "There are 64-bit Android, Linux, macOS
+and Windows builds; this is $os $machine.")" \
+      "$(w "从源码运行，见 GitHub 上的
+$REPO" "run it from source, see
 $REPO on GitHub")"
   if ! command -v curl >/dev/null; then
     command -v pkg >/dev/null && pkg install -y curl >&2

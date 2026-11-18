@@ -24,6 +24,7 @@ export type ServerCode =
   | "update-bad-binary"
   | "update-not-replaced"
   | "update-from-source"
+  | "update-by-channel"
   | "update-needs-yes"
 const SERVER: Record<ServerCode, true> = {
   "no-model": true,
@@ -54,6 +55,7 @@ const SERVER: Record<ServerCode, true> = {
   "update-bad-binary": true,
   "update-not-replaced": true,
   "update-from-source": true,
+  "update-by-channel": true,
   "update-needs-yes": true,
 }
 export const isServerCode = (code: unknown): code is ServerCode =>
@@ -81,6 +83,8 @@ export type Facts = Omit<Fault, "code"> & {
   free?: number
   /** This device, as `android-arm64`. */
   platform?: string
+  /** How the binary was installed (`brew`, `docker`): who updates it. */
+  channel?: string
   /** The version an update was to bring, and what the downloaded file answered to `--version`. */
   latest?: string
   answered?: string

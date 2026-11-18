@@ -4,16 +4,26 @@
 `bun run tavern …`。输入 `tavern` 显示帮助，`tavern start --help` 列出启动参数。
 `tavern card init|check|view|test|unroll` 是[离线制卡工具](card-cli.md)；其余命令如下：
 
-## 安装（安卓手机，Termux）
+## 安装
 
 ```sh
 curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
-`install.sh`（仓库根目录）按平台挑发布附件（一张表；目前只发布 64 位 ARM 安卓的 `tavern-android.gz`，别的设备用大白话拒绝），
+| 哪里 | 安装 | 更新 |
+| --- | --- | --- |
+| 安卓（Termux）、Linux、macOS | 上面这一行 | `tavern update` |
+| Windows（PowerShell） | `irm https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.ps1 \| iex` | `tavern update` |
+| Homebrew | `brew install waylon256yhw/tavern/tavern` | `brew upgrade tavern` |
+| Docker | `docker run -d -p 127.0.0.1:7777:7777 -v tavern:/data ghcr.io/waylon256yhw/effect-tavern` | 拉新镜像，重建容器 |
+
+发布的二进制和它们的附件名只有一张表：`release/targets.ts`。`install.sh`（仓库根目录）按这台机器能运行哪种二进制挑附件：
+Linux 上看二进制要的加载器在不在（glibc 的 `ld-linux-*`、musl 的 `ld-musl-*`、安卓的 `/system/bin/linker64`，依次），
+所以原生 Termux 拿 `tavern-android`，同一台手机上的 GNU/Linux 发行版和服务器拿 `tavern-linux-<arch>`；macOS 按架构
+（Rosetta 下的 shell 也拿 arm64）；都不是时用大白话拒绝。之后
 读 `release.txt` 第一行的标签，从那个标签的目录下载（有 `TAVERN_MIRROR` / 旧名 `TAVERN_URL` 时全部从镜像取），
 在目标目录里解压成临时文件，确认 `--version` 回答 `tavern <标签去掉 v>`，再改名为 `tavern`：放在 `sh` 旁边
-（Termux 上是 `$PREFIX/bin/tavern`），写不进时放 `~/.local/bin/tavern`（不在 PATH 上会说明）。只装这一个文件。
+（Termux 上是 `$PREFIX/bin/tavern`；`/bin`、`/usr/bin` 这类系统目录不放），写不进时放 `~/.local/bin/tavern`（不在 PATH 上会说明）。只装这一个文件。
 下载失败、文件损坏、版本不符或目录写不进时，说明发生了什么、可能的原因和下一步，退出码 1，不留下任何文件，原来的 `tavern` 不动。
 
 以后：`tavern start` 启动，`tavern update` 更新（程序自己更新，不再需要安装脚本）。数据在 `~/.tavern`（`TAVERN_DATA` / `DATA` 可改）。
@@ -65,8 +75,10 @@ tavern play       <卡片|故事>
   先检查二进制所在目录的剩余空间（要约两倍于现在的二进制），把平台的发布文件（`<asset>.gz`）下载到二进制旁边、解压，
   运行新文件的 `--version`，必须回答 `tavern <新版本>`，然后改名覆盖正在运行的文件（`process.execPath`，链接先解析到它指向的文件）。
   任何一步失败都删掉下载的部分，旧的二进制原样留着，并说出来。仍在运行的酒馆还是旧程序：最后会说，并说怎样重启。
-  从源码运行时拒绝（`update-from-source`）。平台表（`cli/release.ts` `assetFor`）现在只有 android + arm64 → `tavern-android`；
-  表里没有的机器是 `unsupported-device`，除非 `TAVERN_ASSET` 指定资源名（自建镜像给另一种机器用，测试也用它）。
+  从源码运行时拒绝（`update-from-source`）。下载哪个附件不靠猜：编译时写进二进制的附件名（`TAVERN_ASSET`，
+  `release/targets.ts`），也就是它自己这个构建；本机 `compile` 出来、没有附件名的是 `unsupported-device`，除非环境变量
+  `TAVERN_ASSET` 指定资源名（自建镜像给另一种机器用，测试也用它）。从 Homebrew 或镜像装的拒绝（`update-by-channel`），
+  说出那边的更新命令（镜像设 `TAVERN_CHANNEL`，Homebrew 看文件在不在 `Cellar` 下）。
   `TAVERN_MIRROR`（旧名 `TAVERN_URL`）替换 `releases/latest/download` 作为所有文件的来源，可以是 https 地址或本机目录；
   没有镜像时，读完 `release.txt` 后从那个标签自己的目录（`releases/download/<标签>/`）下载。不会在启动时自动检查更新。
   `--json` 时 stdout 是一个值：`{current, latest, newer, updated, notes}`。
@@ -322,7 +334,7 @@ HTTP 客户端调用 `POST /api/author/compile {card, select, intent}`、`/api/a
 
 生产入口（`tavern start`，包括 `--headless`）共用最小 harness，不自动导入开发机密钥；数据目录见上文。开发服务器继续使用 `.dev/` 与开发用 player 配置。`--data` / `TAVERN_DATA` 可指定现有数据库目录；切换入口不会自动搬迁旧数据。
 
-二进制由 `packages/server` 的 `compile`（本机）与 `compile:android` 脚本编译 `bin/tavern.ts`，客户端构建（`packages/client/dist`）作为资源打进去；`VERSION=<版本>` 写入版本，发布流程取自标签。
+二进制由 `packages/server` 的 `compile` 脚本编译 `bin/tavern.ts`，客户端构建（`packages/client/dist`）作为资源打进去；`VERSION=<版本>` 写入版本，`TARGET=<bun 目标>` 交叉编译，`ASSET=<附件名>` 写入附件名并作为文件名（不给是本机的 `dist/tavern`）。发布流程（`.github/workflows/release.yml`，macOS 上跑，以便给 Mach-O 重新签名）用 `bun release/targets.ts compile` 编出表里每一个，再发到 GitHub Release、ghcr.io 镜像和 Homebrew tap `waylon256yhw/homebrew-tavern`（用 deploy key `HOMEBREW_TAP_KEY` 推送）。
 
 完整调用正文默认不暴露；`tavern start --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
 

@@ -12,7 +12,7 @@ import { mb } from "../term/codes.ts"
 import { thisProgram, type Config, type Self, type World } from "./config.ts"
 import { noDevice, type Device } from "./device.ts"
 import { about } from "./lifecycle.ts"
-import { assetFor, releaseAt, newerVersion, versionOf } from "./release.ts"
+import { releaseAt, newerVersion, versionOf } from "./release.ts"
 import { screenOf, tilde, write } from "./say.ts"
 import { needFor } from "./update.ts"
 import { words, type Check } from "./words.ts"
@@ -105,13 +105,13 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
 
   // the device and its platform
   const platform = `${self.platform}-${self.arch}`
-  const asset = c.asset ?? assetFor(self.platform, self.arch)
+  const asset = c.asset ?? self.asset
   add({
     check: "device",
     mark: asset ? "ok" : "warn",
     what: w.device(platform, !!asset),
     ...(!asset && { next: w.deviceNext }),
-    facts: `platform=${self.platform} arch=${self.arch} device=${device.kind}${asset ? ` asset=${asset}` : ""}`,
+    facts: `platform=${self.platform} arch=${self.arch} device=${device.kind}${asset ? ` asset=${asset}` : ""} channel=${self.channel}`,
   })
 
   // the command: where it is, its version, and whether PATH finds this one

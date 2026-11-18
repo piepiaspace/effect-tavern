@@ -21,7 +21,7 @@ import { gzipSync } from "node:zlib"
 import { run } from "../bin/tavern.ts"
 import type { Self, World } from "../src/cli/config.ts"
 import { desktop, deviceOf, noDevice, termux, type Device } from "../src/cli/device.ts"
-import { assetFor, directory, https, parseRelease, releaseAt, type Release } from "../src/cli/release.ts"
+import { directory, https, parseRelease, releaseAt, type Release } from "../src/cli/release.ts"
 import { start } from "../src/start.ts"
 import { memoryScreen, width, type Lang } from "../src/term/index.ts"
 
@@ -167,7 +167,15 @@ const selfAt = (name: string, version = "0.9.1", pad = 0): Self => {
   const path = join(dir, "tavern")
   writeFileSync(path, stub(version, pad))
   chmodSync(path, 0o755)
-  return { path, compiled: true, version, platform: "android", arch: "arm64" }
+  return {
+    path,
+    compiled: true,
+    version,
+    platform: "android",
+    arch: "arm64",
+    asset: "tavern-android",
+    channel: "script",
+  }
 }
 const answers = (path: string) => execFileSync(path, ["--version"], { encoding: "utf8" }).trim()
 const MB = 1024 * 1024
@@ -524,9 +532,10 @@ try {
       [
         "tavern update (an unsupported device)",
         ["update"],
-        { self: { ...selfAt("linux"), platform: "linux", arch: "x64" } },
+        { self: { ...selfAt("linux"), platform: "linux", arch: "x64", asset: undefined } },
         1,
       ],
+      ["tavern update (installed by Homebrew)", ["update"], { self: { ...selfAt("brew"), channel: "brew" } }, 1],
       [
         "tavern update (the release unreachable)",
         ["update", "--yes"],
@@ -586,19 +595,18 @@ try {
     assert.equal(await bare.open("http://x"), false)
     assert.ok(bare.tools().every((t) => !t.found))
     assert.equal(await desktop("linux", { PATH: "" }).open("http://x"), false)
-    const system = join(root, "system")
-    mkdirSync(join(system, "bin"), { recursive: true })
-    symlinkSync(process.execPath, join(system, "bin/linker64"))
+    // Termux by its session or its tools on the PATH; an Android build in a session without them is a plain Linux
     assert.deepEqual(
       [
-        deviceOf("android", {}),
-        deviceOf("linux", { TERMUX_VERSION: "0.118" }),
-        deviceOf("linux", { ANDROID_ROOT: system }),
-        deviceOf("linux", { ANDROID_ROOT: join(root, "empty") }),
+        deviceOf("android", { TERMUX_VERSION: "0.118" }),
+        deviceOf("linux", { PREFIX: "/data/data/com.termux/files/usr" }),
+        deviceOf("linux", { PATH: tools }),
+        deviceOf("android", { PATH: "" }),
+        deviceOf("linux", { PATH: "" }),
         deviceOf("darwin", {}),
         deviceOf("win32", {}),
       ].map((d) => d.kind),
-      ["termux", "termux", "termux", "linux", "macos", "none"],
+      ["termux", "termux", "termux", "linux", "linux", "macos", "none"],
     )
     assert.equal(typeof noDevice.free(root), "number")
     assert.equal(noDevice.free(join(root, "not-there")), undefined)
@@ -639,8 +647,6 @@ try {
     assert.equal(releaseAt(undefined, root).where, "github.com")
     assert.equal(releaseAt("mirror", root).where, join(root, "mirror"))
     assert.equal(releaseAt("https://m.example/d", root).where, "m.example")
-    assert.equal(assetFor("android", "arm64"), "tavern-android")
-    assert.equal(assetFor("linux", "x64"), undefined)
   }
 
   // release.txt: the tag, then the notes; anything else is no release

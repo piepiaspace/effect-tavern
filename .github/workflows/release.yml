@@ -7,9 +7,15 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
+# One build, every channel. release/targets.ts is the table: the binaries, their asset names (stamped into each, so
+# `tavern update` fetches its own build) and the Homebrew formula. Script installs (install.sh, install.ps1) and
+# `tavern update` read the GitHub release; Homebrew and the image carry the same binaries. The formula goes to
+# waylon256yhw/homebrew-tavern through a deploy key (secret HOMEBREW_TAP_KEY, the tap's write key); the image to
+# ghcr.io with the workflow's own token.
 jobs:
-  # install.sh against a local mirror, with a simulated Termux environment.
+  # install.sh against a local mirror, with simulated machines.
   installer:
     runs-on: ubuntu-latest
     steps:
@@ -20,11 +26,12 @@ jobs:
           bun-version: 1.4.4
 
       - name: Test the installer
-        run: bun test/install.ts
+        run: bun test/install.ts && bun test/release.ts
 
-  android:
+  # On macOS so the Mach-O binaries can be signed again (codesign) after Bun appends the program to them.
+  build:
     needs: installer
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,28 +50,102 @@ jobs:
         working-directory: packages/client
         run: bun --bun vp build
 
-      # bin/tavern.ts with the page inside; `tavern --version` answers the tag without its v
-      - name: Compile for Android
-        working-directory: packages/server
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}" bun run compile:android
-          gzip -9 -c dist/tavern-android > dist/tavern-android.gz
+      # every target with the page inside; `tavern --version` answers the tag without its v
+      - name: Compile
+        run: VERSION="${GITHUB_REF_NAME#v}" bun release/targets.ts compile
 
       # release.txt: the tag, then the feat/fix/perf subjects since the previous tag; it is the release's notes, where
-      # install.sh reads the tag, and what `tavern update` shows before it asks
+      # the installers read the tag, and what `tavern update` shows before it asks
       - name: Notes
         run: |
           prev=$(git describe --tags --abbrev=0 "$GITHUB_SHA^" 2>/dev/null || true)
           {
             echo "$GITHUB_REF_NAME"
             git log --no-merges --format='- %s' ${prev:+"$prev.."}"$GITHUB_SHA" | grep -E '^- (feat|fix|perf)' || echo '- (no user-facing changes)'
-          } > release.txt
-          cat release.txt
+          } > packages/server/dist/release.txt
+          cat packages/server/dist/release.txt
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: packages/server/dist/
+          retention-days: 7
+
+  github:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
       - name: Publish
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tail -n +2 release.txt > notes.md
-          gh release create "$GITHUB_REF_NAME" packages/server/dist/tavern-android.gz release.txt install.sh --notes-file notes.md
+          tail -n +2 dist/release.txt > notes.md
+          gh release create "$GITHUB_REF_NAME" dist/*.gz dist/release.txt install.sh install.ps1 --notes-file notes.md
+
+  docker:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist
+      - name: Stage the Linux binaries by Docker's architecture names
+        run: |
+          mkdir -p dist/docker/amd64 dist/docker/arm64
+          install -m 755 dist/tavern-linux-x64 dist/docker/amd64/tavern
+          install -m 755 dist/tavern-linux-arm64 dist/docker/arm64/tavern
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: dist
+          file: release/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/waylon256yhw/effect-tavern:${{ github.ref_name }}
+            ghcr.io/waylon256yhw/effect-tavern:latest
+
+  homebrew:
+    needs: github
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: packages/server/dist
+      - name: Push the formula to the tap
+        env:
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+        run: |
+          key="$RUNNER_TEMP/tap_key"
+          printf '%s\n' "$TAP_KEY" > "$key"
+          chmod 600 "$key"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone git@github.com:waylon256yhw/homebrew-tavern.git tap
+          mkdir -p tap/Formula
+          bun release/targets.ts brew "$GITHUB_REF_NAME" > tap/Formula/tavern.rb
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/tavern.rb
+          git commit -m "tavern $GITHUB_REF_NAME"
+          git push

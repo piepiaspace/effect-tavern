@@ -8,7 +8,7 @@
 // What a person reads goes to stderr; under --json, stdout gets one value: {current, latest, newer, updated, notes}.
 import { spawnSync } from "node:child_process"
 import { chmodSync, createReadStream, createWriteStream, realpathSync, renameSync, rmSync, statSync } from "node:fs"
-import { dirname, join } from "node:path"
+import { dirname, extname, join } from "node:path"
 import { pipeline } from "node:stream/promises"
 import { createGunzip } from "node:zlib"
 import { announced } from "../announce.ts"
@@ -17,7 +17,7 @@ import { mb } from "../term/codes.ts"
 import { thisProgram, type Config, type World } from "./config.ts"
 import { noDevice } from "./device.ts"
 import { errno, Failed } from "./failed.ts"
-import { assetFor, releaseAt, newerVersion, versionOf, type Latest } from "./release.ts"
+import { releaseAt, newerVersion, versionOf, type Latest } from "./release.ts"
 import { labelled, screenOf, step, write } from "./say.ts"
 import { words } from "./words.ts"
 
@@ -49,9 +49,11 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
   const w = words[c.lang]
   const self = world.self ?? thisProgram(world.env)
   if (!self.compiled) throw new Failed("update-from-source", "run from source")
+  if (self.channel !== "script")
+    throw new Failed("update-by-channel", `installed by ${self.channel}`, { channel: self.channel })
   const platform = `${self.platform}-${self.arch}`
-  const asset = c.asset ?? assetFor(self.platform, self.arch)
-  if (!asset) throw new Failed("unsupported-device", `no release asset for ${platform}`, { platform })
+  const asset = c.asset ?? self.asset
+  if (!asset) throw new Failed("unsupported-device", `a build with no release asset on ${platform}`, { platform })
   const release = world.release ?? releaseAt(c.mirror, world.cwd)
   const screen = screenOf(world)
   const n = cells(screen)
@@ -114,7 +116,8 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
   if (free !== undefined && free < need)
     throw new Failed("no-space", `need ${need} bytes in ${dir}, ${free} free`, { need, free, file: dir })
 
-  const part = join(dir, `.tavern-update-${process.pid}`)
+  // the same extension as the file it replaces: Windows runs only an .exe
+  const part = join(dir, `.tavern-update-${process.pid}${extname(file)}`)
   const gz = `${part}.gz`
   const clean = () => {
     rmSync(gz, { force: true })
@@ -142,6 +145,12 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
       })
     say([`✓ ${w.runs(answered)}`])
     try {
+      // Windows keeps a running .exe from being replaced but lets it be renamed: the old one steps aside, and the one
+      // left from the update before goes now that nothing runs it
+      if (process.platform === "win32") {
+        rmSync(`${file}.old`, { force: true })
+        renameSync(file, `${file}.old`)
+      }
       renameSync(part, file)
     } catch (e) {
       throw new Failed("update-not-replaced", `rename over ${file}: ${(e as Error).message}`, {

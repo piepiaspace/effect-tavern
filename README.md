@@ -65,15 +65,23 @@ docs/           Internal engineering research and design briefs
 
 ## Quick Start
 
-### Android phone (Termux)
-
-One line in [Termux](https://termux.dev), no Bun, Node or Vite+ to install:
+### Install
 
 ```sh
+# Android (Termux), Linux, macOS
 curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
+
+# Windows (PowerShell)
+irm https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.ps1 | iex
+
+# Homebrew
+brew install waylon256yhw/tavern/tavern
+
+# Docker
+docker run -d -p 127.0.0.1:7777:7777 -v tavern:/data ghcr.io/waylon256yhw/effect-tavern
 ```
 
-Run the install line again to replace an older launcher. Use `tavern` for help, `tavern start` to open the tavern and `tavern update` to update it. The binary lives at `$PREFIX/bin/tavern` (or `~/.local/bin/tavern`), and your library lives in `~/.tavern`. To uninstall the command, run `rm "$(command -v tavern)"`.
+Then `tavern start`. Updating, locations and uninstalling: [CLI docs](https://waylon256yhw.github.io/effect-tavern/cli/).
 
 The program ships with no cards. A new install's shelf is empty: open **Settings → Cards** to import one card (drop or pick a `.yaml` / `.json` file, or paste the card's own `https` link), or to add a card library by its `https` address and install cards from it.
 

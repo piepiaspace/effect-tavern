@@ -6,6 +6,11 @@ import { gateLines, mb, sentence, type Facts, type Table, type Words } from "../
 
 const PROVIDERS = "「设置」的「模型服务」"
 const ROUTING = "「设置」的「默认模型」"
+const channelName = (c?: string) => (c === "docker" ? "Docker" : "Homebrew")
+const channelNext = (c?: string) =>
+  c === "docker"
+    ? "拉取新镜像（docker pull ghcr.io/waylon256yhw/effect-tavern），再重建容器；故事库在卷里，不受影响。"
+    : "输入 brew upgrade tavern。"
 const wait = (s: number) => (s > 90 ? `${Math.ceil(s / 60)} 分钟` : `${s} 秒`)
 const url =
   (why: string): ((f: Facts) => Words) =>
@@ -206,9 +211,9 @@ export const zh: Table = {
     kept: "旧版本还在，没有被改动。",
   }),
   "unsupported-device": (f) => ({
-    what: "这台设备没有现成的发布版",
-    why: `发布版只有 64 位 ARM 安卓手机的${f.platform ? `，这台是 ${f.platform}` : ""}。`,
-    next: "从源码运行：git pull 后用 bun run tavern start。",
+    what: "这个程序不知道该更新成哪个文件",
+    why: `它是自己编译的，不是发布版${f.platform ? `（${f.platform}）` : ""}。`,
+    next: "重新编译它，或用安装脚本装上发布版。",
     kept: "现在的版本不受影响，照常能用。",
   }),
   "update-bad-binary": () => ({
@@ -222,6 +227,12 @@ export const zh: Table = {
     why: "程序所在的目录写不进去。",
     next: "确认这个目录可以写入，再输入 tavern update。",
     kept: "旧版本还在，没有被改动。",
+  }),
+  "update-by-channel": (f) => ({
+    what: `这个 tavern 由 ${channelName(f.channel)} 管理`,
+    why: "它不绕过包管理器替换自己。",
+    next: channelNext(f.channel),
+    kept: "现在的版本不受影响，照常能用。",
   }),
   "update-from-source": () => ({
     what: "从源码运行时不能自己更新",
