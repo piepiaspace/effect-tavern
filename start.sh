@@ -16,7 +16,8 @@ set -e
 REPO=waylon256yhw/effect-tavern
 URL="${TAVERN_URL:-https://github.com/$REPO/releases/latest/download}"
 export DATA="${DATA:-$HOME/.tavern}" PORT="${PORT:-7777}"
-BIN="$DATA/bin/tavern-android"
+ASSET=tavern-android
+BIN="$DATA/bin/$ASSET"
 STAMP="$DATA/bin/version"
 
 # words: Chinese, English with TAVERN_LANG=en; everything goes to stderr, beside the server's own line
@@ -48,26 +49,43 @@ fi
 release() {
   notes=$(curl -fsSL "$URL/release.txt" 2>/dev/null) || notes=
   latest=$(printf '%s\n' "$notes" | head -n 1)
+  if [ -n "$latest" ] && [ -z "${TAVERN_URL:-}" ]; then
+    URL="https://github.com/$REPO/releases/download/$latest"
+  fi
   changes=$(printf '%s\n' "$notes" | tail -n +2)
 }
 
-# the binary, downloaded whole with one progress line, then swapped in for the old one
-fetch() {
+# One link selects a completed executable and its version together.
+install_release() (
+  asset=$1
   mkdir -p "$DATA/bin"
-  total=$(curl -fsIL "$URL/tavern-android.gz" 2>/dev/null | tr -d '\r' |
+  cd "$DATA/bin"
+  part=$(mktemp ".$asset.XXXXXXXX")
+  trap 'rm -f "$part.gz" "$part.link" "$part.version" "$part"' EXIT
+  previous=$(readlink "$asset") || previous=
+  total=$(curl -fsIL "$URL/$asset.gz" 2>/dev/null | tr -d '\r' |
     awk 'tolower($1) == "content-length:" { n = $2 } END { if (n) printf " / %d MB", n / 1048576 }') || total=
-  curl -fsSL "$URL/tavern-android.gz" -o "$BIN.gz" &
+  curl -fsSL "$URL/$asset.gz" -o "$part.gz" &
   pid=$!
   while kill -0 "$pid" 2>/dev/null; do
-    got=0 && [ -f "$BIN.gz" ] && got=$(wc -c <"$BIN.gz")
+    got=0 && [ -f "$part.gz" ] && got=$(wc -c <"$part.gz")
     printf '\r  %s  %d%s ' "$(w 下载 downloading)" $(($got / 1048576)) "${total:- MB}" >&2
     sleep 0.5
   done
   printf '\r\033[K' >&2
-  wait "$pid" || { rm -f "$BIN.gz"; die "$(w 下载失败，检查网络后重试 'download failed: check the network and run again')"; }
-  gzip -dc "$BIN.gz" >"$BIN.part" && rm -f "$BIN.gz" && chmod +x "$BIN.part" && mv "$BIN.part" "$BIN"
-  if [ -n "$latest" ]; then printf '%s\n' "$latest" >"$STAMP"; else rm -f "$STAMP"; fi
-}
+  wait "$pid" || die "$(w 下载失败，检查网络后重试 'download failed: check the network and run again')"
+  gzip -dc "$part.gz" >"$part"
+  rm "$part.gz"
+  chmod +x "$part"
+  printf '%s\n' "$latest" >"$part.version"
+  ln -s "$part" "$part.link"
+  mv -f "$part.link" "$asset"
+  trap - EXIT
+  case "$previous" in
+    */*) ;; # only retire files from this directory
+    ".$asset."????????) rm -f "$previous" "$previous.version" ;;
+  esac
+)
 
 # the `effect-tavern` command: this script from the release, beside sh on the PATH (Termux's $PREFIX/bin)
 command_dir=$(dirname "$(command -v sh)")
@@ -81,6 +99,8 @@ install_command() {
   return 1
 }
 
+# Plain binaries installed by older launchers have a separate bin/version stamp.
+if target=$(readlink "$BIN"); then STAMP="$DATA/bin/$target.version"; fi
 installed=$(cat "$STAMP" 2>/dev/null) || installed=
 here=$(dirname "$0")
 case "${1:-}" in
@@ -104,7 +124,7 @@ case "${1:-}" in
     answer=
     { read -r answer </dev/tty; } 2>/dev/null || true
     case "$answer" in "" | y | Y | yes) ;; *) exit 0 ;; esac
-    fetch
+    install_release "$ASSET"
     install_command || true
     ok "$(w "已更新到 ${latest}，旧版已替换" "updated to $latest, the old binary replaced")"
     ok "$(w '输入 effect-tavern 启动' 'type effect-tavern to start')"
@@ -114,8 +134,8 @@ case "${1:-}" in
   *) usage && exit 1 ;;
 esac
 
-if [ -f "$here/tavern-android" ]; then
-  BIN="$here/tavern-android"
+if [ -f "$here/$ASSET" ]; then
+  BIN="$here/$ASSET"
   installed=$(w 本地构建 'local build')
   # /sdcard is noexec and adb push drops the mode
   [ -x "$BIN" ] || die "$(w 'tavern-android 没有执行权限：chmod +x 它（放在 ~ 下，不要放 /sdcard）' 'tavern-android is not executable: chmod +x it (under ~, not /sdcard)')"
@@ -123,7 +143,7 @@ if [ -f "$here/tavern-android" ]; then
 elif [ ! -x "$BIN" ] || [ -z "$installed" ]; then
   release
   title "$(w 安装 Install) Effect Tavern $latest"
-  fetch
+  install_release "$ASSET"
   installed=$latest
   ok "$(w 已安装到 'installed in') $(tilde "$DATA/bin")"
 fi
