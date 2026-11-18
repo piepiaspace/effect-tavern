@@ -2,7 +2,7 @@
 // Places are the client's own words (client src/locales/en.ts: Settings, Providers, Default model, Cards, API URL,
 // API key, Network proxy, Context window).
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
-import { sentence, type Facts, type Table, type Words } from "../codes.ts"
+import { gateLines, mb, sentence, type Facts, type Table, type Words } from "../codes.ts"
 
 const PROVIDERS = "In Settings, under Providers,"
 const ROUTING = "in Settings, under Default model"
@@ -113,8 +113,8 @@ export const en: Table = {
   }),
   "port-in-use": (f) => ({
     what: f.port ? `Port ${f.port} is already in use` : "The port is already in use",
-    why: "A tavern may already be running, or another program holds it.",
-    next: "Use the one already running, or start again with --port and another port.",
+    why: "Another program, or a tavern on another data directory, is using it.",
+    next: f.port ? `Start on another port: tavern --port ${f.port + 1}` : "Start again with --port and another port.",
   }),
   "library-held": (f) => ({
     what: "The data directory is in use by another tavern",
@@ -124,7 +124,8 @@ export const en: Table = {
   "library-newer": () => ({
     what: "The data comes from a newer tavern",
     why: "A newer version has opened it, and this version cannot read it.",
-    next: "Update the tavern to the latest version, then open it.",
+    next: "Update to the latest version with tavern update, then start again.",
+    kept: "Your data was not changed.",
   }),
   "host-unreachable": () => ({
     what: "Cannot reach the tavern",
@@ -151,11 +152,23 @@ export const en: Table = {
     why: "A card cannot be removed while stories use it.",
     next: "Delete the stories on this card first, then the card.",
   }),
-  "card-invalid": () => ({
-    what: "Not a usable card",
-    why: "The card did not pass the check.",
-    next: "Fix the card file as the last line says, then import it again.",
-  }),
+  "card-invalid": (f) => {
+    const lines = gateLines(f.message)
+    const n = lines.length
+    return {
+      what: n
+        ? `${f.card ?? "The card"} is not on the shelf: ${n} ${n === 1 ? "place needs" : "places need"} fixing`
+        : "Not a usable card",
+      lines,
+      ...(!n && { why: "The card did not pass the check." }),
+      next: f.file
+        ? `Fix them and run it again; each one explained: tavern card check ${f.file}`
+        : "Fix the card file as the lines above say, then import it again.",
+      kept: f.card
+        ? `The card ${f.card} on the shelf was left as it was.`
+        : "The cards on the shelf were left as they were.",
+    }
+  },
   "card-changed": () => ({
     what: "The card was changed elsewhere",
     next: "Reread the card, then make the change again.",
@@ -176,5 +189,69 @@ export const en: Table = {
     what: "The file is too large",
     why: `A card file can be at most ${CARD_BYTES / 1024 / 1024} MB.`,
     next: "Use a smaller file.",
+  }),
+  "no-file": () => ({
+    what: "There is no such file",
+    why: "The file's name or its directory may be mistyped.",
+    next: "Check the name and the directory, then run it again.",
+  }),
+  "stop-timeout": (f) => ({
+    what: "The tavern did not stop in time",
+    why: "It is still finishing, or it is stuck.",
+    next: `Press Ctrl+C in its window; if it still runs, type kill -9 ${f.pid ?? "<pid>"}`,
+  }),
+  "stop-dev": () => ({
+    what: "tavern stop leaves the dev session be",
+    why: "It is the tavern inside vp dev, run from its own terminal.",
+    next: "Press Ctrl+C in the terminal running vp dev.",
+  }),
+  "release-unreachable": () => ({
+    what: "Could not reach the release page",
+    why: "No network, or this network cannot open github.com.",
+    next: "Try another network, then tavern update again; TAVERN_MIRROR names a mirror.",
+    kept: "The version you have is untouched and works as before.",
+  }),
+  "download-failed": () => ({
+    what: "The new version did not download",
+    why: "The network dropped, or the file arrived incomplete.",
+    next: "Try another network, then tavern update again.",
+    kept: "The old version is still there, unchanged.",
+  }),
+  "no-space": (f) => ({
+    what: "Not enough storage: the update did not start",
+    why:
+      f.need !== undefined && f.free !== undefined
+        ? `It needs about ${mb(f.need)}, and ${mb(f.free)} is free.`
+        : "The new version does not fit.",
+    next: "Free some space, then tavern update again.",
+    kept: "The old version is still there, unchanged.",
+  }),
+  "unsupported-device": (f) => ({
+    what: "There is no release build for this device",
+    why: `Releases are built for 64-bit ARM Android phones only${f.platform ? `; this is ${f.platform}` : ""}.`,
+    next: "Run it from source: git pull, then bun run tavern.",
+    kept: "The version you have is untouched and works as before.",
+  }),
+  "update-bad-binary": () => ({
+    what: "The downloaded version does not run",
+    why: "The file may be incomplete, or not built for this device.",
+    next: "Try tavern update again later; if it keeps failing, send these lines to whoever helps you.",
+    kept: "The old version is still there, unchanged.",
+  }),
+  "update-not-replaced": () => ({
+    what: "Could not put the new version in place",
+    why: "The program's directory cannot be written.",
+    next: "Make sure that directory is writable, then tavern update again.",
+    kept: "The old version is still there, unchanged.",
+  }),
+  "update-from-source": () => ({
+    what: "A run from source does not update itself",
+    why: "tavern update replaces an installed program only.",
+    next: "Update the source with git pull.",
+  }),
+  "update-needs-yes": () => ({
+    what: "Not confirmed: the update did not start",
+    why: "There is no terminal here to ask you.",
+    next: "To update anyway, type tavern update --yes",
   }),
 }

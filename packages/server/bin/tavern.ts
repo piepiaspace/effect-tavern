@@ -4,12 +4,18 @@
 // reaches its library by itself (src/reach.ts): the tavern at --server, else the running tavern that announced itself on
 // the data directory, else the library opened here. `run(argv, world)` is the whole of it, for tests.
 //
-// Exit codes: 0 done; 1 refused or failed; 2 the command line was wrong; 3 the library cannot be reached.
+// The player's commands are a tavern's life: `tavern` (= `serve`) holds the wake lock and opens the page on a
+// terminal, `stop`, `status`, `update`, `doctor` (src/cli/). Every failure a person reads is worded by the terminal's
+// tables (src/term/: `explain`, then `failure`), or is one `{"error":{code,message,next}}` line under --json; the help
+// is the player's language at the terminal's width (src/cli/help.ts).
+//
+// Exit codes: 0 done; 1 refused or failed; 2 the command line was wrong (and `update` with nobody to ask and no
+// --yes); 3 the library cannot be reached (and `status` when no tavern runs).
 import { BunServices } from "@effect/platform-bun"
 import { authorCommands } from "@effect-tavern/runtime/bin/card.ts"
 import { Here, Json } from "@effect-tavern/runtime/bin/cli.ts"
 import { unrollCommand } from "@effect-tavern/runtime/bin/unroll.ts"
-import { checkCard } from "@effect-tavern/runtime/support/author.ts"
+import { checkCard, parseCard } from "@effect-tavern/runtime/support/author.ts"
 import { runScenario } from "@effect-tavern/runtime/support/scenario.ts"
 import { decodeCard } from "@effect-tavern/runtime/src/card.ts"
 import { Cause, Console, Effect, Exit, Option } from "effect"
@@ -19,11 +25,17 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { format } from "node:util"
 import { compiled, config, processWorld, version, type Config, type Flags, type World } from "../src/cli/config.ts"
+import { noDevice } from "../src/cli/device.ts"
+import { doctor } from "../src/cli/doctor.ts"
+import { Failed } from "../src/cli/failed.ts"
+import { helpFormatter } from "../src/cli/help.ts"
+import { already, showStatus, stop } from "../src/cli/lifecycle.ts"
+import { fail, screenOf } from "../src/cli/say.ts"
+import { update } from "../src/cli/update.ts"
 import type { CliHost } from "../src/cli-host.ts"
 import { play } from "../src/play.ts"
 import { reach } from "../src/reach.ts"
 import { start, told } from "../src/start.ts"
-import { block, explain } from "../src/term/index.ts"
 
 export type ExitCode = 0 | 1 | 2 | 3
 
@@ -56,7 +68,12 @@ const builtIns = CliConfig.layer({ builtIns: [GlobalFlag.Help, Version] })
 /** The client build: an asset inside the compiled binary, packages/client/dist from source. */
 const dist = fileURLToPath(new URL(compiled ? "dist/" : "../../client/dist/", import.meta.url))
 
-const tree = (world: World) => {
+/** What a command sets when it ends other than 0 without failing: `status` with no tavern, `doctor` with a ✗. */
+interface Ending {
+  code: ExitCode
+}
+
+const tree = (world: World, ending: Ending) => {
   const out = (s: string) => world.out.write(`${s}\n`)
   const note = (s: string) => world.err.write(`${s}\n`)
   const at = (file: string) => resolve(world.cwd, file)
@@ -84,8 +101,65 @@ const tree = (world: World) => {
         host.close()
       }
     }, more)
+  /** `tavern` and `tavern serve`: one already serving this library is told, not fought; otherwise it starts here, holds
+   *  the wake lock while it serves and, with a person at the terminal, opens the page once it answers. */
   const serve = (more: Flags & { headless?: boolean } = {}) =>
-    task((c) => start(c, { dist: more.headless ? undefined : dist, err: world.err }), more)
+    task(async (c) => {
+      const device = world.device ?? noDevice
+      const opening = c.open && (world.terminal?.err ?? false)
+      if (await already(c, world, { device, opening: opening && !more.headless })) return
+      await start(c, {
+        dist: more.headless ? undefined : dist,
+        screen: screenOf(world),
+        device,
+        opening,
+        ...(world.signal && { signal: world.signal }),
+      })
+    }, more)
+  const serveFlags = {
+    port: Flag.Int("port").pipe(
+      Flag.withAlias("p"),
+      Flag.withDescription("TCP port to listen on (TAVERN_PORT; default 7777)"),
+      Flag.optional,
+    ),
+    bind: Flag.String("bind").pipe(
+      Flag.withDescription("address to listen on (TAVERN_BIND; default 127.0.0.1)"),
+      Flag.optional,
+    ),
+    headless: Flag.Boolean("headless").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription("serve the HTTP+SSE API only, without the page"),
+    ),
+    inspect: Flag.Boolean("inspect").pipe(
+      Flag.withDefault(false),
+      Flag.withDescription(
+        "keep request and response bodies in Inspector traces, and text in the log (TAVERN_INSPECT=1)",
+      ),
+    ),
+    log: Flag.Literals("log", ["quiet", "turn", "detail"]).pipe(
+      Flag.withDescription(
+        "what the terminal shows: quiet (failures only), turn (one line a turn, the default) or detail (every call; TAVERN_LOG)",
+      ),
+      Flag.optional,
+    ),
+    open: Flag.Boolean("open").pipe(Flag.withDefault(true), Flag.withDescription("--no-open: do not open the page")),
+  }
+  const served = (f: {
+    port: Option.Option<number>
+    bind: Option.Option<string>
+    headless: boolean
+    inspect: boolean
+    log: Option.Option<"quiet" | "turn" | "detail">
+    open: boolean
+  }) =>
+    serve({
+      port: Option.getOrUndefined(f.port),
+      bind: Option.getOrUndefined(f.bind),
+      headless: f.headless,
+      inspect: f.inspect,
+      log: Option.getOrUndefined(f.log),
+      open: f.open,
+    })
 
   const install = Command.make(
     "install",
@@ -100,9 +174,25 @@ const tree = (world: World) => {
         const source = linked ? undefined : readFileSync(at(file), "utf8")
         if (source !== undefined) {
           const report = checkCard(source)
-          for (const d of report.diagnostics)
+          const errors = report.diagnostics.filter((d) => d.level === "error")
+          for (const d of report.diagnostics.filter((d) => d.level !== "error"))
             note(`${d.level} ${d.path}: ${d.message}${d.hint ? `\n  hint: ${d.hint}` : ""}`)
-          if (report.diagnostics.some((d) => d.level === "error")) throw new Error(`${file} did not pass card check`)
+          // refused here as the shelf's gate would refuse it: its own lines, and the shelf left as it was
+          if (errors.length) {
+            const id = (() => {
+              try {
+                const v = parseCard(source) as { id?: unknown } | null
+                return typeof v?.id === "string" ? v.id : undefined
+              } catch {
+                return undefined
+              }
+            })()
+            throw new Failed(
+              "card-invalid",
+              errors.map((d) => `${d.level} ${d.rule} ${d.path}: ${d.message}`).join("\n"),
+              { file, ...(id && { card: id }) },
+            )
+          }
         }
         const card = source === undefined ? await host.link(file) : await host.install(source)
         out(c.json ? JSON.stringify({ id: card.id, installed: true }) : `Installed ${card.id}`)
@@ -398,48 +488,40 @@ const tree = (world: World) => {
     Command.withDescription("Play a story interactively, via --input, or from stdin (/help inside for slash commands)"),
   )
 
-  const serving = Command.make(
-    "serve",
+  const serving = Command.make("serve", serveFlags, served).pipe(
+    Command.withDescription("Serve the page and its API on this machine (the same as a bare `tavern`)"),
+  )
+  const stopping = Command.make("stop", {}, () => task((c) => stop(c, world))).pipe(
+    Command.withDescription("Stop the tavern serving this data directory"),
+  )
+  const statusing = Command.make("status", {}, () =>
+    task(async (c) => {
+      ending.code = showStatus(c, world)
+    }),
+  ).pipe(Command.withDescription("Whether a tavern serves this data directory, its address, the data, the version"))
+  const updating = Command.make(
+    "update",
     {
-      port: Flag.Int("port").pipe(
-        Flag.withAlias("p"),
-        Flag.withDescription("TCP port to listen on (TAVERN_PORT; default 7777)"),
-        Flag.optional,
-      ),
-      bind: Flag.String("bind").pipe(
-        Flag.withDescription("address to listen on (TAVERN_BIND; default 127.0.0.1)"),
-        Flag.optional,
-      ),
-      headless: Flag.Boolean("headless").pipe(
-        Flag.withDefault(false),
-        Flag.withDescription("serve the HTTP+SSE API only, without the page"),
-      ),
-      inspect: Flag.Boolean("inspect").pipe(
-        Flag.withDefault(false),
-        Flag.withDescription(
-          "keep request and response bodies in Inspector traces, and text in the log (TAVERN_INSPECT=1)",
-        ),
-      ),
-      log: Flag.Literals("log", ["quiet", "turn", "detail"]).pipe(
-        Flag.withDescription(
-          "what the terminal shows: quiet (failures only), turn (one line a turn, the default) or detail (every call; TAVERN_LOG)",
-        ),
-        Flag.optional,
-      ),
+      yes: Flag.Boolean("yes").pipe(Flag.withAlias("y"), Flag.withDefault(false), Flag.withDescription("do not ask")),
+      check: Flag.Boolean("check").pipe(Flag.withDefault(false), Flag.withDescription("only report")),
     },
-    ({ port, bind, headless, inspect, log }) =>
-      serve({
-        port: Option.getOrUndefined(port),
-        bind: Option.getOrUndefined(bind),
-        headless,
-        inspect,
-        log: Option.getOrUndefined(log),
+    ({ yes, check }) =>
+      task(async (c) => {
+        ending.code = await update(c, world, { yes, check })
       }),
-  ).pipe(Command.withDescription("Serve the page and its API on this machine (the same as a bare `tavern`)"))
+  ).pipe(Command.withDescription("Show what the latest release changes, ask, and replace this program with it"))
+  const doctoring = Command.make(
+    "doctor",
+    { verbose: Flag.Boolean("verbose").pipe(Flag.withDefault(false), Flag.withDescription("add the raw facts")) },
+    ({ verbose }) =>
+      task(async (c) => {
+        ending.code = await doctor(c, world, { verbose })
+      }),
+  ).pipe(Command.withDescription("Check the device, the command, the data, the network and the last failure"))
 
-  return Command.make("tavern", {}, () => serve()).pipe(
+  return Command.make("tavern", serveFlags, served).pipe(
     Command.withDescription("Effect Tavern. With no command it serves, as `tavern serve` does."),
-    Command.withSubcommands([serving, card, depot, story, playing]),
+    Command.withSubcommands([serving, stopping, statusing, updating, doctoring, card, depot, story, playing]),
     Command.withGlobalFlags([Json, Data, Server]),
   )
 }
@@ -450,12 +532,13 @@ const unreachable = (e: unknown) =>
   ["library-held", "library-newer", "host-unreachable", "host-silent", "host-not-scripted"].includes(
     String((e as { code?: unknown } | null)?.code),
   )
-const said = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 export const run = async (argv: readonly string[], world: World): Promise<ExitCode> => {
-  const tty = (w: unknown) => Boolean((w as { isTTY?: boolean }).isTTY)
-  const colors = tty(world.out) && !world.env["NO_COLOR"] && world.env["TERM"] !== "dumb"
-  const formatter = CliOutput.defaultFormatter({ colors })
+  const lang = world.env["TAVERN_LANG"] === "en" ? "en" : "zh"
+  const json = argv.includes("--json")
+  const columns = () => (world.out as { columns?: number }).columns || Number(world.env["COLUMNS"]) || 80
+  const base = CliOutput.defaultFormatter({ colors: false })
+  const formatter = helpFormatter(base, { lang, columns, version: world.self?.version ?? version, data: "" })
   const console_: Console.Console = Object.assign(Object.create(console), {
     log: (...a: unknown[]) => world.out.write(`${format(...a)}\n`),
     info: (...a: unknown[]) => world.out.write(`${format(...a)}\n`),
@@ -467,12 +550,13 @@ export const run = async (argv: readonly string[], world: World): Promise<ExitCo
     present: (event) =>
       event._tag === "InvalidInvocation"
         ? Effect.sync(() =>
-            world.err.write(`${formatter.formatErrors(event.errors)}\n> ${event.commandPath.join(" ")} --help\n`),
+            world.err.write(`${base.formatErrors(event.errors)}\n> ${event.commandPath.join(" ")} --help\n`),
           )
         : CliOutput.defaultPresenter.present(event),
   })
+  const ending: Ending = { code: 0 }
   const exit = await Effect.runPromiseExit(
-    Command.runWith(tree(world), { version })(argv).pipe(
+    Command.runWith(tree(world, ending), { version: world.self?.version ?? version })(argv).pipe(
       Effect.provideService(Console.Console, console_),
       Effect.provideService(Here, world.cwd),
       Effect.provide(presenter),
@@ -481,26 +565,15 @@ export const run = async (argv: readonly string[], world: World): Promise<ExitCo
       Effect.provide(BunServices.layer),
     ),
   )
-  if (Exit.isSuccess(exit)) return 0
-  if (Cause.hasDies(exit.cause)) {
-    world.err.write(`${Cause.pretty(exit.cause)}\n`)
-    return 1
-  }
+  if (Exit.isSuccess(exit)) return ending.code
   const error = Cause.squash(exit.cause)
   if (CliError.isCliError(error) && error._tag === "ShowHelp") return error.errors.length ? 2 : 0
   if (Cause.hasInterruptsOnly(exit.cause)) return 1
-  // a failure to start is already on the terminal in plain words (start.ts, through the server's logbook)
-  const shown = told.has(error as object)
-  if (!unreachable(error)) {
-    if (!shown) world.err.write(`${said(error)}\n`)
-    return 1
-  }
-  if (shown) return 3
-  // the library out of reach, in plain words (step 1's): what happened, why, the next step, the raw facts
-  const columns = (world.err as { columns?: number }).columns || Number(world.env["COLUMNS"]) || 80
-  const screen = { write: (s: string) => world.err.write(s), columns, live: false, color: false }
-  block(screen, "✗ tavern", explain(error, world.env["TAVERN_LANG"] === "en" ? "en" : "zh"))
-  return 3
+  // a failure to start is already on the terminal in plain words (start.ts, through the server's logbook); anything
+  // else is said here, in the same words: what happened, why, the next step, the raw facts
+  if (!told.has(error as object)) fail(world, error, { lang, json })
+  if (unreachable(error)) return 3
+  return (error as { code?: unknown } | null)?.code === "update-needs-yes" ? 2 : 1
 }
 
 if (import.meta.main) {

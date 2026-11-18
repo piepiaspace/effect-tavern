@@ -14,10 +14,14 @@ export interface Trouble {
   code: Code
   /** One line: what happened. */
   what: string
+  /** Lines under it, each its own (a refused card's `path message` lines). */
+  lines?: string[]
   /** The likely cause. */
   why?: string
   /** The one next step, wrapped to the width by the renderer. */
   next?: string[]
+  /** What was left as it was. */
+  kept?: string
   /** One dim line of raw facts: "HTTP 401 authentication_error api.anthropic.com". */
   facts?: string
 }
@@ -41,6 +45,8 @@ export const factsOf = (error: unknown): Facts => {
         ...(typeof e.address === "string" && { host: e.address }),
       }
     }
+    if (e.code === "ENOENT" && typeof e.path === "string")
+      return { code: "no-file", message, errno: "ENOENT", file: e.path }
     if (isServerCode(e.code))
       return {
         code: e.code,
@@ -49,6 +55,15 @@ export const factsOf = (error: unknown): Facts => {
         ...(typeof e.file === "string" && { file: e.file }),
         ...(num(e.version) !== undefined && { version: num(e.version) }),
         ...(num(e.supported) !== undefined && { supported: num(e.supported) }),
+        ...(num(e.status) !== undefined && { status: num(e.status) }),
+        ...(num(e.need) !== undefined && { need: num(e.need) }),
+        ...(num(e.free) !== undefined && { free: num(e.free) }),
+        ...(typeof e.card === "string" && { card: e.card }),
+        ...(typeof e.platform === "string" && { platform: e.platform }),
+        ...(typeof e.latest === "string" && { latest: e.latest }),
+        ...(typeof e.answered === "string" && { answered: e.answered }),
+        ...(typeof e.errno === "string" && { errno: e.errno }),
+        ...(typeof e.host === "string" && { host: e.host }),
         ...(typeof e.url === "string" && { host: e.url }), // a tavern's address (reach.ts, wire.ts)
         ...(isObj(e.cause) && typeof e.cause.code === "string" && { errno: e.cause.code }),
       }
@@ -76,7 +91,38 @@ const factLine = (f: Facts, lang: Lang): string | undefined => {
     case "port-in-use":
       parts.push("EADDRINUSE", f.port !== undefined ? `${f.host ?? ""}:${f.port}` : undefined)
       break
-    case "card-invalid":
+    case "release-unreachable":
+    case "download-failed":
+      parts.push(f.status !== undefined ? `HTTP ${f.status}` : undefined, f.errno, f.host)
+      if (!parts.some(Boolean)) parts.push(f.message)
+      break
+    case "no-space":
+      parts.push(
+        f.need !== undefined ? `need=${f.need}` : undefined,
+        f.free !== undefined ? `free=${f.free}` : undefined,
+        f.file,
+      )
+      break
+    case "unsupported-device":
+      parts.push(f.platform)
+      break
+    case "update-bad-binary":
+      parts.push(f.latest && `want=tavern ${f.latest}`, `got=${JSON.stringify((f.answered ?? "").slice(0, 60))}`)
+      break
+    case "update-not-replaced":
+      parts.push(f.errno, f.file)
+      break
+    case "no-file":
+      parts.push(f.errno, f.file)
+      break
+    case "stop-timeout":
+    case "stop-dev":
+      parts.push(f.pid !== undefined ? `pid ${f.pid}` : undefined)
+      break
+    case "update-from-source":
+    case "update-needs-yes":
+    case "card-invalid": // its lines are the gate's own, under `what`
+      break
     case "depot-unreadable":
     case "link-unreadable":
     case "too-large":
@@ -122,8 +168,10 @@ export const troubleOf = (f: Facts, lang: Lang): Trouble => {
   return {
     code: f.code,
     what: w.what,
+    ...(w.lines?.length && { lines: w.lines }),
     ...(w.why && { why: w.why }),
     next: [w.next],
+    ...(w.kept && { kept: w.kept }),
     ...(facts && { facts }),
   }
 }

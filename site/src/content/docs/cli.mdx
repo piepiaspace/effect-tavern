@@ -15,6 +15,20 @@ curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/downloa
 
 After that, `tavern` starts it and `tavern update` updates it. The binary sits beside `sh` (`$PREFIX/bin/tavern`, else `~/.local/bin/tavern`) and the library in `~/.tavern`; `rm "$(command -v tavern)"` uninstalls it. A phone set up with the earlier `start.sh` line moves over on its next `effect-tavern update` and `effect-tavern`, which then forwards to `tavern`.
 
+## 0. Running the Tavern (`tavern`, `stop`, `status`, `update`, `doctor`)
+
+The player's commands, the same on a phone (Termux) and on a computer. Help (`tavern --help`, `tavern <command> --help`) is in the player's language (Chinese; English with `TAVERN_LANG=en`) and fits a 48-column phone terminal.
+
+| Command | What it does | Exit codes |
+| --- | --- | --- |
+| `tavern` / `tavern serve` | Serves the page and its API. Holds the device's wake lock while it serves (Termux's `termux-wake-lock`); on a terminal, opens the page once the server answers (`--no-open` turns that off). A second `tavern` while one serves the same library says where it runs and exits `0`. A busy port is refused with the command to try; the port never moves by itself. | `0`, `1` |
+| `tavern stop` | Stops the tavern serving this data directory (found through its address file and PID) and waits for it to exit. The dev session (`vp dev`) is left to its own terminal. | `0` (also when none runs), `1` |
+| `tavern status` | Instant and offline: running or not, the address, the data directory, the version. `--json` gives `{running, url?, pid?, data, version}`. | `0` running, `3` not |
+| `tavern update [--yes] [--check]` | Reads the release's `release.txt`, shows the current and latest version and what changes, asks (on a terminal only), checks free space, downloads the platform's asset beside the binary, requires the new file's `--version` to answer the expected version, then renames it over the running binary. Any failure leaves the old binary in place. A tavern still serving keeps the old program until restarted. `TAVERN_MIRROR` names a mirror (an https URL or a directory). Refused from source. | `0`, `1`, `2` (no terminal and no `--yes`) |
+| `tavern doctor [--verbose]` | One line per check, marked `✓`, `!` or `✗`, each with one next step: device and platform, the command's location and version, the data directory, free space against an update, the running tavern and its port, the network to the release, the device's tools, leftovers of the old launcher, and the last failed turn from `<data>/log/turns.jsonl`. | `0`, `1` (any `✗`) |
+
+Every failure a person reads is worded in plain language: what happened, the likely cause, the one next step marked `>`, what was left as it was, and one line of raw facts. Under `--json` a failure is one line on stderr: `{"error":{"code","message","next"}}`.
+
 ## 1. Offline Card Toolchain (`card`)
 
 Run `tavern card <subcommand>` (`bun run tavern card <subcommand>` from source). Offline commands never open the library or call external LLM APIs.

@@ -124,4 +124,4 @@ export const handler = node(wire)
 /** Says where Vite listens, beside this library's lock, so `tavern` commands on this data directory reach the dev
  *  session by themselves (reach.ts); the answer withdraws it. The plugin calls it once Vite's server listens. */
 export const announce = (at: { address: string; port: number }, scheme: "http" | "https" = "http") =>
-  announceAt(dir, local(at, scheme))
+  announceAt(dir, local(at, scheme), { dev: true })

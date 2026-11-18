@@ -15,6 +15,20 @@ curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/downloa
 
 以后输入 `tavern` 启动，`tavern update` 更新。程序在 `sh` 旁边（`$PREFIX/bin/tavern`，写不进时是 `~/.local/bin/tavern`），数据在 `~/.tavern`；`rm "$(command -v tavern)"` 即卸载。用以前的 `start.sh` 那行装过的手机，在下一次 `effect-tavern update` 和 `effect-tavern` 时自动迁过来，此后 `effect-tavern` 转到 `tavern`。
 
+## 0. 运行酒馆（`tavern`、`stop`、`status`、`update`、`doctor`）
+
+玩家用的命令，手机（Termux）和电脑上一样。帮助（`tavern --help`、`tavern <命令> --help`）用玩家的语言（中文；`TAVERN_LANG=en` 为英文），按手机终端的 48 列排版。
+
+| 命令 | 做什么 | 退出码 |
+| --- | --- | --- |
+| `tavern` / `tavern serve` | 提供网页和它的接口。服务期间持有设备的唤醒锁（Termux 的 `termux-wake-lock`）；在终端上，等服务有回应后打开网页（`--no-open` 不打开）。同一个库已有酒馆在运行时，第二个 `tavern` 说出它在哪并以 `0` 退出。端口被占用时不启动，并给出要试的命令；端口不会自己换。 | `0`、`1` |
+| `tavern stop` | 经由地址文件和 PID 找到服务这个数据目录的酒馆，停止它并等它退出。开发服务（`vp dev`）留给它自己的终端。 | `0`（没有在运行也是）、`1` |
+| `tavern status` | 立即返回、不联网：在不在运行、地址、数据目录、版本。`--json` 为 `{running, url?, pid?, data, version}`。 | 运行中 `0`，没有 `3` |
+| `tavern update [--yes] [--check]` | 读发布的 `release.txt`，显示现在与最新的版本和变化，询问（只在终端上），检查剩余空间，把平台的发布文件下载到二进制旁边，要求新文件的 `--version` 回答预期的版本，再改名覆盖正在运行的二进制。任何失败都保留旧的二进制。仍在运行的酒馆要重启后才是新版本。`TAVERN_MIRROR` 指定镜像（https 地址或目录）。从源码运行时拒绝。 | `0`、`1`、`2`（没有终端又没有 `--yes`） |
+| `tavern doctor [--verbose]` | 每项一行，`✓`、`!` 或 `✗`，每项一个下一步：设备与平台、命令的位置与版本、数据目录、剩余空间与更新所需、运行中的酒馆和它的端口、到发布页的网络、设备工具、旧启动器留下的文件、`<数据目录>/log/turns.jsonl` 里上次失败的回合。 | `0`、`1`（有 `✗`） |
+
+任何失败都用大白话说：发生了什么、可能的原因、`>` 标出的一个下一步、什么被原样留下，以及一行原始事实。`--json` 时失败是 stderr 上的一行 `{"error":{"code","message","next"}}`。
+
 ## 1. 离线制卡工具（`card`）
 
 运行 `tavern card <subcommand>`（从源码为 `bun run tavern card <subcommand>`）。所有离线命令均不打开库、不调用在线模型。

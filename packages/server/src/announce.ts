@@ -1,5 +1,5 @@
 // Where a running tavern says it listens: `<data>/tavern.db.address`, beside the library's pid lock (data.ts `lock`),
-// one JSON line {pid, url}. The process that listens writes it once its port is open (`tavern serve`, start.ts; the dev
+// one JSON line {pid, url} (and `dev: true` from the dev session, which `tavern stop` leaves to its own terminal). The process that listens writes it once its port is open (`tavern serve`, start.ts; the dev
 // session, through the Vite plugin) and removes it on close; a command finds the owner of a data directory by it
 // (reach.ts). The lock's own format stays a bare pid: an older binary reads anything else as a dead owner and takes the
 // lock over. An address whose pid is gone is stale: the reader ignores it and removes it.
@@ -28,6 +28,8 @@ export interface Address {
   readonly pid: number
   /** The tavern's origin, with no `/api`: `http://127.0.0.1:7777`. */
   readonly url: string
+  /** The dev session inside Vite (`vp dev`), not a `tavern serve`. */
+  readonly dev?: true
 }
 
 /** The address a listening socket is reached at from this machine: a wildcard bind is reached on loopback, an IPv6
@@ -39,9 +41,9 @@ export const local = (at: { address: string; port: number }, scheme: "http" | "h
 
 /** Says this process listens at `url` for the library in `dir`; the answer takes it back (only while the file is still
  *  this process's: a later owner's address stays). Written whole or not at all. */
-export const announce = (dir: string, url: string): (() => void) => {
+export const announce = (dir: string, url: string, o: { dev?: true } = {}): (() => void) => {
   const file = addressFile(dir)
-  const mine: Address = { pid: process.pid, url }
+  const mine: Address = { pid: process.pid, url, ...o }
   const temp = `${file}.${process.pid}`
   writeFileSync(temp, `${JSON.stringify(mine)}\n`)
   renameSync(temp, file)
@@ -64,7 +66,7 @@ const read = (file: string): Address | undefined => {
   try {
     const v = JSON.parse(text) as Partial<Address>
     if (typeof v.pid === "number" && typeof v.url === "string" && /^https?:\/\//.test(v.url))
-      return { pid: v.pid, url: v.url }
+      return { pid: v.pid, url: v.url, ...(v.dev === true && { dev: true as const }) }
   } catch {}
   return { pid: NaN, url: "" } // unreadable: as good as stale
 }

@@ -120,6 +120,16 @@ bun run tavern story list
 bun run tavern serve --headless --port 7777
 ```
 
+酒馆的启停、状态、更新与检查，手机和电脑上是同样的命令（`docs/tavern-cli.md`）：
+
+```sh
+tavern                  # 启动：Termux 上保持唤醒，在终端里会打开网页（--no-open 不打开）；已在运行时只说它在哪
+tavern status           # 在不在运行、地址、数据目录、版本（没有运行时退出码 3；--json）
+tavern stop             # 停止在这个数据目录上运行的酒馆
+tavern update           # 看最新版本改了什么，问过再替换这个程序（--check 只看，--yes 不问）
+tavern doctor           # 设备、命令、数据、空间、酒馆、网络、工具、旧文件、上次失败的回合：每项给出下一步
+```
+
 ### 离线制卡与工坊工具链（`tavern card`）
 
 ```sh
