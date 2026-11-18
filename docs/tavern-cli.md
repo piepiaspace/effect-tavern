@@ -6,7 +6,11 @@
 
 ```
 tavern            等于 tavern serve
-tavern serve      --port/-p  --bind  --headless  --inspect  --log
+tavern serve      --port/-p  --bind  --headless  --inspect  --log  --no-open
+tavern stop       停止在这个数据目录上运行的酒馆
+tavern status     在不在运行、地址、数据目录、版本（离线，立即返回）
+tavern update     --yes  --check
+tavern doctor     --verbose
 tavern card       init check view test unroll     一个文件，离线
                   install list export remove      书架
                   compile sort review             作者模型
@@ -15,6 +19,85 @@ tavern story      new list show export remove
 tavern play       <卡片|故事>
 任意位置：--json  --data <目录>  --server <地址>  -h/--help  -V/--version
 ```
+
+`tavern --help` 与每个命令的 `--help` 用玩家的语言（中文；`TAVERN_LANG=en` 英文）、按 48 列排版，先列玩家的命令
+（启动、stop、status、update、doctor），再列制卡与管理的命令组；制卡命令的选项说明可以是英文。effect/cli 自带的
+`--wizard`、`--completions`、`--log-level` 不提供。
+
+## 酒馆的一生：启动、停止、状态、更新、检查
+
+这几条是玩家（手机上的 Termux、一台 Linux 或 macOS）用的命令，代码在 `packages/server/src/cli/`。
+它们碰到的外部只有两个注入的接口（`World` 里，测试里换成假的）：`Device`（`cli/device.ts`：保持唤醒、打开网页、
+剩余空间；Termux 用 `termux-wake-lock` / `termux-wake-unlock` / `termux-open-url`，Linux 用 `xdg-open`，macOS 用
+`open`，都没有时什么也不做，从不报错）和 `Release`（`cli/release.ts`：发布页的 https 适配器，和一个目录适配器）。
+
+- **`tavern`（= `tavern serve`）**：服务期间持有设备的唤醒锁（Android 会停掉切到后台的 Termux），结束时放开；
+  在终端上（stderr 是 TTY）等自己的地址有回应后在浏览器打开页面。`--no-open` 不打开；stderr 不是终端、
+  `--headless`、或没有页面可开时也不打开。横幅仍是日志的（见下文）。
+  同一个数据目录上已有酒馆在运行时，第二个 `tavern` 不算出错：说它已在运行、给出地址、（在终端上）打开页面，退出码 0。
+  端口被占用时不启动，用大白话说明，并给出要试的命令（`tavern --port 7778`）；端口不会自己换。
+- **`tavern stop`**：经由地址文件和 pid 找到服务这个数据目录的酒馆，发 SIGTERM（与 Ctrl+C 相同），等它退出后说一句
+  「已停止酒馆（进程 N）」；没有在运行的就说没有，退出码 0；15 秒内没停下是 `stop-timeout`（退出码 1）。
+  开发服务（`vp dev`，地址文件里带 `"dev": true`）不由它停止：那要回到运行 `vp dev` 的终端按 Ctrl+C。
+- **`tavern status`**：只读地址文件和 pid，不发请求、不打开库，立即返回：在不在运行、地址、进程、数据目录、版本；
+  在运行退出码 0，没有在运行退出码 3。`--json` 是同样的事实：`{running, url?, pid?, data, version}`。
+- **`tavern update [--yes] [--check]`**：读发布的 `release.txt`（第一行是标签，如 `v0.9.2`，之后每行一条 `- ` 变化），
+  显示现在和最新的版本与变化；`--check` 到此为止。否则询问（只在终端上问；没有终端又没有 `--yes` 时拒绝，退出码 2），
+  先检查二进制所在目录的剩余空间（要约两倍于现在的二进制），把平台的发布文件（`<asset>.gz`）下载到二进制旁边、解压，
+  运行新文件的 `--version`，必须回答 `tavern <新版本>`，然后改名覆盖正在运行的文件（`process.execPath`，链接先解析到它指向的文件）。
+  任何一步失败都删掉下载的部分，旧的二进制原样留着，并说出来。仍在运行的酒馆还是旧程序：最后会说，并说怎样重启。
+  从源码运行时拒绝（`update-from-source`）。平台表（`cli/release.ts` `assetFor`）现在只有 android + arm64 → `tavern-android`；
+  表里没有的机器是 `unsupported-device`，除非 `TAVERN_ASSET` 指定资源名（自建镜像给另一种机器用，测试也用它）。
+  `TAVERN_MIRROR`（旧名 `TAVERN_URL`）替换 `releases/latest/download` 作为所有文件的来源，可以是 https 地址或本机目录；
+  没有镜像时，读完 `release.txt` 后从那个标签自己的目录（`releases/download/<标签>/`）下载。不会在启动时自动检查更新。
+  `--json` 时 stdout 是一个值：`{current, latest, newer, updated, notes}`。
+- **`tavern doctor [--verbose]`**：一张短清单，每项一行，`✓`、`!` 或 `✗`，不是 `✓` 时下面一行 `>` 是下一步：
+  设备与平台（有没有发布版）、命令的位置与版本（PATH 上找到的是不是这一个）、数据目录（能否读写、多大）、
+  剩余空间与更新所需、有没有酒馆在运行及它的端口有没有回应（没有运行时端口是否空闲）、到发布页的网络（有新版本时提示）、
+  设备工具（唤醒锁、打开网页）、旧启动器留下的 `effect-tavern` 命令或 `~/.tavern/bin`、以及
+  `<数据目录>/log/turns.jsonl` 里最近一次失败的回合（用和其他地方一样的失败说法）。`--verbose` 在每项下面加原始事实。
+  报告是命令的结果，写到 stdout（`--json`：`{checks: [{check, mark, what, next?, facts?}], ok}`）；有 `✗` 时退出码 1。
+
+```
+$ tavern doctor
+✓ 设备      android-arm64，有发布版
+✓ 命令      $PREFIX/bin/tavern 0.9.1
+✓ 数据      ~/.tavern 可读写，1 MB
+! 存储      只剩 180 MB
+            > 更新要约 218 MB，先清理一些空间
+✓ 酒馆      没有运行；端口 7777 空闲
+! 网络      有新版本 0.9.2
+            > tavern update
+✓ 工具      唤醒锁、打开网页都可用
+✓ 旧文件    没有旧版本留下的文件
+! 上次失败  11-18 14:07 故事3：服务商不认这把密
+            钥
+            > 到「设置」的「模型服务」里重新填
+              写这家的 API 密钥，再发送一次。
+
+3 处要留意。
+技术细节：tavern doctor --verbose
+```
+
+### 失败怎样说
+
+任何命令的失败都经过 `packages/server/src/term/` 的 `explain` 和 `failure`：第一行 `✗ 发生了什么`，下面是可能的原因、
+`>` 标出的下一步、什么被原样留下（「旧版本还在，没有被改动」「书架上原来的 wuxia 没有被改动」），最后一行是原始事实。
+卡片没通过闸门时，第一行之下逐行列出闸门自己的 `路径  说明`。`--json` 时失败是 stderr 上的一行
+`{"error":{"code","message","next"}}`。错误码与两种语言的说法在 `term/codes.ts` 和 `term/words/`，缺一种语言就编译不过。
+各种说法的实际样子（48 列，两种语言）在 `packages/server/test/lifecycle.golden.txt`。
+
+```
+$ tavern card install wuxia.yaml
+✗ wuxia 没有上架：卡片里有 2 处要先改
+    fiction.setting  no text
+    rules.fields.hp.initial  12 is above max 10
+  > 改好后再运行一次；逐条说明：tavern card
+    check wuxia.yaml
+  书架上原来的 wuxia 没有被改动。
+```
+
+## 卡片、卡库与故事
 
 ```sh
 bun run tavern card install ./my-card.yaml
@@ -39,7 +122,7 @@ MODEL=fake bun run tavern serve --headless --port 7777
 `.tavern`（根目录的 `bun run tavern` 脚本设了 `TAVERN_DATA=.dev`，即开发网页服务的库）。设置只由
 `packages/server/src/cli/config.ts` 读取，优先级是 命令行 > `TAVERN_*` > 旧名 > 默认：
 `TAVERN_DATA`（旧名 `DATA`）、`TAVERN_PORT`（`PORT`）、`TAVERN_BIND`（`HOST`）、`TAVERN_SERVER`、`TAVERN_LANG`、
-`TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_INSPECT`、`TAVERN_LOG`、`MODEL=fake`。
+`TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_ASSET`、`TAVERN_INSPECT`、`TAVERN_LOG`、`MODEL=fake`。
 `--json`、`--data`、`--server` 写在命令前后都可以。`tavern --version` 打印编译时写入的版本（取自发布标签），从源码运行是 `dev`。
 
 ### 命令怎样找到它的库
@@ -56,8 +139,8 @@ MODEL=fake bun run tavern serve --headless --port 7777
 
 所以在开发时，`bun run tavern card install x.yaml` 不用加任何参数：开发服务在跑就写进它的库，没在跑就直接打开 `.dev`。
 
-退出码：0 完成；1 被拒绝或失败；2 命令行写错（错误与 `> tavern … --help` 写到 stderr）；3 库无法访问，
-用大白话写到 stderr（发生了什么、可能的原因、下一步）：
+退出码：0 完成；1 被拒绝或失败；2 命令行写错（错误与 `> tavern … --help` 写到 stderr），以及 `tavern update`
+没有终端可问又没有 `--yes`；3 库无法访问（以及 `tavern status` 时没有酒馆在运行），用大白话写到 stderr（发生了什么、可能的原因、下一步）：
 
 - `--server` 或宣告的地址上没有酒馆应答；
 - 有活着的进程占着库，却约 2 秒内都没写出地址（还在启动，或是不写地址的旧版本；会写出它的 pid，旧版本可用 `--server` 指定它的地址）；

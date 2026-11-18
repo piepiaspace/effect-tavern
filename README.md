@@ -118,6 +118,16 @@ bun run tavern story list
 bun run tavern serve --headless --port 7777
 ```
 
+The tavern's life, the same commands on a phone and on a computer (`docs/tavern-cli.md`):
+
+```sh
+tavern                  # start it: the wake lock on Termux, the page opened on a terminal (--no-open); a second one just says where it runs
+tavern status           # running or not, its address, its data, the version (exit 3 when not running; --json)
+tavern stop             # stop the one serving this data directory
+tavern update           # what the latest release changes, ask, replace this binary (--check only reports, --yes does not ask)
+tavern doctor           # device, command, data, space, the tavern, network, tools, leftovers, the last failed turn: one next step each
+```
+
 ### Card Authoring & Workshop Toolchain (`tavern card`)
 
 ```sh

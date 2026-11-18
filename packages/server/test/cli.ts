@@ -103,7 +103,11 @@ const done = async (...argv: string[]) => {
   writeFileSync(join(inProcess, "bad.yaml"), "id: bad\n")
   const refused = await run(["card", "install", "bad.yaml"])
   assert.equal(refused.code, 1)
-  assert.match(refused.err, /bad\.yaml did not pass card check/)
+  // in plain words: the gate's own lines under one first line, and the shelf left as it was
+  assert.match(
+    refused.err,
+    /^✗ bad 没有上架：卡片里有 \d 处要先改\n    \$ [^]*tavern card check bad\.yaml\n  书架上原来的 bad 没有被改动。\n$/,
+  )
   const missing = await run(["play", "999999", "--input", "hello"])
   assert.equal(missing.code, 1)
   assert.match(missing.err, /no story 999999/)
@@ -224,10 +228,11 @@ try {
   assert.ok(through.includes("delta") && through.at(-1) === "change", through.join())
   const now = JSON.parse(await ok("story", "show", String(story), "--json"))
   assert.equal(now.nodes.length, before.nodes.length + 1)
-  // a second serve on the same directory: exit 3, in plain words
+  // a second serve on the same directory is not an error: it says one runs, and where
   const twice = await spawned("serve", "--headless", "-p", "0")
-  assert.equal(twice.code, 3)
-  assert.match(twice.err, /数据目录正被另一个酒馆使用/)
+  assert.equal(twice.code, 0, twice.err)
+  assert.ok(twice.err.startsWith(`✓ 酒馆已经在运行\n  地址  ${address.url}\n`), twice.err)
+  assert.equal(twice.out, "")
   // --server names the same one; before or after the command
   assert.deepEqual(JSON.parse(await ok("story", "show", String(story), "--json", "--server", url)), now)
   await ok("--server", url, "card", "install", file)
