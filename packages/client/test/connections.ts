@@ -125,11 +125,9 @@ assert.equal(applied(full, { ...requestOf(full), proxy: "direct" }).proxy, false
 assert.equal(applied(full, { ...requestOf(full), proxy: "env" }).proxy, undefined)
 assert.equal(applied(full, { ...requestOf(full), proxyUrl: " http://q " }).proxy, "http://q")
 assert.equal("headers" in applied(full, { ...requestOf(full), headers: [] }), false)
-assert.equal("cacheTtl" in applied(full, { ...requestOf(full), ttl: "5m" }), false)
 
 // Routing pairs: one menu value and back; why a pair is not on offer
 const pair = { provider: "p", model: "a" }
-assert.equal(pairOf(pairKey(pair)).model, "a")
 assert.deepEqual(pairOf(pairKey({ provider: "x y", model: "m:1/2" })), { provider: "x y", model: "m:1/2" })
 assert.equal(stalePair([p], undefined), undefined)
 assert.equal(stalePair([p], pair), undefined) // live

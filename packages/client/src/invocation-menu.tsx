@@ -4,7 +4,7 @@
 // never waits on it), and a failed read says so in the menu with a retry. Typing narrows the page, and on the first page (or the player's) it reaches every entry
 // under it, so nothing has to be drilled to be found. @ui-sdk's Command keeps the focus in the field while the
 // arrows move the highlight; Enter runs or opens, Backspace on an empty field and Escape go back.
-import { matchingInvocations } from "./composition.ts"
+import { availableInvocations } from "./composition.ts"
 import type { InvocationToken, PlayerCatalogItem } from "@effect-tavern/runtime/src/projection.ts"
 import type { JSX } from "@solidjs/web"
 import {
@@ -45,7 +45,7 @@ export const InvocationMenu = (props: {
   const command = createCommandController()
   const [pages, setPages] = createSignal<string[]>([])
   const [query, setQuery] = createSignal("")
-  const available = createMemo(() => matchingInvocations(catalog(), composition().invocations, ""))
+  const available = createMemo(() => availableInvocations(catalog(), composition().invocations))
   const from = (source: "pack" | "card") => available().filter((i) => i.source === source)
   const groups = () => [...new Set(from("pack").map((i) => i.category))]
   const label = (name: string) =>

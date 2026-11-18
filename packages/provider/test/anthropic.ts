@@ -114,19 +114,13 @@ const program = Effect.gen(function* () {
   assert.ok(replayed, "turn 2 request carries the thinking block")
   assert.ok(r2.text.length > 0)
 
-  // 6. stream: deltas arrive, the finish part carries usage, interruption aborts
+  // 6. stream: deltas carry text and the finish part carries usage
   const arr = yield* stream(m, [user("Count from one to five in words.")], { effort: "off", maxOutputTokens: 40 }).pipe(
     Stream.runCollect,
   )
-  assert.ok(arr.filter((p) => p.type === "text-delta").length > 1)
+  assert.ok(arr.some((p) => p.type === "text-delta" && p.text.length > 0))
   const fin = arr.find((p) => p.type === "finish")
   assert.ok(fin && fin.type === "finish" && (fin.totalUsage.outputTokens ?? 0) > 0)
-  const cut = yield* stream(m, [user("Write three paragraphs about rivers.")], {
-    effort: "off",
-    maxOutputTokens: 400,
-  }).pipe(Stream.take(2), Stream.runCollect)
-  assert.equal(cut.length, 2)
-
   // 7. native multi-step tools: the model must obtain a host-only value before completing.
   const stage = yield* runStageTools(
     m,

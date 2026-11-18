@@ -126,17 +126,24 @@ const run = (m: Model, o: StageOptions) => Effect.runPromise(runStageTools(m, in
 }
 // Unexpected tool failures abort before subsequent effects and expose the trace.
 {
-  const { model } = script([[call("boom", "write"), call("f", "finish")]])
+  let finished = false
+  const { model } = script([[call("read", "read")], [call("boom", "write"), call("f", "finish")]])
   const o = options()
   o.tools = {
-    ...o.tools,
+    read: stageTool(empty, "Read", async () => ({ ok: true, value: "evidence" })),
     write: stageTool(empty, "Write", async () => {
       throw new Error("storage unavailable")
     }),
+    finish: stageTool(empty, "Finish", async () => {
+      finished = true
+      return { ok: true, value: "done" }
+    }),
   }
-  const exit = await Effect.runPromiseExit(runStageTools(model, input, o))
-  assert.ok(Exit.isFailure(exit))
-  await assert.rejects(run(script([[call("boom", "write")]]).model, o), /storage unavailable/)
+  const err = await Effect.runPromise(Effect.flip(runStageTools(model, input, o)))
+  assert.ok(err instanceof StageError)
+  assert.match(err.message, /storage unavailable/)
+  assert.deepEqual(err.trace[0]!.calls[0]!.result, { ok: true, value: "evidence" })
+  assert.equal(finished, false)
 }
 // A repeated ID with changed arguments is a protocol failure, never a second mutation.
 {
@@ -249,13 +256,12 @@ for (const slowTool of [false, true]) {
 // Configuration errors carry a typed stage error before making a request.
 {
   const { model, requests } = script([])
-  const exit = await Effect.runPromiseExit(runStageTools(model, input, { ...options(), budget: { maxSteps: 0 } }))
-  assert.ok(Exit.isFailure(exit))
-  assert.equal(requests.length, 0)
   const err = await Effect.runPromise(
     Effect.flip(runStageTools(model, input, { ...options(), budget: { maxSteps: 0 } })),
   )
   assert.ok(err instanceof StageError)
+  assert.match(err.message, /maxSteps/)
+  assert.equal(requests.length, 0)
 }
 // Unsupported native tooling is rejected locally, without falling back to JSON.
 {

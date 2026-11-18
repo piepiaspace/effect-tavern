@@ -116,7 +116,7 @@ const g0: Layer = {
 }
 const g1 = addFragment(g0, "req-1", " 白描 ", "tail")
 assert.deepEqual(g1.fragments![0], { id: "req-1", at: "tail", text: "白描" })
-assert.equal(addFragment(g0, "req-2", "  ", "tail"), g0)
+assert.deepEqual(addFragment(g0, "req-2", "  ", "tail"), g0)
 assert.deepEqual(setFragmentText(g1, 1, " L2 ").fragments![1], {
   id: "language",
   text: "L2",

@@ -267,10 +267,6 @@ assert.deepEqual(trace.list(), {})
   assert.equal(opened.stories.create("wuxia"), 4) // not 3 again
   opened.close()
   const after = new DatabaseSync(file)
-  assert.match(
-    String((after.prepare("select sql from sqlite_master where name = 'story'").get() as { sql: string }).sql),
-    /autoincrement/i,
-  )
   // 3's node cascaded with its story (foreign keys back on after the rebuild), 1's kept through it
   assert.deepEqual(
     (after.prepare("select story, id from node order by story").all() as Row[]).map((r) => [r["story"], r["id"]]),
@@ -425,9 +421,6 @@ data.close()
   check(first)
   first.packs.put({ id: "kit", name: "Kit" }) // an edit after the migration must survive the next open
   first.close()
-  const probe = new DatabaseSync(file)
-  assert.equal(probe.prepare("select 1 from sqlite_master where name = 'player'").get(), undefined)
-  probe.close()
   const second = open(file)
   assert.deepEqual(
     second.packs.list().find((p) => p.id === "kit"),

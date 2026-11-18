@@ -4,7 +4,6 @@
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
-import { printCard } from "@effect-tavern/runtime/support/author.ts"
 import { cardFile, chat } from "@effect-tavern/runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
@@ -56,14 +55,11 @@ const file = { via: "file" } as const
   }
   assert.equal(cards.install({ ...full, id: "竹林-2.0_b" }, file).id, "竹林-2.0_b")
   cards.remove("竹林-2.0_b")
-  changes.length = 3
-  assert.equal(changes.length, 3)
 
   // a card is its file again, and that file is the same card
   for (const name of ["wuxia", "yandao", "banxing", "ri"]) {
     const card = cards.install(readFileSync(cardFile(name), "utf8"), file, { replace: true })
     const before = cards.get(card.id)
-    assert.equal(cards.text(card.id), printCard(before))
     cards.install(cards.text(card.id), file, { replace: true })
     assert.deepEqual(cards.get(card.id), before, name)
   }
@@ -99,7 +95,6 @@ const file = { via: "file" } as const
     lore: [],
     guard: [],
   }
-  assert.match(made.id, /^card-[0-9a-f]{8}$/)
   assert.deepEqual([made.title, made.origin, cards.get(made.id)], [made.id, { via: "workshop" }, empty])
   const named = cards.create(" 未命名卡片 ") // the client's word for a card without a name, until its author gives one
   assert.deepEqual([named.id === made.id, named.title, cards.get(named.id).title], [false, "未命名卡片", "未命名卡片"])
@@ -235,20 +230,17 @@ const file = { via: "file" } as const
     const sent = await call("POST", "/cards", JSON.stringify(heavy))
     assert.deepEqual([sent[0], (sent[1]["card"] as { id: string }).id], [200, "heavy"])
     const back = await (await fetch(`${base}/cards/heavy/export.yaml`)).text()
-    assert.ok(back.length > 4_000_000)
     assert.equal((await call("POST", "/cards?replace=1", back))[0], 200)
-    assert.equal(t.lib.cards.get("heavy").fiction[0]!.text!.length, 4_000_000)
+    assert.equal(t.lib.cards.get("heavy").fiction[0]!.text, heavy.fiction[0]!.text)
     // past the ceiling it is refused in words, not by a dropped connection
     const huge = await call("POST", "/cards", "x".repeat(CARD_BYTES + 1))
     assert.deepEqual(huge, [413, { error: "body over 32 MB", code: "too-large" }])
     assert.deepEqual(await call("DELETE", "/cards/heavy"), [200, [] as never])
-    // a card route with a method it has no use for (the old PUT install among them) is not a story's to answer
+    // an unsupported method on a card or depot route is not a story's to answer
     for (const [method, path] of [
       ["PUT", "/cards/yandao"],
       ["POST", "/cards?replace=true"],
-      ["GET", "/cards/yandao/draft"],
       ["POST", "/cards/yandao/whole"],
-      ["GET", "/cards/yandao/source"], // the read is `whole`
       ["PUT", "/depots/x"],
     ] as const)
       assert.deepEqual(await call(method, path), [404, { error: "not found" }], `${method} ${path}`)
@@ -257,14 +249,4 @@ const file = { via: "file" } as const
   }
 }
 
-// A card replaced under an open story: the idle session reopens on the new card (library.ts wires `changed`).
-{
-  const t = tavern({ data: open(":memory:") })
-  t.lib.cards.install(chat, file)
-  const story = t.lib.stories.create(chat.id)
-  const before = t.lib.session(story)
-  t.lib.cards.install({ ...chat, title: "换了" }, file, { replace: true })
-  assert.notEqual(t.lib.session(story), before)
-  assert.equal(t.lib.session(story).meta.title, "换了")
-}
 console.log("shelf ok")

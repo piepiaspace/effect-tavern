@@ -15,7 +15,6 @@ try {
     // aimock 1.46 defaults Gemini tool replies to FUNCTION_CALL; the SDK expects native STOP.
     // Override the fixture, not production finish-reason handling.
     const traces: Trace[] = []
-    const bodies: Record<string, any>[] = []
     mock.on(
       { hasToolResult: false },
       {
@@ -44,11 +43,6 @@ try {
       {
         onTrace: (t) => traces.push(t),
         traceBody: true,
-        fetch: (url, init) => {
-          assert.equal(typeof init?.body, "string")
-          bodies.push(JSON.parse(init!.body as string))
-          return fetch(url, init)
-        },
       },
     )
     const reads: string[] = []
@@ -92,7 +86,7 @@ try {
       out.trace[1]!.calls.map((c) => c.name),
       ["read", "finish"],
     )
-    const [first, second] = bodies
+    const [first, second] = traces.map((t) => JSON.parse(t.body!))
     if (format === "anthropic") {
       assert.deepEqual(first!.tools[0].input_schema.required, ["key"])
       assert.equal(first!.tools[0].input_schema.properties.detail.type, "string")

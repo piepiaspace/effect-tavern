@@ -58,8 +58,8 @@ const sse = (text: string) =>
       return { event: ev!.slice(7), data: JSON.parse(data!.slice(6)) as Event & { message?: string; code?: string } }
     })
 
-const run = async (inspect: boolean) => {
-  const server = serve(lib, { inspect }).listen(0)
+{
+  const server = serve(lib, { inspect: true }).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   // the story this client is on, as the client's `stories.current`: the newest, a new one on the first run
   let story = lib.stories.list()[0]?.id ?? lib.stories.create(chat.id)
@@ -93,7 +93,6 @@ const run = async (inspect: boolean) => {
     const merged = about["layer"] as { frame: { from: string; text?: string }[]; names: unknown }
     assert.ok(merged.frame.some((f) => f.from === "harness" && f.text))
     assert.ok(merged.frame.some((f) => f.from === "card") && merged.frame.every((f) => f.from !== "card" || !f.text))
-    assert.equal((await fetch(`${base}/player`)).status, 404) // no such route any more
 
     // the local row: read whole, replaced whole, its card the URL's; the card follows at once, a bad body is a 400
     const local = (v?: unknown, card = chat.id) =>
@@ -121,10 +120,15 @@ const run = async (inspect: boolean) => {
     assert.equal(r.headers.get("content-type"), "text/event-stream")
     const evs = sse(await r.text())
     assert.deepEqual(
-      evs.map((e) => e.event),
-      ["stage", "delta", "delta", "change", "change", "stage", "change"],
+      evs.map((e) => e.event).filter((event, i) => event !== evs[i - 1]?.event),
+      ["stage", "delta", "change", "stage", "change"],
     )
-    assert.ok(!evs.some((e) => e.event === "call"))
+    assert.equal(
+      evs
+        .flatMap(({ data }) => (data.kind === "delta" && data.part.type === "text-delta" ? [data.part.text] : []))
+        .join(""),
+      "hello world",
+    )
     const node = (evs.at(-1)!.data as Extract<Event, { kind: "change" }>).node!
     assert.equal(node.input.text, "hi")
     assert.deepEqual(node, wired(lib.session(story).timelineNode(node.id))) // the wire carries the projection whole
@@ -140,10 +144,9 @@ const run = async (inspect: boolean) => {
     >[]
     assert.deepEqual(
       calls.map((c) => c.msgs.length > 0),
-      [inspect, inspect],
+      [true, true],
     )
     assert.ok(calls.every((c) => c.ms >= 0))
-    if (!inspect) assert.ok(calls.every((c) => c.out === undefined))
     assert.equal((await fetch(`${base}/calls`)).status, 404)
     const detail = await (await fetch(`${base}/nodes/${node.id}/detail`)).json()
     assert.deepEqual(detail, wired(lib.session(story).detail(node.id)))
@@ -287,16 +290,15 @@ const run = async (inspect: boolean) => {
       >[]
       return JSON.stringify(trace[0]!.msgs)
     }
-    assert.equal((await headOf("who am i")).includes(monk.text), inspect)
+    assert.ok((await headOf("who am i")).includes(monk.text))
     await persona("monk", { name: monk.name, text: "你是还俗的武僧。" })
-    assert.equal((await headOf("and now")).includes("你是还俗的武僧。"), inspect) // the edit is in force, same story
+    assert.ok((await headOf("and now")).includes("你是还俗的武僧。")) // the edit is in force, same story
     const listed = (await (await fetch(`${base}/stories`)).json()) as { stories: { turns: number }[] }
     assert.equal(listed.stories[0]!.turns, 1) // two roots (parent: null): the head's line holds one turn
     // Two clients on two stories: each request is on the story its header names, and neither moves the other.
     const on = (id: number) => ({ headers: { "x-tavern-story": String(id) } })
     const sizeOn = async (id: number) =>
       ((await (await globalThis.fetch(`${base}/nodes`, on(id))).json()) as { nodes: unknown[] }).nodes.length
-    assert.notEqual(lib.session(first), lib.session(opened.current))
     assert.deepEqual(
       [await sizeOn(first), await sizeOn(opened.current), await sizeOn(first)],
       [lib.session(first).log.nodes.size, 2, lib.session(first).log.nodes.size],
@@ -424,7 +426,7 @@ const run = async (inspect: boolean) => {
     assert.deepEqual(await (await hat(h)).json(), [{ id: "h", ...h }])
     assert.equal((await hat({ name: "x", narrate: { tail: [{ role: "tool", text: "" }] } })).status, 400)
     assert.deepEqual(await (await fetch(`${base}/hats`)).json(), [{ id: "h", ...h }])
-    assert.equal((await headOf("worn")).includes("HAT-TAIL"), inspect)
+    assert.ok((await headOf("worn")).includes("HAT-TAIL"))
     assert.deepEqual(await (await hat()).json(), [])
     assert.equal((await headOf("gone")).includes("HAT-TAIL"), false)
 
@@ -462,7 +464,7 @@ const run = async (inspect: boolean) => {
     assert.deepEqual(((await (await fetch(`${base}/cards/${chat.id}`)).json()) as { mounts: unknown }).mounts, [
       { id: "kit", name: "文风" },
     ])
-    assert.equal((await headOf("packed")).includes("PACK-STYLE"), inspect)
+    assert.ok((await headOf("packed")).includes("PACK-STYLE"))
     assert.deepEqual(await packsIn(await pack()), [])
     assert.equal(((await (await local()).json()) as { mounts?: unknown }).mounts, undefined)
     assert.equal((await headOf("unpacked")).includes("PACK-STYLE"), false)
@@ -512,8 +514,6 @@ const run = async (inspect: boolean) => {
     server.close()
   }
 }
-await run(true)
-await run(false)
 
 // A stop during the correction rewrite, before its first character (#58): the first draft already streamed, so the stop
 // halts the turn rather than withdrawing it, and the first draft stands as the `stopped` reply with its verdict.

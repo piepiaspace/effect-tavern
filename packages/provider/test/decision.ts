@@ -4,7 +4,7 @@
 import assert from "node:assert/strict"
 import { Effect } from "effect"
 import type { ModelError } from "../src/call.ts"
-import { blocked, compileDecision, decide, fakeDecision, probeDecision } from "../src/decide.ts"
+import { blocked, compileDecision, decide, probeDecision } from "../src/decide.ts"
 import { DRIVERS, decisionUrl, type DecisionConfig, type Driver } from "../src/decision.ts"
 import type { Secret } from "../src/providers.ts"
 
@@ -96,17 +96,4 @@ for (const [c, url] of [
 assert.throws(() => compileDecision(config("google"), undefined), /no key/)
 assert.throws(() => compileDecision(config("google", { model: " " }), key), /no model/)
 
-// the fake answers from the request, with no distribution: what an adapter over a language model returns
-const f = await Effect.runPromise(
-  decide(
-    fakeDecision((call) => ({
-      broke: { type: "boolean", probability: JSON.stringify(call.state).includes("怀表") ? 0.9 : 0.1 },
-      next: { type: "choice", choice: "attack" },
-    })),
-    "怀表",
-    questions,
-  ),
-)
-assert.equal(f.answers.broke.probability, 0.9)
-assert.equal(f.answers.next.probabilities, undefined)
 console.log("decision ok")

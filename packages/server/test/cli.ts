@@ -31,6 +31,8 @@ const file = join(dir, "cli.yaml")
 writeFileSync(file, scaffold("cli", "chat"))
 let server: ReturnType<typeof Bun.spawn> | undefined
 try {
+  // A valid card file in the working directory does not install itself.
+  assert.deepEqual(JSON.parse(await ok("card", "list", "--json")), [])
   await ok("card", "check", file)
   assert.deepEqual(JSON.parse(await ok("card", "install", file, "--json")), { id: "cli", installed: true })
   const { id: story } = JSON.parse(await ok("story", "new", "cli", "--json"))
@@ -102,9 +104,20 @@ try {
   await ok("play", String(remote), "--url", url, "--input", "remote hello", "--jsonl")
   assert.match(await ok("story", "export", String(remote), "--url", url), /remote hello/)
   await ok("play", String(remote), "--url", url, "--input", "/checkout root", "--jsonl")
-  await ok("play", String(remote), "--url", url, "--input", "/tree", "--jsonl")
-  await ok("play", String(remote), "--url", url, "--input", "/context", "--jsonl")
-  await ok("play", String(remote), "--url", url, "--input", "/detail 0", "--jsonl")
+  const readCommand = async (command: string, kind: string) => {
+    const output = await ok("play", String(remote), "--url", url, "--input", command, "--jsonl")
+    const result = JSON.parse(output.trimEnd().split("\n").at(-1)!)
+    assert.equal(result.kind, kind)
+    return result.value
+  }
+  const tree = await readCommand("/tree", "tree")
+  assert.equal(tree.head, null)
+  assert.deepEqual(
+    tree.nodes.map((n: { input: { text: string } }) => n.input.text),
+    ["remote hello"],
+  )
+  assert.deepEqual((await readCommand("/context", "context")).worldState.lore, {})
+  assert.equal((await readCommand("/detail 0", "detail")).id, 0)
   assert.deepEqual(JSON.parse(await ok("story", "delete", String(remote), "--url", url, "--json")), {
     id: remote,
     deleted: true,
@@ -142,10 +155,10 @@ try {
     const headers = { "x-tavern-story": String(story) }
     const trace = await (await fetch(`${api}/nodes/0/trace`, { headers })).json()
     assert.ok(trace.length > 0)
-    assert.equal(
-      trace.some((c: { msgs: unknown[] }) => c.msgs.length > 0),
-      inspect,
-    )
+    for (const call of trace) {
+      assert.equal(call.msgs.length > 0, inspect)
+      if (!inspect) assert.equal(call.out, undefined)
+    }
     server.kill("SIGTERM")
     assert.equal(await server.exited, 0)
     server = undefined

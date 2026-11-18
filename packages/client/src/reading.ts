@@ -88,6 +88,6 @@ export const reading: Reading = createReading({
   openStory: wire.openStory,
   fetchNodes: wire.fetchNodes,
   fetchCard: wire.fetchCard,
-  attach: () => turn.attach(), // read late: pages' test stubs the turn's own
-  abandon: () => turn.abandon(),
+  attach: turn.attach,
+  abandon: turn.abandon,
 })

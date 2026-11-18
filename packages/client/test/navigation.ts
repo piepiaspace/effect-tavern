@@ -3,11 +3,8 @@ import assert from "node:assert/strict"
 import { newStory, open, openStory, showCard, toHome } from "../src/pages.ts"
 import { activeOf, card, log, page, registry, stories, tabs, type CardView, type StoryRow } from "../src/store.ts"
 import { add, select } from "../src/tabs.ts"
-import { turn } from "../src/turn.ts"
 import { fetchCardOf } from "../src/wire.ts"
 
-turn.attach = () => {}
-turn.abandon = () => {}
 const rows = [1, 2, 3].map((id) => ({ id, card: `c${id}`, busy: null }) as StoryRow)
 const gates = new Map<string, { started: () => void; wait: Promise<void> }>()
 const hold = (path: string) => {
@@ -24,6 +21,7 @@ const hold = (path: string) => {
 }
 globalThis.fetch = (async (url: string, init?: RequestInit) => {
   const path = String(url)
+  if (path === "/api/turn") return new Response(null, { status: 204 })
   const story = Number(new Headers(init?.headers).get("x-tavern-story"))
   const gate = gates.get(path)
   if (gate) {
