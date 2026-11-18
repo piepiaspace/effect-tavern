@@ -1,4 +1,4 @@
-// What the ledger draws, as text: pure functions of an entry, a call or a fact and the width, no screen and no state.
+// What the logbook draws, as text: pure functions of an entry, a call or a fact and the width, no screen and no state.
 // Every line fits `cells` (term `cells`: `columns - 1`, at most 99); a row of fields breaks between fields, the rest of it
 // indented under the first. No story text unless `inspect`: ids, counts, sizes, timings, usage and failure facts only.
 import type { Usage } from "@effect-tavern/provider"

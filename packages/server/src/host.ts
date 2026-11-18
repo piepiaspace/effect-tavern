@@ -7,12 +7,12 @@ import { mkdirSync } from "node:fs"
 import { libraryFile } from "./announce.ts"
 import type { Config } from "./cli/config.ts"
 import { open } from "./data.ts"
-import type { Ledger } from "./ledger.ts"
+import type { Logbook } from "./logbook.ts"
 import { tavern } from "./tavern.ts"
 
 export const openHost = async (
   { data: dir, fake: scripted, inspect, page }: Pick<Config, "data" | "fake" | "inspect"> & { page?: boolean },
-  ledger?: Ledger, // the running server's (start.ts); a command's library keeps a silent one
+  logbook?: Logbook, // the running server's (start.ts); a command's library keeps a silent one
 ) => {
   mkdirSync(dir, { recursive: true })
   const data = open(libraryFile(dir))
@@ -24,6 +24,6 @@ export const openHost = async (
     page,
     overlay: plain.harness,
     ...(model && { model: () => model, pinned: true }),
-    ...(ledger && { ledger }),
+    ...(logbook && { logbook }),
   })
 }

@@ -1,6 +1,6 @@
-// The ledger's fixed words, Chinese by default and English under TAVERN_LANG=en. A stage and an action are named by the
+// The logbook's fixed words, Chinese by default and English under TAVERN_LANG=en. A stage and an action are named by the
 // client's own words (client src/locales: `settings.stage*`, `common.swipe` / `reword` / `edit` / `retry` / `stopped`,
-// `readings.aside` / `skipRecord`, `card.begin`, `inspector.precheck`); test/ledger.ts holds them equal. Glyphs: ASCII,
+// `readings.aside` / `skipRecord`, `card.begin`, `inspector.precheck`); test/logbook.ts holds them equal. Glyphs: ASCII,
 // CJK, and nothing else (the marks ✓ ✗ are the caller's).
 import type { Action, Phase } from "@effect-tavern/runtime/src/session.ts"
 import type { Lang } from "../term/index.ts"

@@ -89,7 +89,7 @@ show 默认打印阅读文本。`story remove` 是正式命令；`story delete` 
 
 ## 运行中的服务在终端里显示什么（日志）
 
-`tavern serve` 运行时，终端（stderr）上的内容都来自日志（代码里叫 ledger，`packages/server/src/ledger.ts`）。
+`tavern serve` 运行时，终端（stderr）上的内容都来自日志（代码里叫 logbook，`packages/server/src/logbook.ts`）。
 单位是一轮：一轮调用了模型才记一行；HTTP 请求、静态文件、保存、切换版本这类不调用模型的动作不记。
 中文为默认，`TAVERN_LANG=en` 换英文；每行不超过终端宽度减一（手机按 48 列排版）。
 

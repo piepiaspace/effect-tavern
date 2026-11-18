@@ -23,7 +23,7 @@ import { library } from "../src/library.ts"
 import { app, handle, serve } from "../src/serve.ts"
 import { shelf } from "../src/shelf.ts"
 import { tavern } from "../src/tavern.ts"
-import { openLedger } from "../src/ledger.ts"
+import { openLogbook } from "../src/logbook.ts"
 import { memoryScreen } from "../src/term/index.ts"
 import { node } from "../src/wire.ts"
 
@@ -878,7 +878,7 @@ await run(false)
 }
 
 // End to end, one failure on three surfaces: record's provider answers 401 (the prose comes from the scripted model,
-// so a node lands). The running server's ledger draws the block on its screen, the failed call is stored under the
+// so a node lands). The running server's logbook draws the block on its screen, the failed call is stored under the
 // node with its fault (the Inspector's trace, no body), and the wire's `error` event carries the same code.
 {
   const refusing = createServer((_, res) => {
@@ -888,9 +888,9 @@ await run(false)
   await once(refusing, "listening")
   const port = (refusing.address() as AddressInfo).port
   const screen = memoryScreen({ columns: 48 })
-  const ledger = openLedger({ screen })
-  const t = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness, model, ledger })
-  ledger.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev", model: "Relay / m" })
+  const logbook = openLogbook({ screen })
+  const t = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness, model, logbook })
+  logbook.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev", model: "Relay / m" })
   const key = t.lib.secrets.add({ name: "K", value: "sk-test-0123456789abcdef" })
   t.lib.providers.put({
     id: "relay",

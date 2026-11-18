@@ -1,5 +1,5 @@
-// The ledger, through its interface only: scripted event streams (a landed turn, a rewrite after check, a stopped one, a
-// withdrawn one, one failed at each kind of stage) through `openLedger(...).turn(...)`. The events out are the events
+// The logbook, through its interface only: scripted event streams (a landed turn, a rewrite after check, a stopped one, a
+// withdrawn one, one failed at each kind of stage) through `openLogbook(...).turn(...)`. The events out are the events
 // in, in order, with the same failure; a throwing screen or `file` changes nothing for the turn; every action ends as
 // exactly one entry; golden text at 48 and 100 columns in both languages; every line fits `columns - 1` cells; no escape
 // byte when not live and not coloured; a sentence planted in messages, deltas and answers never reaches the screen or
@@ -15,8 +15,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Cause, Effect, Exit, Stream } from "effect"
-import { openLedger } from "../src/ledger.ts"
-import { words } from "../src/ledger/words.ts"
+import { openLogbook } from "../src/logbook.ts"
+import { words } from "../src/logbook/words.ts"
 import { memoryScreen, width, type Lang, type Screen } from "../src/term/index.ts"
 
 // ───────── the words: the client's own ─────────
@@ -211,16 +211,16 @@ const recording = (o: { columns: number; live?: boolean; color?: boolean }) => {
   }
   return s
 }
-const dir = mkdtempSync(join(tmpdir(), "tavern-ledger-"))
+const dir = mkdtempSync(join(tmpdir(), "tavern-logbook-"))
 const playAll = async (
-  o: Parameters<typeof openLedger>[0] & { columns?: number },
+  o: Parameters<typeof openLogbook>[0] & { columns?: number },
   names = Object.keys(scripts),
   up = true,
 ) => {
   const screen = o.screen ?? recording({ columns: o.columns ?? 48 })
-  const ledger = openLedger({ clock, ...o, screen })
+  const logbook = openLogbook({ clock, ...o, screen })
   if (up)
-    ledger.host({
+    logbook.host({
       url: "http://127.0.0.1:7777",
       data: "/srv/tavern",
       version: "0.9.2",
@@ -231,7 +231,7 @@ const playAll = async (
     now = T0
     const s = scripts[name]!
     const wrapped = await run(
-      ledger.turn(3, (node, calls) => void filed.push([node, calls.length]))(s.action, streamOf(s)),
+      logbook.turn(3, (node, calls) => void filed.push([node, calls.length]))(s.action, streamOf(s)),
     )
     now = T0
     const bare = await run(streamOf(s))
@@ -297,12 +297,12 @@ const playAll = async (
     live: true,
     color: true,
   }
-  const ledger = openLedger({ clock, screen: broken, level: "detail" })
-  ledger.host({ url: "http://x", data: "/d", version: "dev" })
+  const logbook = openLogbook({ clock, screen: broken, level: "detail" })
+  logbook.host({ url: "http://x", data: "/d", version: "dev" })
   for (const s of Object.values(scripts)) {
     now = T0
     const wrapped = await run(
-      ledger.turn(1, () => {
+      logbook.turn(1, () => {
         throw new Error("disk full")
       })(s.action, streamOf(s)),
     )
@@ -506,13 +506,13 @@ for (const columns of [48, 100])
 // ───────── colour, and the live row on a terminal we own ─────────
 {
   const screen = recording({ columns: 48, live: true, color: true })
-  const ledger = openLedger({ clock, screen })
-  ledger.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev" })
+  const logbook = openLogbook({ clock, screen })
+  logbook.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev" })
   let mid: string | undefined
   now = T0
   const s = scripts["landed"]!
   await run(
-    ledger.turn(3, () => {})(
+    logbook.turn(3, () => {})(
       s.action,
       streamOf(s).pipe(
         Stream.tap((e) =>
@@ -537,8 +537,8 @@ for (const columns of [48, 100])
   const { screen } = await playAll({ dir: join(dir, "silent") }, undefined, false)
   assert.equal(screen.raw(), "")
   const s = recording({ columns: 48 })
-  const ledger = openLedger({ screen: s })
-  ledger.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev" })
+  const logbook = openLogbook({ screen: s })
+  logbook.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev" })
   assert.deepEqual(s.shown(), [
     "Effect Tavern dev",
     "  地址  http://127.0.0.1:7777",
@@ -549,7 +549,7 @@ for (const columns of [48, 100])
     "",
   ])
   const f = recording({ columns: 48 })
-  openLedger({ screen: f }).host({
+  openLogbook({ screen: f }).host({
     failed: Object.assign(new Error("listen EADDRINUSE: address already in use 127.0.0.1:7777"), {
       code: "EADDRINUSE",
       port: 7777,
@@ -576,4 +576,4 @@ for (const columns of [48, 100])
 }
 
 rmSync(dir, { recursive: true, force: true })
-console.log("ledger ok")
+console.log("logbook ok")

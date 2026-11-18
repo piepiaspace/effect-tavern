@@ -17,7 +17,7 @@ import type { AddressInfo } from "node:net"
 import { open, type Data } from "../src/data.ts"
 import { library, NoModel } from "../src/library.ts"
 import { shelf } from "../src/shelf.ts"
-import { openLedger } from "../src/ledger.ts"
+import { openLogbook } from "../src/logbook.ts"
 import { makeTurn, type Call, type Out } from "../src/turn.ts"
 
 // the localhost upstreams below stay off a shell proxy: through one, a refused socket comes back as the proxy's 502
@@ -628,7 +628,7 @@ for (const skip of [false, true]) {
   const filed: unknown[] = []
   const T = makeTurn(
     S,
-    openLedger().turn(1, (_, calls) => filed.push(...calls)),
+    openLogbook().turn(1, (_, calls) => filed.push(...calls)),
   )
   const done = Effect.runPromise(
     Stream.runCollect(

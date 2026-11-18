@@ -1,11 +1,11 @@
 // `tavern serve` (and the bare `tavern`): listener, shutdown and optional static-file handling over the host. What the
-// running server says (the banner, its turns, a failure to start) is its ledger's (ledger.ts).
+// running server says (the banner, its turns, a failure to start) is its logbook's (logbook.ts).
 import { existsSync } from "node:fs"
 import { createServer } from "node:http"
 import { join } from "node:path"
 import type { Config, Writer } from "./cli/config.ts"
 import { openHost } from "./host.ts"
-import { openLedger } from "./ledger.ts"
+import { openLogbook } from "./logbook.ts"
 import { refresh } from "./names.ts"
 import { app } from "./serve.ts"
 import { announce, local } from "./announce.ts"
@@ -27,7 +27,7 @@ export const start = async (
   c: Pick<Config, "data" | "fake" | "inspect" | "port" | "bind" | "lang" | "log" | "version">,
   { dist, err = process.stderr }: { dist?: string; err?: Writer } = {},
 ) => {
-  const ledger = openLedger({
+  const logbook = openLogbook({
     dir: join(c.data, "log"),
     level: c.log,
     inspect: c.inspect,
@@ -36,7 +36,7 @@ export const start = async (
   })
   try {
     const root = staticRoot(dist)
-    const { handler, data, lib } = await openHost({ ...c, page: !!root }, ledger)
+    const { handler, data, lib } = await openHost({ ...c, page: !!root }, logbook)
     let withdraw: (() => void) | undefined
     try {
       // Scripted hosts stay offline; normal production startup refreshes the vendored name table.
@@ -50,7 +50,7 @@ export const start = async (
       // with the page served, its address is the one to open; without it, the API's
       const url = `http://${c.bind}:${typeof address === "object" && address ? address.port : c.port}${root ? "" : "/api"}`
       const model = c.fake ? "MODEL=fake" : lib.defaultModel()
-      ledger.host({ url, data: c.data, version: c.version, ...(model && { model }) })
+      logbook.host({ url, data: c.data, version: c.version, ...(model && { model }) })
       // beside the library's lock, where a command looks for its owner (reach.ts)
       if (typeof address === "object" && address) withdraw = announce(c.data, local({ ...address, address: c.bind }))
       await new Promise<void>((resolve) => {
@@ -68,7 +68,7 @@ export const start = async (
       data.close()
     }
   } catch (e) {
-    ledger.host({ failed: e })
+    logbook.host({ failed: e })
     if (typeof e === "object" && e !== null) told.add(e)
     throw e
   }

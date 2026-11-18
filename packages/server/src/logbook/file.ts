@@ -1,4 +1,4 @@
-// The ledger's file: `<data>/log/turns.jsonl`, one JSON line per finished turn, appended. At about 2 MB it moves to
+// The logbook's file: `<data>/log/turns.jsonl`, one JSON line per finished turn, appended. At about 2 MB it moves to
 // `turns.1.jsonl` (the one before it goes), so the two files never pass about 4 MB on a phone. A directory that cannot
 // be written fails nothing: `broken` hears it once and the file is off for the life of the process.
 import { appendFileSync, mkdirSync, renameSync, statSync } from "node:fs"

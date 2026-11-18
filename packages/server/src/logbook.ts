@@ -1,6 +1,6 @@
-// The ledger: the running server's account of its turns and their calls, on the terminal and in `<data>/log/turns.jsonl`
-// (GLOSSARY `ledger (server)`). A caller learns `openLedger`, `host` and `turn` and nothing else: what is drawn, in
-// which words and colours, at which level, and where it goes are decided here (ledger/).
+// The logbook: the running server's account of its turns and their calls, on the terminal and in `<data>/log/turns.jsonl`
+// (GLOSSARY `logbook (server)`). A caller learns `openLogbook`, `host` and `turn` and nothing else: what is drawn, in
+// which words and colours, at which level, and where it goes are decided here (logbook/).
 //
 // Unit: the turn. `turn(story, file)` wraps one action's event stream, unchanged (the same events in the same order,
 // the same failure or interruption; nothing here can fail or delay it), and files the action's calls under its node
@@ -29,9 +29,9 @@ import {
   banner,
   type Call,
   type Entry,
-} from "./ledger/lines.ts"
-import { turnsFile } from "./ledger/file.ts"
-import { words } from "./ledger/words.ts"
+} from "./logbook/lines.ts"
+import { turnsFile } from "./logbook/file.ts"
+import { words } from "./logbook/words.ts"
 import {
   block,
   cells,
@@ -48,8 +48,8 @@ import {
 export type Level = "quiet" | "turn" | "detail"
 export const levels: readonly Level[] = ["quiet", "turn", "detail"]
 
-export interface Ledger {
-  /** The server is up (the banner; from here on the ledger speaks), or it could not start (the failure's block). */
+export interface Logbook {
+  /** The server is up (the banner; from here on the logbook speaks), or it could not start (the failure's block). */
   host(fact: { url: string; data: string; version: string; model?: string } | { failed: unknown }): void
   /** One story's turns: wraps a turn's event stream, unchanged, observed from start to exit. */
   turn(story: Id, file: (node: Id, calls: readonly Call[]) => void): (action: Action, events: Events) => Events
@@ -60,7 +60,7 @@ const safe = (f: () => void) => {
   try {
     f()
   } catch {
-    // the ledger's own trouble is never the turn's
+    // the logbook's own trouble is never the turn's
   }
 }
 const tilde = (path: string) => {
@@ -78,7 +78,7 @@ interface Run {
   waited: boolean
 }
 
-export const openLedger = (
+export const openLogbook = (
   o: {
     /** `<data>/log`; absent: no file. */
     dir?: string
@@ -92,7 +92,7 @@ export const openLedger = (
     /** Epoch ms; a test's own. */
     clock?: () => number
   } = {},
-): Ledger => {
+): Logbook => {
   const guest = o.guest ?? false
   const screen = o.screen ?? stderrScreen({ live: !guest })
   const level = o.level ?? "turn"

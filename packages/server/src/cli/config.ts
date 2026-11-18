@@ -3,7 +3,7 @@
 // The legacy names (DATA, PORT, HOST, TAVERN_URL) stay because the phone's start.sh exports them.
 import { homedir } from "node:os"
 import { resolve } from "node:path"
-import { levels, type Level } from "../ledger.ts"
+import { levels, type Level } from "../logbook.ts"
 
 /** Where a command writes: the process's stdout or stderr, or a string sink in tests. */
 export interface Writer {

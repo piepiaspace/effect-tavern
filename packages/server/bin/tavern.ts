@@ -489,7 +489,7 @@ export const run = async (argv: readonly string[], world: World): Promise<ExitCo
   const error = Cause.squash(exit.cause)
   if (CliError.isCliError(error) && error._tag === "ShowHelp") return error.errors.length ? 2 : 0
   if (Cause.hasInterruptsOnly(exit.cause)) return 1
-  // a failure to start is already on the terminal in plain words (start.ts, through the server's ledger)
+  // a failure to start is already on the terminal in plain words (start.ts, through the server's logbook)
   const shown = told.has(error as object)
   if (!unreachable(error)) {
     if (!shown) world.err.write(`${said(error)}\n`)

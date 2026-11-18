@@ -8,7 +8,7 @@
 // so far, the first draft a rewrite displaced; a `demand` has none, it only amends its node) then the live events,
 // no replay. A turn that fails with nobody subscribed keeps its failure for the next `attach`, which consumes it
 // (snapshot, then the `error`); a new action clears it. The action's stream passes through `observe` (the server's
-// ledger, which also files the calls under the node it lands), whoever listens. The broadcast is one Queue per
+// logbook, which also files the calls under the node it lands), whoever listens. The broadcast is one Queue per
 // subscriber, private to the run.
 import type { Draft } from "@effect-tavern/runtime/src/projection.ts"
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
