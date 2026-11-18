@@ -93,6 +93,14 @@ const desk = (read: Card, at: string, say: (s: Standing) => void) => {
       timer = setTimeout(() => void save(), DELAY)
     },
     save,
+    async flush() {
+      let edited: Manuscript
+      do {
+        edited = manuscript
+        if (!(await save())) return false
+      } while (edited !== manuscript)
+      return true
+    },
     /** The page's text given up: what is on the shelf stands, and a save still waiting writes nothing. */
     letGo: () => {
       letGone = true
@@ -286,7 +294,7 @@ export const ManuscriptPage = () => {
   const leave = async (to: (id: string) => void) => {
     const o = here()
     if (!o) return close()
-    if (!o.desk || (await o.desk.save())) to(o.id)
+    if ((!o.desk || (await o.desk.flush())) && here() === o) to(o.id)
   }
   /** The notice's way out: the page's text let go, the card read again as the shelf holds it. */
   const reread = () => {
