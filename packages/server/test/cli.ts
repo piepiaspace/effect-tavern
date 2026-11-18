@@ -81,6 +81,10 @@ const done = async (...argv: string[]) => {
   assert.equal(wrong.out, "")
   assert.match(wrong.err, /--bogus[^]*> tavern story list --help/)
   assert.equal((await run(["story", "drop", "1"])).code, 2)
+  // `help` is --help, for the root and for a group
+  const helped = await run(["help"])
+  assert.deepEqual([helped.code, helped.out], [0, (await run(["--help"])).out])
+  assert.equal((await run(["help", "card"])).out, (await run(["card", "--help"])).out)
   // files are read against the world's directory
   assert.match(await done("card", "init", "one"), /Created one\.yaml/)
   assert.ok(existsSync(join(inProcess, "one.yaml")))

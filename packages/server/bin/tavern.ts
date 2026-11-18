@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // The `tavern` command: one tree, the compiled binary's entry (package.json `compile`) and `bun run tavern` from
-// source. Bare `tavern` serves, as the phone's start.sh runs it. Settings come from cli/config.ts alone; a command
+// source. Bare `tavern` serves; install.sh ends by running it so. Settings come from cli/config.ts alone; a command
 // reaches its library by itself (src/reach.ts): the tavern at --server, else the running tavern that announced itself on
 // the data directory, else the library opened here. `run(argv, world)` is the whole of it, for tests.
 //
@@ -533,7 +533,9 @@ const unreachable = (e: unknown) =>
     String((e as { code?: unknown } | null)?.code),
   )
 
-export const run = async (argv: readonly string[], world: World): Promise<ExitCode> => {
+export const run = async (given: readonly string[], world: World): Promise<ExitCode> => {
+  // `tavern help` and `tavern help card` are the same as --help: what people type first, and what the old launcher took
+  const argv = given[0] === "help" ? [...given.slice(1), "--help"] : given
   const lang = world.env["TAVERN_LANG"] === "en" ? "en" : "zh"
   const json = argv.includes("--json")
   const columns = () => (world.out as { columns?: number }).columns || Number(world.env["COLUMNS"]) || 80

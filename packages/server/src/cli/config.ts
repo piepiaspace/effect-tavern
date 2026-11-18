@@ -1,6 +1,6 @@
 // The one reader of the host's flags and environment: every command, `serve` and the bare `tavern` take their settings
 // from `config`, nothing else reads `process.env` for them. Precedence: flag > TAVERN_* > the legacy name > default.
-// The legacy names (DATA, PORT, HOST, TAVERN_URL) stay because the phone's start.sh exports them.
+// The legacy names (DATA, PORT, HOST, TAVERN_URL) stay because people have them exported from the old launcher's days.
 import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { createInterface } from "node:readline"
