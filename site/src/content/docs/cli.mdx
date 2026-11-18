@@ -7,6 +7,14 @@ sidebar:
 
 Effect Tavern has one command, `tavern`: the compiled binary, or `bun run tavern` from the repository root (`packages/server/bin/tavern.ts`). A bare `tavern` serves, the same as `tavern serve`. Every command supports `--help` for self-documentation and `--json` / `--jsonl` for scripts and coding agents.
 
+On an Android phone (Termux) one line installs the binary as `tavern` and starts it:
+
+```sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
+```
+
+After that, `tavern` starts it and `tavern update` updates it. The binary sits beside `sh` (`$PREFIX/bin/tavern`, else `~/.local/bin/tavern`) and the library in `~/.tavern`; `rm "$(command -v tavern)"` uninstalls it. A phone set up with the earlier `start.sh` line moves over on its next `effect-tavern update` and `effect-tavern`, which then forwards to `tavern`.
+
 ## 1. Offline Card Toolchain (`card`)
 
 Run `tavern card <subcommand>` (`bun run tavern card <subcommand>` from source). Offline commands never open the library or call external LLM APIs.

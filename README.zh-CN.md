@@ -70,10 +70,12 @@ docs/           内部工程调研与设计简报档案
 在 [Termux](https://termux.dev) 里运行一行，不用装 Bun、Node 或 Vite+：
 
 ```sh
-curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/start.sh | sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
-它会下载最新 Release 的手机版（约 50 MB），启动后自动打开浏览器 `http://127.0.0.1:7777`。以后输入 `effect-tavern` 启动，`effect-tavern update` 更新；数据在 `~/.tavern`。
+它会把最新 Release 的手机版（约 50 MB）装成一条命令 `tavern`，启动后自动打开浏览器 `http://127.0.0.1:7777`。以后输入 `tavern` 启动，`tavern update` 查看更新内容并在确认后替换自身。程序在 `$PREFIX/bin/tavern`（`sh` 所在的目录；那里写不进时是 `~/.local/bin/tavern`），数据在 `~/.tavern`。卸载：`rm "$(command -v tavern)"`；`rm -r ~/.tavern` 会连数据一起删掉。
+
+用以前的 `start.sh` 那行装过的手机会自己迁过来：`effect-tavern update` 取到新版本后，下一次输入 `effect-tavern` 会把程序移成 `tavern`、删掉 `~/.tavern/bin`，并把 `effect-tavern` 留作转到 `tavern` 的两行小脚本（数据不动）。直接运行上面这行安装命令效果相同。
 
 程序本身不带任何卡片，新安装的书架是空的：在 **设置 → 卡片** 里导入单张卡片（拖入或选择 `.yaml` / `.json` 文件，或粘贴这张卡自己的 `https` 链接），或填入卡库的 `https` 地址后从中安装。
 

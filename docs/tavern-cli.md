@@ -1,8 +1,37 @@
 # `tavern` 命令：安装、游玩与故事管理
 
 `tavern` 是一棵命令树（`packages/server/bin/tavern.ts`），也是编译出的二进制本身；从源码在仓库根目录运行
-`bun run tavern …`。不带命令的 `tavern` 等于 `tavern serve`（手机的 start.sh 就这样运行它）。
+`bun run tavern …`。不带命令的 `tavern` 等于 `tavern serve`（安装脚本装好后就这样运行它）。
 `tavern card init|check|view|test|unroll` 是[离线制卡工具](card-cli.md)；其余命令如下：
+
+## 安装（安卓手机，Termux）
+
+```sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
+```
+
+`install.sh`（仓库根目录）按平台挑发布附件（一张表；目前只发布 64 位 ARM 安卓的 `tavern-android.gz`，别的设备用大白话拒绝），
+读 `release.txt` 第一行的标签，从那个标签的目录下载（有 `TAVERN_MIRROR` / 旧名 `TAVERN_URL` 时全部从镜像取），
+在目标目录里解压成临时文件，确认 `--version` 回答 `tavern <标签去掉 v>`，再改名为 `tavern`：放在 `sh` 旁边
+（Termux 上是 `$PREFIX/bin/tavern`），写不进时放 `~/.local/bin/tavern`（不在 PATH 上会说明）。只装这一个文件。
+然后带着同样的参数运行 `tavern`（有终端时以终端为 stdin），第一次就和输入 `tavern` 一样开始服务。
+下载失败、文件损坏、版本不符或目录写不进时，说明发生了什么、可能的原因和下一步，退出码 1，不留下任何文件，原来的 `tavern` 不动。
+
+以后：`tavern` 启动，`tavern update` 更新（程序自己更新，不再需要安装脚本）。数据在 `~/.tavern`（`TAVERN_DATA` / `DATA` 可改）。
+卸载：`rm "$(command -v tavern)"`；`rm -r ~/.tavern` 会连库一起删掉。
+
+**从旧的启动脚本迁过来。** 旧脚本装的是 `sh` 旁边的 `effect-tavern` 命令和 `~/.tavern/bin/` 里的程序（旧布局是普通文件
+`tavern-android` 加 `bin/version`；PR 195 之后是指向隐藏文件 `.tavern-android.XXXXXXXX` 的链接，版本在它旁边的 `.version`）。
+旧脚本的 `update` 会下载发布里的 `start.sh` 盖住自己，所以发布把同一个 `install.sh` 也以 `start.sh` 的名字发出去。
+它在这样的手机上（无论以哪个名字运行）先找到旧程序：能回答 `--version`（10 秒内，用临时的库目录跑，不碰玩家的库）就直接移成 `tavern`，
+否则下载最新版；然后删掉 `~/.tavern/bin` 里旧脚本的文件（含过时的 `bin/version`），把 `effect-tavern` 改写成两行的转发
+（`exec '<目录>/tavern' "$@"`），说一次「命令改名为 tavern」，再运行 `tavern`。`~/.tavern` 里的库从不动。旧手机上依次是：
+
+1. `effect-tavern update`（旧脚本）：显示新版本的内容、询问，下载新的 `tavern-android` 到 `~/.tavern/bin`，再用新的 `start.sh` 盖住 `effect-tavern`。
+2. 下一次 `effect-tavern`（或 `effect-tavern update`）：运行的是新的 `start.sh`，完成上面的交接，然后运行 `tavern`（或 `tavern update`，此时已是最新）。
+3. 以后的 `effect-tavern …`：转发到 `tavern …`，什么也不多说。
+
+`test/install.ts`（根目录 `vp run verify` 和发布流程都会跑）在沙箱里用 dash、bash、busybox sh 驱动这些情况。
 
 ```
 tavern            等于 tavern serve
