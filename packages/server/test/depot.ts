@@ -16,6 +16,7 @@ import { depot } from "../src/depot.ts"
 import { readHttps } from "../src/remote.ts"
 import { Refused } from "../src/shelf.ts"
 import { tavern } from "../src/tavern.ts"
+import { node } from "../src/wire.ts"
 
 const refused = (code: Refused["code"]) => (e: unknown) => e instanceof Refused && e.code === code
 const one: Card = { ...chat, id: "one", title: "一", creator: "某作者" }
@@ -205,7 +206,7 @@ try {
   assert.deepEqual((await states(local.id))[1], ["two", "taken", false]) // a linked card is not the library's copy
 
   // the routes
-  const server = createServer(t.handler).listen(0)
+  const server = createServer(node(t.handler)).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   const call = async (method: string, path: string, body?: unknown) => {
     const r = await fetch(base + path, { method, ...(body !== undefined && { body: JSON.stringify(body) }) })

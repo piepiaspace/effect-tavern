@@ -49,6 +49,8 @@ export const factsOf = (error: unknown): Facts => {
         ...(typeof e.file === "string" && { file: e.file }),
         ...(num(e.version) !== undefined && { version: num(e.version) }),
         ...(num(e.supported) !== undefined && { supported: num(e.supported) }),
+        ...(typeof e.url === "string" && { host: e.url }), // a tavern's address (reach.ts, wire.ts)
+        ...(isObj(e.cause) && typeof e.cause.code === "string" && { errno: e.cause.code }),
       }
   }
   return diagnose(e)
@@ -63,6 +65,13 @@ const factLine = (f: Facts, lang: Lang): string | undefined => {
       break
     case "library-newer":
       parts.push(f.version !== undefined ? `user_version ${f.version} > ${f.supported ?? "?"}` : undefined)
+      break
+    case "host-silent":
+      parts.push(f.pid !== undefined ? `pid ${f.pid}` : undefined, f.file)
+      break
+    case "host-unreachable":
+    case "host-not-scripted":
+      parts.push(f.errno, f.host)
       break
     case "port-in-use":
       parts.push("EADDRINUSE", f.port !== undefined ? `${f.host ?? ""}:${f.port}` : undefined)

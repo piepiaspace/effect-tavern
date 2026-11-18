@@ -96,8 +96,8 @@ bun --bun vp run dev
 MODEL=fake bun --bun vp run dev
 
 # 新库里没有卡片：从文件安装一张，或从卡库里取一张
-bun run tavern card install packages/runtime/test/cards/wuxia.yaml --server http://localhost:5173
-bun run tavern depot add ./my-cards            # 含 index.json 的目录，或 https 地址
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml   # 开发服务在跑就经由它写入，没在跑就直接打开 .dev
+bun run tavern depot add ./my-cards            # 含 index.json 的目录（仅当没有服务占着库时），或 https 地址
 bun run tavern depot show <卡库 id>            # 卡库里的卡，以及各自在书架上的状态
 bun run tavern depot pull <卡库 id> <卡片 id>  # 复制一张到书架
 
@@ -113,7 +113,7 @@ bun run tavern serve --port 7777
 bun run tavern card install packages/runtime/test/cards/wuxia.yaml
 MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
-# 管理故事库或单独启动无头 API 服务（从源码运行默认库是 ./.tavern，二进制是 ~/.tavern，--data <目录> 可换；传 --server <地址> 连接运行中服务）
+# 管理故事库或单独启动无头 API 服务（根目录脚本用开发库 .dev，二进制用 ~/.tavern，--data <目录> 可换；库上有服务在跑时命令自动经由它，--server <地址> 指定另一台机器上的）
 bun run tavern story list
 bun run tavern serve --headless --port 7777
 ```

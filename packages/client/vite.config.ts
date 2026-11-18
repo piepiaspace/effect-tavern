@@ -1,5 +1,6 @@
 import solid from "@solidjs/vite-plugin"
 import type { IncomingMessage, ServerResponse } from "node:http"
+import type { AddressInfo } from "node:net"
 import { fileURLToPath } from "node:url"
 import { FileSystemIconLoader } from "unplugin-icons/loaders"
 import Icons from "unplugin-icons/vite"
@@ -8,15 +9,41 @@ import { defineConfig, type Plugin, type RunnableDevEnvironment } from "vite-plu
 // `vp dev` is the whole stack: the session (packages/server/src/dev.ts) runs inside this process through Vite's module
 // runner, mounted at /api. An edit under runtime or server re-evaluates it on the next request; the journal file keeps
 // the story across that. A backend that fails to load answers 500 with the reason instead of hanging the client.
+// Once Vite listens, the session says its address beside the library's lock (dev.ts `announce`), so `bun run tavern …`
+// on the dev library reaches this process by itself; Vite's close takes it back.
+interface Session {
+  handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>
+  announce: (at: AddressInfo, scheme: "http" | "https") => () => void
+}
 const api = (): Plugin => ({
   name: "tavern-api",
   configureServer(server) {
     const entry = fileURLToPath(new URL("../server/src/dev.ts", import.meta.url))
+    const session = () =>
+      (server.environments["ssr"] as RunnableDevEnvironment).runner.import(entry) as Promise<Session>
+    const http = server.httpServer
+    let withdraw: (() => void) | undefined
+    let closed = false
+    http?.once("listening", () => {
+      const at = http.address()
+      if (!at || typeof at === "string") return
+      session().then(
+        ({ announce }) => {
+          if (!closed) withdraw = announce(at, server.config.server.https ? "https" : "http")
+        },
+        (e: unknown) =>
+          server.config.logger.warn(
+            `tavern: the dev session did not load, so it is not announced: ${e instanceof Error ? e.message : String(e)}`,
+          ),
+      )
+    })
+    http?.once("close", () => {
+      closed = true
+      withdraw?.()
+    })
     server.middlewares.use("/api", async (req, res) => {
       try {
-        const { handler } = (await (server.environments["ssr"] as RunnableDevEnvironment).runner.import(entry)) as {
-          handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>
-        }
+        const { handler } = await session()
         await handler(req, res)
       } catch (e) {
         res

@@ -76,8 +76,8 @@ bun run tavern card unroll card.json --json
 
 在仓库根目录运行 `bun run tavern <subcommand>`（`packages/server/bin/tavern.ts`）：
 
-- **本地直连模式（默认）：** 打开 `<数据目录>/tavern.db`。数据目录依次取 `--data`、`TAVERN_DATA`（旧名 `DATA`），都没有时编译出的二进制用 `~/.tavern`，从源码运行用 `./.tavern`。若已有服务进程占用该库，会打印占用 PID 与路径并提示使用 `--server`（退出码 3），绝不静默切库。
-- **远程连接模式（`--server`）：** 传入 `--server http://127.0.0.1:7777`（或设 `TAVERN_SERVER`）即可通过 HTTP/SSE 连接运行中的 `vp run dev` 或 `tavern serve` 服务。
+- **自动找库（默认）：** 数据目录依次取 `--data`、`TAVERN_DATA`（旧名 `DATA`），都没有时编译出的二进制用 `~/.tavern`，从源码运行用 `./.tavern`；根目录的 `bun run tavern` 脚本设了 `TAVERN_DATA=.dev`，即开发服务的库。若运行中的 `tavern serve` 或 `vp run dev` 占着这个库，它已在锁文件旁写下地址（`tavern.db.address`），命令就经由它（HTTP/SSE）执行，并在 stderr 说明；没有人占着时，命令自己打开 `<数据目录>/tavern.db`，在本进程里用同一个处理函数回答自己的请求。占着库的进程约 2 秒内都没写出地址，退出码 3 并写出它的 PID；设了 `MODEL=fake` 却找到用真实模型的酒馆，也是退出码 3。绝不静默切库。
+- **另一台机器（`--server`）：** 传入 `--server http://192.168.1.20:7777`（或设 `TAVERN_SERVER`）即可通过 HTTP/SSE 连接那台机器上的酒馆，不读任何本地文件。
 - **任意位置：** `--json`、`--data <目录>`、`--server <地址>`、`-h/--help`、`-V/--version`。退出码：`0` 完成，`1` 被拒绝或失败，`2` 命令行写错，`3` 库无法访问。
 
 ```sh

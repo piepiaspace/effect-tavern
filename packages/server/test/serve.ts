@@ -17,11 +17,13 @@ import type { AddressInfo } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
+import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { open, type Data } from "../src/data.ts"
 import { library } from "../src/library.ts"
 import { app, handle, serve } from "../src/serve.ts"
 import { shelf } from "../src/shelf.ts"
 import { tavern } from "../src/tavern.ts"
+import { node } from "../src/wire.ts"
 
 // the localhost upstreams below stay off a shell proxy: through one, a refused socket comes back as the proxy's 502
 process.env.NO_PROXY = "localhost,127.0.0.1"
@@ -539,7 +541,7 @@ await run(false)
     model: () => drafts,
   })
   const story = guarded.stories.create(chat.id)
-  const server = createServer(handler).listen(0)
+  const server = createServer(node(handler)).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   const headers = { "x-tavern-story": String(story) }
   try {
@@ -576,7 +578,7 @@ await run(false)
     return doc.phase === "narrate" ? { text: "hello world ".repeat(5), delay: 20 } : defaultAnswer(doc, canned)
   })
   const { handler } = tavern({ data: stocked(data, chat, two), overlay: player.harness, model: () => slowly })
-  const server = createServer(handler).listen(0)
+  const server = createServer(node(handler)).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   const on = (id: number, init: RequestInit = {}) => ({ ...init, headers: { "x-tavern-story": String(id) } })
   try {
@@ -623,10 +625,10 @@ await run(false)
   const dead = createServer().listen(0)
   const deadUrl = `http://localhost:${(dead.address() as AddressInfo).port}`
   dead.close()
-  const server = createServer(
-    tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness, model }).handler,
-  ).listen(0)
-  const base = `http://localhost:${(server.address() as AddressInfo).port}`
+  // the wire called directly, no listener: the same answers a socket carries
+  const wire = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness, model }).handler
+  const fetch = (url: string, init?: RequestInit) => wire(new Request(url, init))
+  const base = "http://tavern"
   const call = async (method: string, path: string, v?: unknown) => {
     const r = await fetch(base + path, { method, body: v === undefined ? undefined : JSON.stringify(v) })
     const text = await r.text()
@@ -680,17 +682,23 @@ await run(false)
     assert.equal((await call("GET", "/secrets/none/value")).status, 404)
     assert.deepEqual((await call("DELETE", `/secrets/${made.id}`)).body, [])
   } finally {
-    server.close()
+    dead.close()
   }
 }
 
-// A body over its route's limit (1 MB here; a card route has the card ceiling) is heard out and answered 413 with a
+// A body over its route's limit (1 MB; a card route has the card ceiling, 32 MB) is heard out and answered 413 with a
 // code the client words. One that keeps coming far past the limit is cut off: its socket closes, and the handler must
-// finish without writing headers to that closed response.
+// finish without writing headers to that closed response. A card just under the ceiling goes in whole, through the
+// node bridge and called directly alike.
 {
+  const big = (id: string, bytes: number) => {
+    const card = { ...chat, id, fiction: [{ id: "f", text: "" }] }
+    const text = "x".repeat(bytes - Buffer.byteLength(JSON.stringify(card)))
+    return JSON.stringify({ ...card, fiction: [{ id: "f", text }] })
+  }
   let writes = 0
   let done = Promise.withResolvers<void>()
-  const api = handle(lib)
+  const api = node(app(handle(lib)))
   const server = createServer((req, res) => {
     const write = res.writeHead.bind(res)
     res.writeHead = ((...args: Parameters<typeof write>) => {
@@ -700,10 +708,10 @@ await run(false)
     void api(req, res).then(done.resolve, done.reject)
   }).listen(0, "127.0.0.1")
   await new Promise<void>((resolve) => server.once("listening", resolve))
-  const send = (bytes: number) =>
+  const send = (body: string, path = "/api/stories") =>
     new Promise<{ status?: number; body?: string; code?: string }>((resolve) => {
       const req = request(
-        { host: "127.0.0.1", port: (server.address() as AddressInfo).port, path: "/stories", method: "POST" },
+        { host: "127.0.0.1", port: (server.address() as AddressInfo).port, path, method: "POST" },
         (res) => {
           let text = ""
           res.setEncoding("utf8")
@@ -712,19 +720,47 @@ await run(false)
         },
       )
       req.on("error", (e: NodeJS.ErrnoException) => resolve({ code: e.code }))
-      req.end(JSON.stringify({ card: "x".repeat(bytes) }))
+      req.end(body)
     })
+  const story = (bytes: number) => JSON.stringify({ card: "x".repeat(bytes) })
   try {
-    const over = await send((1 << 20) + 1)
+    const over = await send(story((1 << 20) + 1))
     await done.promise
     assert.deepEqual(
       [over.status, JSON.parse(over.body!), writes],
       [413, { error: "body over 1 MB", code: "too-large" }, 1],
     )
     done = Promise.withResolvers<void>()
-    const flood = await send(10 << 20)
+    const flood = await send(story(10 << 20))
     await done.promise
     assert.deepEqual([flood.code, writes], ["ECONNRESET", 1])
+    // the card ceiling: a card of nearly 32 MB is installed; one byte past the ceiling is heard out and refused
+    done = Promise.withResolvers<void>()
+    const whole = await send(big("big", CARD_BYTES - 1024), "/api/cards?replace=1")
+    await done.promise
+    assert.deepEqual([whole.status, (JSON.parse(whole.body!) as { card: { id: string } }).card.id], [200, "big"])
+    assert.ok(JSON.stringify(lib.cards.get("big")).length > CARD_BYTES - 4096)
+    done = Promise.withResolvers<void>()
+    const past = await send(big("past", CARD_BYTES + 1), "/api/cards?replace=1")
+    await done.promise
+    assert.deepEqual([past.status, JSON.parse(past.body!)], [413, { error: "body over 32 MB", code: "too-large" }])
+    assert.equal(lib.cards.has("past"), false)
+    // called directly: the same answers
+    const direct = handle(lib)
+    const post = (path: string, body: string) => direct(new Request(`http://tavern${path}`, { method: "POST", body }))
+    const refused = await post("/stories", story((1 << 20) + 1))
+    assert.deepEqual([refused.status, await refused.json()], [413, { error: "body over 1 MB", code: "too-large" }])
+    const flooded = await post("/stories", story(10 << 20))
+    assert.equal(flooded.status, 413)
+    assert.equal((await post("/cards?replace=1", big("big", CARD_BYTES - 1024))).status, 200)
+    const tooBig = await post("/cards?replace=1", big("past", CARD_BYTES + 1))
+    assert.deepEqual([tooBig.status, ((await tooBig.json()) as { code: string }).code], [413, "too-large"])
+    assert.deepEqual(await (await direct(new Request("http://tavern/host"))).json(), {
+      version: "dev",
+      scripted: false,
+      page: false,
+    })
+    lib.cards.remove("big")
   } finally {
     server.close()
   }
@@ -737,7 +773,7 @@ await run(false)
   await mkdir(join(dist, "assets"))
   await writeFile(join(dist, "index.html"), "<!doctype html><title>t</title>")
   await writeFile(join(dist, "assets", "a.js"), "export {}")
-  const server = createServer(app(handle(lib), dist)).listen(0)
+  const server = createServer(node(app(handle(lib), dist))).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   try {
     const got = async (path: string) => {
@@ -772,7 +808,7 @@ await run(false)
 {
   const t = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness })
   const headers = { "x-tavern-story": String(t.lib.stories.create(chat.id)) }
-  const bare = createServer(t.handler).listen(0)
+  const bare = createServer(node(t.handler)).listen(0)
   const base = `http://localhost:${(bare.address() as AddressInfo).port}`
   try {
     assert.equal((await fetch(`${base}/nodes`, { headers })).status, 200)

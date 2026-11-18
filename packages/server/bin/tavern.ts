@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 // The `tavern` command: one tree, the compiled binary's entry (package.json `compile`) and `bun run tavern` from
 // source. Bare `tavern` serves, as the phone's start.sh runs it. Settings come from cli/config.ts alone; a command
-// talks to the library it opens, or to the tavern at --server. `run(argv, world)` is the whole of it, for tests.
+// reaches its library by itself (src/reach.ts): the tavern at --server, else the running tavern that announced itself on
+// the data directory, else the library opened here. `run(argv, world)` is the whole of it, for tests.
 //
 // Exit codes: 0 done; 1 refused or failed; 2 the command line was wrong; 3 the library cannot be reached.
 import { BunServices } from "@effect/platform-bun"
@@ -18,9 +19,11 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { format } from "node:util"
 import { compiled, config, processWorld, version, type Config, type Flags, type World } from "../src/cli/config.ts"
-import { connect, Unreachable, type CliHost } from "../src/cli-host.ts"
+import type { CliHost } from "../src/cli-host.ts"
 import { play } from "../src/play.ts"
+import { reach } from "../src/reach.ts"
 import { start } from "../src/start.ts"
+import { block, explain } from "../src/term/index.ts"
 
 export type ExitCode = 0 | 1 | 2 | 3
 
@@ -33,7 +36,9 @@ const Data = GlobalFlag.Setting("data")({
 })
 const Server = GlobalFlag.Setting("server")({
   flag: Flag.String("server").pipe(
-    Flag.withDescription("talk to the tavern running at this address instead of opening the library (TAVERN_SERVER)"),
+    Flag.withDescription(
+      "talk to the tavern at this address, on another machine say (TAVERN_SERVER); one running on this machine is found by itself",
+    ),
     Flag.optional,
   ),
 })
@@ -71,7 +76,8 @@ const tree = (world: World) => {
     Effect.flatMap(configured(more), (c) => Effect.tryPromise({ try: () => f(c), catch: (e) => e }))
   const hosted = (f: (host: CliHost, c: Config) => Promise<void>, more?: Flags) =>
     task(async (c) => {
-      const host = await connect(c)
+      const { host, at, found } = await reach(c)
+      if (found) note(c.lang === "en" ? `through the tavern running at ${at}` : `经由正在运行的酒馆 ${at}`)
       try {
         await f(host, c)
       } finally {
@@ -375,9 +381,7 @@ const tree = (world: World) => {
     },
     ({ target, card, input, jsonl, model, greeting, set, note, user }) =>
       hosted(
-        async (host, c) => {
-          if (c.server && Option.isSome(model))
-            throw new Error("--model fake applies to the library opened here; that server keeps its own model")
+        async (host) => {
           await play(host, target, {
             input: Option.getOrUndefined(input),
             jsonl,
@@ -426,9 +430,12 @@ const tree = (world: World) => {
   )
 }
 
-/** The library cannot be reached: held by another process, from a newer version, or nothing answers at --server. */
+/** The library cannot be reached (exit 3): held by another process, from a newer version, nothing answers at the
+ *  tavern's address, its owner never said one, or MODEL=fake met a tavern on a real model. */
 const unreachable = (e: unknown) =>
-  e instanceof Unreachable || ["library-held", "library-newer"].includes(String((e as { code?: unknown } | null)?.code))
+  ["library-held", "library-newer", "host-unreachable", "host-silent", "host-not-scripted"].includes(
+    String((e as { code?: unknown } | null)?.code),
+  )
 const said = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 export const run = async (argv: readonly string[], world: World): Promise<ExitCode> => {
@@ -468,8 +475,15 @@ export const run = async (argv: readonly string[], world: World): Promise<ExitCo
   const error = Cause.squash(exit.cause)
   if (CliError.isCliError(error) && error._tag === "ShowHelp") return error.errors.length ? 2 : 0
   if (Cause.hasInterruptsOnly(exit.cause)) return 1
-  world.err.write(`${said(error)}\n`)
-  return unreachable(error) ? 3 : 1
+  if (!unreachable(error)) {
+    world.err.write(`${said(error)}\n`)
+    return 1
+  }
+  // the library out of reach, in plain words (step 1's): what happened, why, the next step, the raw facts
+  const columns = (world.err as { columns?: number }).columns || Number(world.env["COLUMNS"]) || 80
+  const screen = { write: (s: string) => world.err.write(s), columns, live: false, color: false }
+  block(screen, "✗ tavern", explain(error, world.env["TAVERN_LANG"] === "en" ? "en" : "zh"))
+  return 3
 }
 
 if (import.meta.main) {

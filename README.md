@@ -96,8 +96,8 @@ bun --bun vp run dev
 MODEL=fake bun --bun vp run dev
 
 # A new library has no cards: install one from a file, or take one from a card library
-bun run tavern card install packages/runtime/test/cards/wuxia.yaml --server http://localhost:5173
-bun run tavern depot add ./my-cards            # a directory holding index.json, or an https URL
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml   # reaches the running dev server by itself, else opens .dev
+bun run tavern depot add ./my-cards            # a directory holding index.json (only while no server holds the library), or an https URL
 bun run tavern depot show <library-id>         # its cards against the shelf
 bun run tavern depot pull <library-id> <card>  # copy one onto the shelf
 
@@ -113,7 +113,7 @@ bun run tavern serve --port 7777
 bun run tavern card install packages/runtime/test/cards/wuxia.yaml
 MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
-# Manage stories & headless server (the library is ./.tavern from source, ~/.tavern for the binary, --data <dir> to move it; --server <url> to attach to a running server)
+# Manage stories & headless server (the root script uses the dev library .dev, the binary ~/.tavern, --data <dir> moves it; a command goes through the server running on that library by itself, --server <url> names one on another machine)
 bun run tavern story list
 bun run tavern serve --headless --port 7777
 ```

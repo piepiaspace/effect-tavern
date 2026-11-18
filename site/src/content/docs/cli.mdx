@@ -76,8 +76,8 @@ Paragraph boundaries are preserved so Markdown output can feed directly into `ta
 
 Run `bun run tavern <subcommand>` from the repository root (`packages/server/bin/tavern.ts`).
 
-- **Local library mode (default):** Opens `<data>/tavern.db`. The data directory is `--data`, else `TAVERN_DATA` (legacy `DATA`), else `~/.tavern` for the compiled binary and `./.tavern` from source. Fails cleanly with the owning PID (exit code 3) if a server already holds the database lock.
-- **Remote attach mode (`--server`):** Pass `--server http://127.0.0.1:7777` (or set `TAVERN_SERVER`) to connect over HTTP/SSE to a running `vp run dev` or `tavern serve` instance without touching the local library.
+- **Finding the library (default):** The data directory is `--data`, else `TAVERN_DATA` (legacy `DATA`), else `~/.tavern` for the compiled binary and `./.tavern` from source; the root `bun run tavern` script sets `TAVERN_DATA=.dev`, the dev server's library. When a running `tavern serve` or `vp run dev` holds that library, it has written its address beside the lock (`tavern.db.address`) and the command goes through it over HTTP/SSE, saying so on stderr. When nobody holds it, the command opens `<data>/tavern.db` itself and answers its own requests with the same handler, in-process. A live owner that never says its address within about two seconds is exit code 3 naming its PID; `MODEL=fake` meeting a tavern on a real model is exit code 3 too.
+- **Another machine (`--server`):** Pass `--server http://192.168.1.20:7777` (or set `TAVERN_SERVER`) to talk to that tavern over HTTP/SSE; no local file is read.
 - **Anywhere on the line:** `--json`, `--data <dir>`, `--server <url>`, `-h/--help`, `-V/--version`. Exit codes: `0` done, `1` refused or failed, `2` the command line was wrong, `3` the library cannot be reached.
 
 ```sh

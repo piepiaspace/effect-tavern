@@ -116,6 +116,21 @@ export const zh: Table = {
     why: "它被更新的版本打开过，这个版本读不了。",
     next: "把酒馆更新到最新版本，再打开。",
   }),
+  "host-unreachable": () => ({
+    what: "连不上酒馆",
+    why: "那个地址上没有酒馆在回应：它没在运行，或地址写错了。",
+    next: "先启动酒馆，再试一次；用 --server 时，检查它的地址。",
+  }),
+  "host-silent": (f) => ({
+    what: "找不到正在运行的酒馆的地址",
+    why: `进程 ${f.pid ?? "?"} 打开了数据目录，却没有报出地址：它可能还在启动，或是旧版本。`,
+    next: "等几秒再试；旧版本就加上 --server 和它的地址。",
+  }),
+  "host-not-scripted": () => ({
+    what: "正在运行的酒馆用的是真实模型",
+    why: "设了 MODEL=fake，可那个酒馆的回合会花费 token。",
+    next: "去掉 MODEL=fake 再运行；或用 MODEL=fake 重新启动那个酒馆。",
+  }),
   "no-card": () => ({ what: "没有这张卡片", next: "到「设置」的「卡片」里看看已安装的卡片。" }),
   "card-exists": () => ({
     what: "同 id 的卡片已安装",

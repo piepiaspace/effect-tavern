@@ -126,6 +126,21 @@ export const en: Table = {
     why: "A newer version has opened it, and this version cannot read it.",
     next: "Update the tavern to the latest version, then open it.",
   }),
+  "host-unreachable": () => ({
+    what: "Cannot reach the tavern",
+    why: "Nothing answers at that address: it is not running, or the address is wrong.",
+    next: "Start the tavern, then try again; with --server, check its address.",
+  }),
+  "host-silent": (f) => ({
+    what: "The running tavern has not said its address",
+    why: `Process ${f.pid ?? "?"} has the data directory open but gave no address: still starting, or an older version.`,
+    next: "Wait a few seconds and try again; for an older version, add --server and its address.",
+  }),
+  "host-not-scripted": () => ({
+    what: "The running tavern uses a real model",
+    why: "MODEL=fake is set, but that tavern's turns would spend tokens.",
+    next: "Run again without MODEL=fake, or restart that tavern with MODEL=fake.",
+  }),
   "no-card": () => ({ what: "There is no such card", next: "See the installed cards in Settings, under Cards." }),
   "card-exists": () => ({
     what: "A card with this id is installed",
