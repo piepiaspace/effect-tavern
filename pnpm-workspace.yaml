@@ -10,6 +10,10 @@ peerDependencyRules:
     - vite
   allowedVersions:
     vite: "*"
+skills:
+  dirs:
+    - .agents/skills
+    - .claude/skills
 permissions:
   "@copilotkit/aimock":
     skills: true
