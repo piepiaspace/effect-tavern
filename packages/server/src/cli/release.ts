@@ -7,8 +7,6 @@
 // the notes, one `- ` line each; a build's binary is `<asset>.gz`, the
 // asset names in release/targets.ts. A mirror replaces the `latest/download` base for
 // every file; without one, after reading release.txt the binary is fetched from that tag's own directory.
-import { createReadStream, statSync } from "node:fs"
-import { open, readFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { errno, Failed } from "./failed.ts"
 
@@ -57,16 +55,17 @@ const hostOf = (url: string) => {
 
 /** A file's bytes as they arrive, into `to`; stalls past `stall` ms between chunks end it. */
 const save = async (body: ReadableStream<Uint8Array>, to: string, total: number | undefined, onBytes: OnBytes) => {
-  const file = await open(to, "w")
+  const file = Bun.file(to).writer()
   let got = 0
   try {
     for await (const chunk of body) {
       await file.write(chunk)
+      await file.flush()
       got += chunk.byteLength
       onBytes(got, total)
     }
   } finally {
-    await file.close()
+    await file.end()
   }
   if (total !== undefined && got !== total) throw new Error(`got ${got} of ${total} bytes`)
 }
@@ -139,7 +138,7 @@ export const directory = (dir: string): Release => ({
   latest: async () => {
     let text: string
     try {
-      text = await readFile(join(dir, "release.txt"), "utf8")
+      text = await Bun.file(join(dir, "release.txt")).text()
     } catch (e) {
       throw new Failed("release-unreachable", `${dir}/release.txt: ${(e as Error).message}`, {
         host: dir,
@@ -151,9 +150,8 @@ export const directory = (dir: string): Release => ({
   download: async (asset, to, onBytes) => {
     const from = join(dir, `${asset}.gz`)
     try {
-      const total = statSync(from).size
-      const body = createReadStream(from) as unknown as ReadableStream<Uint8Array>
-      await save(body, to, total, onBytes)
+      const file = Bun.file(from)
+      await save(file.stream(), to, file.size, onBytes)
     } catch (e) {
       throw new Failed("download-failed", `${from}: ${(e as Error).message}`, {
         host: dir,

@@ -4,7 +4,6 @@
 // models.dev with the ETag in force (the library's `names` row, else the baseline's) and replaces the row on a 200;
 // a 304, offline or any error keeps what is there.
 import type { Names } from "@effect-tavern/provider/src/names.ts"
-import { writeFileSync } from "node:fs"
 import baseline from "./names.json" with { type: "json" }
 import type { Data } from "./data.ts"
 
@@ -42,6 +41,6 @@ export const refresh = async (data: Data) => {
 
 if (import.meta.main) {
   const t = (await fetchTable(null))!
-  writeFileSync(new URL("names.json", import.meta.url), JSON.stringify(t) + "\n")
+  await Bun.write(new URL("names.json", import.meta.url), JSON.stringify(t) + "\n")
   console.log(`${Object.keys(t.names).length} names, etag ${t.etag}`)
 }

@@ -1,10 +1,9 @@
 // The one reader of the host's flags and environment: all commands take their settings
-// from `config`, nothing else reads `process.env` for them. Precedence: flag > TAVERN_* > the legacy name > default.
+// from `config`, nothing else reads `Bun.env` for them. Precedence: flag > TAVERN_* > the legacy name > default.
 // The legacy names (DATA, PORT, HOST, TAVERN_URL) stay because people have them exported from the old launcher's days.
 import { realpathSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve } from "node:path"
-import { createInterface } from "node:readline"
 import { levels, type Level } from "../logbook.ts"
 import { deviceOf, type Device } from "./device.ts"
 import type { Release } from "./release.ts"
@@ -87,29 +86,20 @@ export const thisProgram = (env: World["env"]): Self => ({
 })
 
 /** A line from stdin, read once and let go, so the process can end after it. */
-const askStdin = () =>
-  new Promise<string | undefined>((resolve) => {
-    const rl = createInterface({ input: process.stdin, terminal: false })
-    let answered = false
-    rl.once("line", (line) => {
-      answered = true
-      rl.close()
-      resolve(line)
-    })
-    rl.once("close", () => {
-      if (!answered) resolve(undefined)
-    })
-  })
+const askStdin = async () => {
+  for await (const line of console) return line
+  return undefined
+}
 
 export const processWorld = (): World => {
-  const self = thisProgram(process.env)
+  const self = thisProgram(Bun.env)
   return {
-    env: process.env,
+    env: Bun.env,
     home: homedir(),
     cwd: process.cwd(),
     out: process.stdout,
     err: process.stderr,
-    device: deviceOf(process.platform, process.env),
+    device: deviceOf(process.platform, Bun.env),
     self,
     terminal: { in: process.stdin.isTTY === true, err: process.stderr.isTTY === true },
     ask: askStdin,

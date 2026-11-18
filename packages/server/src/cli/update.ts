@@ -6,11 +6,8 @@
 // until it is started again: the last lines say so.
 //
 // What a person reads goes to stderr; under --json, stdout gets one value: {current, latest, newer, updated, notes}.
-import { spawnSync } from "node:child_process"
-import { chmodSync, createReadStream, createWriteStream, realpathSync, renameSync, rmSync, statSync } from "node:fs"
+import { chmodSync, realpathSync, renameSync, rmSync, statSync } from "node:fs"
 import { dirname, extname, join } from "node:path"
-import { pipeline } from "node:stream/promises"
-import { createGunzip } from "node:zlib"
 import { announced } from "../announce.ts"
 import { cells, wrap, type Screen } from "../term/index.ts"
 import { mb } from "../term/codes.ts"
@@ -128,7 +125,8 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
     if (screen.live) screen.write("\r\x1b[K")
     say([`  ${w.downloaded(mb(statSync(gz).size))}`])
     try {
-      await pipeline(createReadStream(gz), createGunzip(), createWriteStream(part, { mode: 0o755 }))
+      const stream = Bun.file(gz).stream().pipeThrough(new DecompressionStream("gzip"))
+      await Bun.write(part, new Response(stream))
     } catch (e) {
       throw new Failed("download-failed", `${asset}.gz does not unpack: ${(e as Error).message}`, {
         ...(errno(e) && { errno: errno(e) }),
@@ -136,12 +134,20 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
     }
     rmSync(gz, { force: true })
     chmodSync(part, 0o755)
-    const ran = spawnSync(part, ["--version"], { encoding: "utf8", timeout: 30_000, env: { ...world.env } as never })
-    const answered = `${ran.stdout ?? ""}`.trim()
-    if (ran.status !== 0 || answered !== `tavern ${target}`)
+    let answered = ""
+    let reason: string
+    try {
+      const ran = Bun.spawnSync([part, "--version"], { timeout: 30_000, env: world.env })
+      answered = ran.stdout.toString().trim()
+      reason = `exit ${ran.exitCode}`
+      if (ran.exitCode === 0 && answered === `tavern ${target}`) reason = ""
+    } catch (error) {
+      reason = String(error)
+    }
+    if (reason)
       throw new Failed("update-bad-binary", `the new file answered ${JSON.stringify(answered)}`, {
         latest: target,
-        answered: answered || String(ran.error?.message ?? `exit ${ran.status}`),
+        answered: answered || reason,
       })
     say([`✓ ${w.runs(answered)}`])
     try {
@@ -164,7 +170,7 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
     throw e
   }
   say([`✓ ${w.updated(target)}`])
-  if (announced(c.data)) say([`! ${w.stillOld}`, ...step(w.stillOldNext, n)])
+  if (await announced(c.data)) say([`! ${w.stillOld}`, ...step(w.stillOldNext, n)])
   result(true)
   return 0
 }

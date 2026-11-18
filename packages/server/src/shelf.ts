@@ -18,7 +18,6 @@ import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
 import type { CardRow, Origin } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
 import { parseCard, printCard } from "@effect-tavern/runtime/support/author.ts"
-import { createHash } from "node:crypto"
 import type { Data } from "./data.ts"
 
 /** What the shelf or a card library refuses, by a code a client draws in its own words and the status the wire answers
@@ -77,9 +76,7 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
   }
   /** A card's revision: a digest of it as stored, so it moves with every write and with nothing else. */
   const rev = (id: string): string =>
-    createHash("sha1")
-      .update(JSON.stringify(data.cards.get(id)))
-      .digest("hex")
+    new Bun.CryptoHasher("sha1").update(JSON.stringify(data.cards.get(id))).digest("hex")
   const put = (card: Card, origin: Origin): CardRow => {
     data.cards.put(card, facets(card), origin)
     changed(card.id)

@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process"
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { Database } from "bun:sqlite"
 import { DatabaseSync } from "node:sqlite"
 import { open, traced } from "../src/data.ts"
 
@@ -117,6 +118,8 @@ assert.deepEqual(
     [story, true],
   ],
 )
+// Let the next commit have a later millisecond than the second story’s creation.
+await Bun.sleep(2)
 // The search: the head's line only (node 6, the swipe off the line, never hits), the earliest hit node first with the
 // field that hit (the line, then the note, then the prose) cut to a window, numbered by the turns up to it (the
 // greeting is turn 0), and the count of hit nodes; ASCII case folds; blank hits nothing.
@@ -632,22 +635,24 @@ data.close()
   const queries: string[] = []
   // Preserve the methods to wrap them with their actual database receiver below.
   // eslint-disable-next-line typescript/unbound-method
-  const prepare = DatabaseSync.prototype.prepare
+  const prepare = Database.prototype.query
   // eslint-disable-next-line typescript/unbound-method
-  const exec = DatabaseSync.prototype.exec
-  DatabaseSync.prototype.prepare = function (sql) {
-    queries.push(sql)
-    return prepare.call(this, sql)
-  }
-  DatabaseSync.prototype.exec = function (sql) {
+  const exec = Database.prototype.exec
+  Database.prototype.query = new Proxy(prepare, {
+    apply(target, db, [sql]: [string]) {
+      queries.push(sql)
+      return Reflect.apply(target, db, [sql])
+    },
+  })
+  Database.prototype.exec = function (sql) {
     queries.push(sql)
     return exec.call(this, sql)
   }
   try {
     open(file).close()
   } finally {
-    DatabaseSync.prototype.prepare = prepare
-    DatabaseSync.prototype.exec = exec
+    Database.prototype.query = prepare
+    Database.prototype.exec = exec
   }
   assert.ok(queries.some((sql) => /pragma user_version/i.test(sql)))
   assert.ok(

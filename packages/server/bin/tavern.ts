@@ -20,9 +20,8 @@ import { runScenario } from "@effect-tavern/runtime/support/scenario.ts"
 import { decodeCard } from "@effect-tavern/runtime/src/card.ts"
 import { Cause, Console, Effect, Exit, Option } from "effect"
 import { Argument, CliConfig, CliError, CliOutput, Command, Flag, GlobalFlag } from "effect/cli"
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
+import { existsSync, unlinkSync } from "node:fs"
 import { basename, resolve } from "node:path"
-import { fileURLToPath } from "node:url"
 import { format } from "node:util"
 import { compiled, config, processWorld, version, type Config, type Flags, type World } from "../src/cli/config.ts"
 import { noDevice } from "../src/cli/device.ts"
@@ -66,7 +65,7 @@ const Version = GlobalFlag.Action({
 const builtIns = CliConfig.layer({ builtIns: [GlobalFlag.Help, Version] })
 
 /** The client build: an asset inside the compiled binary, packages/client/dist from source. */
-const dist = fileURLToPath(new URL(compiled ? "dist/" : "../../client/dist/", import.meta.url))
+const dist = resolve(import.meta.dir, compiled ? "dist" : "../../client/dist")
 
 /** What a command sets when it ends other than 0 without failing: `status` with no tavern, `doctor` with a ✗. */
 interface Ending {
@@ -139,7 +138,7 @@ const tree = (world: World, ending: Ending) => {
     ({ file }) =>
       hosted(async (host, c) => {
         const linked = /^https:\/\//i.test(file)
-        const source = linked ? undefined : readFileSync(at(file), "utf8")
+        const source = linked ? undefined : await Bun.file(at(file)).text()
         if (source !== undefined) {
           const report = checkCard(source)
           const errors = report.diagnostics.filter((d) => d.level === "error")
@@ -190,16 +189,16 @@ const tree = (world: World, ending: Ending) => {
     Flag.withDescription("write candidate YAML to file instead of stdout"),
     Flag.optional,
   )
-  const load = (file: string) => decodeCard(Bun.YAML.parse(readFileSync(at(file), "utf8")))
-  const save = (card: unknown, output: Option.Option<string>) => {
+  const load = async (file: string) => decodeCard(Bun.YAML.parse(await Bun.file(at(file)).text()))
+  const save = async (card: unknown, output: Option.Option<string>) => {
     const yaml = Bun.YAML.stringify(card)
-    if (Option.isSome(output)) writeFileSync(at(output.value), yaml)
+    if (Option.isSome(output)) await Bun.write(at(output.value), yaml)
     else out(yaml)
   }
   const cardExport = Command.make("export", { id: cardId, output }, ({ id, output }) =>
     hosted(async (host) => {
       const text = await host.source(id)
-      if (Option.isSome(output)) writeFileSync(at(output.value), text)
+      if (Option.isSome(output)) await Bun.write(at(output.value), text)
       else out(text)
     }),
   ).pipe(Command.withDescription("Print an installed card as a YAML card file"))
@@ -216,19 +215,19 @@ const tree = (world: World, ending: Ending) => {
     },
     ({ file, output, select, intent }) =>
       hosted(async (host) => {
-        const card = load(file)
+        const card = await load(file)
         const result = await host.author.compile({ card, select, intent })
         const scenario = at(file).replace(/\.ya?ml$/, "") + ".scenario.yaml"
         if (existsSync(scenario) && JSON.stringify(card.rules) !== JSON.stringify(result.candidate.rules)) {
           try {
-            const steps = await runScenario(result.candidate, Bun.YAML.parse(readFileSync(scenario, "utf8")))
+            const steps = await runScenario(result.candidate, Bun.YAML.parse(await Bun.file(scenario).text()))
             note(`scenario: PASS ${steps.length} step(s)`)
           } catch (e) {
             note(`scenario: FAIL ${String(e)}`)
           }
         }
         for (const d of result.diagnostics) note(`${d.level} ${d.rule} ${d.path}: ${d.message}`)
-        save(result.candidate, output)
+        await save(result.candidate, output)
       }),
   ).pipe(
     Command.withDescription(
@@ -246,8 +245,8 @@ const tree = (world: World, ending: Ending) => {
     },
     ({ file, source, output }) =>
       hosted(async (host) => {
-        const result = await host.author.sort({ card: load(file), source: readFileSync(at(source), "utf8") })
-        save(result.candidate, output)
+        const result = await host.author.sort({ card: await load(file), source: await Bun.file(at(source)).text() })
+        await save(result.candidate, output)
       }),
   ).pipe(Command.withDescription("Place whole paragraphs from a source document into card slots verbatim"))
   const review = Command.make(
@@ -255,7 +254,7 @@ const tree = (world: World, ending: Ending) => {
     { file: Argument.String("file").pipe(Argument.withDescription("path to a .yaml card file")) },
     ({ file }) =>
       hosted(async (host, c) => {
-        const { diagnostics } = await host.author.review({ card: load(file) })
+        const { diagnostics } = await host.author.review({ card: await load(file) })
         if (c.json) out(JSON.stringify(diagnostics))
         else for (const d of diagnostics) note(`${d.level} ${d.rule} ${d.path}: ${d.message}`)
       }),
@@ -484,7 +483,7 @@ const tree = (world: World, ending: Ending) => {
   )
   const statusing = Command.make("status", {}, () =>
     task(async (c) => {
-      ending.code = showStatus(c, world)
+      ending.code = await showStatus(c, world)
     }),
   ).pipe(Command.withDescription("Whether a tavern serves this data directory, its address, the data, the version"))
   const updating = Command.make(
@@ -575,12 +574,13 @@ if (import.meta.main) {
     if (old && installed) {
       const forward = `#!/bin/sh\nexec '${installed.replaceAll("'", "'\\''")}' "$@"\n`
       try {
-        if (Bun.file(old).size === Buffer.byteLength(forward) && readFileSync(old, "utf8") === forward) unlinkSync(old)
+        if (Bun.file(old).size === Buffer.byteLength(forward) && (await Bun.file(old).text()) === forward)
+          unlinkSync(old)
       } catch {
         // A read-only old launcher is reported by tavern doctor.
       }
     }
   }
-  const code = await run(process.argv.slice(2), world)
+  const code = await run(Bun.argv.slice(2), world)
   if (code) process.exitCode = code
 }

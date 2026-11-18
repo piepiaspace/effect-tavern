@@ -21,8 +21,6 @@ import {
 } from "@effect-tavern/runtime/src/library.ts"
 import { parseCard } from "@effect-tavern/runtime/support/author.ts"
 import { Schema } from "effect"
-import { createHash } from "node:crypto"
-import { readFileSync, statSync } from "node:fs"
 import { isAbsolute, join, relative, resolve, sep } from "node:path"
 import type { Data } from "./data.ts"
 import { readHttps, remote } from "./remote.ts"
@@ -78,8 +76,9 @@ export const depot = (location: string, io: { fetch?: typeof fetch } = {}): Depo
           const inside = relative(root, path)
           if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside))
             throw unreadable(`${file}: outside the library`)
-          if (statSync(path).size > CARD_BYTES) throw unreadable(`${path}: too large`)
-          return readFileSync(path, "utf8")
+          const source = Bun.file(path)
+          if (source.size > CARD_BYTES) throw unreadable(`${path}: too large`)
+          return source.text()
         }
       })()
   const attempt = async (file?: string) => {
@@ -145,7 +144,7 @@ export const depots = ({ data, shelf, fetch }: { data: Data; shelf: Shelf; fetch
             throw new Refused("depot-is-card", `${at} is a card, not a card library`)
           throw e
         })
-      const r = { id: createHash("sha1").update(at).digest("hex").slice(0, 10), name, location: at }
+      const r = { id: new Bun.CryptoHasher("sha1").update(at).digest("hex").slice(0, 10), name, location: at }
       data.depots.put(r)
       return r
     },

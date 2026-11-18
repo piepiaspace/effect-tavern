@@ -3,8 +3,7 @@
 // running and its port, the network to the release, the device's tools, what an older launcher left behind, and the
 // last failed turn in the logbook's file (worded as the terminal words any failure). `--verbose` adds each check's raw
 // facts. The report is the command's result: stdout (one JSON value under --json); exit 1 when any check is ✗.
-import { accessSync, constants, existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs"
-import { createServer } from "node:net"
+import { accessSync, constants, existsSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { announced, holder } from "../announce.ts"
 import { cells, troubleOf, wrap, width, type Facts, type Lang } from "../term/index.ts"
@@ -46,12 +45,14 @@ const sizeOf = (dir: string) => {
 }
 
 /** Whether a port can be listened on here now. */
-const portFree = (port: number, host: string) =>
-  new Promise<boolean>((resolve) => {
-    const s = createServer()
-    s.once("error", () => resolve(false))
-    s.listen(port, host, () => s.close(() => resolve(true)))
-  })
+const portFree = (port: number, hostname: string) => {
+  try {
+    Bun.listen({ port, hostname, socket: { data() {} } }).stop(true)
+    return true
+  } catch {
+    return false
+  }
+}
 
 /** The program named `name` on the world's PATH. */
 const onPath = (name: string, world: World) => Bun.which(name, { PATH: world.env["PATH"] ?? "" }) ?? undefined
@@ -64,12 +65,14 @@ const real = (p: string) => {
 }
 
 /** The logbook's last failed turn and whether a turn came after it (`<data>/log/turns.jsonl`, then the rotated one). */
-export const lastFailure = (data: string): { at: string; story: number; fault: Facts; later: boolean } | undefined => {
+export const lastFailure = async (
+  data: string,
+): Promise<{ at: string; story: number; fault: Facts; later: boolean } | undefined> => {
   let later = false
   for (const name of ["turns.jsonl", "turns.1.jsonl"]) {
     let text: string
     try {
-      text = readFileSync(join(data, "log", name), "utf8")
+      text = await Bun.file(join(data, "log", name)).text()
     } catch {
       continue
     }
@@ -186,7 +189,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
   )
 
   // the tavern on this library: running and answering, or not running and its port free
-  const a = announced(c.data)
+  const a = await announced(c.data)
   if (a) {
     const facts = await about(a.url)
     add({
@@ -197,7 +200,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
       facts: `pid=${a.pid} url=${a.url}${facts ? ` version=${facts.version} page=${facts.page}` : ""}`,
     })
   } else {
-    const pid = holder(c.data)
+    const pid = await holder(c.data)
     if (pid !== undefined)
       add({
         check: "tavern",
@@ -207,7 +210,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
         facts: `pid=${pid} lock=${join(c.data, "tavern.db.lock")}`,
       })
     else {
-      const open = await portFree(c.port, c.bind)
+      const open = portFree(c.port, c.bind)
       add({
         check: "tavern",
         mark: open ? "ok" : "warn",
@@ -297,7 +300,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
   } else add({ check: "leftovers", mark: "ok", what: w.clean })
 
   // the last failed turn, in the words its failure has everywhere
-  const last = lastFailure(c.data)
+  const last = await lastFailure(c.data)
   if (!last) add({ check: "failure", mark: "ok", what: w.noFailure })
   else {
     const t = troubleOf({ ...last.fault, message: last.fault.message ?? "" }, c.lang as Lang)

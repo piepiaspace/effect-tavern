@@ -305,7 +305,7 @@ try {
   const child = Bun.spawn(["bun", bin, "play", String(story), "--jsonl"], {
     cwd: dir,
     env,
-    stdin: new Blob(["/note continue\n/tree\n/quit\n"]),
+    stdin: new Blob(["/note continue\r\n/tree\r\n/quit\r\n"]),
     stdout: "pipe",
     stderr: "pipe",
   })

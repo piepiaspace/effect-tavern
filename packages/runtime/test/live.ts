@@ -80,7 +80,7 @@ const script = async (): Promise<Script> => {
   }
 }
 
-const conn = localAnthropic()
+const conn = await localAnthropic()
 if (!conn) {
   console.log("live skipped (no key)")
   process.exit(0)

@@ -10,7 +10,7 @@
 // newest stored turn, each naming the entries it should need: the library alone holds only turns that read nothing.
 // `--card <yaml>` asks a card file's CASES over its pool at the story's start (a large card no story has played);
 // `--batch <n>` sends at most n questions per request (default: the whole pool in one, to find the service's limit).
-import { DatabaseSync } from "node:sqlite"
+import { Database } from "bun:sqlite"
 import { join } from "node:path"
 import { blocked, compileDecision, decide, type DecisionConfig, type Secret } from "@effect-tavern/provider"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
@@ -22,7 +22,7 @@ import { plain } from "@effect-tavern/runtime/support/rows.ts"
 import { readCard } from "@effect-tavern/runtime/support/author.ts"
 import { Effect } from "effect"
 
-const args = process.argv.slice(2)
+const args = Bun.argv.slice(2)
 const dry = args.includes("--dry")
 const flag = (name: string) => (args.includes(name) ? args[args.indexOf(name) + 1] : undefined)
 const cardFile = flag("--card")
@@ -56,9 +56,9 @@ const CASES: Record<string, { text: string; note?: string; need: string[] }[]> =
 }
 
 type Row = Record<string, unknown>
-const db = new DatabaseSync(join(dir, "tavern.db"), { readOnly: true })
-const all = (sql: string, ...xs: (string | number)[]) => db.prepare(sql).all(...xs) as Row[]
-const json = <T>(r: Row | undefined): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
+const db = new Database(join(dir, "tavern.db"), { readonly: true })
+const all = (sql: string, ...xs: (string | number)[]) => db.query(sql).all(...xs) as Row[]
+const json = <T>(r: Row | null | undefined): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
 
 const config = json<DecisionConfig>(all("select json from decision where id = 1")[0])
 if (!config) throw new Error("no decision model saved in this library")
@@ -157,7 +157,7 @@ const ask = async (
 
 console.log(`${config.driver} ${config.model} · ${cardFile ?? dir}${dry ? " · DRY RUN" : ""}`)
 if (cardFile) {
-  const card = readCard(cardFile)
+  const card = await readCard(cardFile)
   const pool = makeSession({ card, rows: () => plain, model: idle }).readable(null)
   for (const c of CASES[card.id] ?? [])
     await ask(`${card.id} case`, pool, "", c, (id) => c.need.some((x) => id.endsWith(`:${x}`)), plain, card)
@@ -171,7 +171,7 @@ for (const s of cardFile ? [] : all("select id, card, head, next from story orde
   const rows: Rows = {
     harness: packs.find((p) => p.id === "harness"),
     packs: packs.filter((p) => p.id !== "harness"),
-    local: json<Local>(db.prepare("select json from local where card = ?").get(card.id) as Row | undefined),
+    local: json<Local>(db.query("select json from local where card = ?").get(card.id) as Row | null),
   }
   const session = makeSession({
     card,

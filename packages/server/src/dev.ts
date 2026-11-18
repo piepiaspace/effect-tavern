@@ -21,7 +21,7 @@ import {
 import { player } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { mkdirSync } from "node:fs"
-import { fileURLToPath } from "node:url"
+import { resolve } from "node:path"
 import { announce as announceAt, local } from "./announce.ts"
 import { open } from "./data.ts"
 import { levels, openLogbook, type Level } from "./logbook.ts"
@@ -31,11 +31,9 @@ import { node } from "./wire.ts"
 
 // a compiled binary (bun build --compile) has no checkout around it: its library lives where it is run
 const dir =
-  process.env["TAVERN_DATA"] ||
-  process.env["DATA"] ||
-  (import.meta.url.includes("$bunfs")
-    ? `${process.cwd()}/.dev`
-    : fileURLToPath(new URL("../../../.dev/", import.meta.url)))
+  Bun.env["TAVERN_DATA"] ||
+  Bun.env["DATA"] ||
+  (import.meta.url.includes("$bunfs") ? `${process.cwd()}/.dev` : resolve(import.meta.dirname, "../../../.dev"))
 mkdirSync(dir, { recursive: true })
 const data = open(`${dir}/tavern.db`)
 void refresh(data) // the model-name table, in the background: startup never waits on models.dev
@@ -90,18 +88,16 @@ const answer = (o: FakeCall) => {
 
 /** The environment's model, in force for any stage the routing row does not name: the local Anthropic key, when the
  *  machine has one. */
-const live = (): Model | undefined => {
-  const conn = localAnthropic()
+const live = async (): Promise<Model | undefined> => {
+  const conn = await localAnthropic()
   if (!conn) return undefined
-  // the proxy rides on Bun's fetch (provider connection.ts): on Node a live request goes direct and fails behind one
-  if (!("Bun" in globalThis)) throw new Error("live model needs Bun: bun --bun vp run dev, or MODEL=fake")
-  return bind({ ...conn, effort: "low", hat: process.env["HAT"] ?? conn.hat }) // HAT=<id> puts a library hat on it
+  return bind({ ...conn, effort: "low", hat: Bun.env["HAT"] ?? conn.hat }) // HAT=<id> puts a library hat on it
 }
-const scripted = process.env["MODEL"] === "fake"
-const one = scripted ? { ...fake(answer), hat: process.env["HAT"] } : live() // HAT works on the scripted model too
+const scripted = Bun.env["MODEL"] === "fake"
+const one = scripted ? { ...fake(answer), hat: Bun.env["HAT"] } : await live() // HAT works on the scripted model too
 const model = one && (() => one)
 
-const key = localAnthropicKey()
+const key = await localAnthropicKey()
 const { handler: wire } = tavern({
   data,
   overlay: player.harness,
@@ -115,9 +111,9 @@ const { handler: wire } = tavern({
   logbook: openLogbook({
     guest: true,
     dir: `${dir}/log`,
-    lang: process.env["TAVERN_LANG"] === "en" ? "en" : "zh",
-    ...(levels.includes(process.env["TAVERN_LOG"] as Level) && { level: process.env["TAVERN_LOG"] as Level }),
-    inspect: process.env["TAVERN_INSPECT"] === "1",
+    lang: Bun.env["TAVERN_LANG"] === "en" ? "en" : "zh",
+    ...(levels.includes(Bun.env["TAVERN_LOG"] as Level) && { level: Bun.env["TAVERN_LOG"] as Level }),
+    inspect: Bun.env["TAVERN_INSPECT"] === "1",
   }),
 })
 /** What Vite's mount calls (packages/client/vite.config.ts). */

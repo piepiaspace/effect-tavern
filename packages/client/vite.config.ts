@@ -1,7 +1,7 @@
 import solid from "@solidjs/vite-plugin"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
-import { fileURLToPath } from "node:url"
+import { resolve } from "node:path"
 import { FileSystemIconLoader } from "unplugin-icons/loaders"
 import Icons from "unplugin-icons/vite"
 import { defineConfig, type Plugin, type RunnableDevEnvironment } from "vite-plus"
@@ -13,12 +13,12 @@ import { defineConfig, type Plugin, type RunnableDevEnvironment } from "vite-plu
 // on the dev library reaches this process by itself; Vite's close takes it back.
 interface Session {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>
-  announce: (at: AddressInfo, scheme: "http" | "https") => () => void
+  announce: (at: AddressInfo, scheme: "http" | "https") => Promise<() => void>
 }
 const api = (): Plugin => ({
   name: "tavern-api",
   configureServer(server) {
-    const entry = fileURLToPath(new URL("../server/src/dev.ts", import.meta.url))
+    const entry = resolve(import.meta.dirname, "../server/src/dev.ts")
     const session = () =>
       (server.environments["ssr"] as RunnableDevEnvironment).runner.import(entry) as Promise<Session>
     const http = server.httpServer
@@ -27,15 +27,17 @@ const api = (): Plugin => ({
     http?.once("listening", () => {
       const at = http.address()
       if (!at || typeof at === "string") return
-      session().then(
-        ({ announce }) => {
-          if (!closed) withdraw = announce(at, server.config.server.https ? "https" : "http")
-        },
-        (e: unknown) =>
+      void session()
+        .then(async ({ announce }) => {
+          if (closed) return
+          withdraw = await announce(at, server.config.server.https ? "https" : "http")
+          if (closed) withdraw()
+        })
+        .catch((e: unknown) =>
           server.config.logger.warn(
             `tavern: the dev session did not load, so it is not announced: ${e instanceof Error ? e.message : String(e)}`,
           ),
-      )
+        )
     })
     http?.once("close", () => {
       closed = true
@@ -56,9 +58,7 @@ const api = (): Plugin => ({
 
 // Icons: Iconify's `ph` set (Phosphor), each `~icons/ph/<name>` compiled into a Solid component; `~icons/lobe/<slug>`
 // is one mono LobeHub brand SVG (MIT, the static-svg package), read from disk per named import (src/family.tsx).
-const lobe = FileSystemIconLoader(
-  fileURLToPath(new URL("./node_modules/@lobehub/icons-static-svg/icons", import.meta.url)),
-)
+const lobe = FileSystemIconLoader(resolve(import.meta.dirname, "node_modules/@lobehub/icons-static-svg/icons"))
 export default defineConfig({
   plugins: [solid(), Icons({ compiler: "solid", scale: 1, customCollections: { lobe } }), api()],
   // one copy of the core in dev, shared by the app and @ui-sdk/solid

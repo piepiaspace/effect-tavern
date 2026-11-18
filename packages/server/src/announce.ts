@@ -3,9 +3,7 @@
 // session, through the Vite plugin) and removes it on close; a command finds the owner of a data directory by it
 // (reach.ts). The lock's own format stays a bare pid: an older binary reads anything else as a dead owner and takes the
 // lock over. An address whose pid is gone is stale: the reader ignores it and removes it.
-//
-// Only node:fs here: the Vite config imports this module through dev.ts's `announce`, nothing else of the server's.
-import { readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
+import { readFileSync, renameSync, rmSync } from "node:fs"
 import { join } from "node:path"
 
 /** A live process (EPERM: alive, another user's); a dead one, or no pid at all, is not. */
@@ -41,28 +39,35 @@ export const local = (at: { address: string; port: number }, scheme: "http" | "h
 
 /** Says this process listens at `url` for the library in `dir`; the answer takes it back (only while the file is still
  *  this process's: a later owner's address stays). Written whole or not at all. */
-export const announce = (dir: string, url: string, o: { dev?: true } = {}): (() => void) => {
+export const announce = async (dir: string, url: string, o: { dev?: true } = {}): Promise<() => void> => {
   const file = addressFile(dir)
   const mine: Address = { pid: process.pid, url, ...o }
-  const temp = `${file}.${process.pid}`
-  writeFileSync(temp, `${JSON.stringify(mine)}\n`)
-  renameSync(temp, file)
+  const temp = `${file}.${process.pid}.${crypto.randomUUID()}`
+  const text = `${JSON.stringify(mine)}\n`
+  try {
+    await Bun.write(temp, text)
+    renameSync(temp, file)
+  } finally {
+    rmSync(temp, { force: true })
+  }
   let withdrawn = false
   return () => {
     if (withdrawn) return
     withdrawn = true
-    const now = read(file)
-    if (now?.pid === mine.pid && now.url === mine.url) rmSync(file, { force: true })
+    removeIfSame(file, text)
   }
 }
 
-const read = (file: string): Address | undefined => {
-  let text: string
+// Recheck ownership immediately before unlinking. An asynchronous read may have seen an older announcement.
+const removeIfSame = (file: string, text: string) => {
   try {
-    text = readFileSync(file, "utf8")
-  } catch {
-    return undefined
+    if (readFileSync(file, "utf8") === text) rmSync(file)
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e
   }
+}
+
+const parse = (text: string): Address => {
   try {
     const v = JSON.parse(text) as Partial<Address>
     if (typeof v.pid === "number" && typeof v.url === "string" && /^https?:\/\//.test(v.url))
@@ -72,9 +77,9 @@ const read = (file: string): Address | undefined => {
 }
 
 /** The pid the library's lock names, if any. */
-const locker = (dir: string): number | undefined => {
+const locker = async (dir: string): Promise<number | undefined> => {
   try {
-    return Number(readFileSync(lockFile(dir), "utf8"))
+    return Number(await Bun.file(lockFile(dir)).text())
   } catch {
     return undefined
   }
@@ -82,17 +87,22 @@ const locker = (dir: string): number | undefined => {
 
 /** The live owner's address for the library in `dir`, or none. A stale one (its process gone, a process that no
  *  longer holds the lock, or a file that does not read) is removed. */
-export const announced = (dir: string): Address | undefined => {
+export const announced = async (dir: string): Promise<Address | undefined> => {
   const file = addressFile(dir)
-  const a = read(file)
-  if (!a) return undefined
-  if (locker(dir) === a.pid && alive(a.pid)) return a
-  rmSync(file, { force: true })
+  let text: string
+  try {
+    text = await Bun.file(file).text()
+  } catch {
+    return undefined
+  }
+  const a = parse(text)
+  if ((await locker(dir)) === a.pid && alive(a.pid)) return a
+  removeIfSame(file, text)
   return undefined
 }
 
 /** The pid in the library's lock when it names a live process other than this one. */
-export const holder = (dir: string): number | undefined => {
-  const pid = locker(dir)
+export const holder = async (dir: string): Promise<number | undefined> => {
+  const pid = await locker(dir)
   return pid !== undefined && pid !== process.pid && alive(pid) ? pid : undefined
 }

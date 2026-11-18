@@ -1,6 +1,5 @@
 /// <reference types="bun" />
 // YAML is a host concern; the value report and workshop transformations also run in the browser.
-import { readFileSync } from "node:fs"
 import { checkValue } from "../src/author.ts"
 import { decodeCard, type Card } from "../src/card.ts"
 import { player } from "./rows.ts"
@@ -10,7 +9,7 @@ export const parseCard = (text: string): unknown => Bun.YAML.parse(text)
 /** A card as the text a card file holds: `parseCard(printCard(card))` decodes to the same card. */
 export const printCard = (card: Card): string => Bun.YAML.stringify(card, null, 2)
 /** A card file: YAML, decoded through the Card schema. A missing file fails naming it (ENOENT, with the path). */
-export const readCard = (path: string | URL): Card => decodeCard(parseCard(readFileSync(path, "utf8")))
+export const readCard = async (path: string | URL): Promise<Card> => decodeCard(parseCard(await Bun.file(path).text()))
 
 export const checkCard = (source: string): ReturnType<typeof checkValue> => {
   try {

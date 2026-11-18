@@ -9,7 +9,7 @@
 // are measured on every prose. A node's stored
 // `violated` is the label. CONTROLS append a hand-written violation to a real prose: the same question must then say yes.
 // Reports per request: answered / blocked (with the service's code) / failed, the latency, the input tokens, P(yes).
-import { DatabaseSync } from "node:sqlite"
+import { Database } from "bun:sqlite"
 import { join } from "node:path"
 import {
   blocked,
@@ -27,7 +27,7 @@ import { HI, LO, checkQuestions, checkVerdict } from "@effect-tavern/runtime/src
 import { lines } from "@effect-tavern/runtime/src/names.ts"
 import { Effect } from "effect"
 
-const args = process.argv.slice(2)
+const args = Bun.argv.slice(2)
 const dry = args.includes("--dry")
 const dir = args.find((a) => !a.startsWith("--")) ?? join(import.meta.dir, "../../../.dev")
 
@@ -39,9 +39,9 @@ const CONTROLS: Record<string, string> = {
 const GENERIC = "这段文字是否替玩家角色说了话或做了决定？"
 
 type Row = Record<string, unknown>
-const db = new DatabaseSync(join(dir, "tavern.db"), { readOnly: true })
-const all = (sql: string) => db.prepare(sql).all() as Row[]
-const json = <T>(r: Row | undefined): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
+const db = new Database(join(dir, "tavern.db"), { readonly: true })
+const all = (sql: string) => db.query(sql).all() as Row[]
+const json = <T>(r: Row | null | undefined): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
 
 const config = json<DecisionConfig>(all("select json from decision where id = 1")[0])
 if (!config) throw new Error("no decision model saved in this library")
@@ -91,7 +91,7 @@ const layerOf = (card: Card, persona: string | null, yields: boolean): Resolved 
   resolve(card, {
     harness: packs.find((p) => p.id === "harness"),
     packs: packs.filter((p) => p.id !== "harness"),
-    local: json<Local>(db.prepare("select json from local where card = ?").get(card.id) as Row | undefined),
+    local: json<Local>(db.query("select json from local where card = ?").get(card.id) as Row | null),
     persona: persona === null || !personas.has(persona) ? undefined : { ...personas.get(persona)!, yields },
   })
 /** The card's `<world>` block as the off-stage stages read it (request.ts `worldBlock`), or "" when it has none. */

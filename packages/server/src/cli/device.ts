@@ -3,7 +3,6 @@
 // interface (`Device`) with an adapter per kind of machine: Termux (its termux-api commands), plain Linux and macOS (the
 // desktop's opener when there is one; nothing keeps them awake), and none. A tool that is not installed is a no-op that
 // answers false, never an error: the tavern serves the same without it.
-import { spawnSync } from "node:child_process"
 import { statfsSync } from "node:fs"
 
 export interface Device {
@@ -66,7 +65,11 @@ export const termux = (env: Env): Device => ({
       released = true
       const unlock = which("termux-wake-unlock", env)
       // at exit there is no later tick to wait in: the unlock runs to its end here
-      if (unlock) spawnSync(unlock, [], { stdio: "ignore", timeout: 10_000 })
+      if (unlock) {
+        try {
+          Bun.spawnSync([unlock], { stdio: ["ignore", "ignore", "ignore"], timeout: 10_000 })
+        } catch {}
+      }
     }
   },
   tools: () =>

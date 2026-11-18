@@ -3,17 +3,16 @@
 // holds the device's wake lock (Android stops a backgrounded Termux otherwise), and on a terminal it opens the page in
 // the browser once its own address answers (cli/device.ts; a missing tool does nothing).
 import { existsSync } from "node:fs"
-import { createServer } from "node:http"
 import { join } from "node:path"
 import type { Config } from "./cli/config.ts"
 import { noDevice, type Device } from "./cli/device.ts"
 import { openHost } from "./host.ts"
 import { openLogbook } from "./logbook.ts"
 import { refresh } from "./names.ts"
-import { app } from "./serve.ts"
+import { app, listen } from "./serve.ts"
 import { announce, local } from "./announce.ts"
 import { stderrScreen, type Screen } from "./term/index.ts"
-import { node, over } from "./wire.ts"
+import { over } from "./wire.ts"
 
 export const staticRoot = (dist?: string) => (dist && existsSync(join(dist, "index.html")) ? dist : undefined)
 
@@ -64,44 +63,43 @@ export const start = async (
   try {
     const root = staticRoot(dist)
     const { handler, data, lib } = await openHost({ ...c, page: !!root }, logbook)
+    let server: ReturnType<typeof listen> | undefined
     let withdraw: (() => void) | undefined
     let awake: (() => void) | undefined
     try {
       // Scripted hosts stay offline; normal production startup refreshes the vendored name table.
       if (!c.fake) void refresh(data)
-      const server = createServer(node(app(handler, root)))
-      await new Promise<void>((resolve, reject) => {
-        server.once("error", reject)
-        server.listen(c.port, c.bind, resolve)
-      })
-      const address = server.address()
-      // with the page served, its address is the one to open; without it, the API's
-      const url = `http://${c.bind}:${typeof address === "object" && address ? address.port : c.port}${root ? "" : "/api"}`
+      server = listen(app(handler, root), c.bind, c.port)
+      const origin = local({ address: c.bind, port: server.port! })
+      const url = `${origin}${root ? "" : "/api"}`
       const model = c.fake ? "MODEL=fake" : lib.defaultModel()
       logbook.host({ url, data: c.data, version: c.version, ...(model && { model }) })
       // beside the library's lock, where a command looks for its owner (reach.ts)
-      const origin = typeof address === "object" && address ? local({ ...address, address: c.bind }) : undefined
-      if (origin) withdraw = announce(c.data, origin)
+      withdraw = await announce(c.data, origin)
       awake = device.keepAwake()
       if (opening && root && origin) void openWhenAnswering(origin, device)
-      await new Promise<void>((resolve) => {
-        const stop = () => {
-          server.close()
-          // a page's open event stream would hold the close; past a moment, every connection is let go
-          setTimeout(() => server.closeAllConnections(), 1000).unref()
-        }
-        process.once("SIGINT", stop)
-        process.once("SIGTERM", stop)
-        signal?.addEventListener("abort", stop, { once: true })
-        if (signal?.aborted) stop()
-        server.once("close", () => {
-          process.off("SIGINT", stop)
-          process.off("SIGTERM", stop)
-          signal?.removeEventListener("abort", stop)
-          resolve()
-        })
-      })
+      const stopped = Promise.withResolvers<void>()
+      const stop = () => stopped.resolve()
+      process.once("SIGINT", stop)
+      process.once("SIGTERM", stop)
+      signal?.addEventListener("abort", stop, { once: true })
+      try {
+        if (!signal?.aborted) await stopped.promise
+      } finally {
+        process.off("SIGINT", stop)
+        process.off("SIGTERM", stop)
+        signal?.removeEventListener("abort", stop)
+      }
     } finally {
+      if (server) {
+        const listener = server
+        const timer = setTimeout(() => void listener.stop(true), 1000)
+        try {
+          await listener.stop()
+        } finally {
+          clearTimeout(timer)
+        }
+      }
       awake?.()
       withdraw?.()
       data.close()

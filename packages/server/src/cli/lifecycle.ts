@@ -18,8 +18,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 export const serving = async (dir: string, patience = 2000): Promise<Address | undefined> => {
   const until = Date.now() + patience
   for (;;) {
-    const a = announced(dir)
-    if (a || holder(dir) === undefined || Date.now() >= until) return a
+    const a = await announced(dir)
+    if (a || (await holder(dir)) === undefined || Date.now() >= until) return a
     await sleep(100)
   }
 }
@@ -71,14 +71,14 @@ export interface Status {
 }
 
 /** Running or not, from the address file and the pid alone: no request, no library opened. */
-export const status = (c: Pick<Config, "data" | "version">): Status => {
-  const a = announced(c.data)
+export const status = async (c: Pick<Config, "data" | "version">): Promise<Status> => {
+  const a = await announced(c.data)
   return { running: !!a, ...(a && { url: a.url, pid: a.pid }), data: c.data, version: c.version }
 }
 
 /** `tavern status`: the facts on stdout (one JSON value under --json); 0 when running, 3 when not. */
-export const showStatus = (c: Config, world: World): 0 | 3 => {
-  const s = status(c)
+export const showStatus = async (c: Config, world: World): Promise<0 | 3> => {
+  const s = await status(c)
   if (c.json) world.out.write(`${JSON.stringify(s)}\n`)
   else {
     const w = words[c.lang]
@@ -105,9 +105,9 @@ export const stop = async (c: Config, world: World, { patience = 15_000 }: { pat
   const w = words[c.lang]
   const screen = screenOf(world, world.out)
   const n = cells(screen)
-  const a = announced(c.data)
+  const a = await announced(c.data)
   if (!a) {
-    const pid = holder(c.data)
+    const pid = await holder(c.data)
     if (c.json) world.out.write(`${JSON.stringify({ stopped: false, running: false, ...(pid && { holder: pid }) })}\n`)
     else if (pid) write(screen, [`! ${w.notOurs(pid)}`, ...step(w.notOursNext, n)])
     else write(screen, [w.nothingToStop])

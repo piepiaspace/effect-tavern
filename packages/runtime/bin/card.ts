@@ -1,8 +1,7 @@
 // Offline authoring commands (`tavern card init|check|view|test`, run by the tree in packages/server/bin/tavern.ts);
 // pure preview lives in src/view.ts. They read files against `Here` (cli.ts) and print through the tree's Console.
-import { Console, Effect, Option } from "effect"
+import { Console, Effect, FileSystem, Option } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
-import { readFileSync, writeFileSync } from "node:fs"
 import { here, Json } from "./cli.ts"
 import { checkCard, readCard, scaffold, templates } from "../support/author.ts"
 import { runScenario } from "../support/scenario.ts"
@@ -13,7 +12,7 @@ const card = Argument.String("card").pipe(Argument.withDescription("path to a .y
 const load = (name: string) =>
   Effect.flatMap(here(name), (path) =>
     Effect.tryPromise({
-      try: async () => readCard(path),
+      try: () => readCard(path),
       catch: (e) => (e as Error).message,
     }),
   )
@@ -23,11 +22,11 @@ const check = Command.make("check", { card }, ({ card: name }) =>
   Effect.gen(function* () {
     const json = yield* Json
     const path = yield* here(name)
-    const report = yield* attempt(() => readFileSync(path, "utf8")).pipe(
+    const report = yield* (yield* FileSystem.FileSystem).readFileString(path).pipe(
       Effect.match({
         onSuccess: checkCard,
-        onFailure: (message): ReturnType<typeof checkCard> => ({
-          diagnostics: [{ rule: "io", level: "error", path: name, message }],
+        onFailure: (error): ReturnType<typeof checkCard> => ({
+          diagnostics: [{ rule: "io", level: "error", path: name, message: error.message }],
           fields: [],
           fieldLines: [],
           greetings: [],
@@ -61,7 +60,7 @@ const init = Command.make(
   ({ id, template }) =>
     Effect.gen(function* () {
       const path = yield* here(`${id}.yaml`)
-      yield* attempt(() => writeFileSync(path, scaffold(id, template), { flag: "wx" }))
+      yield* (yield* FileSystem.FileSystem).writeFileString(path, scaffold(id, template), { flag: "wx" })
       yield* Console.log(`Created ${id}.yaml`)
     }),
 ).pipe(Command.withDescription("Scaffold a new <id>.yaml card from one of the four coordinate templates"))
@@ -78,7 +77,8 @@ const test = Command.make(
     Effect.gen(function* () {
       const c = yield* load(name)
       const file = Option.isSome(scenario) ? yield* here(scenario.value) : undefined
-      const value = yield* attempt(() => (file === undefined ? undefined : Bun.YAML.parse(readFileSync(file, "utf8"))))
+      const source = file === undefined ? undefined : yield* (yield* FileSystem.FileSystem).readFileString(file)
+      const value = yield* attempt(() => (source === undefined ? undefined : Bun.YAML.parse(source)))
       const results = yield* Effect.tryPromise({ try: () => runScenario(c, value), catch: (e) => String(e) })
       yield* Console.log(`PASS ${results.length} step(s), zero model tokens`)
     }),

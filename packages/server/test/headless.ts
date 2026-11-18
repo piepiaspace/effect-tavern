@@ -4,10 +4,9 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { Effect, Stream } from "effect"
 import assert from "node:assert/strict"
-import type { AddressInfo } from "node:net"
 import { open } from "../src/data.ts"
 import { library, type PublicEvent } from "../src/library.ts"
-import { serve } from "../src/serve.ts"
+import { handle, listen } from "../src/serve.ts"
 import { Busy } from "../src/turn.ts"
 
 const card: Card = {
@@ -28,9 +27,8 @@ const model = fake((call) => {
 const lib = library({ data, model: () => model })
 lib.cards.install(card, { via: "file" })
 const put = (value: unknown) => lib.cards.install(value, { via: "file" }, { replace: true })
-const server = serve(lib)
-await new Promise<void>((done) => server.listen(0, "127.0.0.1", done))
-const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+const server = listen(handle(lib), "127.0.0.1", 0)
+const base = `http://127.0.0.1:${server.port}`
 const direct = lib.stories.create(card.id)
 const remote = lib.stories.create(card.id)
 const http = (story: number, path: string, method = "GET", body?: unknown) =>
@@ -47,6 +45,7 @@ const sse = (text: string) =>
     .split("\n\n")
     .map((block) => JSON.parse(block.split("\ndata: ")[1]!))
 try {
+  assert.equal((await http(remote, "/bun:info")).status, 404)
   const invalid = { kind: "act", input: { text: 42 } }
   assert.throws(() => lib.submit(direct, invalid))
   assert.equal((await http(remote, "/", "POST", invalid)).status, 400)
@@ -137,8 +136,7 @@ try {
   assert.deepEqual(await (await http(direct, `/nodes/${node}/trace`)).json(), wired(trace))
   assert.ok(lib.trace(direct, node, true).some((c) => c.msgs.length > 0))
 } finally {
-  server.closeAllConnections()
-  await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())))
+  await server.stop(true)
   data.close()
 }
 console.log("headless ok")

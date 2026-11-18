@@ -136,8 +136,6 @@
 import { DecisionConfig, Provider, Secret } from "@effect-tavern/provider"
 import { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Effect, Fiber, Schema, Stream, Struct } from "effect"
-import { readFile } from "node:fs/promises"
-import { createServer } from "node:http"
 import { extname, join, resolve, sep } from "node:path"
 import { version } from "./cli/config.ts"
 import { attachment, backup, disposition, markdown } from "./export.ts"
@@ -145,7 +143,7 @@ import { Routing, type Library, type PublicEvent } from "./library.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { Refused } from "./shelf.ts"
 import { Busy } from "./turn.ts"
-import { node, type Wire } from "./wire.ts"
+import type { Wire } from "./wire.ts"
 
 /** A request's body as text, up to `limit` bytes: 1 MB for what is a setting or an action, the card ceiling
  *  (`CARD_BYTES`) on a route that carries a card. A body over its limit is not kept but is heard out, so the answer is
@@ -528,8 +526,9 @@ const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown]) =
   })
   return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } })
 }
-/** The session's wire on a node listener of its own (tests). */
-export const serve = (lib: Library, opts?: HandleOptions) => createServer(node(handle(lib, opts)))
+/** A turn can spend longer than the default HTTP idle timeout waiting for the model. */
+export const listen = (fetch: Wire, hostname: string, port: number) =>
+  Bun.serve({ fetch, hostname, port, development: false, idleTimeout: 0, maxRequestBodySize: CARD_BYTES + SLACK })
 
 const types: Record<string, string> = {
   html: "text/html; charset=utf-8",
@@ -569,20 +568,21 @@ export const app = (api: Wire, dist?: string): Wire => {
     } catch {
       return text(400, "bad path")
     }
+    if (path.includes("\0")) return text(400, "bad path")
     const file = resolve(root, `.${path}`)
     const page = !extname(path) || !file.startsWith(root + sep)
     const asset = page ? join(root, "index.html") : file
-    try {
-      return new Response(await readFile(asset), {
+    const content = Bun.file(asset)
+    if (await content.exists()) {
+      return new Response(content, {
         headers: {
           "content-type": types[extname(asset).slice(1)] ?? "application/octet-stream",
           "cache-control": page ? "no-cache" : "public, max-age=31536000, immutable",
         },
       })
-    } catch {
-      return text(404, page ? "no client build: vp build in packages/client" : "not found", {
-        "content-type": "text/plain",
-      })
     }
+    return text(404, page ? "no client build: vp build in packages/client" : "not found", {
+      "content-type": "text/plain",
+    })
   }
 }

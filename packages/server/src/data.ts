@@ -1,4 +1,4 @@
-// The install's library: one SQLite file through `node:sqlite` (built into Bun and Node, no dependency), used as a
+// The install's library: one SQLite file through `bun:sqlite` (built into Bun), used as a
 // document store: a row is an id and a JSON column, nothing is ever joined. The tables mirror the types. `pack`: the
 // player's rows (runtime layer.ts `Layer`): `harness` (the overlay, only what differs from the code's defaults) and each
 // writing pack, mounted per card by `local.mounts`. `local`: one row a card, the player on that card (`Local`).
@@ -44,7 +44,7 @@ import type { Change, Id, Log, Noded, Snapshot, Store } from "@effect-tavern/run
 import type { Facets } from "@effect-tavern/runtime/src/session.ts"
 import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
-import { DatabaseSync } from "node:sqlite"
+import { Database } from "bun:sqlite"
 import { alive } from "./announce.ts"
 
 const storyColumns =
@@ -180,7 +180,7 @@ const foldIn = (o: Partial<Layer>, r: Partial<Layer>): Partial<Layer> => {
     ...(Object.keys(names).length && { names }),
   }
 }
-const parse = <T>(r: Row | undefined): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
+const parse = <T>(r: Row | null): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
 /** Drop unrecognized reply part types on read so only `text` and `reasoning` enter runtime nodes. */
 const known = <T>(n: T): T => {
   const reply = (n as { reply?: { type: string }[] }).reply
@@ -319,22 +319,22 @@ const steps = [
   "drop table if exists draft",
 ]
 const latest = baseline + steps.length
-const upgrade = (db: DatabaseSync) => {
-  const version = (db.prepare("pragma user_version").get() as { user_version: number }).user_version
+const upgrade = (db: Database) => {
+  const version = (db.query("pragma user_version").get() as { user_version: number }).user_version
   if (version === latest) return
   if (version > latest) throw new LibraryNewer(version, latest)
   if (version < baseline) rebase(db)
   for (let v = Math.max(version, baseline); v < latest; v++)
     db.exec(`begin immediate; ${steps[v - baseline]!}; pragma user_version = ${v + 1}; commit;`)
 }
-const rebase = (db: DatabaseSync) => {
+const rebase = (db: Database) => {
   // FK mode must change before BEGIN so rebuilding story cannot cascade-delete its nodes.
   db.exec("pragma foreign_keys = off; begin immediate;")
   try {
-    const q = (sql: string) => db.prepare(sql)
+    const q = (sql: string) => db.query(sql)
     db.exec(schema)
     for (const m of migrations) {
-      const has = (db.prepare(`select name from pragma_table_info(?)`).all(m.table) as Row[]).some(
+      const has = (db.query(`select name from pragma_table_info(?)`).all(m.table) as Row[]).some(
         (r) => r["name"] === m.column,
       )
       if (!has) db.exec(m.add)
@@ -343,9 +343,7 @@ const rebase = (db: DatabaseSync) => {
     // client then took the placeholder for the story it was on and kept its reader. Rebuilt once, rows and ids kept: a
     // copy under the current definition, the old table dropped with foreign keys off (on, the drop's implicit delete
     // would cascade into every node), the copy renamed. The explicit ids seed sqlite_sequence.
-    const made = (db.prepare("select sql from sqlite_master where type = 'table' and name = 'story'").get() as Row)[
-      "sql"
-    ]
+    const made = (db.query("select sql from sqlite_master where type = 'table' and name = 'story'").get() as Row)["sql"]
     if (!/autoincrement/i.test(String(made))) {
       db.exec(`
         create table story_new (${storyColumns});
@@ -355,7 +353,7 @@ const rebase = (db: DatabaseSync) => {
     }
     /** `r` over the stored overlay; no row when nothing is in it. */
     const intoOverlay = ({ id: _i, name: _n, ...r }: Partial<Layer>) => {
-      const had = parse<Partial<Layer>>(q("select json from pack where id = 'harness'").get() as Row | undefined)
+      const had = parse<Partial<Layer>>(q("select json from pack where id = 'harness'").get() as Row | null)
       const merged = foldIn(had ?? {}, r)
       if (Object.keys(merged).length)
         q("insert or replace into pack (id, name, json) values ('harness', '内置', ?)").run(JSON.stringify(merged))
@@ -363,7 +361,7 @@ const rebase = (db: DatabaseSync) => {
     // The player row of a library from before layer.ts, once, and the table with it. A pack row's `theaters` become its
     // product patches (`Pack` is a `Layer` now); an older `products` map, which turned nothing on, goes.
     if (q("select 1 from sqlite_master where type = 'table' and name = 'player'").get()) {
-      const old = parse<OldPlayer>(q("select json from player where id = 1").get() as Row | undefined)
+      const old = parse<OldPlayer>(q("select json from player where id = 1").get() as Row | null)
       for (const r of q("select id, json from pack").all() as Row[]) {
         const { theaters, products, ...rest } = parse<{ theaters?: unknown[]; products?: unknown }>(r)!
         const kept = [...(theaters ?? []), ...(Array.isArray(products) ? products : [])]
@@ -382,7 +380,7 @@ const rebase = (db: DatabaseSync) => {
     }
     // The `base` row, a rank of its own until #69 §十, once, into the overlay. It stood above the card, where a fragment with
     // no mode overrode; the overlay's default yields, so what it said is written down.
-    const base = parse<Partial<Layer>>(q("select json from pack where id = 'base'").get() as Row | undefined)
+    const base = parse<Partial<Layer>>(q("select json from pack where id = 'base'").get() as Row | null)
     if (base) {
       intoOverlay({
         ...base,
@@ -446,9 +444,9 @@ const rebase = (db: DatabaseSync) => {
 
 export const open = (asked: string, { isolateOnBusy = false } = {}) => {
   const { file, unlock } = asked === ":memory:" ? { file: asked, unlock: () => {} } : lock(asked, isolateOnBusy)
-  let db: DatabaseSync
+  let db: Database
   try {
-    db = new DatabaseSync(file)
+    db = new Database(file, { create: true, strict: true })
   } catch (e) {
     unlock()
     throw e
@@ -462,7 +460,7 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
     throw e
   }
   let closed = false
-  const q = (sql: string) => db.prepare(sql)
+  const q = (sql: string) => db.query(sql)
   const tx = <A>(f: () => A): A => {
     db.exec("begin")
     try {
@@ -490,7 +488,7 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
     /** The player on each card, a row a card, decoded at the wire (serve.ts). */
     locals: {
       get: (card: string): Local | undefined =>
-        parse<Local>(q("select json from local where card = ?").get(card) as Row | undefined),
+        parse<Local>(q("select json from local where card = ?").get(card) as Row | null),
       list: (): Local[] => (q("select json from local").all() as Row[]).map((r) => parse<Local>(r)!),
       put: (l: Local) =>
         void q("insert or replace into local (card, json) values (?, ?)").run(l.card, JSON.stringify(l)),
@@ -515,7 +513,7 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
         }),
       /** The persona marked the install's default, or none. */
       fallback: (): string | null =>
-        ((q("select persona from persona_default where id = 1").get() as Row | undefined)?.["persona"] as
+        ((q("select persona from persona_default where id = 1").get() as Row | null)?.["persona"] as
           | string
           | undefined) ?? null,
       /** Marked (`id`), or cleared (null). */
@@ -530,19 +528,19 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
     providers: named<Provider>("provider"),
     /** Which (provider, model) runs each stage, one row; what it holds is decoded by the caller. */
     routing: {
-      read: (): unknown => parse<unknown>(q("select json from routing where id = 1").get() as Row | undefined),
+      read: (): unknown => parse<unknown>(q("select json from routing where id = 1").get() as Row | null),
       write: (r: unknown) => void q("insert or replace into routing (id, json) values (1, ?)").run(JSON.stringify(r)),
     },
     /** The decision model's connection, one row; what it holds is decoded by the caller. */
     decision: {
-      read: (): unknown => parse<unknown>(q("select json from decision where id = 1").get() as Row | undefined),
+      read: (): unknown => parse<unknown>(q("select json from decision where id = 1").get() as Row | null),
       write: (c: unknown) => void q("insert or replace into decision (id, json) values (1, ?)").run(JSON.stringify(c)),
     },
     /** The model-name table (names.ts) as last fetched, one row, with the ETag it came with. */
     names: {
       read: () => {
-        const r = q("select etag, json from names where id = 1").get() as Row | undefined
-        return r && { etag: r["etag"] as string | null, names: parse<Names>(r)! }
+        const r = q("select etag, json from names where id = 1").get() as Row | null
+        return r ? { etag: r["etag"] as string | null, names: parse<Names>(r)! } : undefined
       },
       write: (t: { etag: string | null; names: Names }) =>
         void q("insert or replace into names (id, etag, json) values (1, ?, ?)").run(t.etag, JSON.stringify(t.names)),
@@ -573,7 +571,7 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
           JSON.stringify(origin),
         ),
       /** One card's json column, parsed (decoded by the caller); none when the table has no such id. */
-      get: (id: string): unknown => parse<unknown>(q("select json from card where id = ?").get(id) as Row | undefined),
+      get: (id: string): unknown => parse<unknown>(q("select json from card where id = ?").get(id) as Row | null),
       /** The card with what is the player's on it alone, its local row. Its stories are the caller's to have refused
        *  first (shelf.ts `remove`). */
       del: (id: string) =>
@@ -593,15 +591,14 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
     stories: {
       /** The row's own columns that a request needs (identity, card, persona): never a walk of the story's line. */
       get: (id: Id): { id: Id; card: string; persona: string | null; yields: boolean } | undefined => {
-        const r = q("select id, card, persona, yields from story where id = ?").get(id) as Row | undefined
-        return (
-          r && {
-            id: r["id"] as Id,
-            card: r["card"] as string,
-            persona: r["persona"] as string | null,
-            yields: r["yields"] === 1,
-          }
-        )
+        const r = q("select id, card, persona, yields from story where id = ?").get(id) as Row | null
+        if (!r) return undefined
+        return {
+          id: r["id"] as Id,
+          card: r["card"] as string,
+          persona: r["persona"] as string | null,
+          yields: r["yields"] === 1,
+        }
       },
       /** The card's rows (every card's when `card` is absent), or the one of them `only` names (none when that is
        *  another card's or no story): the walk starts from that story's head alone, so one row costs one line. */
@@ -742,7 +739,7 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
     /** log.ts's Store over one story: read the tree whole, write each Change as rows in one transaction. */
     store: <T extends Noded>(story: Id): Store<T> => ({
       read: (): Snapshot<T> => {
-        const s = q("select head, next from story where id = ?").get(story) as Row | undefined
+        const s = q("select head, next from story where id = ?").get(story) as Row | null
         if (!s) throw new Error(`no story ${story}`)
         const nodes = (q("select json from node where story = ? order by id").all(story) as Row[]).map((r) =>
           known(parse<T>(r)!),

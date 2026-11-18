@@ -20,7 +20,7 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { open, type Data } from "../src/data.ts"
 import { library } from "../src/library.ts"
-import { app, handle, serve } from "../src/serve.ts"
+import { app, handle, listen } from "../src/serve.ts"
 import { shelf } from "../src/shelf.ts"
 import { tavern } from "../src/tavern.ts"
 import { openLogbook } from "../src/logbook.ts"
@@ -64,8 +64,8 @@ const sse = (text: string) =>
     })
 
 {
-  const server = serve(lib, { inspect: true }).listen(0)
-  const base = `http://localhost:${(server.address() as AddressInfo).port}`
+  const server = listen(handle(lib, { inspect: true }), "127.0.0.1", 0)
+  const base = `http://127.0.0.1:${server.port}`
   // the story this client is on, as the client's `stories.current`: the newest, a new one on the first run
   let story = lib.stories.list()[0]?.id ?? lib.stories.create(chat.id)
   const fetch = (url: string, init: RequestInit = {}) =>
@@ -516,7 +516,7 @@ const sse = (text: string) =>
     assert.deepEqual(view.layer.holes, [])
     await local({})
   } finally {
-    server.close()
+    await server.stop(true)
   }
 }
 
@@ -778,15 +778,22 @@ const sse = (text: string) =>
   await mkdir(join(dist, "assets"))
   await writeFile(join(dist, "index.html"), "<!doctype html><title>t</title>")
   await writeFile(join(dist, "assets", "a.js"), "export {}")
-  const server = createServer(node(app(handle(lib), dist))).listen(0)
-  const base = `http://localhost:${(server.address() as AddressInfo).port}`
+  const server = listen(app(handle(lib), dist), "127.0.0.1", 0)
+  const base = `http://127.0.0.1:${server.port}`
   try {
     const got = async (path: string) => {
       const r = await fetch(base + path)
       return [r.status, r.headers.get("content-type"), r.headers.get("cache-control"), await r.text()] as const
     }
     const index = [200, "text/html; charset=utf-8", "no-cache", "<!doctype html><title>t</title>"]
-    for (const path of ["/%", "/%E0%A4%A", "/api/cards/%", "/api/personas/%", "/api/providers/%/models"])
+    for (const path of [
+      "/%",
+      "/assets/%00.js",
+      "/%E0%A4%A",
+      "/api/cards/%",
+      "/api/personas/%",
+      "/api/providers/%/models",
+    ])
       assert.equal((await got(path))[0], 400)
     assert.deepEqual(await got("/"), index)
     assert.deepEqual(await got("/stories"), index) // the client's route, not the session's
@@ -802,7 +809,7 @@ const sse = (text: string) =>
     assert.ok(Array.isArray(((await (await fetch(`${base}/api/stories`)).json()) as { stories: unknown[] }).stories))
     assert.equal((await fetch(`${base}/api`)).status, 404) // the session's "/" takes POST only
   } finally {
-    server.close()
+    await server.stop(true)
     await rm(dist, { recursive: true })
   }
 }

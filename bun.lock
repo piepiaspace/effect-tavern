@@ -32,8 +32,8 @@
         "@lobehub/icons-static-svg": "1.102.0",
         "@solidjs/diagnostics": "2.0.0-rc.15",
         "@solidjs/vite-plugin": "3.0.0-next.50",
+        "@types/bun": "1.4.4",
         "@types/mdast": "4.0.4",
-        "@types/node": "^26.6.6",
         "@x18n/cli": "0.1.14",
         "typescript": "^7.0.2",
         "unplugin-icons": "24.0.0",
@@ -53,7 +53,7 @@
       },
       "devDependencies": {
         "@copilotkit/aimock": "1.48.0",
-        "@types/node": "^26.6.6",
+        "@types/bun": "1.4.4",
         "typescript": "^7.0.2",
       },
     },
@@ -86,7 +86,7 @@
       },
       "devDependencies": {
         "@copilotkit/aimock": "1.48.0",
-        "@types/node": "^26.6.6",
+        "@types/bun": "1.4.4",
         "typescript": "^7.0.2",
       },
     },

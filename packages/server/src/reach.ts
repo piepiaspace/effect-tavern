@@ -83,7 +83,7 @@ export const reach = async (
   }
   const until = Date.now() + patience
   for (;;) {
-    const said = announced(c.data)
+    const said = await announced(c.data)
     if (said) {
       try {
         return { host: await remote(said.url, c), at: said.url, found: true }
@@ -92,7 +92,7 @@ export const reach = async (
         if (!(e instanceof Unreachable) || Date.now() > until) throw e
       }
     } else {
-      const pid = holder(c.data)
+      const pid = await holder(c.data)
       if (pid === undefined) {
         try {
           return { host: await inProcess(c) }

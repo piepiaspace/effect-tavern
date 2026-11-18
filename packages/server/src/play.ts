@@ -1,4 +1,3 @@
-import { createInterface } from "node:readline"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
 import type { CliEvent, CliHost } from "./cli-host.ts"
 
@@ -164,43 +163,34 @@ export const play = async (
     if (options.input !== undefined) return await line(options.input)
     const interactive = Boolean(process.stdin.isTTY)
     const terminal = interactive && !options.jsonl
-    const rl = createInterface({ input: process.stdin, terminal: false })
     // Serialize regular lines; stop bypasses the queue so it can interrupt the active turn.
     let pending = Promise.resolve()
-    let failure: { error: unknown } | undefined
-    rl.on("SIGINT", stop)
-    rl.on("line", (text) => {
-      if (failure) return
-      if (text === "/quit") {
-        rl.close()
-        return
-      }
-      if (interactive && text === "/stop") {
-        stop()
-        return
-      }
-      pending = pending
-        .then(() => (failure ? undefined : line(text)))
-        .catch((e) => {
-          if (interactive) {
-            console.error(String(e))
-            process.exitCode = 1
-          } else {
-            failure = { error: e }
-            rl.close()
-          }
-        })
-        .then(() => {
-          if (terminal) process.stderr.write("> ")
-        })
-    })
     if (terminal) {
       console.error(help)
       process.stderr.write("> ")
     }
-    await new Promise<void>((resolve) => rl.once("close", resolve))
+    for await (const raw of console) {
+      const text = raw.replace(/\r$/, "")
+      if (text === "/quit") break
+      if (!interactive) {
+        await line(text)
+        continue
+      }
+      if (text === "/stop") {
+        stop()
+        continue
+      }
+      pending = pending.then(async () => {
+        try {
+          await line(text)
+        } catch (e) {
+          console.error(String(e))
+          process.exitCode = 1
+        }
+        if (terminal) process.stderr.write("> ")
+      })
+    }
     await pending
-    if (failure) throw failure.error
   } finally {
     process.off("SIGINT", stop)
   }

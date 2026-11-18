@@ -14,14 +14,14 @@ export interface Screen {
  *  (a guest on someone else's terminal, Vite's). */
 export const stderrScreen = (o: { live?: boolean } = {}): Screen => {
   const tty = process.stderr.isTTY === true
-  const dumb = process.env.TERM === "dumb"
+  const dumb = Bun.env.TERM === "dumb"
   return {
     write: (s) => void process.stderr.write(s),
     get columns() {
-      return process.stderr.columns || Number(process.env.COLUMNS) || 80
+      return process.stderr.columns || Number(Bun.env.COLUMNS) || 80
     },
     live: (o.live ?? true) && tty && !dumb,
-    color: tty && !dumb && !process.env.NO_COLOR,
+    color: tty && !dumb && !Bun.env.NO_COLOR,
   }
 }
 

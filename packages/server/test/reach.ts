@@ -228,7 +228,7 @@ try {
   {
     const here = join(dir, "announce")
     mkdirSync(here)
-    assert.equal(announced(here), undefined)
+    assert.equal(await announced(here), undefined)
     assert.deepEqual(
       [
         local({ address: "0.0.0.0", port: 1 }),
@@ -239,32 +239,32 @@ try {
       ["http://127.0.0.1:1", "http://[::1]:2", "https://[::1]:3", "http://127.0.0.1:4"],
     )
     const data = open(libraryFile(here))
-    const withdraw = announce(here, "http://127.0.0.1:1234")
+    const withdraw = await announce(here, "http://127.0.0.1:1234")
     assert.deepEqual(JSON.parse(readFileSync(addressFile(here), "utf8")), {
       pid: process.pid,
       url: "http://127.0.0.1:1234",
     })
     assert.equal(readFileSync(lockFile(here), "utf8"), String(process.pid)) // the lock's own format: a bare pid
-    assert.deepEqual(announced(here), { pid: process.pid, url: "http://127.0.0.1:1234" })
+    assert.deepEqual(await announced(here), { pid: process.pid, url: "http://127.0.0.1:1234" })
     withdraw()
     assert.ok(!existsSync(addressFile(here)))
     // a later owner's address is not ours to take back
-    const again = announce(here, "http://127.0.0.1:1")
+    const again = await announce(here, "http://127.0.0.1:1")
     writeFileSync(addressFile(here), JSON.stringify({ pid: process.pid, url: "http://127.0.0.1:2" }))
     again()
     assert.ok(existsSync(addressFile(here)))
     data.close()
     assert.ok(!existsSync(lockFile(here))) // close releases the lock
     // the lock gone, the address is stale: ignored and removed; so is one naming a dead process, or garbage
-    assert.equal(announced(here), undefined)
+    assert.equal(await announced(here), undefined)
     assert.ok(!existsSync(addressFile(here)))
     const dead = Bun.spawnSync(["true"]).pid
     writeFileSync(lockFile(here), String(dead))
     writeFileSync(addressFile(here), JSON.stringify({ pid: dead, url: "http://127.0.0.1:2" }))
-    assert.equal(announced(here), undefined)
+    assert.equal(await announced(here), undefined)
     assert.ok(!existsSync(addressFile(here)))
     writeFileSync(addressFile(here), "not json")
-    assert.equal(announced(here), undefined)
+    assert.equal(await announced(here), undefined)
     assert.ok(!existsSync(addressFile(here)))
     rmSync(lockFile(here))
   }
@@ -298,7 +298,7 @@ try {
     const server = createServer(node(app(handle(real, { scripted: false })))).listen(0, "127.0.0.1")
     await new Promise<void>((resolve) => server.once("listening", resolve))
     const url = local(server.address() as AddressInfo)
-    const withdraw = announce(owned, url)
+    const withdraw = await announce(owned, url)
     try {
       const r = await reach({ data: owned, fake: false })
       assert.deepEqual([r.at, r.found], [url, true])
