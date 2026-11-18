@@ -157,6 +157,29 @@ try {
     }
     // nothing answers there: Unreachable, never a refusal
     await assert.rejects(host(over("http://127.0.0.1:9/api")).cards(), Unreachable)
+    // a proxy in the environment (set to reach a provider) is not asked for this machine's own tavern
+    {
+      const script = `import { over } from ${JSON.stringify(new URL("../src/wire.ts", import.meta.url).pathname)}
+        const r = await over(${JSON.stringify(`${origin}/api`)})(new Request("http://tavern/host"))
+        console.log(r.status)`
+      const child = Bun.spawn(["bun", "-e", script], {
+        env: {
+          ...process.env,
+          HTTP_PROXY: "http://127.0.0.1:9",
+          http_proxy: "http://127.0.0.1:9",
+          NO_PROXY: "",
+          no_proxy: "",
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      })
+      const [code, out, err] = await Promise.all([
+        child.exited,
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+      ])
+      assert.equal(`${code} ${out.trim()}`, "0 200", err)
+    }
   }
 
   // A turn's events arrive as they are made, in-process and over the bridge; a reader that goes away stops nothing.

@@ -16,10 +16,16 @@ export class Unreachable extends Error {
   }
 }
 
+const loopback = (host: string) => host === "localhost" || host === "[::1]" || /^127\.\d+\.\d+\.\d+$/.test(host)
+
 /** The tavern at `url` (its origin, or a path prefix it is served under): a request's path and query go after it. A
  *  request that reaches nothing throws `Unreachable`; whatever answers is the answer, a refusal too. */
 export const over = (url: string): Wire => {
   const base = url.replace(/\/+$/, "")
+  // A tavern on this machine is never reached through a proxy: a player who set http_proxy to reach their provider
+  // would otherwise send `tavern card install` to the proxy, which cannot see this machine's loopback. Bun's fetch
+  // reads the environment's proxy unless told `proxy: false`.
+  const direct = loopback(new URL(base).hostname) && { proxy: false }
   return async (request) => {
     const u = new URL(request.url)
     const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.arrayBuffer()
@@ -29,7 +35,8 @@ export const over = (url: string): Wire => {
         headers: request.headers,
         ...(body && { body }),
         signal: request.signal,
-      })
+        ...direct,
+      } as RequestInit)
     } catch (e) {
       if (request.signal.aborted) throw e
       throw new Unreachable(url, e)
