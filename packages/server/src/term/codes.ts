@@ -9,6 +9,9 @@ export type ServerCode =
   | "port-in-use" // EADDRINUSE
   | "library-held" // data.ts LibraryHeld
   | "library-newer" // data.ts LibraryNewer
+  | "host-unreachable" // wire.ts Unreachable
+  | "host-silent" // reach.ts HostSilent
+  | "host-not-scripted" // reach.ts HostNotScripted
   | Refused["code"] // shelf.ts and depot.ts
 const SERVER: Record<ServerCode, true> = {
   "no-model": true,
@@ -16,6 +19,9 @@ const SERVER: Record<ServerCode, true> = {
   "port-in-use": true,
   "library-held": true,
   "library-newer": true,
+  "host-unreachable": true,
+  "host-silent": true,
+  "host-not-scripted": true,
   "no-card": true,
   "card-exists": true,
   "card-in-use": true,

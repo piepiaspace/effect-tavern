@@ -13,6 +13,7 @@ import type { AddressInfo } from "node:net"
 import { open } from "../src/data.ts"
 import { Refused, shelf } from "../src/shelf.ts"
 import { tavern } from "../src/tavern.ts"
+import { node } from "../src/wire.ts"
 
 const refused = (code: Refused["code"]) => (e: unknown) => e instanceof Refused && e.code === code
 const file = { via: "file" } as const
@@ -149,7 +150,7 @@ const file = { via: "file" } as const
 // The routes: the same refusals by status and code, the export as a file, and a card's view carrying whose it is.
 {
   const t = tavern({ data: open(":memory:") })
-  const server = createServer(t.handler).listen(0)
+  const server = createServer(node(t.handler)).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   const call = async (method: string, path: string, body?: string) => {
     const r = await fetch(base + path, { method, ...(body !== undefined && { body }) })

@@ -35,29 +35,48 @@ bun run tavern story remove 1
 MODEL=fake bun run tavern serve --headless --port 7777
 ```
 
-没有 `--server` 时，直接打开 `<数据目录>/tavern.db`。数据目录依次取 `--data`、`TAVERN_DATA`、`DATA`；
-都没有时，编译出的二进制用 `~/.tavern`，从源码运行用当前目录的 `.tavern`。设置只由
+数据目录依次取 `--data`、`TAVERN_DATA`、`DATA`；都没有时，编译出的二进制用 `~/.tavern`，从源码运行用当前目录的
+`.tavern`（根目录的 `bun run tavern` 脚本设了 `TAVERN_DATA=.dev`，即开发网页服务的库）。设置只由
 `packages/server/src/cli/config.ts` 读取，优先级是 命令行 > `TAVERN_*` > 旧名 > 默认：
 `TAVERN_DATA`（旧名 `DATA`）、`TAVERN_PORT`（`PORT`）、`TAVERN_BIND`（`HOST`）、`TAVERN_SERVER`、`TAVERN_LANG`、
 `TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_INSPECT`、`MODEL=fake`。
 `--json`、`--data`、`--server` 写在命令前后都可以。`tavern --version` 打印编译时写入的版本（取自发布标签），从源码运行是 `dev`。
 
-退出码：0 完成；1 被拒绝或失败；2 命令行写错（错误与 `> tavern … --help` 写到 stderr）；3 库无法访问
-（另一个进程占着它、库来自更新的版本，或 `--server` 处没有应答）。
-程序不带任何卡片，新库的书架是空的：卡片只能由 `card install`、卡库（`depot pull`）或工坊放上去。
-`card install` 接受一个 YAML 文件，或一张卡自己的 https 链接（由宿主读取一次），覆盖同 id 的已安装卡；`card remove` 在这张卡还有故事时拒绝。已有服务占用这个库会报错，
-提示进程、库路径及 `--server`，退出码 3；不会自动切换到另一个库。
+### 命令怎样找到它的库
 
-传 `--server http://127.0.0.1:7777`（末尾带 `/api` 也可，也可设 `TAVERN_SERVER`），
-就通过 HTTP/SSE 连接已有服务。这种模式不读取本地数据目录，也不读取本地模型配置：
+每条宿主命令（`card install|list|export|remove|compile|sort|review`、`depot …`、`story …`、`play`）自己找库，
+三种情况走的是同一套请求（`packages/server/src/reach.ts`，传输在 `wire.ts`）：
+
+1. 传了 `--server <地址>`（或 `TAVERN_SERVER`）：连那个酒馆，比如另一台机器上的。末尾带 `/api` 也可。这时不读任何本地文件。
+2. 数据目录正被一个运行中的酒馆占着（`tavern serve`，或开发网页服务）：它在库的锁文件旁边写下自己的地址
+   （`<数据目录>/tavern.db.address`，一行 JSON `{"pid":…,"url":"http://127.0.0.1:7777"}`，关闭时删除），
+   命令读到地址后经由它执行，并在 stderr 说一句「经由正在运行的酒馆 <地址>」。写入的东西网页刷新后就能看到。
+3. 没有人占着：命令自己打开 `<数据目录>/tavern.db`，在本进程里调用和服务端同一个处理函数，用完即关、释放锁。
+   这时操作者就是终端前的人：可以把本地目录登记为卡库，`/inspect` 能看到调用正文。
+
+所以在开发时，`bun run tavern card install x.yaml` 不用加任何参数：开发服务在跑就写进它的库，没在跑就直接打开 `.dev`。
+
+退出码：0 完成；1 被拒绝或失败；2 命令行写错（错误与 `> tavern … --help` 写到 stderr）；3 库无法访问，
+用大白话写到 stderr（发生了什么、可能的原因、下一步）：
+
+- `--server` 或宣告的地址上没有酒馆应答；
+- 有活着的进程占着库，却约 2 秒内都没写出地址（还在启动，或是不写地址的旧版本；会写出它的 pid，旧版本可用 `--server` 指定它的地址）；
+- 设了 `MODEL=fake`，可找到的酒馆用的是真实模型（命令不会替你花 token；用 `MODEL=fake` 重启那个酒馆，或去掉它）；
+- 库来自更新的版本；或 `tavern serve` 时库已被另一个酒馆占着。
+
+地址文件指向的进程已经不在（或它不再持有锁）时，地址文件作废并被删除。锁文件本身的格式不变（只有 pid），
+旧版程序读到别的内容会把它当成死掉的进程而抢走锁。运行中的酒馆在 `GET /api/host` 回答
+`{version, scripted, page}`：版本、是否全程用脚本模型、是否同时提供网页。
+
+程序不带任何卡片，新库的书架是空的：卡片只能由 `card install`、卡库（`depot pull`）或工坊放上去。
+`card install` 接受一个 YAML 文件，或一张卡自己的 https 链接（由宿主读取一次），覆盖同 id 的已安装卡；`card remove` 在这张卡还有故事时拒绝。
 
 ```sh
-bun run tavern card install ./my-card.yaml --server http://127.0.0.1:7777
-bun run tavern play 1 --server http://127.0.0.1:7777 --input '继续' --jsonl
+bun run tavern card install ./my-card.yaml --server http://192.168.1.20:7777
+bun run tavern play 1 --server http://192.168.1.20:7777 --input '继续' --jsonl
 ```
 
-开发网页服务默认使用 `.dev`，因此与网页共享故事时传它的 `--server`。
-网页刷新或重新 attach 后能观察终端写入；本轮没有增加空闲客户端的推送通知。
+终端经由服务写入后，网页刷新或重新 attach 才能看到；本轮没有增加空闲客户端的推送通知。
 
 `MODEL=fake` 在本地宿主使用零 Token 脚本模型，单次游玩也可传 `play --model fake`；真实游玩使用库中已有的 provider/routing。
 不会读取开发机私有凭据。远程模式由服务端决定模型。`serve` 默认同时服务已构建的
@@ -110,7 +129,7 @@ MODEL=fake bun run tavern play my-card --greeting 1 --set world=古风 --set bon
 `card install` 先通过 checkCard，再把文件原文交给书架（`shelf.ts` 的 `install`，带 `replace`）；失败不会安装。
 
 卡库（`depot`，实现见 `packages/server/src/depot.ts`）是一个含 `index.json` 的目录或 https 地址，只读、可选：
-`depot add <位置>` 登记（读一次 index 确认它是卡库；目录只在本地直连模式可用，`--server` 模式只收 https），
+`depot add <位置>` 登记（读一次 index 确认它是卡库；目录只在命令自己打开库时可用，经由运行中的酒馆只收 https），
 `depot list` 列出已登记的卡库，`depot show <id>` 现读 index 并标出每张卡相对书架的状态
 （absent / installed / update / taken），`depot pull <id> <卡片 id> [--replace]` 把一张卡复制到书架，
 `depot remove <id>` 只忘掉这个卡库，已取的卡片保留。除 `show` 与 `pull` 外不发任何请求。
@@ -119,12 +138,12 @@ MODEL=fake bun run tavern play my-card --greeting 1 --set world=古风 --set bon
 
 ## 制卡工坊（阶段二后端）
 
-宿主使用 `routing.stages.author`，未配置时依次回退到 `routing.default` 和环境模型。三条命令与 install 共用本地直连和 `--server` 连接方式，只返回候选或诊断，不自动安装。
+宿主使用 `routing.stages.author`，未配置时依次回退到 `routing.default` 和环境模型。三条命令与 install 一样自己找库（见上文），只返回候选或诊断，不自动安装。
 
 ```sh
 bun run tavern card compile my-card.yaml --select fiction.setting --select 'lore.letter.layers[1]' --intent '交情达到 8 时提起信件' -o candidate.yaml
 bun run tavern card sort my-card.yaml notes.md -o candidate.yaml
-bun run tavern card review my-card.yaml --json --server http://localhost:7777
+bun run tavern card review my-card.yaml --json
 ```
 
 `compile` 返回包含机制增量与绑定的整卡候选，新建的正文和判据槽留空。结构错误最多回喂修正一次，回喂前过滤 `empty-text`。诊断打印到 stderr。规则变化且旁边存在 `<card>.scenario.yaml` 时，使用已有的零 token 场景执行器回归，并在 stderr 报告 PASS/FAIL；失败仍保留候选。

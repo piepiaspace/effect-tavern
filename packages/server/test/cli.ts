@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { scaffold } from "@effect-tavern/runtime/support/author.ts"
@@ -11,6 +11,7 @@ import { readEvents } from "../src/cli-host.ts"
 import type { CliEvent } from "../src/cli-host.ts"
 import { staticRoot } from "../src/start.ts"
 import { app } from "../src/serve.ts"
+import { node } from "../src/wire.ts"
 
 const dir = mkdtempSync(join(tmpdir(), "tavern-cli-"))
 const bin = new URL("../bin/tavern.ts", import.meta.url).pathname
@@ -110,7 +111,10 @@ const done = async (...argv: string[]) => {
   // nothing answers at --server: exit 3
   const nobody = await run(["story", "list", "--server", "http://127.0.0.1:9"])
   assert.equal(nobody.code, 3)
-  assert.match(nobody.err, /nothing answers at http:\/\/127\.0\.0\.1:9/)
+  assert.match(nobody.err, /连不上酒馆[^]*> /) // in plain words: what happened, why, the next step
+  assert.doesNotMatch(nobody.err, /nothing answers/)
+  // in-process, one open after another in one process: each command closed its library and let the lock go
+  assert.ok(!existsSync(join(inProcess, "library", "tavern.db.lock")))
 }
 
 // As processes: the shared library, serve, --server and the terminal loop.
@@ -147,26 +151,32 @@ const announced = async (child: ReturnType<typeof Bun.spawn>) => {
     .split("\n")
     .find((line) => line.startsWith("http://"))!
 }
+/** The same commands in this process, on the same directory: run(argv, world), stdout as a string, no spawn. */
+const here = async (...args: string[]) => {
+  const result = await run(args, { DATA: dir })
+  assert.equal(result.code, 0, result.err)
+  return result.out
+}
 try {
-  await ok("card", "check", file)
-  assert.deepEqual(JSON.parse(await ok("card", "install", file, "--json")), { id: "cli", installed: true })
-  const { id: story } = JSON.parse(await ok("story", "new", "cli", "--json"))
-  assert.equal(JSON.parse(await ok("story", "list", "--json"))[0].id, story)
+  await here("card", "check", file)
+  assert.deepEqual(JSON.parse(await here("card", "install", file, "--json")), { id: "cli", installed: true })
+  const { id: story } = JSON.parse(await here("story", "new", "cli", "--json"))
+  assert.equal(JSON.parse(await here("story", "list", "--json"))[0].id, story)
   const numericFile = join(dir, "numeric.yaml")
   writeFileSync(numericFile, scaffold(String(story), "chat"))
-  await ok("card", "install", numericFile)
+  await here("card", "install", numericFile)
   const numericEvents = (await ok("play", String(story), "--card", "--user", "阿青", "--input", "/greet", "--jsonl"))
     .trim()
     .split("\n")
     .map((s) => JSON.parse(s))
   const numericId = numericEvents.find((e) => e.kind === "story").id
   assert.notEqual(numericId, story)
-  assert.equal(JSON.parse(await ok("story", "export", String(numericId), "--json")).card.id, String(story))
-  assert.deepEqual(JSON.parse(await ok("story", "remove", String(numericId), "--json")), {
+  assert.equal(JSON.parse(await here("story", "export", String(numericId), "--json")).card.id, String(story))
+  assert.deepEqual(JSON.parse(await here("story", "remove", String(numericId), "--json")), {
     id: numericId,
     removed: true,
   })
-  assert.match(await ok("story", "show", String(story)), /Story .*head root/)
+  assert.match(await here("story", "show", String(story)), /Story .*head root/)
   // the template leaves `{{user}}` to the player: unnamed, the turn goes through with the literal (names.ts); `--user`
   // names them on the card, kept (the card's resolved names, read from the server below)
   const turn = async (...flags: string[]) =>
@@ -179,11 +189,11 @@ try {
   const events = await turn("--user", "阿青")
   assert.ok(events.some((e) => e.kind === "delta"))
   assert.ok(events.some((e) => e.kind === "change" && e.node?.settlementStatus === "committed"))
-  const saved = JSON.parse(await ok("story", "export", String(story), "--format", "json"))
+  const saved = JSON.parse(await here("story", "export", String(story), "--format", "json"))
   assert.equal(saved.snapshot.nodes.length, 2)
-  assert.match(await ok("story", "export", String(story)), /hello world/)
+  assert.match(await here("story", "export", String(story)), /hello world/)
   await ok("play", String(story), "--input", "/greet")
-  const before = JSON.parse(await ok("story", "show", String(story), "--json"))
+  const before = JSON.parse(await here("story", "show", String(story), "--json"))
 
   server = Bun.spawn(["bun", bin, "serve", "--headless", "-p", "0"], { cwd: dir, env, stdout: "pipe", stderr: "pipe" })
   const url = await announced(server)
@@ -191,14 +201,36 @@ try {
   assert.equal((await fetch(url.replace(/\/api$/, "/"))).status, 404)
   const named = (await (await fetch(`${url}/cards/cli`)).json()) as { layer: { names: { user?: string } } }
   assert.equal(named.layer.names.user, "阿青")
-  // the library is held: exit 3, naming the way through
-  const held = await spawned("story", "list")
-  assert.equal(held.code, 3)
-  assert.match(held.err, /is open in process \d+[^]*--server/)
-  const heldInProcess = await run(["story", "list"], { DATA: dir })
-  assert.equal(heldInProcess.code, 3)
-  // --server never opens the library, even though this one is held; before or after the command
-  assert.deepEqual(JSON.parse(await ok("story", "show", String(story), "--json", "--server", url)), before)
+  // Two processes on one directory: serve holds the library and says its address beside the lock; a command finds it
+  // there, says it went through it, and its writes are the server's.
+  const address = JSON.parse(readFileSync(join(dir, "tavern.db.address"), "utf8")) as { pid: number; url: string }
+  assert.deepEqual(address, { pid: server.pid, url: url.replace(/\/api$/, "") })
+  assert.equal(readFileSync(join(dir, "tavern.db.lock"), "utf8"), String(server.pid))
+  const found = await spawned("story", "list", "--json")
+  assert.equal(found.code, 0, found.err)
+  assert.equal(found.err, `经由正在运行的酒馆 ${address.url}\n`)
+  assert.equal(JSON.parse(found.out)[0].id, story)
+  const second = join(dir, "second.yaml")
+  writeFileSync(second, scaffold("second", "chat"))
+  await ok("card", "install", second)
+  assert.ok(((await (await fetch(`${url}/cards`)).json()) as { id: string }[]).some((c) => c.id === "second"))
+  const foundInProcess = await run(["card", "list", "--json"], { DATA: dir })
+  assert.equal(foundInProcess.code, 0, foundInProcess.err)
+  assert.ok((JSON.parse(foundInProcess.out) as { id: string }[]).some((c) => c.id === "second"))
+  // a turn through the server, the same kinds of events as one in-process
+  const through = (await ok("play", String(story), "--input", "through", "--jsonl"))
+    .trim()
+    .split("\n")
+    .map((s) => JSON.parse(s).kind as string)
+  assert.ok(through.includes("delta") && through.at(-1) === "change", through.join())
+  const now = JSON.parse(await ok("story", "show", String(story), "--json"))
+  assert.equal(now.nodes.length, before.nodes.length + 1)
+  // a second serve on the same directory: exit 3, in plain words
+  const twice = await spawned("serve", "--headless", "-p", "0")
+  assert.equal(twice.code, 3)
+  assert.match(twice.err, /数据目录正被另一个酒馆使用/)
+  // --server names the same one; before or after the command
+  assert.deepEqual(JSON.parse(await ok("story", "show", String(story), "--json", "--server", url)), now)
   await ok("--server", url, "card", "install", file)
   const remote = Number(await ok("story", "new", "cli", "--server", url))
   await ok("play", String(remote), "--server", url, "--input", "remote hello", "--jsonl")
@@ -220,7 +252,11 @@ try {
   server.kill("SIGTERM")
   assert.equal(await server.exited, 0)
   server = undefined
-  assert.equal(JSON.parse(await ok("story", "list", "--json")).length, 1)
+  // stopped: its address and its lock are gone, and the next command opens the library itself, saying nothing
+  assert.ok(!existsSync(join(dir, "tavern.db.address")))
+  assert.ok(!existsSync(join(dir, "tavern.db.lock")))
+  const alone = await spawned("story", "list", "--json")
+  assert.deepEqual([alone.code, alone.err, JSON.parse(alone.out).length], [0, "", 1])
   // A bare `tavern` serves, as start.sh runs it: the legacy names, explicit inspect and clean shutdown.
   for (const inspect of [false, true]) {
     server = Bun.spawn(["bun", bin], {
@@ -287,11 +323,7 @@ try {
   // Missing client build gives pure API routing; a built index opts static serving in.
   const dist = join(dir, "client-dist")
   assert.equal(staticRoot(dist), undefined)
-  const api = createServer(
-    app(async (_req, res) => {
-      res.end("api")
-    }, staticRoot(dist)),
-  )
+  const api = createServer(node(app(async () => new Response("api"), staticRoot(dist))))
   await new Promise<void>((resolve) => api.listen(0, "127.0.0.1", resolve))
   try {
     const origin = `http://127.0.0.1:${(api.address() as AddressInfo).port}`

@@ -59,7 +59,7 @@ Everything is one command, `tavern` (`bun run tavern` from source); it exposes f
 | Preview stage prompt | `bun run tavern card view <card> [--stage ...] [--state k=v] [--greeting n] [--lore] [--json]` | Offline; prints exact sections, cache breakpoints & conditions |
 | Zero-token test      | `bun run tavern card test <card> [scenario.yaml]`                                              | Offline deterministic run on scripted fake model               |
 | Unroll ST V2/V3 card | `bun run tavern card unroll <card.png\|card.json> [--user name] [--json]`                      | Read-only inspection in ST assembly order; feeds `sort`        |
-| Workshop operations  | `bun run tavern card compile\|sort\|review ...`                                                | Uses `author` model route (`--server` for running server)      |
+| Workshop operations  | `bun run tavern card compile\|sort\|review ...`                                                | Uses `author` model route (finds a running server by itself)   |
 | Install & live play  | `bun run tavern card install <file>` / `bun run tavern play <card-or-story> [--user <name>]`   | Pass `MODEL=fake` or `--model fake` for zero-token host runs   |
 
 ## 5. Progressive Disclosure — Read On Demand

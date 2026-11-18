@@ -35,7 +35,7 @@ Remastering workflow:
 ## 2. Workshop CLI (`compile` / `sort` / `review`)
 
 Contract implementation: `packages/runtime/src/workshop.ts` and `packages/server/bin/tavern.ts`.
-Uses model route `routing.stages.author` (falling back to `routing.default` / env `MODEL`). Connect to a running dev/headless server with `--server http://127.0.0.1:7777` when the local SQLite library is open.
+Uses model route `routing.stages.author` (falling back to `routing.default` / env `MODEL`). A running dev or headless server on the same library is found and used by itself (no flag); `--server <url>` names a tavern on another machine.
 
 ```sh
 # 1. Compile mechanism increments & bindings from selected prose + intent (leaves new prose slots empty)
