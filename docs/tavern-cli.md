@@ -31,7 +31,7 @@ Linux 上看二进制要的加载器在不在（glibc 的 `ld-linux-*`、musl �
 
 用旧启动器装过的手机可以重新运行上面的安装命令。脚本会清理旧启动器和它的程序文件，保留故事库。
 
-`test/install.ts`（根目录 `vp run verify` 会跑，发布流程跑整个 verify）在沙箱里用 dash、bash、busybox sh 驱动这些情况。
+`test/install.ts`（根目录 `vp run verify` 和发布流程都会跑）在沙箱里用 dash、bash、busybox sh 驱动这些情况。
 
 ```
 tavern            显示命令帮助

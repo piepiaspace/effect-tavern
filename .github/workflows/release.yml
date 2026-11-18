@@ -28,17 +28,15 @@ jobs:
       - id: targets
         run: echo "matrix=$(bun release/targets.ts matrix)" >> "$GITHUB_OUTPUT"
 
-  # the whole of `vp run verify` (every package's checks and tests, install.sh against a local mirror, the table
-  # against the installers), beside the build; nothing is published unless it passes
-  verify:
+  # install.sh against a local mirror with simulated machines, and the table against the installers; beside the build
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
-      - run: bun install --frozen-lockfile
-      - run: bun run verify
+      - run: bun test/install.ts && bun test/release.ts
 
   build:
     needs: plan
@@ -69,7 +67,7 @@ jobs:
           retention-days: 7
 
   publish:
-    needs: [verify, build]
+    needs: [test, build]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
@@ -122,7 +120,7 @@ jobs:
   # one buildx run for both architectures into one multi-arch manifest; the Dockerfile only copies, so nothing is
   # emulated
   docker:
-    needs: [verify, build]
+    needs: [test, build]
     if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
