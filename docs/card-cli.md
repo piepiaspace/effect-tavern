@@ -1,14 +1,14 @@
 # 离线制卡工具
 
-在仓库根目录运行 `bun packages/runtime/bin/card.ts <command>`，或进入
-`packages/runtime` 后运行 `bun run card <command>`。所有命令均不打开 DATA 库、不调用在线模型。
-文件路径支持 YAML（含 `.yml`）；也可直接使用四张内置卡的名字。
+它们是 `tavern card` 下的离线命令（实现在 `packages/runtime/bin/card.ts` 与 `unroll.ts`，由
+`packages/server/bin/tavern.ts` 挂进命令树）：装好的二进制直接运行 `tavern card <command>`，从源码在仓库根目录运行
+`bun run tavern card <command>`。所有命令均不打开库、不调用在线模型。文件路径支持 YAML（含 `.yml`）。
 
 ```sh
-bun run card init my-card --template chat
-bun run card check my-card.yaml --json
-bun run card view my-card.yaml --stage direct --state hp=2 --events won --persona '你是一位旅人。'
-bun run card test my-card.yaml scenario.yaml
+bun run tavern card init my-card --template chat
+bun run tavern card check my-card.yaml --json
+bun run tavern card view my-card.yaml --stage direct --state hp=2 --events won --persona '你是一位旅人。'
+bun run tavern card test my-card.yaml scenario.yaml
 ```
 
 `init` 在当前目录独占创建 `<id>.yaml`，已有文件会报错。四种最小脚手架只表达两个坐标，
@@ -76,8 +76,8 @@ steps:
 让人和代理看清作者让模型按什么顺序读到什么。它只读不写，不产出本项目的卡，也不调用模型。
 
 ```sh
-bun run unroll card.png --user 李
-bun run unroll card.json --json
+bun run tavern card unroll card.png --user 李
+bun run tavern card unroll card.json --json
 ```
 
 输入两种：内嵌角色块的 PNG（取 `tEXt` 中的 `ccv3`，没有则取 `chara`；base64 JSON，不校验 CRC），

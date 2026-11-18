@@ -1,7 +1,20 @@
-# CLI 宿主：安装、游玩与故事管理
+# `tavern` 命令：安装、游玩与故事管理
 
-仓库根目录运行 `bun run tavern`。`tavern card init|check|view|test` 复用
-[离线制卡工具](card-cli.md)；宿主入口另外提供以下命令：
+`tavern` 是一棵命令树（`packages/server/bin/tavern.ts`），也是编译出的二进制本身；从源码在仓库根目录运行
+`bun run tavern …`。不带命令的 `tavern` 等于 `tavern serve`（手机的 start.sh 就这样运行它）。
+`tavern card init|check|view|test|unroll` 是[离线制卡工具](card-cli.md)；其余命令如下：
+
+```
+tavern            等于 tavern serve
+tavern serve      --port/-p  --bind  --headless  --inspect
+tavern card       init check view test unroll     一个文件，离线
+                  install list export remove      书架
+                  compile sort review             作者模型
+tavern depot      add list show pull remove
+tavern story      new list show export remove
+tavern play       <卡片|故事>
+任意位置：--json  --data <目录>  --server <地址>  -h/--help  -V/--version
+```
 
 ```sh
 bun run tavern card install ./my-card.yaml
@@ -18,34 +31,42 @@ MODEL=fake bun run tavern play 1
 bun run tavern story show 1
 bun run tavern story export 1 --format md > story.md
 bun run tavern story export 1 --format json > story.json
-bun run tavern story delete 1
+bun run tavern story remove 1
 MODEL=fake bun run tavern serve --headless --port 7777
 ```
 
-没有 `--url` 时，直接打开 `DATA/tavern.db`；`DATA` 默认是当前目录的 `.tavern`。
+没有 `--server` 时，直接打开 `<数据目录>/tavern.db`。数据目录依次取 `--data`、`TAVERN_DATA`、`DATA`；
+都没有时，编译出的二进制用 `~/.tavern`，从源码运行用当前目录的 `.tavern`。设置只由
+`packages/server/src/cli/config.ts` 读取，优先级是 命令行 > `TAVERN_*` > 旧名 > 默认：
+`TAVERN_DATA`（旧名 `DATA`）、`TAVERN_PORT`（`PORT`）、`TAVERN_BIND`（`HOST`）、`TAVERN_SERVER`、`TAVERN_LANG`、
+`TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_INSPECT`、`MODEL=fake`。
+`--json`、`--data`、`--server` 写在命令前后都可以。`tavern --version` 打印编译时写入的版本（取自发布标签），从源码运行是 `dev`。
+
+退出码：0 完成；1 被拒绝或失败；2 命令行写错（错误与 `> tavern … --help` 写到 stderr）；3 库无法访问
+（另一个进程占着它、库来自更新的版本，或 `--server` 处没有应答）。
 程序不带任何卡片，新库的书架是空的：卡片只能由 `card install`、卡库（`depot pull`）或工坊放上去。
 `card install` 接受一个 YAML 文件，或一张卡自己的 https 链接（由宿主读取一次），覆盖同 id 的已安装卡；`card remove` 在这张卡还有故事时拒绝。已有服务占用这个库会报错，
-提示进程、库路径及 `--url`；不会自动切换到另一个库。
+提示进程、库路径及 `--server`，退出码 3；不会自动切换到另一个库。
 
-给 install、play、story 子命令传 `--url http://127.0.0.1:7777`（末尾带 `/api` 也可），
-就通过 HTTP/SSE 连接已有服务。这种模式不读取本地 DATA，也不读取本地模型配置：
+传 `--server http://127.0.0.1:7777`（末尾带 `/api` 也可，也可设 `TAVERN_SERVER`），
+就通过 HTTP/SSE 连接已有服务。这种模式不读取本地数据目录，也不读取本地模型配置：
 
 ```sh
-bun run tavern card install ./my-card.yaml --url http://127.0.0.1:7777
-bun run tavern play 1 --url http://127.0.0.1:7777 --input '继续' --jsonl
+bun run tavern card install ./my-card.yaml --server http://127.0.0.1:7777
+bun run tavern play 1 --server http://127.0.0.1:7777 --input '继续' --jsonl
 ```
 
-开发网页服务默认使用 `.dev`，因此与网页共享故事时传它的 `--url`。
+开发网页服务默认使用 `.dev`，因此与网页共享故事时传它的 `--server`。
 网页刷新或重新 attach 后能观察终端写入；本轮没有增加空闲客户端的推送通知。
 
 `MODEL=fake` 在本地宿主使用零 Token 脚本模型，单次游玩也可传 `play --model fake`；真实游玩使用库中已有的 provider/routing。
 不会读取开发机私有凭据。远程模式由服务端决定模型。`serve` 默认同时服务已构建的
 `packages/client/dist`（需要有 `index.html`）；构建不存在时自动只提供 `/api`，
-`--headless` 则始终只提供 `/api`。默认监听 `127.0.0.1`，`HOST` 可覆盖。
+`--headless` 则始终只提供 `/api`。默认监听 `127.0.0.1:7777`，`--bind` / `TAVERN_BIND` 与 `--port` / `TAVERN_PORT` 可覆盖。
 
-`card install` 与所有 `story` 子命令支持 `--json`。安装返回 `{id, installed}`，新建返回 `{id}`，
-删除返回 `{id, deleted}`，list/show 返回故事列表/节点快照；export 的 `--json` 等价于 `--format json`。
-show 默认打印阅读文本。`story delete` 是正式命令，`story drop` 保留为兼容别名。
+`--json` 让 stdout 只有一个 JSON 值。安装返回 `{id, installed}`，新建返回 `{id}`，
+移除返回 `{id, removed}`，list/show 返回列表/节点快照；`story export` 的 `--json` 等价于 `--format json`。
+show 默认打印阅读文本。`story remove` 是正式命令；`story delete` 作为隐藏别名保留一个版本，`story drop` 已去掉。
 
 ## 普通终端游玩
 
@@ -89,7 +110,7 @@ MODEL=fake bun run tavern play my-card --greeting 1 --set world=古风 --set bon
 `card install` 先通过 checkCard，再把文件原文交给书架（`shelf.ts` 的 `install`，带 `replace`）；失败不会安装。
 
 卡库（`depot`，实现见 `packages/server/src/depot.ts`）是一个含 `index.json` 的目录或 https 地址，只读、可选：
-`depot add <位置>` 登记（读一次 index 确认它是卡库；目录只在本地直连模式可用，`--url` 模式只收 https），
+`depot add <位置>` 登记（读一次 index 确认它是卡库；目录只在本地直连模式可用，`--server` 模式只收 https），
 `depot list` 列出已登记的卡库，`depot show <id>` 现读 index 并标出每张卡相对书架的状态
 （absent / installed / update / taken），`depot pull <id> <卡片 id> [--replace]` 把一张卡复制到书架，
 `depot remove <id>` 只忘掉这个卡库，已取的卡片保留。除 `show` 与 `pull` 外不发任何请求。
@@ -98,12 +119,12 @@ MODEL=fake bun run tavern play my-card --greeting 1 --set world=古风 --set bon
 
 ## 制卡工坊（阶段二后端）
 
-宿主使用 `routing.stages.author`，未配置时依次回退到 `routing.default` 和环境模型。三条命令与 install 共用本地直连和 `--url` 连接方式，只返回候选或诊断，不自动安装。
+宿主使用 `routing.stages.author`，未配置时依次回退到 `routing.default` 和环境模型。三条命令与 install 共用本地直连和 `--server` 连接方式，只返回候选或诊断，不自动安装。
 
 ```sh
 bun run tavern card compile my-card.yaml --select fiction.setting --select 'lore.letter.layers[1]' --intent '交情达到 8 时提起信件' -o candidate.yaml
 bun run tavern card sort my-card.yaml notes.md -o candidate.yaml
-bun run tavern card review my-card.yaml --json --url http://localhost:7777
+bun run tavern card review my-card.yaml --json --server http://localhost:7777
 ```
 
 `compile` 返回包含机制增量与绑定的整卡候选，新建的正文和判据槽留空。结构错误最多回喂修正一次，回喂前过滤 `empty-text`。诊断打印到 stderr。规则变化且旁边存在 `<card>.scenario.yaml` 时，使用已有的零 token 场景执行器回归，并在 stderr 报告 PASS/FAIL；失败仍保留候选。
@@ -120,7 +141,9 @@ HTTP 客户端调用 `POST /api/author/compile {card, select, intent}`、`/api/a
 
 卡片地址由 `runtime/src/paths.ts` 提供：预览采用 `rules.actions.<id>.when`、`rules.readouts.<id>.when`，条件子节点为 `.all[n]`、`.any[n]`、`.not`。单条件 lore 解锁地址为 `lore.<id>.unlock`，分层数组为 `.unlock[n]`，两者可直接作为 compile 绑定目标；数组形式必须指定层。Catalog 列诊断定位到真实的 `.shape…columns[n].catalog`。
 
-生产入口（`tavern serve`、独立应用与 headless 二进制）共用最小 harness，默认数据目录为 `.tavern/`，不自动导入开发机密钥。开发服务器继续使用 `.dev/` 与开发用 player 配置。`DATA` 可指定现有数据库目录；切换入口不会自动搬迁旧数据。
+生产入口（`tavern`、`tavern serve`，包括 `--headless`）共用最小 harness，不自动导入开发机密钥；数据目录见上文。开发服务器继续使用 `.dev/` 与开发用 player 配置。`--data` / `TAVERN_DATA` 可指定现有数据库目录；切换入口不会自动搬迁旧数据。
+
+二进制由 `packages/server` 的 `compile`（本机）与 `compile:android` 脚本编译 `bin/tavern.ts`，客户端构建（`packages/client/dist`）作为资源打进去；`VERSION=<版本>` 写入版本，发布流程取自标签。
 
 完整调用正文默认不暴露；`tavern serve --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
 

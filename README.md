@@ -96,7 +96,7 @@ bun --bun vp run dev
 MODEL=fake bun --bun vp run dev
 
 # A new library has no cards: install one from a file, or take one from a card library
-bun run tavern card install packages/runtime/test/cards/wuxia.yaml --url http://localhost:5173
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml --server http://localhost:5173
 bun run tavern depot add ./my-cards            # a directory holding index.json, or an https URL
 bun run tavern depot show <library-id>         # its cards against the shelf
 bun run tavern depot pull <library-id> <card>  # copy one onto the shelf
@@ -113,22 +113,22 @@ bun run tavern serve --port 7777
 bun run tavern card install packages/runtime/test/cards/wuxia.yaml
 MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
-# Manage stories & headless server (defaults to .tavern/tavern.db; pass --url to attach to a running server)
+# Manage stories & headless server (the library is ./.tavern from source, ~/.tavern for the binary, --data <dir> to move it; --server <url> to attach to a running server)
 bun run tavern story list
 bun run tavern serve --headless --port 7777
 ```
 
-### Card Authoring & Workshop Toolchain (`card`, `unroll`, `tavern card`)
+### Card Authoring & Workshop Toolchain (`tavern card`)
 
 ```sh
 # Offline zero-token authoring loop (init, static lint, prompt preview, scenario assertions)
-bun packages/runtime/bin/card.ts init my-card --template readout
-bun packages/runtime/bin/card.ts check my-card.yaml
-bun packages/runtime/bin/card.ts view my-card.yaml --stage record --state affection=60
-bun packages/runtime/bin/card.ts test my-card.yaml
+bun run tavern card init my-card --template readout
+bun run tavern card check my-card.yaml
+bun run tavern card view my-card.yaml --stage record --state affection=60
+bun run tavern card test my-card.yaml
 
 # Inspect a legacy SillyTavern V2/V3 PNG or JSON card in assembly order
-bun packages/runtime/bin/unroll.ts path/to/card.png
+bun run tavern card unroll path/to/card.png
 
 # AI-assisted Workshop (compile rules/bindings, sort verbatim prose, semantic review, install)
 bun run tavern card compile my-card.yaml --select fiction.setting --intent "Add a trust readout" -o candidate.yaml

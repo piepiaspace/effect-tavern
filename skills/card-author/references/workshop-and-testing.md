@@ -2,11 +2,11 @@
 
 ## 1. Porting / Remastering SillyTavern Cards (`unroll` → `sort`)
 
-`unroll` (`packages/runtime/bin/unroll.ts`) is a read-only inspection instrument—not an unattended converter. It expands a SillyTavern PNG (`ccv3` / `chara` chunk) or V2/V3 JSON card in ST's exact prompt assembly order so you and the author can see what the original card actually sent to the model.
+`tavern card unroll` (`packages/runtime/bin/unroll.ts`) is a read-only inspection instrument—not an unattended converter. It expands a SillyTavern PNG (`ccv3` / `chara` chunk) or V2/V3 JSON card in ST's exact prompt assembly order so you and the author can see what the original card actually sent to the model.
 
 ```sh
-bun packages/runtime/bin/unroll.ts source-card.png --user 李 > unrolled.md
-bun packages/runtime/bin/unroll.ts source-card.json --json
+bun run tavern card unroll source-card.png --user 李 > unrolled.md
+bun run tavern card unroll source-card.json --json
 ```
 
 Remastering workflow:
@@ -35,7 +35,7 @@ Remastering workflow:
 ## 2. Workshop CLI (`compile` / `sort` / `review`)
 
 Contract implementation: `packages/runtime/src/workshop.ts` and `packages/server/bin/tavern.ts`.
-Uses model route `routing.stages.author` (falling back to `routing.default` / env `MODEL`). Connect to a running dev/headless server with `--url http://127.0.0.1:7777` when the local SQLite library is open.
+Uses model route `routing.stages.author` (falling back to `routing.default` / env `MODEL`). Connect to a running dev/headless server with `--server http://127.0.0.1:7777` when the local SQLite library is open.
 
 ```sh
 # 1. Compile mechanism increments & bindings from selected prose + intent (leaves new prose slots empty)
@@ -64,7 +64,7 @@ Key invariants:
 
 ## 3. Deterministic Zero-Token Testing (`scenario.yaml`)
 
-`bun packages/runtime/bin/card.ts test <card> [scenario.yaml]` runs the full `Session` pipeline under the `plain` player layer (`zh`, `options` on) with zero online LLM calls. Omitting `scenario.yaml` runs a 1-turn smoke test.
+`bun run tavern card test <card> [scenario.yaml]` runs the full `Session` pipeline under the `plain` player layer (`zh`, `options` on) with zero online LLM calls. Omitting `scenario.yaml` runs a 1-turn smoke test.
 
 ```yaml
 seed: 42 # first die uses seed + 1, incrementing by 1 per roll (default 0)

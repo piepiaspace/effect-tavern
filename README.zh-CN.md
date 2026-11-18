@@ -96,7 +96,7 @@ bun --bun vp run dev
 MODEL=fake bun --bun vp run dev
 
 # 新库里没有卡片：从文件安装一张，或从卡库里取一张
-bun run tavern card install packages/runtime/test/cards/wuxia.yaml --url http://localhost:5173
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml --server http://localhost:5173
 bun run tavern depot add ./my-cards            # 含 index.json 的目录，或 https 地址
 bun run tavern depot show <卡库 id>            # 卡库里的卡，以及各自在书架上的状态
 bun run tavern depot pull <卡库 id> <卡片 id>  # 复制一张到书架
@@ -113,22 +113,22 @@ bun run tavern serve --port 7777
 bun run tavern card install packages/runtime/test/cards/wuxia.yaml
 MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
-# 管理故事库或单独启动无头 API 服务（默认库 .tavern/tavern.db；传 --url 连接运行中服务）
+# 管理故事库或单独启动无头 API 服务（从源码运行默认库是 ./.tavern，二进制是 ~/.tavern，--data <目录> 可换；传 --server <地址> 连接运行中服务）
 bun run tavern story list
 bun run tavern serve --headless --port 7777
 ```
 
-### 离线制卡与工坊工具链（`card`、`unroll`、`tavern card`）
+### 离线制卡与工坊工具链（`tavern card`）
 
 ```sh
 # 离线零 Token 制卡闭环（脚手架、静态 lint 检查、阶段请求预览、场景回归断言）
-bun packages/runtime/bin/card.ts init my-card --template readout
-bun packages/runtime/bin/card.ts check my-card.yaml
-bun packages/runtime/bin/card.ts view my-card.yaml --stage record --state affection=60
-bun packages/runtime/bin/card.ts test my-card.yaml
+bun run tavern card init my-card --template readout
+bun run tavern card check my-card.yaml
+bun run tavern card view my-card.yaml --stage record --state affection=60
+bun run tavern card test my-card.yaml
 
 # 按装配顺序只读展开 SillyTavern V2/V3（PNG 或 JSON）旧卡
-bun packages/runtime/bin/unroll.ts path/to/card.png
+bun run tavern card unroll path/to/card.png
 
 # AI 辅助工坊（编译规则绑定、原样段落归位、只读一致性审阅、校验安装）
 bun run tavern card compile my-card.yaml --select fiction.setting --intent "增加交情读数" -o candidate.yaml
