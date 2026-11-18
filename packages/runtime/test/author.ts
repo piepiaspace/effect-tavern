@@ -7,10 +7,10 @@ import type { Rows } from "../src/layer.ts"
 import { view } from "../src/view.ts"
 import { checkCard, scaffold, templates } from "../support/author.ts"
 import { runScenario } from "../support/scenario.ts"
+import { runCard } from "./command.ts"
 
-const bin = new URL("../bin/card.ts", import.meta.url).pathname
 const dir = mkdtempSync(join(tmpdir(), "author-"))
-const run = (...args: string[]) => Bun.spawnSync(["bun", bin, ...args], { cwd: dir, stdout: "pipe", stderr: "pipe" })
+const run = (...args: string[]) => runCard(args, dir)
 try {
   for (const template of templates) {
     const source = scaffold(template, template)
@@ -31,11 +31,11 @@ try {
     const card = { ...decodeCard(Bun.YAML.parse(scaffold("invalid", "chat"))), products: [product] }
     assert.ok(checkCard(Bun.YAML.stringify(card)).diagnostics.some((d) => d.level === "error"))
   }
-  assert.equal(run("init", "chat", "--template", "chat").exitCode, 0)
+  assert.equal((await run("init", "chat", "--template", "chat")).exitCode, 0)
   const original = readFileSync(join(dir, "chat.yaml"), "utf8")
-  assert.equal(run("init", "chat").exitCode, 1)
+  assert.equal((await run("init", "chat")).exitCode, 1)
   assert.equal(readFileSync(join(dir, "chat.yaml"), "utf8"), original)
-  assert.equal(run("test", "chat.yaml").exitCode, 0)
+  assert.equal((await run("test", "chat.yaml")).exitCode, 0)
   await runScenario(decodeCard(Bun.YAML.parse(original)), {
     steps: [
       {
@@ -51,11 +51,11 @@ try {
     scaffold("bad", "chat").replace("fields: []", "fields: [{path: x, type: int, initial: wrong}]"),
   ]) {
     writeFileSync(join(dir, "bad.yml"), source)
-    const result = run("check", "bad.yml", "--json")
+    const result = await run("check", "bad.yml", "--json")
     assert.equal(result.exitCode, 1)
-    assert.equal(JSON.parse(result.stdout.toString()).diagnostics[0].rule, "schema")
+    assert.equal(JSON.parse(result.stdout).diagnostics[0].rule, "schema")
   }
-  assert.equal(JSON.parse(run("check", "missing.yml", "--json").stdout.toString()).diagnostics[0].rule, "io")
+  assert.equal(JSON.parse((await run("check", "missing.yml", "--json")).stdout).diagnostics[0].rule, "io")
   const card: Card = {
     ...decodeCard(Bun.YAML.parse(scaffold("contract", "chat"))),
     director: true,
@@ -200,8 +200,8 @@ try {
 
   writeFileSync(join(dir, "contract.yml"), Bun.YAML.stringify(card))
   writeFileSync(join(dir, "scenario.yaml"), Bun.YAML.stringify(scenario))
-  assert.match(run("check", new URL("./cards/wuxia.yaml", import.meta.url).pathname).stdout.toString(), /hint:/)
-  const tested = run("test", "contract.yml", "scenario.yaml")
+  assert.match((await run("check", new URL("./cards/wuxia.yaml", import.meta.url).pathname)).stdout, /hint:/)
+  const tested = await run("test", "contract.yml", "scenario.yaml")
   assert.equal(tested.exitCode, 0, tested.stderr.toString())
 } finally {
   rmSync(dir, { recursive: true, force: true })

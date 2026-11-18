@@ -281,7 +281,7 @@ assert.deepEqual(
 )
 assert.equal(
   new LibraryHeld("f", 1).message,
-  "f is open in process 1; use --url to connect to that server or a separate DATA directory",
+  "f is open in process 1, a running tavern: pass --server <its address> to use it, or --data <another directory>",
 )
 const newer = explain(new LibraryNewer(9, 7), "en")
 assert.deepEqual([newer.code, newer.facts], ["library-newer", "user_version 9 > 7"])

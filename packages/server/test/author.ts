@@ -168,7 +168,7 @@ try {
   })
   assert.deepEqual(((await (await request(wholeUrl)).json()) as { card: unknown }).card, retitled)
   await install(card)
-  // CLI runs the same fixtures through both local SQLite routing and --url HTTP.
+  // CLI runs the same fixtures through both local SQLite routing and --server HTTP.
   const local = open(join(dir, "tavern.db"))
   configure(local)
   local.close()
@@ -195,7 +195,7 @@ try {
     if (args[0] === "compile") assert.match(stderr, /scenario: (PASS|FAIL)/)
     return stdout
   }
-  for (const remote of [[], ["--url", url]]) {
+  for (const remote of [[], ["--server", url]]) {
     // A failed scenario remains advisory: the remote candidate is still written.
     if (remote.length) writeFileSync(join(dir, "card.scenario.yaml"), "steps: invalid")
     fixture(good)

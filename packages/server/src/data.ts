@@ -215,14 +215,17 @@ const alive = (pid: number) => {
   }
 }
 /** A library another live process holds (its pid in the lock): what `open` refuses with, by a code the terminal words
- *  (term/explain.ts). The message keeps the old hint for now. */
+ *  (term/explain.ts). */
 export class LibraryHeld extends Error {
   readonly code = "library-held"
   constructor(
     readonly file: string,
     readonly pid: number,
   ) {
-    super(`${file} is open in process ${pid}; use --url to connect to that server or a separate DATA directory`)
+    super(
+      `${file} is open in process ${pid}, a running tavern: pass --server <its address> to use it, ` +
+        `or --data <another directory>`,
+    )
   }
 }
 /** A library stamped by a newer program than this one (`user_version` past `latest`): never opened, never downgraded. */

@@ -31,10 +31,11 @@ jobs:
         working-directory: packages/client
         run: bun --bun vp build
 
+      # bin/tavern.ts with the page inside; `tavern --version` answers the tag without its v
       - name: Compile for Android
         working-directory: packages/server
         run: |
-          bun run compile:android
+          VERSION="${GITHUB_REF_NAME#v}" bun run compile:android
           gzip -9 -c dist/tavern-android > dist/tavern-android.gz
 
       # release.txt: the tag, then the feat/fix/perf subjects since the previous tag; it is the release's notes and what

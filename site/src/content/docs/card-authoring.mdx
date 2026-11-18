@@ -70,7 +70,7 @@ Always build a card in two distinct passes:
 
 Effect Tavern ships three AI-assisted Workshop operations (`packages/runtime/src/workshop.ts`, exposed via HTTP `/api/author/*` and `tavern card`):
 
-- **`unroll`** (`bun packages/runtime/bin/unroll.ts <card.png|card.json>`): Read-only inspection tool that prints a SillyTavern V2/V3 card in ST's exact assembly order, ready to audit and feed into `sort`.
+- **`tavern card unroll`** (`bun run tavern card unroll <card.png|card.json>`): Read-only inspection tool that prints a SillyTavern V2/V3 card in ST's exact assembly order, ready to audit and feed into `sort`.
 - **`tavern card compile`**: Compiles `rules` and `bindings` from selected card prose and a natural-language `--intent`. Its output schema contains **no prose fields**—existing prose stays untouched and new prose/rubric slots remain empty (`empty-text`) for the author to write.
 - **`tavern card sort`**: Places whole paragraphs from a source Markdown file into `frame`, `fiction`, `greetings`, or `lore` slots verbatim without rewriting a word.
 - **`tavern card review`**: Read-only semantic consistency pass returning path-addressed `review:consistency` warnings.

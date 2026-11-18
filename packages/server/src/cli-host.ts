@@ -7,6 +7,7 @@ import type { Library, PublicEvent } from "./library.ts"
 import type { Attach } from "@effect-tavern/runtime/src/projection.ts"
 import type { CardRow, CardView, DepotRow, DepotView, Listing } from "@effect-tavern/runtime/src/library.ts"
 import { backup, markdown } from "./export.ts"
+import type { Config } from "./cli/config.ts"
 import { openHost } from "./host.ts"
 
 const named = (l: Local, user: string): Local => ({ ...l, names: { ...l.names, user } })
@@ -74,9 +75,41 @@ export const readEvents = async (response: Response, emit: Emit) => {
   if (buffer.trim() || data.length) throw new Error("incomplete event stream")
 }
 
-export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHost> => {
+/** The tavern at `--server` did not answer: nothing reached the library (exit 3). */
+export class Unreachable extends Error {
+  readonly code = "unreachable"
+  constructor(
+    readonly url: string,
+    cause: unknown,
+  ) {
+    super(`nothing answers at ${url} (${cause instanceof Error ? cause.message : String(cause)})`, { cause })
+  }
+}
+/** A refusal the server answered with: its own sentence and code, as the same call in-process would throw. */
+export class Answered extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message)
+  }
+}
+const answered = async (response: Response) => {
+  const text = await response.text()
+  try {
+    const body = JSON.parse(text) as { error?: unknown; code?: unknown }
+    if (typeof body.error === "string")
+      return new Answered(response.status, body.error, typeof body.code === "string" ? body.code : undefined)
+  } catch {}
+  return new Answered(response.status, `HTTP ${response.status}${text.trim() ? `: ${text.trim().slice(0, 300)}` : ""}`)
+}
+
+/** `--server` names a running tavern to talk to; without it the command opens the library itself. */
+export const connect = async (c: Pick<Config, "server" | "data" | "fake" | "inspect">): Promise<CliHost> => {
+  const url = c.server
   if (!url) {
-    const { lib, data } = await openHost(fakeModel)
+    const { lib, data } = await openHost({ ...c, inspect: false })
     const drain = (stream: Stream.Stream<PublicEvent>, emit: Emit) =>
       Effect.runPromise(Stream.runForEach(stream, (e) => Effect.sync(() => emit(e))))
     return {
@@ -121,7 +154,6 @@ export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHos
       close: () => data.close(),
     }
   }
-  if (fakeModel) throw new Error("--model fake applies to local play; configure MODEL on the remote server")
   const base = url.replace(/\/$/, "").replace(/\/api$/, "") + "/api"
   const request = async (path: string, method = "GET", body?: unknown, story?: number, text?: string) => {
     const response = await fetch(base + path, {
@@ -131,8 +163,10 @@ export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHos
         ...(story === undefined ? {} : { "x-tavern-story": String(story) }),
       },
       ...(text !== undefined ? { body: text } : body === undefined ? {} : { body: JSON.stringify(body) }),
+    }).catch((e) => {
+      throw new Unreachable(url, e)
     })
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`)
+    if (!response.ok) throw await answered(response)
     return response
   }
   const json = async <T>(path: string, method = "GET", body?: unknown, story?: number): Promise<T> =>

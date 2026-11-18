@@ -23,7 +23,7 @@ Instead of relying on prompt incantations, chat-depth injections, and regex scra
     Design cards with the two-hat workflow, author `rules`, `lore`, and `products`, or remaster legacy cards.
   </Card>
   <Card title="CLI & Headless Host" icon="ph:terminal-window" href="/cli/">
-    Run `card`, `unroll`, and `tavern` for zero-token testing, terminal play, Workshop compilation, and SSE hosting.
+    Run one command, `tavern`, for zero-token testing, terminal play, Workshop compilation, and SSE hosting.
   </Card>
   <Card title="Layers, Packs & Hats" icon="ph:stack" href="/layers-and-packs/">
     Customize voice, writing switches, enhancer packs, provider hats, and decision pre-checks without presets.
@@ -53,7 +53,7 @@ Instead of relying on prompt incantations, chat-depth injections, and regex scra
     ```sh
     bun run tavern card install packages/runtime/test/cards/wuxia.yaml
     MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
-    bun packages/runtime/bin/card.ts check packages/runtime/test/cards/wuxia.yaml
+    bun run tavern card check packages/runtime/test/cards/wuxia.yaml
     ```
   </Step>
   <Step title="Run static checks & verification">
