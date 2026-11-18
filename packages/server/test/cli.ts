@@ -32,11 +32,11 @@ const bin = new URL("../bin/tavern.ts", import.meta.url).pathname
   assert.equal(config({ data: "/c" }, world({ DATA: "/a", TAVERN_DATA: "/b" })).data, "/c")
   const bare = config({}, world({}))
   assert.deepEqual(
-    [bare.port, bare.portAsked, bare.bind, bare.lang, bare.json, bare.inspect, bare.fake],
-    [7777, false, "127.0.0.1", "zh", false, false, false],
+    [bare.port, bare.bind, bare.lang, bare.json, bare.inspect, bare.fake],
+    [7777, "127.0.0.1", "zh", false, false, false],
   )
   const phone = config({}, world({ PORT: "8080", HOST: "0.0.0.0", TAVERN_URL: "https://m" }))
-  assert.deepEqual([phone.port, phone.portAsked, phone.bind, phone.mirror], [8080, true, "0.0.0.0", "https://m"])
+  assert.deepEqual([phone.port, phone.bind, phone.mirror], [8080, "0.0.0.0", "https://m"])
   const named = world({ PORT: "1", TAVERN_PORT: "2", TAVERN_BIND: "::1", TAVERN_MIRROR: "https://n", TAVERN_URL: "x" })
   assert.deepEqual([config({}, named).port, config({}, named).bind, config({}, named).mirror], [2, "::1", "https://n"])
   assert.equal(config({ port: 3 }, named).port, 3)

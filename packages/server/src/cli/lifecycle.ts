@@ -1,8 +1,8 @@
 // A tavern's life seen from another command on the same data directory: whether one serves it (its address file and
 // pid, announce.ts), `tavern status` (instant and offline: the library is never opened), `tavern stop`, and what a
 // second `tavern` says while one already serves.
-import { alive, announced, holder, type Address } from "../announce.ts"
-import type { HostFacts } from "../reach.ts"
+import { alive, announced, holder, libraryFile, type Address } from "../announce.ts"
+import { HostSilent, type HostFacts } from "../reach.ts"
 import { over } from "../wire.ts"
 import type { Config, World } from "./config.ts"
 import type { Device } from "./device.ts"
@@ -115,6 +115,8 @@ export const stop = async (c: Config, world: World, { patience = 15_000 }: { pat
   }
   // the dev session is the person's own `vp dev`, started and stopped in its terminal
   if (a.dev) throw new Failed("stop-dev", `process ${a.pid} is the dev session`, { pid: a.pid })
+  // The files may have survived a reboot and their pid may now belong to another program.
+  if ((await about(a.url))?.pid !== a.pid) throw new HostSilent(a.pid, libraryFile(c.data))
   try {
     process.kill(a.pid, "SIGTERM")
   } catch (e) {

@@ -42,7 +42,7 @@ import { locked, type Layer, type Local } from "@effect-tavern/runtime/src/layer
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
 import type { Change, Id, Log, Noded, Snapshot, Store } from "@effect-tavern/runtime/src/log.ts"
 import type { Facets } from "@effect-tavern/runtime/src/session.ts"
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
 import { alive } from "./announce.ts"
@@ -242,7 +242,13 @@ const lock = (file: string, isolateOnBusy: boolean): { file: string; unlock: () 
   const path = `${file}.lock`
   for (;;) {
     try {
-      writeFileSync(path, String(process.pid), { flag: "wx" })
+      const temp = `${path}.${process.pid}`
+      writeFileSync(temp, String(process.pid))
+      try {
+        linkSync(temp, path)
+      } finally {
+        rmSync(temp)
+      }
       break
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e

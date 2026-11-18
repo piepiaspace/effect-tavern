@@ -43,7 +43,7 @@ export const openWhenAnswering = async (origin: string, device: Device): Promise
 }
 
 export const start = async (
-  c: Pick<Config, "data" | "fake" | "inspect" | "port" | "bind" | "lang" | "log" | "version">,
+  c: Pick<Config, "data" | "fake" | "inspect" | "port" | "bind" | "lang" | "log" | "version"> & { json?: boolean },
   {
     dist,
     screen = stderrScreen(),
@@ -107,6 +107,7 @@ export const start = async (
       data.close()
     }
   } catch (e) {
+    if (c.json) throw e
     logbook.host({ failed: e })
     if (typeof e === "object" && e !== null) told.add(e)
     throw e

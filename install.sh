@@ -225,15 +225,18 @@ $(tilde "$HOME/.local/bin")" \
   got= && [ -n "$old" ] && got=$(answer "$old")
   case "$got" in
     "tavern "?*)
-      mv -f "$old" "$part" ||
-        fail "$(w 没能把原来的程序移过去 "Could not move the old binary")" \
+      cp -p "$old" "$part" ||
+        fail "$(w 没能复制原来的程序 "Could not copy the old binary")" \
           "$(w "手机的存储空间可能不够。" "The storage may be full.")" \
           "$(w "腾出 150 MB 空间后重新运行刚才的命令" "free 150 MB and run it again")"
       version=${got#tavern }
       ;;
     *) fetch ;;
   esac
-  mv -f "$part" "$dir/tavern"
+  if [ -d "$dir/tavern" ] || ! mv -f "$part" "$dir/tavern"; then
+    fail "$(w "没能安装 tavern" "Could not install tavern")" "$(tilde "$dir/tavern")" \
+      "$(w "检查目标路径和写入权限后重试" "check the destination and its permissions, then retry")"
+  fi
   rm -rf "$part.gz" "$part.err" "$part.out" "$part.data"
   part=
   bin=$dir/tavern
@@ -243,7 +246,8 @@ $(tilde "$HOME/.local/bin")" \
 exec $(quote "$bin") \"\$@\""
   if [ -f "$old_cmd" ] && ours "$old_cmd" && [ "$(cat "$old_cmd")" != "$forward" ]; then
     { printf '%s\n' "$forward" >"$old_cmd.part" && chmod +x "$old_cmd.part" && mv -f "$old_cmd.part" "$old_cmd"; } ||
-      rm -f "$old_cmd.part"
+      { rm -f "$old_cmd.part"; fail "$(w "没能更新旧命令" "Could not update the old command")" "$(tilde "$old_cmd")" \
+          "$(w "检查写入权限后重试" "check its permissions and retry")"; }
   fi
   if [ -d "$data/bin" ]; then
     rm -f "$data/bin/tavern-android" "$data/bin/tavern-android.gz" "$data/bin/tavern-android.part" \

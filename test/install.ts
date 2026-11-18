@@ -350,7 +350,7 @@ for (const shell of shells) {
       assert.equal(r.out, "")
       assert.deepEqual(tree(b), before, `${title}: nothing left behind`)
       assert.equal(version(b, join(b.bin, "tavern")), "tavern 0.9.1", `${title}: the previous binary still works`)
-      if (o.nobody && root) chmodSync(b.bin, 0o755)
+      if (o.nobody) chmodSync(b.bin, 0o755)
       rmSync(b.root, { recursive: true })
     }
     failing("a corrupt archive", (b) => release(b, "v0.9.2", { binary: Buffer.from("<html>not found</html>") }), [

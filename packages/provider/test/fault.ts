@@ -463,7 +463,9 @@ const cases: Case[] = [
     name: "no such host",
     format: "openai-compatible",
     url: "https://no-such-host.invalid",
-    fetch: () => (input, init) => globalThis.fetch(input, init),
+    fetch: () => async () => {
+      throw Object.assign(new Error("getaddrinfo ENOTFOUND no-such-host.invalid"), { code: "ENOTFOUND" })
+    },
     want: { code: "unreachable", errno: "ENOTFOUND", host: "no-such-host.invalid" },
   },
   {

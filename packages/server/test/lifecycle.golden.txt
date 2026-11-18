@@ -343,51 +343,6 @@ What 0.9.2 changes
 6 处要留意。
 技术细节：tavern doctor --verbose
 
-== tavern doctor --verbose zh
-✓ 设备      android-arm64，有发布版
-            platform=android arch=arm64
-            device=termux asset=tavern-android
-✓ 命令      $PREFIX/bin/tavern 0.9.1
-            self=<tmp>/self/doctor/tav
-            ern size=10485824
-            path=<tmp>/usr/bin/tavern
-✓ 数据      ~/doctored 可读写，1 MB
-            data=<tmp>/doctored
-            bytes=293
-! 存储      只剩 18 MB
-            > 更新要约 21 MB，先清理一些空间
-            dir=<tmp>/self/doctor
-            free=18874368 need=20971648
-! 酒馆      没有运行；端口 <port> 被别的程序占用
-            > 启动时换个端口：tavern --port
-              <port+1>
-            bind=127.0.0.1 port=<port>
-! 网络      有新版本 0.9.2
-            > tavern update
-            release=<tmp>/mirrors/good
-            tag=v0.9.2
-! 工具      缺少 termux-open-url
-            > pkg install termux-api，再装
-              Termux:API 应用
-            termux-wake-lock=yes
-            termux-wake-unlock=yes
-            termux-open-url=no
-! 旧文件    $PREFIX/bin/effect-tavern 还在
-            > 已不需要，可以删除：rm
-              $PREFIX/bin/effect-tavern && rm
-              -r ~/.tavern/bin
-            command=<tmp>/usr/bin/effe
-            ct-tavern
-            bin=<tmp>/.tavern/bin
-! 上次失败  11-18 14:07 故事3：服务商不认这把密
-            钥
-            > 到「设置」的「模型服务」里重新填
-              写这家的 API 密钥，再发送一次。
-            key-refused HTTP 401
-            authentication_error
-
-6 处要留意。
-
 == tavern doctor en
 ✓ device     android-arm64, has a release build
 ✓ command    $PREFIX/bin/tavern 0.9.1
@@ -418,56 +373,6 @@ What 0.9.2 changes
 
 6 to look at.
 Technical details: tavern doctor --verbose
-
-== tavern doctor --verbose en
-✓ device     android-arm64, has a release build
-             platform=android arch=arm64
-             device=termux asset=tavern-android
-✓ command    $PREFIX/bin/tavern 0.9.1
-             self=<tmp>/self/doctor/ta
-             vern size=10485824
-             path=<tmp>/usr/bin/tavern
-✓ data       ~/doctored readable and writable,
-             1 MB
-             data=<tmp>/doctored
-             bytes=293
-! storage    only 18 MB free
-             > An update needs about 21 MB;
-               free some space first
-             dir=<tmp>/self/doctor
-             free=18874368 need=20971648
-! tavern     not running; another program holds
-             port <port>
-             > Start on another port: tavern
-               --port <port+1>
-             bind=127.0.0.1 port=<port>
-! network    a new version: 0.9.2
-             > tavern update
-             release=<tmp>/mirrors/goo
-             d tag=v0.9.2
-! tools      missing termux-open-url
-             > pkg install termux-api, then
-               install the Termux:API app
-             termux-wake-lock=yes
-             termux-wake-unlock=yes
-             termux-open-url=no
-! old files  $PREFIX/bin/effect-tavern is still
-             there
-             > No longer needed; remove it: rm
-               $PREFIX/bin/effect-tavern && rm
-               -r ~/.tavern/bin
-             command=<tmp>/usr/bin/eff
-             ect-tavern
-             bin=<tmp>/.tavern/bin
-! last fail  11-18 14:07 story 3: The provider
-             refused the key
-             > In Settings, under Providers,
-               enter this provider's API key
-               again, then send again.
-             key-refused HTTP 401
-             authentication_error
-
-6 to look at.
 
 == tavern doctor (offline, a fresh phone) zh
 ✓ 设备      android-arm64，有发布版

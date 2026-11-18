@@ -181,7 +181,7 @@ export const openLogbook = (
   const faultOut = (f: Facts) => {
     if (inspect) return f
     const { body: _, ...rest } = f
-    return rest
+    return { ...rest, message: "" }
   }
   const keep = (e: Entry) => {
     safe(() =>
@@ -206,7 +206,7 @@ export const openLogbook = (
         ...(e.fault && { fault: faultOut(e.fault) }),
       }),
     )
-    if (e.end === "failed") sayBlock(failedHead(e, cells(screen), paint()), () => troubleOf(e.fault!, lang))
+    if (e.end === "failed") sayBlock(failedHead(e, cells(screen), paint()), () => troubleOf(faultOut(e.fault!), lang))
     else if (level !== "quiet") say(finished(e, cells(screen), paint()))
   }
 

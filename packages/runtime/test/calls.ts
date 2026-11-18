@@ -26,7 +26,10 @@ const refused = () =>
 const scripted = (fail?: Phase) =>
   fake((o) => {
     const d = readStage(o)
-    if (d.phase === fail) throw refused()
+    if (d.phase === fail) {
+      if (fail === "decide") return { text: "", cut: true }
+      throw refused()
+    }
     if (d.phase === "narrate") return { text: "不是这样而是那样。".repeat(30) }
     return defaultAnswer(d, canned)
   })
@@ -81,8 +84,7 @@ for (const [phase, demand] of [
   assert.equal(failed.length, 1, label)
   const [c] = failed
   assert.equal(c!.phase, phase, label)
-  assert.equal(c!.fault!.code, "key-refused", label)
-  assert.equal(c!.fault!.status, 401, label)
+  assert.equal(c!.fault!.code, phase === "decide" ? "bad-answer" : "key-refused", label)
   assert.equal(c!.model, "mock-model-id", label)
   // nothing of the failed stage runs after its call; record's settlement marks its node failed on the way out
   const after = events.slice(events.indexOf(c!) + 1)

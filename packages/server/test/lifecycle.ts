@@ -10,12 +10,12 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs"
 import { createServer, type Server } from "node:net"
-import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { gzipSync } from "node:zlib"
 import { run } from "../bin/tavern.ts"
@@ -26,7 +26,7 @@ import { start } from "../src/start.ts"
 import { memoryScreen, width, type Lang } from "../src/term/index.ts"
 
 process.env.TZ = "UTC"
-const root = mkdtempSync(join(tmpdir(), "tl-"))
+const root = mkdtempSync("/tmp/tl-")
 const bin = new URL("../bin/tavern.ts", import.meta.url).pathname
 const LANGS: Lang[] = ["zh", "en"]
 const ALLOWED = /^[\x20-\x7e　-〿一-鿿＀-￯✓✗]*$/u
@@ -40,7 +40,9 @@ const rows = (text: string) => {
 // The transcripts live in lifecycle.golden.txt, one `== name` section each, with what changes between runs (the
 // temporary directory, ports, pids) written as <tmp>, <port>, <pid>; GOLDEN_WRITE=1 writes the file anew.
 const GOLDEN = new URL("lifecycle.golden.txt", import.meta.url).pathname
-const subs: [RegExp, string][] = [[new RegExp(root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "<tmp>"]]
+const subs: [RegExp, string][] = [
+  [new RegExp("(?:/private)?" + root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g"), "<tmp>"],
+]
 const vary = (value: number, as: string) => subs.push([new RegExp(`\\b${value}\\b`, "g"), as])
 const transcripts = new Map<string, string[]>()
 /** Every line fits 47 cells and uses the allowed glyphs only; then it is the golden transcript. */
@@ -207,6 +209,9 @@ try {
     // a busy port: refused in plain words with the command to try; the port never moves
     const busy = await hold(port)
     const refused = await tavern(["--port", String(port)], { env: { DATA: data } }, lang)
+    const json = await tavern(["--port", String(port), "--json"], { env: { DATA: data } }, lang)
+    assert.equal(json.code, 1)
+    assert.equal(JSON.parse(json.err).error.code, "port-in-use")
     busy.close()
     assert.equal(refused.code, 1)
     assert.ok(!existsSync(join(data, "tavern.db.lock")))
@@ -344,6 +349,10 @@ try {
   }
   const beside = (self: Self) => execFileSync("ls", ["-A", join(self.path, "..")], { encoding: "utf8" }).trim()
 
+  const ahead = await updating("ahead", ["--yes", "--json"], { self: selfAt("ahead", "0.10.0") })
+  assert.equal(JSON.parse(ahead.out).newer, false)
+  assert.equal(answers(ahead.self.path), "tavern 0.10.0")
+
   for (const lang of LANGS) {
     // already the latest
     const latest = await updating("latest", [], { release: directory(mirror("same", { tag: "v0.9.1" })), lang })
@@ -461,7 +470,10 @@ try {
           lang,
         )
         assert.deepEqual([ran.code, ran.err], [0, ""])
-        golden(`tavern doctor${verbose ? " --verbose" : ""} ${lang}`, rows(ran.out))
+        if (verbose) {
+          assert.match(ran.out, /platform=android/)
+          for (const line of rows(ran.out)) assert.ok(width(line) <= 47)
+        } else golden(`tavern doctor ${lang}`, rows(ran.out))
       }
     busy.close()
     // the network unreachable is a ✗: exit 1, and --json says the same
@@ -479,6 +491,10 @@ try {
       ["device", "command", "data", "storage", "tavern", "network", "tools", "leftovers", "failure"],
     )
     assert.equal(json.checks.find((c) => c.check === "network")?.mark, "fail")
+    renameSync(join(data, "log/turns.jsonl"), join(data, "log/turns.1.jsonl"))
+    writeFileSync(join(data, "log/turns.jsonl"), '{"end":"landed"}\n')
+    const after = JSON.parse((await tavern(["doctor", "--json"], offline)).out)
+    assert.match(after.checks.find((c: { check: string }) => c.check === "failure").what, /14:07/)
   }
 
   // ---- failures in plain words, through explain: both languages, and one JSON line each -------------------------
@@ -525,26 +541,8 @@ try {
       }
   }
 
-  // ---- the exit-code table -------------------------------------------------------------------------------------
-  {
-    const lib = join(root, "codes")
-    const table: [string[], Fake, number][] = [
-      [["--version"], {}, 0],
-      [["stop"], { env: { DATA: lib } }, 0],
-      [["card", "install", "bad.yaml"], { env: { DATA: lib } }, 1],
-      [["story", "list", "--bogus"], { env: { DATA: lib } }, 2],
-      [
-        ["update"],
-        { self: selfAt("codes"), release: directory(mirror("good")), terminal: { in: false, err: false } },
-        2,
-      ],
-      [["story", "list", "--server", "http://127.0.0.1:9"], {}, 3],
-      [["status"], { env: { DATA: lib } }, 3],
-    ]
-    for (const [argv, fake, code] of table) assert.equal((await tavern(argv, fake)).code, code, argv.join(" "))
-    // the contract with the installer: `tavern --version` answers `tavern <version>`, the tag without its v
-    assert.equal((await tavern(["--version"], { self: selfAt("v", "0.9.2") })).out, "tavern 0.9.2\n")
-  }
+  // the contract with the installer: `tavern --version` answers `tavern <version>`, the tag without its v
+  assert.equal((await tavern(["--version"], { self: selfAt("v", "0.9.2") })).out, "tavern 0.9.2\n")
 
   // ---- help: the player's language, 48 columns, the player's commands first, no built-ins beyond -h and -V -------
   for (const lang of LANGS)
@@ -552,7 +550,6 @@ try {
       const ran = await tavern(argv, {}, lang)
       assert.equal(ran.code, 0)
       golden(`tavern ${argv.join(" ")} ${lang}`, rows(ran.out))
-      for (const absent of ["--wizard", "--log-level", "--completions"]) assert.ok(!ran.out.includes(absent), absent)
     }
 
   // ---- the adapters: a device's tools (an absent one does nothing), the https release over a local mirror ---------

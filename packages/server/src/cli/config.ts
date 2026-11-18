@@ -117,8 +117,6 @@ export interface Config {
   /** The library's directory, absolute: `--data`, TAVERN_DATA, DATA, else `~/.tavern` (binary) or `./.tavern`. */
   readonly data: string
   readonly port: number
-  /** The port was named (flag or environment), not the default: a busy one is then not the program's to replace. */
-  readonly portAsked: boolean
   readonly bind: string
   /** Talk to the tavern at this address instead of opening the library. */
   readonly server?: string
@@ -171,7 +169,6 @@ export const config = (
   return {
     data: data ? resolve(world.cwd, data) : resolve(from === "binary" ? world.home : world.cwd, ".tavern"),
     port: flags.port ?? (named ? port(named.name, named.value) : 7777),
-    portAsked: flags.port !== undefined || named !== undefined,
     bind: flags.bind ?? env("TAVERN_BIND", "HOST")?.value ?? "127.0.0.1",
     ...(server && { server }),
     lang: world.env["TAVERN_LANG"] === "en" ? "en" : "zh",

@@ -75,7 +75,7 @@ const refused = Object.assign(new Error("invalid x-api-key"), {
   url: "https://api.anthropic.com/v1/messages",
   responseBody: JSON.stringify({
     type: "error",
-    error: { type: "authentication_error", message: "invalid x-api-key" },
+    error: { type: "authentication_error", message: SECRET },
   }),
 })
 const failure = new ModelError({ message: "invalid x-api-key", cause: refused })
@@ -287,8 +287,16 @@ const playAll = async (
   assert.equal(failed.phase, "narrate")
   assert.equal(failed.fault.code, "key-refused")
   assert.equal(failed.fault.status, 401)
+  assert.ok(!JSON.stringify(failed).includes(SECRET))
   assert.equal(failed.fault.body, undefined)
   assert.equal(failed.calls.at(-1).fault.code, "key-refused")
+  // A provider's validation message can quote the player's input.
+  const screen = recording({ columns: 48 })
+  const book = openLogbook({ dir: d, screen, guest: true })
+  const error = new ModelError({ message: SECRET, cause: Object.assign(new Error(SECRET), { statusCode: 400 }) })
+  await run(book.turn(3, () => {})({ kind: "act", input: { text: SECRET } }, Stream.fail(error)))
+  assert.ok(!screen.raw().includes("SENTINEL"))
+  assert.ok(!readFileSync(join(d, "turns.jsonl"), "utf8").includes("SENTINEL"))
   // record failed after its node landed: the node is the entry's, its call filed under it
   assert.equal(entries[Object.keys(scripts).indexOf("failed-record")].node, 10)
   console.log(`  file: ${lines[0]}`)

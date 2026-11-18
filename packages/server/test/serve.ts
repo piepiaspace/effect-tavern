@@ -763,6 +763,7 @@ const sse = (text: string) =>
       version: "dev",
       scripted: false,
       page: false,
+      pid: process.pid,
     })
     lib.cards.remove("big")
   } finally {

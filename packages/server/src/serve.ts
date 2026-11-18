@@ -128,7 +128,7 @@
 //   GET  /card    the same for the story's own card.
 // Calls never travel on SSE. `inspect` includes request and result bodies in the selected trace; otherwise only
 // phase and metrics leave this endpoint, since tool arguments and results can contain private card text.
-//   GET  /host    who answers: {version, scripted, page}, the program's version, whether every stage runs on the
+//   GET  /host    who answers: {version, scripted, page, pid}, the program's version, whether every stage runs on the
 //                 scripted model (MODEL=fake), and whether the page is served beside the API. A command that found this
 //                 tavern by its address (reach.ts) reads it before anything else.
 // Both `handle` and `app` are Wires (wire.ts): a Request in, its Response out, the same whether a command calls it
@@ -272,7 +272,7 @@ export const handle = (
       const named = current ?? (asked !== undefined && lib.exists(asked) ? asked : undefined)
       return { current: named ?? rows[0]?.id ?? null, stories: rows }
     }
-    if (method === "GET" && url === "/host") return json(200, { version, scripted, page })
+    if (method === "GET" && url === "/host") return json(200, { version, scripted, page, pid: process.pid })
     if (method === "GET" && url === "/stories") return json(200, stories())
     if (method === "POST" && url === "/stories")
       return reply(async () => stories(lib.stories.create((await read(NewStory)).card)))

@@ -34,6 +34,7 @@ export class HostNotScripted extends Error {
 
 /** What GET /api/host answers. */
 export interface HostFacts {
+  pid: number
   version: string
   scripted: boolean
   page: boolean

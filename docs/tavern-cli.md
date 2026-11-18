@@ -148,7 +148,7 @@ MODEL=fake bun run tavern serve --headless --port 7777
 ```
 
 数据目录依次取 `--data`、`TAVERN_DATA`、`DATA`；都没有时，编译出的二进制用 `~/.tavern`，从源码运行用当前目录的
-`.tavern`（根目录的 `bun run tavern` 脚本设了 `TAVERN_DATA=.dev`，即开发网页服务的库）。设置只由
+`.tavern`（根目录的 `bun run tavern` 脚本在两个环境变量都未设置时使用 `.dev`，即开发网页服务的库）。设置只由
 `packages/server/src/cli/config.ts` 读取，优先级是 命令行 > `TAVERN_*` > 旧名 > 默认：
 `TAVERN_DATA`（旧名 `DATA`）、`TAVERN_PORT`（`PORT`）、`TAVERN_BIND`（`HOST`）、`TAVERN_SERVER`、`TAVERN_LANG`、
 `TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_ASSET`、`TAVERN_INSPECT`、`TAVERN_LOG`、`MODEL=fake`。
@@ -178,7 +178,7 @@ MODEL=fake bun run tavern serve --headless --port 7777
 
 地址文件指向的进程已经不在（或它不再持有锁）时，地址文件作废并被删除。锁文件本身的格式不变（只有 pid），
 旧版程序读到别的内容会把它当成死掉的进程而抢走锁。运行中的酒馆在 `GET /api/host` 回答
-`{version, scripted, page}`：版本、是否全程用脚本模型、是否同时提供网页。
+`{version, scripted, page, pid}`：版本、是否全程用脚本模型、是否同时提供网页，以及供 `stop` 核对的进程号。
 
 程序不带任何卡片，新库的书架是空的：卡片只能由 `card install`、卡库（`depot pull`）或工坊放上去。
 `card install` 接受一个 YAML 文件，或一张卡自己的 https 链接（由宿主读取一次），覆盖同 id 的已安装卡；`card remove` 在这张卡还有故事时拒绝。
@@ -247,12 +247,12 @@ Effect Tavern v0.9.2
 `--inspect` / `TAVERN_INSPECT=1` 是唯一的开关：`detail` 下逐条显示消息的开头，文件里带上请求与回答。
 
 每轮结束后，`<数据目录>/log/turns.jsonl` 追加一行 JSON：开始时间 `at`、`story`、`action`、`end`
-（`landed` / `stopped` / `withdrawn` / `failed`）、`ms`、`node`、失败时的 `phase` 与 `fault`（错误码与事实，没有响应体）、
+（`landed` / `stopped` / `withdrawn` / `failed`）、`ms`、`node`、失败时的 `phase` 与 `fault`（错误码与事实；默认省略响应体，清空可能回显正文的错误消息）、
 `usage` 合计，以及 `calls`（每次调用的 `phase`、`model`、`ms`、`usage`、失败时的 `fault`）。
 文件约 2 MB 时改名为 `turns.1.jsonl`（覆盖更早的那份），只保留两个文件。目录写不进时打印一行说明，故事照常进行。
 
 ```json
-{"at":"2026-11-18T11:18:36.831Z","story":1,"action":"act","end":"failed","ms":38,"phase":"narrate","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"calls":[{"phase":"narrate","model":"claude-haiku-5-5","ms":29,"usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"fault":{"code":"key-refused","message":"invalid x-api-key","status":401,"type":"authentication_error","host":"127.0.0.1:7793","model":"claude-haiku-5-5","requestId":"req_demo"}}],"fault":{"code":"key-refused","message":"invalid x-api-key","status":401,"type":"authentication_error","host":"127.0.0.1:7793","model":"claude-haiku-5-5","requestId":"req_demo"}}
+{"at":"2026-11-18T11:18:36.831Z","story":1,"action":"act","end":"failed","ms":38,"phase":"narrate","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"calls":[{"phase":"narrate","model":"claude-haiku-5-5","ms":29,"usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"fault":{"code":"key-refused","message":"","status":401,"type":"authentication_error","host":"127.0.0.1:7793","model":"claude-haiku-5-5","requestId":"req_demo"}}],"fault":{"code":"key-refused","message":"","status":401,"type":"authentication_error","host":"127.0.0.1:7793","model":"claude-haiku-5-5","requestId":"req_demo"}}
 ```
 
 命令（`tavern play`、`card install` 等）自己不打印日志：日志只在服务说“已启动”之后开口。

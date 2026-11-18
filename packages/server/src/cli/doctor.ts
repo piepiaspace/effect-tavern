@@ -12,7 +12,7 @@ import { mb } from "../term/codes.ts"
 import { thisProgram, type Config, type Self, type World } from "./config.ts"
 import { noDevice, type Device } from "./device.ts"
 import { about } from "./lifecycle.ts"
-import { assetFor, releaseAt, versionOf } from "./release.ts"
+import { assetFor, releaseAt, newerVersion, versionOf } from "./release.ts"
 import { screenOf, tilde, write } from "./say.ts"
 import { needFor } from "./update.ts"
 import { words, type Check } from "./words.ts"
@@ -65,6 +65,7 @@ const real = (p: string) => {
 
 /** The logbook's last failed turn and whether a turn came after it (`<data>/log/turns.jsonl`, then the rotated one). */
 export const lastFailure = (data: string): { at: string; story: number; fault: Facts; later: boolean } | undefined => {
+  let later = false
   for (const name of ["turns.jsonl", "turns.1.jsonl"]) {
     let text: string
     try {
@@ -77,10 +78,10 @@ export const lastFailure = (data: string): { at: string; story: number; fault: F
       try {
         const e = JSON.parse(lines[i]!) as { at?: string; story?: number; end?: string; fault?: Facts }
         if (e.end === "failed" && e.fault?.code)
-          return { at: e.at ?? "", story: e.story ?? 0, fault: e.fault, later: i < lines.length - 1 }
+          return { at: e.at ?? "", story: e.story ?? 0, fault: e.fault, later: later || i < lines.length - 1 }
       } catch {}
     }
-    if (lines.length) return undefined
+    later ||= lines.length > 0
   }
   return undefined
 }
@@ -224,7 +225,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
       new Promise<never>((_, reject) => setTimeout(() => reject(new Error("no answer in 15 s")), 15_000).unref()),
     ])
     const v = versionOf(latest.tag)
-    const behind = self.compiled && v !== self.version
+    const behind = self.compiled && newerVersion(v, self.version)
     add({
       check: "network",
       mark: behind ? "warn" : "ok",

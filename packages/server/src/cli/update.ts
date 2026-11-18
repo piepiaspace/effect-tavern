@@ -17,7 +17,7 @@ import { mb } from "../term/codes.ts"
 import { thisProgram, type Config, type World } from "./config.ts"
 import { noDevice } from "./device.ts"
 import { errno, Failed } from "./failed.ts"
-import { assetFor, releaseAt, versionOf, type Latest } from "./release.ts"
+import { assetFor, releaseAt, newerVersion, versionOf, type Latest } from "./release.ts"
 import { labelled, screenOf, step, write } from "./say.ts"
 import { words } from "./words.ts"
 
@@ -59,7 +59,7 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
 
   const latest: Latest = await release.latest()
   const target = versionOf(latest.tag)
-  const newer = target !== c.version
+  const newer = newerVersion(target, c.version)
   const result = (updated: boolean) => {
     if (c.json)
       world.out.write(

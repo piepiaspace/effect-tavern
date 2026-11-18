@@ -40,6 +40,9 @@ export interface Release {
 /** The version a tag names: `v0.9.2` is `0.9.2`, as the binary is stamped. */
 export const versionOf = (tag: string) => tag.replace(/^v/, "")
 
+export const newerVersion = (target: string, current: string) =>
+  current === "dev" || Bun.semver.order(target, current) > 0
+
 /** release.txt: the tag, then the notes. Anything else (a captive portal's page, an empty file) is no release. */
 export const parseRelease = (text: string, where: string): Latest => {
   const [first = "", ...rest] = text.replace(/^﻿/, "").split(/\r?\n/)

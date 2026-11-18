@@ -31,7 +31,8 @@ import { node } from "./wire.ts"
 
 // a compiled binary (bun build --compile) has no checkout around it: its library lives where it is run
 const dir =
-  process.env["DATA"] ??
+  process.env["TAVERN_DATA"] ||
+  process.env["DATA"] ||
   (import.meta.url.includes("$bunfs")
     ? `${process.cwd()}/.dev`
     : fileURLToPath(new URL("../../../.dev/", import.meta.url)))
