@@ -723,7 +723,9 @@ await run(false)
     done = Promise.withResolvers<void>()
     const flood = await send(10 << 20)
     await done.promise
-    assert.deepEqual([flood.code, writes], ["ECONNRESET", 1])
+    // the client learns of the cut on its next read (ECONNRESET) or its next write (EPIPE), whichever the race gives
+    assert.ok(flood.code === "ECONNRESET" || flood.code === "EPIPE", `flood ended with ${flood.code}`)
+    assert.equal(writes, 1)
   } finally {
     server.close()
   }
