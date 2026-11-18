@@ -428,8 +428,7 @@ const tree = (world: World) => {
 
 /** The library cannot be reached: held by another process, from a newer version, or nothing answers at --server. */
 const unreachable = (e: unknown) =>
-  e instanceof Unreachable ||
-  ["library-held", "library-newer"].includes(String((e as { code?: unknown } | null)?.code))
+  e instanceof Unreachable || ["library-held", "library-newer"].includes(String((e as { code?: unknown } | null)?.code))
 const said = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
 export const run = async (argv: readonly string[], world: World): Promise<ExitCode> => {
