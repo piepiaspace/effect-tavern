@@ -1,8 +1,10 @@
 node_modules/
 dist/
 .dev/
-.agents/
 
-# agent worktrees (Claude Code)
-.claude/worktrees/
+# coding agents: dotfiles, linked skills, skill locks
+.agents/
+.claude/
+.commandcode/
+skills-lock.json
 .DS_Store
