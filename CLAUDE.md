@@ -92,7 +92,7 @@ A card's own text (labels, group names, openings) and the model's words are neve
 
 ## Dev
 
-Tests are `vp run verify` (bun assert scripts per package, `test/*.ts`, and the root's `test/install.ts` for the phone installer `install.sh`); the `vp test` built-in finds no vitest files and exits 1. Run `vp run verify:ui` in `packages/client` whenever client controls, dialogs, popups, or gestures change (see `## UI SDK`).
+A pre-push hook (`.vite-hooks/pre-push`, installed by `vp install` through `prepare`) runs `vp check`; the release workflow runs the whole `verify` before it publishes. Tests are `vp run verify` (bun assert scripts per package, `test/*.ts`, and the root's `test/install.ts` for the phone installer `install.sh`); the `vp test` built-in finds no vitest files and exits 1. Run `vp run verify:ui` in `packages/client` whenever client controls, dialogs, popups, or gestures change (see `## UI SDK`).
 
 `bun --bun vp run dev` at the root (`bun --bun vp dev` in `packages/client`; `--bun` makes the `node` Vite+ launches resolve to Bun) is the whole stack: the session (`packages/server/src/dev.ts`) runs inside the Vite process through its module runner, mounted at `/api`; client edits are HMR, runtime/server edits take effect on the next request. `MODEL=fake` scripts the model, the library lives in `.dev/tavern.db` (gitignored; `DATA=<dir>` moves it; delete it to start every story over). The user starts and stops `vp dev` in their own terminal; an agent uses it and never starts, restarts or kills it.
 

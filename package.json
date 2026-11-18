@@ -2,6 +2,7 @@
   "name": "effect-tavern",
   "private": true,
   "scripts": {
+    "prepare": "vp config --no-agent",
     "dev": "cd packages/client && bun --bun vp dev",
     "verify": "pnpm -r verify && bun test/install.ts && bun test/release.ts",
     "tavern": "TAVERN_DATA=${TAVERN_DATA:-${DATA:-.dev}} bun packages/server/bin/tavern.ts",
