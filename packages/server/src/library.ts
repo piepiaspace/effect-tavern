@@ -28,6 +28,10 @@ import {
   connection,
   ConnectionError,
   decisionUrl,
+  diagnose,
+  facts,
+  type FaultCode,
+  type WireFacts,
   probeDecision,
   type CompileOptions,
   type DecisionConfig,
@@ -80,14 +84,17 @@ import { readHttps } from "./remote.ts"
 import { shelf } from "./shelf.ts"
 import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
 
-export type PublicEvent = TimelineEvent | { kind: "error"; message: string; code?: string; phase: Phase }
+/** A failed turn on the wire: the thrower's message as it came (the CLI's and the logs'), and the code a client words
+ *  it by (provider fault.ts `diagnose`, or `no-model`), with the facts those words read. Never the response body. */
+export type PublicError = { kind: "error"; message: string; code: FaultCode | "no-model"; phase: Phase } & WireFacts
+export type PublicEvent = TimelineEvent | PublicError
 
 /** The model test asks for this many output tokens: the least a gateway accepts (CommandCode refuses `max_tokens` under
  *  16), still a fraction of a cent on any model. */
 const PROBE_TOKENS = 16
 /** No pair for the stage and no environment model. Its `code` rides the stream's `error` event (serve.ts), so the client
  *  offers its way into Settings → 默认模型 without reading the message; a pair with no connection (providers.ts
- *  `ConnectionError`) rides it the same way, into Settings → 服务商. */
+ *  `ConnectionError`) rides it the same way, into Settings → 服务商, and every other failure by its fault code. */
 export class NoModel extends Error {
   readonly code = "no-model"
   constructor() {
@@ -305,11 +312,13 @@ export const library = ({
       Stream.map((e): PublicEvent => {
         if (e.kind === "error") {
           const error = Cause.squash(e.cause)
+          const fault = diagnose(error) // a ConnectionError keeps its code
           return {
             kind: "error",
             phase: e.phase,
             message: error instanceof Error ? error.message : String(error),
-            ...((error instanceof NoModel || error instanceof ConnectionError) && { code: error.code }),
+            code: error instanceof NoModel ? error.code : fault.code,
+            ...facts(fault),
           }
         }
         if (e.kind !== "change") return e

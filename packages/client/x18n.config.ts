@@ -25,7 +25,7 @@ export default {
     // keys a table holds as data and `t()` reads where the word is drawn (the switches, the tabs, the stages, the
     // phases, the card page's spec rows, the shelf query's facet words, the refused rows' and URLs' sentences by code,
     // what the shelf or a card library refused by code and a library card's key by its state, the workshop's notice
-    // by why a save did not go through):
+    // by why a save did not go through, a failed turn's words by its fault code):
     // used, though no call names them
     keysInUse: [
       "switches.*",
@@ -58,6 +58,7 @@ export default {
       "card.facet*",
       "writing.dropped*",
       "providers.url*",
+      "fault.*",
     ],
   },
   plugins: [{ name: "tavern", placeholders: [braces] }],

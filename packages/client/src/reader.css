@@ -591,6 +591,14 @@ main > section:is(:hover, :focus-within) > :is(.actions, .theater) .acts {
   text-underline-offset: 2px;
   white-space: nowrap;
 }
+/* a failed call in words: what happened leads, the cause and the next step follow in the same run of text */
+:is(.error, .settlement, .failed) .what {
+  color: var(--ink);
+  font-weight: 550;
+}
+:is(.error, .settlement, .failed) .next + .go {
+  margin-inline-start: var(--space-1);
+}
 
 button {
   font: inherit;
