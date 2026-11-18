@@ -15,9 +15,9 @@
     "dev": "cd packages/client && bun --bun vp dev",
     "verify": "bun run --filter './packages/*' verify && bun test/install.ts && bun test/release.ts",
     "tavern": "TAVERN_DATA=${TAVERN_DATA:-${DATA:-.dev}} bun packages/server/bin/tavern.ts",
-    "docs:dev": "bun --cwd site run dev",
-    "docs:build": "bun --cwd site run build",
-    "docs:check": "cd site && bunx nimbus-docs check && bun run typecheck && bun run build && bunx nimbus-docs check"
+    "docs:dev": "bun --bun --cwd site run dev",
+    "docs:build": "bun --bun --cwd site run build",
+    "docs:check": "cd site && bunx --bun nimbus-docs check && bun --bun run typecheck && bun --bun run build && bunx --bun nimbus-docs check"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.94.0",
@@ -28,8 +28,7 @@
     "vite": "npm:@voidzero-dev/vite-plus-core@8.3.8000"
   },
   "engines": {
-    "bun": ">=1.4.4",
-    "node": ">=24"
+    "bun": ">=1.4.4"
   },
   "packageManager": "bun@1.4.4"
 }

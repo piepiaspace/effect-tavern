@@ -79,7 +79,7 @@ curl -fsSL https://github.com/piepiaspace/effect-tavern/releases/latest/download
 
 ### 环境要求
 
-- **Bun** `>= 1.4.4` 且 **Node.js** `>= 24`
+- **Bun** `>= 1.4.4`
 - **Vite+**（`vp` CLI；依赖由 Bun 安装）
 
 ```sh

@@ -87,7 +87,7 @@ The program ships with no cards. A new install's shelf is empty: open **Settings
 
 ### Prerequisites
 
-- **Bun** `>= 1.4.4` and **Node.js** `>= 24`
+- **Bun** `>= 1.4.4`
 - **Vite+** (`vp` CLI; Bun installs the packages)
 
 ```sh
