@@ -7,9 +7,13 @@ import { mkdirSync } from "node:fs"
 import { join } from "node:path"
 import type { Config } from "./cli/config.ts"
 import { open } from "./data.ts"
+import type { Ledger } from "./ledger.ts"
 import { tavern } from "./tavern.ts"
 
-export const openHost = async ({ data: dir, fake: scripted, inspect }: Pick<Config, "data" | "fake" | "inspect">) => {
+export const openHost = async (
+  { data: dir, fake: scripted, inspect }: Pick<Config, "data" | "fake" | "inspect">,
+  ledger?: Ledger, // the running server's (start.ts); a command's library keeps a silent one
+) => {
   mkdirSync(dir, { recursive: true })
   const data = open(join(dir, "tavern.db"))
   const model = scripted ? fake((call) => defaultAnswer(readStage(call), { notes: "", options: [] })) : undefined
@@ -18,5 +22,6 @@ export const openHost = async ({ data: dir, fake: scripted, inspect }: Pick<Conf
     inspect,
     overlay: plain.harness,
     ...(model && { model: () => model, pinned: true }),
+    ...(ledger && { ledger }),
   })
 }

@@ -19,6 +19,8 @@
 // from the tables on every call the same way: a routing or provider edit is in force from the next request. A pair
 // that does not resolve (provider gone, disabled, no key, no endpoint) fails that request naming the provider. A stage
 // the row does not name runs on `model`, the environment's (dev.ts); `pinned` puts it over the row (MODEL=fake).
+// Every turn's stream passes through the `ledger` (ledger.ts), which files its calls under the node; a library given
+// none has a silent one (nothing is printed before a host says it is up).
 import type { CardView, Persona, StoryRow } from "@effect-tavern/runtime/src/library.ts"
 export type { CardRow } from "@effect-tavern/runtime/src/library.ts"
 export { Routing } from "@effect-tavern/runtime/src/session.ts"
@@ -78,6 +80,7 @@ import { Cause, Effect, Stream } from "effect"
 import type { TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
 import type { Data } from "./data.ts"
 import { depots } from "./depot.ts"
+import { openLedger, type Ledger } from "./ledger.ts"
 import type { Exported } from "./export.ts"
 import { names } from "./names.ts"
 import { readHttps } from "./remote.ts"
@@ -111,12 +114,14 @@ export const library = ({
   model: env,
   pinned = false,
   fetch,
+  ledger = openLedger(),
 }: {
   data: Data
   overlay?: Layer // the harness overlay until one is stored
   model?: (phase: Phase) => Model
   pinned?: boolean
   fetch?: typeof globalThis.fetch // what a card library is read over (depot.ts); a test's own
+  ledger?: Ledger
 }) => {
   const sessions = new Map<Id, { session: Session; turn: Turn; stale?: boolean }>()
   // The install's cards (shelf.ts). A card replaced or removed takes the open sessions on it along: an idle one is
@@ -300,7 +305,8 @@ export const library = ({
       hat,
       policy,
     })
-    const opened = { session, turn: makeTurn(session, (node, calls) => data.calls(id).add(node, calls)) }
+    const filed = (node: Id, calls: readonly Call[]) => data.calls(id).add(node, calls)
+    const opened = { session, turn: makeTurn(session, ledger.turn(id, filed)) }
     sessions.set(id, opened)
     return opened
   }
@@ -333,6 +339,15 @@ export const library = ({
   return {
     /** The model a stage runs on and the fold policy, as every session reads them on its next request. */
     model,
+    /** The install's default model as the routing has it, "provider / model" (the narrate stage's when no default is
+     *  set); none when nothing is routed. Never throws: a pair whose provider is gone still names its ids. */
+    defaultModel: (): string | undefined => {
+      const r = routing()
+      const pair = r.default ?? r.stages?.narrate
+      if (!pair) return undefined
+      const p = data.providers.list().find((x) => x.id === pair.provider)
+      return `${p?.name || pair.provider} / ${pair.model}`
+    },
     author: author(() => model("author")),
     policy,
     session,
@@ -361,7 +376,9 @@ export const library = ({
           if (inspect) return c
           // a fast pass's verdict is no one's text: it stays, so the row reads pass / escalate without the bodies
           const verdict = c.via === "decision" ? (c.out as { verdict?: unknown } | undefined)?.verdict : undefined
-          return { ...c, msgs: [], out: verdict === undefined ? undefined : { verdict } }
+          // a failed call keeps its fault's facts and the thrower's sentence, never the response body
+          const fault = c.fault && { ...c.fault, body: undefined }
+          return { ...c, msgs: [], out: verdict === undefined ? undefined : { verdict }, ...(fault && { fault }) }
         })
     },
     exists,

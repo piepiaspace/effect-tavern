@@ -22,6 +22,7 @@ import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.
 import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { open } from "./data.ts"
+import { levels, openLedger, type Level } from "./ledger.ts"
 import { refresh } from "./names.ts"
 import { tavern } from "./tavern.ts"
 
@@ -104,4 +105,12 @@ export const { handler } = tavern({
   pinned: scripted, // MODEL=fake scripts every stage, whatever the routing says
   ...(key && { seed: { key } }), // a first start puts the local key in the vault (tavern.ts `seed`)
   inspect: true,
+  // a guest on Vite's terminal: finished turns and failures only (ledger.ts), its file beside the library
+  ledger: openLedger({
+    guest: true,
+    dir: `${dir}/log`,
+    lang: process.env["TAVERN_LANG"] === "en" ? "en" : "zh",
+    ...(levels.includes(process.env["TAVERN_LOG"] as Level) && { level: process.env["TAVERN_LOG"] as Level }),
+    inspect: process.env["TAVERN_INSPECT"] === "1",
+  }),
 })

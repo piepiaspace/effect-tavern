@@ -3,6 +3,7 @@
 // The legacy names (DATA, PORT, HOST, TAVERN_URL) stay because the phone's start.sh exports them.
 import { homedir } from "node:os"
 import { resolve } from "node:path"
+import { levels, type Level } from "../ledger.ts"
 
 /** Where a command writes: the process's stdout or stderr, or a string sink in tests. */
 export interface Writer {
@@ -41,6 +42,7 @@ export interface Flags {
   readonly bind?: string
   readonly inspect?: boolean
   readonly fake?: boolean
+  readonly log?: Level
 }
 export interface Config {
   /** The library's directory, absolute: `--data`, TAVERN_DATA, DATA, else `~/.tavern` (binary) or `./.tavern`. */
@@ -55,11 +57,19 @@ export interface Config {
   /** A mirror of the release's download directory. */
   readonly mirror?: string
   readonly json: boolean
-  /** Request and response bodies in the Inspector (and, later, text in the log). */
+  /** Request and response bodies in the Inspector, and text in the running server's log. */
   readonly inspect: boolean
   /** The scripted zero-token model (MODEL=fake). */
   readonly fake: boolean
+  /** How much the running server's log says (`--log`, TAVERN_LOG): quiet, turn (the default) or detail. */
+  readonly log: Level
   readonly version: string
+}
+
+const level = (value: string): Level => {
+  if (!(levels as readonly string[]).includes(value))
+    throw new Error(`TAVERN_LOG=${value} is not a log level (${levels.join(", ")})`)
+  return value as Level
 }
 
 const port = (name: string, value: string) => {
@@ -94,6 +104,7 @@ export const config = (
     json: flags.json ?? false,
     inspect: flags.inspect || world.env["TAVERN_INSPECT"] === "1",
     fake: flags.fake || world.env["MODEL"] === "fake",
+    log: flags.log ?? level(env("TAVERN_LOG")?.value ?? "turn"),
     version,
   }
 }

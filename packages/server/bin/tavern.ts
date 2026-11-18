@@ -20,7 +20,7 @@ import { format } from "node:util"
 import { compiled, config, processWorld, version, type Config, type Flags, type World } from "../src/cli/config.ts"
 import { connect, Unreachable, type CliHost } from "../src/cli-host.ts"
 import { play } from "../src/play.ts"
-import { start } from "../src/start.ts"
+import { start, told } from "../src/start.ts"
 
 export type ExitCode = 0 | 1 | 2 | 3
 
@@ -412,11 +412,25 @@ const tree = (world: World) => {
       ),
       inspect: Flag.Boolean("inspect").pipe(
         Flag.withDefault(false),
-        Flag.withDescription("keep request and response bodies in Inspector traces (TAVERN_INSPECT=1)"),
+        Flag.withDescription(
+          "keep request and response bodies in Inspector traces, and text in the log (TAVERN_INSPECT=1)",
+        ),
+      ),
+      log: Flag.Literals("log", ["quiet", "turn", "detail"]).pipe(
+        Flag.withDescription(
+          "what the terminal shows: quiet (failures only), turn (one line a turn, the default) or detail (every call; TAVERN_LOG)",
+        ),
+        Flag.optional,
       ),
     },
-    ({ port, bind, headless, inspect }) =>
-      serve({ port: Option.getOrUndefined(port), bind: Option.getOrUndefined(bind), headless, inspect }),
+    ({ port, bind, headless, inspect, log }) =>
+      serve({
+        port: Option.getOrUndefined(port),
+        bind: Option.getOrUndefined(bind),
+        headless,
+        inspect,
+        log: Option.getOrUndefined(log),
+      }),
   ).pipe(Command.withDescription("Serve the page and its API on this machine (the same as a bare `tavern`)"))
 
   return Command.make("tavern", {}, () => serve()).pipe(
@@ -468,7 +482,7 @@ export const run = async (argv: readonly string[], world: World): Promise<ExitCo
   const error = Cause.squash(exit.cause)
   if (CliError.isCliError(error) && error._tag === "ShowHelp") return error.errors.length ? 2 : 0
   if (Cause.hasInterruptsOnly(exit.cause)) return 1
-  world.err.write(`${said(error)}\n`)
+  if (!told.has(error as object)) world.err.write(`${said(error)}\n`) // start put it in plain words already
   return unreachable(error) ? 3 : 1
 }
 

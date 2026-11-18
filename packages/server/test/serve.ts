@@ -22,6 +22,8 @@ import { library } from "../src/library.ts"
 import { app, handle, serve } from "../src/serve.ts"
 import { shelf } from "../src/shelf.ts"
 import { tavern } from "../src/tavern.ts"
+import { openLedger } from "../src/ledger.ts"
+import { memoryScreen } from "../src/term/index.ts"
 
 // the localhost upstreams below stay off a shell proxy: through one, a refused socket comes back as the proxy's 502
 process.env.NO_PROXY = "localhost,127.0.0.1"
@@ -836,6 +838,68 @@ await run(false)
     }
   } finally {
     bare.close()
+  }
+}
+
+// End to end, one failure on three surfaces: record's provider answers 401 (the prose comes from the scripted model,
+// so a node lands). The running server's ledger draws the block on its screen, the failed call is stored under the
+// node with its fault (the Inspector's trace, no body), and the wire's `error` event carries the same code.
+{
+  const refusing = createServer((_, res) => {
+    res.writeHead(401, { "content-type": "application/json", "request-id": "req_2" })
+    res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } }))
+  }).listen(0)
+  await once(refusing, "listening")
+  const port = (refusing.address() as AddressInfo).port
+  const screen = memoryScreen({ columns: 48 })
+  const ledger = openLedger({ screen })
+  const t = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness, model, ledger })
+  ledger.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev", model: "Relay / m" })
+  const key = t.lib.secrets.add({ name: "K", value: "sk-test-0123456789abcdef" })
+  t.lib.providers.put({
+    id: "relay",
+    name: "Relay",
+    enabled: true,
+    defaultFormat: "anthropic",
+    endpoints: { anthropic: { url: `http://localhost:${port}` } },
+    secret: key.id,
+    models: [{ id: "m" }],
+  })
+  t.lib.routing.write({ stages: { record: { provider: "relay", model: "m" } } })
+  const story = t.lib.stories.create(chat.id)
+  const bare = createServer(t.handler).listen(0)
+  const base = `http://localhost:${(bare.address() as AddressInfo).port}`
+  try {
+    const events = sse(
+      await (
+        await fetch(base, {
+          method: "POST",
+          headers: { "x-tavern-story": String(story) },
+          body: JSON.stringify({ kind: "act", input: { text: "hi" } }),
+        })
+      ).text(),
+    )
+    const error = events.at(-1)!
+    assert.deepEqual(
+      [error.event, error.data.code, (error.data as { phase?: string }).phase],
+      ["error", "key-refused", "record"],
+    )
+    const node = t.lib.session(story).log.head!
+    const stored = t.lib.trace(story, node) as { phase: string; model?: string; fault?: Record<string, unknown> }[]
+    const failed = stored.find((c) => c.fault)!
+    assert.equal(failed.phase, "record")
+    assert.equal(failed.model, "m")
+    assert.equal(failed.fault!["code"], "key-refused")
+    assert.equal(failed.fault!["status"], 401)
+    assert.equal(failed.fault!["body"], undefined)
+    const shown = screen.shown()
+    const at = shown.findIndex((l) => / ✗ 故事\d+ +结算没有完成/.test(l))
+    assert.ok(at > 0, shown.join("\n"))
+    assert.deepEqual(shown.slice(at + 1, at + 3), ["  服务商不认这把密钥", "  密钥可能填错、过期，或已被停用。"])
+    assert.ok(shown.some((l) => l.includes("HTTP 401 authentication_error")))
+  } finally {
+    bare.close()
+    refusing.close()
   }
 }
 console.log("ok")

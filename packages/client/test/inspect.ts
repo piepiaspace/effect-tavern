@@ -341,3 +341,23 @@ assert.deepEqual(
   [{ kind: "wrote", names: ["好感度", "心情"] }],
 )
 assert.deepEqual(stepOps(step([]) as never, facts), [])
+
+// a failed call (its `fault`, filed with the node it failed under) is a failed row with the failed pill; a fast pass's
+// failure stays an escalation, its own row reading the precheck
+{
+  const fault = { code: "key-refused" as const, message: "invalid x-api-key", status: 401 }
+  const failed: Call = { ...call("record"), out: undefined, fault, model: "m" }
+  const decision: Call = {
+    ...call("check"),
+    via: "decision",
+    out: { lines: [], verdict: "escalate", error: "x" },
+    fault: { code: "unreachable", message: "x" },
+  }
+  assert.deepEqual(shape(rows([call("narrate"), decision, call("check"), failed], { end: "end" })), [
+    ["narrate", "ok"],
+    ["check", "ok"],
+    ["check", "ok"],
+    ["record", "failed"],
+  ])
+  assert.deepEqual(digest(rows([failed], { end: "end" })[0]!, 0, facts).pills, [{ word: "failed", tone: "bad" }])
+}
