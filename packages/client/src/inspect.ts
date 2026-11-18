@@ -35,16 +35,19 @@ export const rows = (calls: readonly Call[], turn: Pick<Turn<unknown>, "end">): 
     const drafting = c.phase === "narrate" && i < settled
     if (drafting) draft++
     const native = nativeTrace(c.out)
+    // a call that failed (its `fault`; a fast pass's failure is an escalation, not the stage's) is the turn's last
     const status: Status =
-      native?.status === "cancelled"
-        ? "stopped"
-        : native && native.status !== "completed"
-          ? "failed"
-          : c.phase === "check" && calls[i + 1]?.phase === "narrate"
+      c.fault && c.via !== "decision"
+        ? "failed"
+        : native?.status === "cancelled"
+          ? "stopped"
+          : native && native.status !== "completed"
             ? "failed"
-            : drafting && draft === narrates && turn.end === "stopped"
-              ? "stopped"
-              : "ok"
+            : c.phase === "check" && calls[i + 1]?.phase === "narrate"
+              ? "failed"
+              : drafting && draft === narrates && turn.end === "stopped"
+                ? "stopped"
+                : "ok"
     const drafted = narrates > 1 && i < settled && (c.phase === "narrate" || c.phase === "check")
     return { phase: c.phase, status, call: c, ...(drafted && { draft }) }
   })
@@ -327,6 +330,8 @@ export const digest = (r: Row, nth: number, f: Facts): Digest => {
     const names = r.phase === "lookup" ? readTitles(calls) : written(value, f)
     return { pills: [...(bad ? [bad] : []), ...names.map((text) => ({ text }))] }
   }
+  // a call that failed has no answer: the row says so, and the page words the fault (inspector.tsx)
+  if (r.call.fault && r.call.via !== "decision") return { pills: [{ word: "failed", tone: "bad" }] }
   if (r.call.via === "decision") {
     const x = precheck(out, r.phase)
     return {

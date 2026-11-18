@@ -24,6 +24,7 @@ import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import { announce as announceAt, local } from "./announce.ts"
 import { open } from "./data.ts"
+import { levels, openLedger, type Level } from "./ledger.ts"
 import { refresh } from "./names.ts"
 import { tavern } from "./tavern.ts"
 import { node } from "./wire.ts"
@@ -109,6 +110,14 @@ const { handler: wire } = tavern({
   inspect: true,
   scripted,
   page: true, // Vite serves it
+  // a guest on Vite's terminal: finished turns and failures only (ledger.ts), its file beside the library
+  ledger: openLedger({
+    guest: true,
+    dir: `${dir}/log`,
+    lang: process.env["TAVERN_LANG"] === "en" ? "en" : "zh",
+    ...(levels.includes(process.env["TAVERN_LOG"] as Level) && { level: process.env["TAVERN_LOG"] as Level }),
+    inspect: process.env["TAVERN_INSPECT"] === "1",
+  }),
 })
 /** What Vite's mount calls (packages/client/vite.config.ts). */
 export const handler = node(wire)

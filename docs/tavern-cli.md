@@ -6,7 +6,7 @@
 
 ```
 tavern            等于 tavern serve
-tavern serve      --port/-p  --bind  --headless  --inspect
+tavern serve      --port/-p  --bind  --headless  --inspect  --log
 tavern card       init check view test unroll     一个文件，离线
                   install list export remove      书架
                   compile sort review             作者模型
@@ -39,7 +39,7 @@ MODEL=fake bun run tavern serve --headless --port 7777
 `.tavern`（根目录的 `bun run tavern` 脚本设了 `TAVERN_DATA=.dev`，即开发网页服务的库）。设置只由
 `packages/server/src/cli/config.ts` 读取，优先级是 命令行 > `TAVERN_*` > 旧名 > 默认：
 `TAVERN_DATA`（旧名 `DATA`）、`TAVERN_PORT`（`PORT`）、`TAVERN_BIND`（`HOST`）、`TAVERN_SERVER`、`TAVERN_LANG`、
-`TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_INSPECT`、`MODEL=fake`。
+`TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_INSPECT`、`TAVERN_LOG`、`MODEL=fake`。
 `--json`、`--data`、`--server` 写在命令前后都可以。`tavern --version` 打印编译时写入的版本（取自发布标签），从源码运行是 `dev`。
 
 ### 命令怎样找到它的库
@@ -86,6 +86,64 @@ bun run tavern play 1 --server http://192.168.1.20:7777 --input '继续' --jsonl
 `--json` 让 stdout 只有一个 JSON 值。安装返回 `{id, installed}`，新建返回 `{id}`，
 移除返回 `{id, removed}`，list/show 返回列表/节点快照；`story export` 的 `--json` 等价于 `--format json`。
 show 默认打印阅读文本。`story remove` 是正式命令；`story delete` 作为隐藏别名保留一个版本，`story drop` 已去掉。
+
+## 运行中的服务在终端里显示什么（日志）
+
+`tavern serve` 运行时，终端（stderr）上的内容都来自日志（代码里叫 ledger，`packages/server/src/ledger.ts`）。
+单位是一轮：一轮调用了模型才记一行；HTTP 请求、静态文件、保存、切换版本这类不调用模型的动作不记。
+中文为默认，`TAVERN_LANG=en` 换英文；每行不超过终端宽度减一（手机按 48 列排版）。
+
+启动时先打印横幅：名称与版本、地址、数据目录、默认模型（没有设置时，是一条提示和去「设置」的「默认模型」的下一步）、
+怎样停止。启动失败（端口被占用、库正被另一个酒馆使用）打印同一种失败块，退出码不变。
+
+```
+Effect Tavern v0.9.2
+  地址  http://127.0.0.1:7777
+  数据  ~/.tavern
+  模型  Anthropic / claude-haiku-5-5
+  停止  Ctrl+C
+
+故事3  叙事 6.4s  已写 312 字  共 8.8s          （进行中的一行，原地刷新）
+14:02 ✓ 故事3  18.4s  6 次调用  入3.1k 出642
+14:05 ✓ 故事3 换一版  9.0s  4 次调用  入2.9k 出588
+14:07 ✗ 故事3  叙事没有完成  3.1s
+  服务商不认这把密钥
+  密钥可能填错、过期，或已被停用。
+  > 到「设置」的「模型服务」里重新填写这家的
+    API 密钥，再发送一次。
+  HTTP 401 authentication_error api.anthropic.com
+```
+
+一轮按故事 id 命名，不是普通的新一轮时加上动作（换一版、重写、编辑、重试、小剧场）；不显示故事标题。
+结束方式：`✓` 完成，`✓ … 已停止` 停在半路但留下了节点，`- … 已撤回` 在第一个字之前撤回、什么都没留下，
+`✗` 失败：失败块说明发生了什么、可能的原因、`>` 标出的下一步，最后一行是原始事实，转给帮你的人看。
+
+- 在 TTY 上，一轮进行时有一行原地刷新（阶段、这个阶段的秒数、已写字数、总秒数；跳动的十分位就是它还活着的信号），
+  结束后换成一行永久记录。颜色只在 TTY 上出现，`NO_COLOR` 或 `TERM=dumb` 关掉；含义从不只靠颜色。
+- 不是 TTY（管道、runit、journald）：同样的永久记录，带完整日期，没有转义字符，没有刷新行；
+  一次调用等了 60 秒还没回答时，打印一行说明。
+- 开发服务（`vp dev`）的终端归 Vite：只打印结束的一轮和失败，不打印横幅。
+
+三档（`tavern serve --log quiet|turn|detail` 或 `TAVERN_LOG`，默认 `turn`）：
+
+- `quiet`：只有横幅和失败。
+- `turn`：每轮一行（上面的样子）。
+- `detail`：另加每次调用一行（阶段、秒数、输入/输出 token、缓存命中比例、模型），以及这次请求的提纲：
+  消息条数与各角色的字数。
+
+默认不在终端或文件里写任何故事文字（玩家输入、模型回答、提示词、故事标题），只有 id、计数、大小、耗时、用量和失败事实。
+`--inspect` / `TAVERN_INSPECT=1` 是唯一的开关：`detail` 下逐条显示消息的开头，文件里带上请求与回答。
+
+每轮结束后，`<数据目录>/log/turns.jsonl` 追加一行 JSON：开始时间 `at`、`story`、`action`、`end`
+（`landed` / `stopped` / `withdrawn` / `failed`）、`ms`、`node`、失败时的 `phase` 与 `fault`（错误码与事实，没有响应体）、
+`usage` 合计，以及 `calls`（每次调用的 `phase`、`model`、`ms`、`usage`、失败时的 `fault`）。
+文件约 2 MB 时改名为 `turns.1.jsonl`（覆盖更早的那份），只保留两个文件。目录写不进时打印一行说明，故事照常进行。
+
+```json
+{"at":"2026-11-18T11:18:36.831Z","story":1,"action":"act","end":"failed","ms":38,"phase":"narrate","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"calls":[{"phase":"narrate","model":"claude-haiku-5-5","ms":29,"usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"fault":{"code":"key-refused","message":"invalid x-api-key","status":401,"type":"authentication_error","host":"127.0.0.1:7793","model":"claude-haiku-5-5","requestId":"req_demo"}}],"fault":{"code":"key-refused","message":"invalid x-api-key","status":401,"type":"authentication_error","host":"127.0.0.1:7793","model":"claude-haiku-5-5","requestId":"req_demo"}}
+```
+
+命令（`tavern play`、`card install` 等）自己不打印日志：日志只在服务说“已启动”之后开口。
 
 ## 普通终端游玩
 

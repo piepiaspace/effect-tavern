@@ -136,7 +136,7 @@ const ok = async (...args: string[]) => {
 const file = join(dir, "cli.yaml")
 writeFileSync(file, scaffold("cli", "chat"))
 let server: ReturnType<typeof Bun.spawn> | undefined
-/** The first address a starting server prints on stderr. */
+/** The address a starting server's banner names on stderr (its 地址 row). */
 const announced = async (child: ReturnType<typeof Bun.spawn>) => {
   const reader = (child.stderr as ReadableStream<Uint8Array>).getReader()
   let text = ""
@@ -146,10 +146,7 @@ const announced = async (child: ReturnType<typeof Bun.spawn>) => {
     text += new TextDecoder().decode(value)
   }
   reader.releaseLock()
-  return text
-    .trim()
-    .split("\n")
-    .find((line) => line.startsWith("http://"))!
+  return /http:\/\/\S+/.exec(text)![0]
 }
 /** The same commands in this process, on the same directory: run(argv, world), stdout as a string, no spawn. */
 const here = async (...args: string[]) => {

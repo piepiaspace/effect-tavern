@@ -22,7 +22,7 @@ import { compiled, config, processWorld, version, type Config, type Flags, type 
 import type { CliHost } from "../src/cli-host.ts"
 import { play } from "../src/play.ts"
 import { reach } from "../src/reach.ts"
-import { start } from "../src/start.ts"
+import { start, told } from "../src/start.ts"
 import { block, explain } from "../src/term/index.ts"
 
 export type ExitCode = 0 | 1 | 2 | 3
@@ -416,11 +416,25 @@ const tree = (world: World) => {
       ),
       inspect: Flag.Boolean("inspect").pipe(
         Flag.withDefault(false),
-        Flag.withDescription("keep request and response bodies in Inspector traces (TAVERN_INSPECT=1)"),
+        Flag.withDescription(
+          "keep request and response bodies in Inspector traces, and text in the log (TAVERN_INSPECT=1)",
+        ),
+      ),
+      log: Flag.Literals("log", ["quiet", "turn", "detail"]).pipe(
+        Flag.withDescription(
+          "what the terminal shows: quiet (failures only), turn (one line a turn, the default) or detail (every call; TAVERN_LOG)",
+        ),
+        Flag.optional,
       ),
     },
-    ({ port, bind, headless, inspect }) =>
-      serve({ port: Option.getOrUndefined(port), bind: Option.getOrUndefined(bind), headless, inspect }),
+    ({ port, bind, headless, inspect, log }) =>
+      serve({
+        port: Option.getOrUndefined(port),
+        bind: Option.getOrUndefined(bind),
+        headless,
+        inspect,
+        log: Option.getOrUndefined(log),
+      }),
   ).pipe(Command.withDescription("Serve the page and its API on this machine (the same as a bare `tavern`)"))
 
   return Command.make("tavern", {}, () => serve()).pipe(
@@ -475,10 +489,13 @@ export const run = async (argv: readonly string[], world: World): Promise<ExitCo
   const error = Cause.squash(exit.cause)
   if (CliError.isCliError(error) && error._tag === "ShowHelp") return error.errors.length ? 2 : 0
   if (Cause.hasInterruptsOnly(exit.cause)) return 1
+  // a failure to start is already on the terminal in plain words (start.ts, through the server's ledger)
+  const shown = told.has(error as object)
   if (!unreachable(error)) {
-    world.err.write(`${said(error)}\n`)
+    if (!shown) world.err.write(`${said(error)}\n`)
     return 1
   }
+  if (shown) return 3
   // the library out of reach, in plain words (step 1's): what happened, why, the next step, the raw facts
   const columns = (world.err as { columns?: number }).columns || Number(world.env["COLUMNS"]) || 80
   const screen = { write: (s: string) => world.err.write(s), columns, live: false, color: false }
