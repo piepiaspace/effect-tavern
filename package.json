@@ -11,7 +11,7 @@
     }
   },
   "scripts": {
-    "prepare": "vp config --no-agent && bun tools/skills.ts",
+    "prepare": "vp config --no-agent",
     "dev": "cd packages/client && bun --bun vp dev",
     "verify": "bun run --filter './packages/*' verify && bun test/install.ts && bun test/release.ts",
     "tavern": "TAVERN_DATA=${TAVERN_DATA:-${DATA:-.dev}} bun packages/server/bin/tavern.ts",

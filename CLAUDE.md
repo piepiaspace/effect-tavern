@@ -61,9 +61,9 @@ Names that no longer exist, and what to use:
 
 Tooling:
 
-- Skills: `tools/skills.ts` links the ones the Solid packages ship into `.claude/skills/pkg-*` (gitignored, re-created by
-  `vp install` through `prepare`; its `APPROVED` list is the approval): `reactivity-diagnostics` (every
-  warning code and its fix), `agent-loops` (capture evidence, assert budgets), `server-components` (unused, no SSR).
+- Skills: the Solid packages ship their own under `packages/client/node_modules/<pkg>/skills/<name>/SKILL.md`; read them
+  there: `solid-js` `reactivity-diagnostics` (every warning code and its fix), `@solidjs/diagnostics` `agent-loops`
+  (capture evidence, assert budgets), `@solidjs/web` `server-components` (unused, no SSR).
   The `solid-2.0` primer skill ships from rc.16 on; until the pin moves, the cheatsheet is the primer.
 - A console warning with a bracketed code, such as `[REACTIVE_WRITE_IN_OWNED_SCOPE]`, is a defect.
   Look it up in the repair guide; do not suppress it.
@@ -74,7 +74,7 @@ Tooling:
 
 ## UI SDK (`@ui-sdk`)
 
-Interactive controls, overlays, and gesture primitives in `packages/client` build on `@ui-sdk/solid` and `@ui-sdk/core` (pinned together on Solid 2.0 RC; skill linked at `.claude/skills/pkg-@ui-sdk+core-ui-sdk` by `tools/skills.ts`), replacing ad-hoc native `<select>`, `<dialog>`, `[popover]`, Escape/outside-click listeners, and raw pointer drag loops so behavior converges across desktop and touch browsers:
+Interactive controls, overlays, and gesture primitives in `packages/client` build on `@ui-sdk/solid` and `@ui-sdk/core` (pinned together on Solid 2.0 RC; skill at `packages/client/node_modules/@ui-sdk/core/skills/ui-sdk`), replacing ad-hoc native `<select>`, `<dialog>`, `[popover]`, Escape/outside-click listeners, and raw pointer drag loops so behavior converges across desktop and touch browsers:
 
 - **Behavior vs. styling:** `@ui-sdk` owns focus management, keyboard navigation, Escape/scrim dismissal, background inertness, popup positioning, pointer velocity/rubber-band/spring physics (`@ui-sdk/core/gesture`), and responsive adaptation (`presentation="auto"`). Styling stays strictly in our stylesheets under the five-layer cascade `@layer ui-sdk, tokens, components, card, user` (`src/app.css`), so component rules override `@ui-sdk` defaults without `!important`.
 - **Shared controls & primitives:** Reuse the wrappers in `src/controls.tsx` (`Menu` on `Select`, `Switch`, `Modal` and `Prompt` on `Dialog` + `createDialogController`, `Confirm` on `AlertDialog` + `createConfirm`), `src/readings.tsx` (`Sheet` on `Dialog`, `Demand` on `Menu`), `src/shell.tsx` (phone `Drawer`), `src/composer.tsx` + `src/invocation-menu.tsx` (`Popover` + multi-page `Command`), and `src/edge.tsx` (`definePrimitive` separator with `bindDrag`, `rubberBand`, and `solveSpring` over `src/fold.ts`). When building a control `@ui-sdk` does not ship, author it with `definePrimitive` and `createParts` rather than raw DOM listeners.
