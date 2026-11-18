@@ -10,6 +10,7 @@ import { facets, type Event as RuntimeEvent } from "@effect-tavern/runtime/src/s
 import { chat, plain as player } from "@effect-tavern/runtime/test/cards/index.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import assert from "node:assert/strict"
+import { once } from "node:events"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { createServer, request } from "node:http"
 import type { AddressInfo } from "node:net"
@@ -221,7 +222,7 @@ const run = async (inspect: boolean) => {
 
     const err = sse(await (await post({ kind: "setField", node: node.id, effects: [{ path: "x", set: 1 }] })).text())
     assert.deepEqual([err.length, err[0]!.event, /x/.test(err[0]!.data.message!)], [1, "error", true])
-    assert.equal(err[0]!.data.code, undefined) // only a no-model or connection failure carries a code
+    assert.equal(err[0]!.data.code, "unknown") // every failure carries a code; one no model call made is unknown
     // A parent that does not exist is a defect on the stream, not a new root (it once became its own parent and spun).
     const orphan = sse(await (await post({ kind: "act", parent: 99, input: { text: "hi" } })).text())
     assert.deepEqual([orphan.length, orphan[0]!.event, /99/.test(orphan[0]!.data.message!)], [1, "error", true])
@@ -797,6 +798,42 @@ await run(false)
       ).text(),
     ).at(-1)!
     assert.deepEqual([off.event, off.data.code], ["error", "provider-disabled"])
+    // a model call the provider refuses: the fault's code and the facts its words read ride the event, never the body
+    const refusing = createServer((_, res) => {
+      res.writeHead(401, { "content-type": "application/json", "request-id": "req_1" })
+      res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } }))
+    }).listen(0)
+    await once(refusing, "listening")
+    const port = (refusing.address() as AddressInfo).port
+    const key = t.lib.secrets.add({ name: "K", value: "sk-test-0123456789abcdef" })
+    t.lib.providers.put({
+      id: "relay",
+      name: "Relay",
+      enabled: true,
+      defaultFormat: "anthropic",
+      endpoints: { anthropic: { url: `http://localhost:${port}` } },
+      secret: key.id,
+      models: [{ id: "m" }],
+    })
+    try {
+      const refused = sse(
+        await (
+          await fetch(base, { method: "POST", headers, body: JSON.stringify({ kind: "act", input: { text: "hi" } }) })
+        ).text(),
+      ).at(-1)!
+      const { phase: _, ...wire } = refused.data as Record<string, unknown>
+      assert.deepEqual(wire, {
+        kind: "error",
+        message: "invalid x-api-key",
+        code: "key-refused",
+        status: 401,
+        type: "authentication_error",
+        host: `localhost:${port}`,
+        model: "m",
+      })
+    } finally {
+      refusing.close()
+    }
   } finally {
     bare.close()
   }

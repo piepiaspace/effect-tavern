@@ -214,6 +214,27 @@ const alive = (pid: number) => {
     return (e as NodeJS.ErrnoException).code === "EPERM"
   }
 }
+/** A library another live process holds (its pid in the lock): what `open` refuses with, by a code the terminal words
+ *  (term/explain.ts). The message keeps the old hint for now. */
+export class LibraryHeld extends Error {
+  readonly code = "library-held"
+  constructor(
+    readonly file: string,
+    readonly pid: number,
+  ) {
+    super(`${file} is open in process ${pid}; use --url to connect to that server or a separate DATA directory`)
+  }
+}
+/** A library stamped by a newer program than this one (`user_version` past `latest`): never opened, never downgraded. */
+export class LibraryNewer extends Error {
+  readonly code = "library-newer"
+  constructor(
+    readonly version: number,
+    readonly supported: number,
+  ) {
+    super(`library version ${version} is newer than supported ${supported}`)
+  }
+}
 /** One process per library: `<file>.lock` holds the owner's pid. A dead owner's lock is taken over (and our own, when
  *  Vite re-evaluates the module in the same process); while the owner lives, opening fails. Explicit isolateOnBusy opts into a fresh library
  *  at `<dir>/<pid>/<name>` for automated work; it never opens the owner's stories. */
@@ -229,10 +250,7 @@ const lock = (file: string, isolateOnBusy: boolean): string => {
     const pid = Number(readFileSync(path, "utf8"))
     if (pid === process.pid) return file
     if (alive(pid)) {
-      if (!isolateOnBusy)
-        throw new Error(
-          `${file} is open in process ${pid}; use --url to connect to that server or a separate DATA directory`,
-        )
+      if (!isolateOnBusy) throw new LibraryHeld(file, pid)
       const own = join(dirname(file), String(process.pid), basename(file))
       console.error(`${file} is open in process ${pid}: this one opens its own library, ${own}`)
       mkdirSync(dirname(own), { recursive: true })
@@ -276,7 +294,7 @@ const latest = baseline + steps.length
 const upgrade = (db: DatabaseSync) => {
   const version = (db.prepare("pragma user_version").get() as { user_version: number }).user_version
   if (version === latest) return
-  if (version > latest) throw new Error(`library version ${version} is newer than supported ${latest}`)
+  if (version > latest) throw new LibraryNewer(version, latest)
   if (version < baseline) rebase(db)
   for (let v = Math.max(version, baseline); v < latest; v++)
     db.exec(`begin immediate; ${steps[v - baseline]!}; pragma user_version = ${v + 1}; commit;`)

@@ -203,6 +203,9 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         model: m.model,
         messages: wired,
         abortSignal: ac.signal,
+        // the failure reaches the caller as the stream's error part; ai-sdk's default here prints the whole error
+        // object, stack and all, to the console
+        onError: () => {},
         ...settings(m.format, o),
       })
       const parts = Stream.callback<Part, ModelError>((queue) =>
