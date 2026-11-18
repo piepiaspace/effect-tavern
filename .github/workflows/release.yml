@@ -1,7 +1,8 @@
 name: Release
 
-# A tag v* builds the phone's binary (server + client page, no cards; Bun's android runtime) and publishes it
-# with start.sh as the release that start.sh downloads from (releases/latest/download).
+# A tag v* builds the phone's binary (server + client page, no cards; Bun's android runtime) and publishes, under
+# releases/latest/download: tavern-android.gz, release.txt, install.sh, and the same install.sh as start.sh (the old
+# launcher's `update` downloads start.sh over its own command; that file hands such a phone over to `tavern`).
 on:
   push:
     tags: ["v*"]
@@ -11,7 +12,21 @@ permissions:
   contents: write
 
 jobs:
+  # install.sh in a sandbox, no phone and no network: fresh installs, both hand-overs, the field sequence, failures
+  installer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - name: Test the installer
+        run: bun test/install.ts
+
   android:
+    needs: installer
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -31,14 +46,15 @@ jobs:
         working-directory: packages/client
         run: bun --bun vp build
 
+      # bin/tavern.ts with the page inside; `tavern --version` answers the tag without its v
       - name: Compile for Android
         working-directory: packages/server
         run: |
-          bun run compile:android
+          VERSION="${GITHUB_REF_NAME#v}" bun run compile:android
           gzip -9 -c dist/tavern-android > dist/tavern-android.gz
 
-      # release.txt: the tag, then the feat/fix/perf subjects since the previous tag; it is the release's notes and what
-      # `effect-tavern update` shows before it asks
+      # release.txt: the tag, then the feat/fix/perf subjects since the previous tag; it is the release's notes, where
+      # install.sh reads the tag, and what `tavern update` shows before it asks
       - name: Notes
         run: |
           prev=$(git describe --tags --abbrev=0 "$GITHUB_SHA^" 2>/dev/null || true)
@@ -54,4 +70,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tail -n +2 release.txt > notes.md
-          gh release create "$GITHUB_REF_NAME" packages/server/dist/tavern-android.gz start.sh release.txt --notes-file notes.md
+          mkdir -p out && cp install.sh out/install.sh && cp install.sh out/start.sh
+          gh release create "$GITHUB_REF_NAME" packages/server/dist/tavern-android.gz release.txt out/install.sh out/start.sh --notes-file notes.md

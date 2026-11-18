@@ -13,7 +13,7 @@ Every rule below comes from a failure observed in live multi-turn runs and locke
 3. **Latching readouts must include an "open / raised, not yet answered" no-change option.**
    - _Failure mode:_ When a readout shares its `when` threshold with a `lore` `offer` (e.g. a confession at `bond >= 60`), `record` evaluates the readout **on the very turn the NPC raises the confession**, before the player has replied. With only `did not happen / accepted / refused`, the model rules out `did not happen` and `accepted`, falsely latching `refused` (observed on `ri.yaml`).
    - _Rule:_ Always cover the in-flight state in the neutral option (`raised this turn, awaiting player's answer`). Verify how `record` sees it via:
-     `bun packages/runtime/bin/card.ts view <card> --stage record --state <field>=<threshold>`
+     `bun run tavern card view <card> --stage record --state <field>=<threshold>`
 4. **Write authority determines whether prose can move a field.**
    - Fields modified only by `rules.actions` are purely mechanical (e.g. `gold` stays unchanged even if improvised prose says "the innkeeper hands you three coins"). If narrative events should move a field, attach a `Readout` (`prose-cannot-move` lint).
 

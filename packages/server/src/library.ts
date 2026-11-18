@@ -19,6 +19,8 @@
 // from the tables on every call the same way: a routing or provider edit is in force from the next request. A pair
 // that does not resolve (provider gone, disabled, no key, no endpoint) fails that request naming the provider. A stage
 // the row does not name runs on `model`, the environment's (dev.ts); `pinned` puts it over the row (MODEL=fake).
+// Every turn's stream passes through the `logbook` (logbook.ts), which files its calls under the node; a library given
+// none has a silent one (nothing is printed before a host says it is up).
 import type { CardView, Persona, StoryRow } from "@effect-tavern/runtime/src/library.ts"
 export type { CardRow } from "@effect-tavern/runtime/src/library.ts"
 export { Routing } from "@effect-tavern/runtime/src/session.ts"
@@ -28,6 +30,10 @@ import {
   connection,
   ConnectionError,
   decisionUrl,
+  diagnose,
+  facts,
+  type FaultCode,
+  type WireFacts,
   probeDecision,
   type CompileOptions,
   type DecisionConfig,
@@ -74,20 +80,24 @@ import { Cause, Effect, Stream } from "effect"
 import type { TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
 import type { Data } from "./data.ts"
 import { depots } from "./depot.ts"
+import { openLogbook, type Logbook } from "./logbook.ts"
 import type { Exported } from "./export.ts"
 import { names } from "./names.ts"
 import { readHttps } from "./remote.ts"
 import { shelf } from "./shelf.ts"
 import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
 
-export type PublicEvent = TimelineEvent | { kind: "error"; message: string; code?: string; phase: Phase }
+/** A failed turn on the wire: the thrower's message as it came (the CLI's and the logs'), and the code a client words
+ *  it by (provider fault.ts `diagnose`, or `no-model`), with the facts those words read. Never the response body. */
+export type PublicError = { kind: "error"; message: string; code: FaultCode | "no-model"; phase: Phase } & WireFacts
+export type PublicEvent = TimelineEvent | PublicError
 
 /** The model test asks for this many output tokens: the least a gateway accepts (CommandCode refuses `max_tokens` under
  *  16), still a fraction of a cent on any model. */
 const PROBE_TOKENS = 16
 /** No pair for the stage and no environment model. Its `code` rides the stream's `error` event (serve.ts), so the client
  *  offers its way into Settings → 默认模型 without reading the message; a pair with no connection (providers.ts
- *  `ConnectionError`) rides it the same way, into Settings → 服务商. */
+ *  `ConnectionError`) rides it the same way, into Settings → 服务商, and every other failure by its fault code. */
 export class NoModel extends Error {
   readonly code = "no-model"
   constructor() {
@@ -104,12 +114,14 @@ export const library = ({
   model: env,
   pinned = false,
   fetch,
+  logbook = openLogbook(),
 }: {
   data: Data
   overlay?: Layer // the harness overlay until one is stored
   model?: (phase: Phase) => Model
   pinned?: boolean
   fetch?: typeof globalThis.fetch // what a card library is read over (depot.ts); a test's own
+  logbook?: Logbook
 }) => {
   const sessions = new Map<Id, { session: Session; turn: Turn; stale?: boolean }>()
   // The install's cards (shelf.ts). A card replaced or removed takes the open sessions on it along: an idle one is
@@ -293,7 +305,8 @@ export const library = ({
       hat,
       policy,
     })
-    const opened = { session, turn: makeTurn(session, (node, calls) => data.calls(id).add(node, calls)) }
+    const filed = (node: Id, calls: readonly Call[]) => data.calls(id).add(node, calls)
+    const opened = { session, turn: makeTurn(session, logbook.turn(id, filed)) }
     sessions.set(id, opened)
     return opened
   }
@@ -305,11 +318,13 @@ export const library = ({
       Stream.map((e): PublicEvent => {
         if (e.kind === "error") {
           const error = Cause.squash(e.cause)
+          const fault = diagnose(error) // a ConnectionError keeps its code
           return {
             kind: "error",
             phase: e.phase,
             message: error instanceof Error ? error.message : String(error),
-            ...((error instanceof NoModel || error instanceof ConnectionError) && { code: error.code }),
+            code: error instanceof NoModel ? error.code : fault.code,
+            ...facts(fault),
           }
         }
         if (e.kind !== "change") return e
@@ -324,6 +339,15 @@ export const library = ({
   return {
     /** The model a stage runs on and the fold policy, as every session reads them on its next request. */
     model,
+    /** The install's default model as the routing has it, "provider / model" (the narrate stage's when no default is
+     *  set); none when nothing is routed. Never throws: a pair whose provider is gone still names its ids. */
+    defaultModel: (): string | undefined => {
+      const r = routing()
+      const pair = r.default ?? r.stages?.narrate
+      if (!pair) return undefined
+      const p = data.providers.list().find((x) => x.id === pair.provider)
+      return `${p?.name || pair.provider} / ${pair.model}`
+    },
     author: author(() => model("author")),
     policy,
     session,
@@ -352,7 +376,9 @@ export const library = ({
           if (inspect) return c
           // a fast pass's verdict is no one's text: it stays, so the row reads pass / escalate without the bodies
           const verdict = c.via === "decision" ? (c.out as { verdict?: unknown } | undefined)?.verdict : undefined
-          return { ...c, msgs: [], out: verdict === undefined ? undefined : { verdict } }
+          // a failed call keeps its fault's facts and the thrower's sentence, never the response body
+          const fault = c.fault && { ...c.fault, body: undefined }
+          return { ...c, msgs: [], out: verdict === undefined ? undefined : { verdict }, ...(fault && { fault }) }
         })
     },
     exists,

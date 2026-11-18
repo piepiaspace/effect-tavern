@@ -12,7 +12,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/solid/menu"
 import { type DialogHandle, dialogHandle } from "./controls.tsx"
 import { Back, Change, Close, Clue, Die, Edit, Record, Reword, Swipe, Warning } from "./icons.tsx"
 import { close } from "./pages.ts"
-import { openSettings } from "./settings.tsx"
+import { openSettings, type Section } from "./settings.tsx"
 import { demandable, fresh, heading, kindOf, marked, record, status, theater, whens, type Element } from "./record.ts"
 import {
   card,
@@ -32,37 +32,35 @@ import {
 import { turn } from "./turn.ts"
 import { fetchContext, fetchDetail } from "./wire.ts"
 import { t } from "./i18n.ts"
-import type { ConnectionCode } from "@effect-tavern/provider/src/providers.ts"
+import { connectionCodes } from "@effect-tavern/provider/src/fault.ts"
+import type { Failure } from "@effect-tavern/runtime/src/projection.ts"
+import { faultWords } from "./failure.ts"
 
-/** The codes of a pair with no connection (providers.ts `ConnectionError`): each a way into Settings → 服务商. */
-const CONNECTION: Record<ConnectionCode, true> = {
-  "provider-missing": true,
-  "provider-disabled": true,
-  "provider-no-model": true,
-  "provider-no-endpoint": true,
-  "provider-no-key": true,
-  "url-empty": true,
-  "url-invalid": true,
-  "url-scheme": true,
-  "url-credentials": true,
-  "url-fragment": true,
-  "url-query": true,
-  "url-operation": true,
-  "url-origin": true,
-}
-/** A failure's words: a code the client knows is a button into the settings that fix it (no sentence, no params), any
- *  other failure its message as it came (an upstream provider's text, verbatim). */
-export const Failed = (props: { error: { message: string; code?: string } }) => (
+/** The button into the Settings section a failure's next step is in. */
+const Go = (props: { to: Section }) => (
+  <button type="button" class="go" onClick={() => openSettings(props.to)}>
+    {t(props.to === "routing" ? "app.goDefaultModel" : "app.goProviders")}
+  </button>
+)
+/** A failure's words: no default model, or a pair with no connection (providers.ts `ConnectionError`), is a button into
+ *  the settings that fix it (no sentence, no params); a model call's failure its words by the fault's code
+ *  (failure.ts), with the button where its next step is; anything else, `unknown` among them, its message as it came
+ *  (a provider's text, verbatim). */
+export const Failed = (props: { error: Failure }) => (
   <Switch fallback={props.error.message}>
     <Match when={props.error.code === "no-model"}>
-      <button type="button" class="go" onClick={() => openSettings("routing")}>
-        {t("app.goDefaultModel")}
-      </button>
+      <Go to="routing" />
     </Match>
-    <Match when={props.error.code !== undefined && Object.hasOwn(CONNECTION, props.error.code)}>
-      <button type="button" class="go" onClick={() => openSettings("providers")}>
-        {t("app.goProviders")}
-      </button>
+    <Match when={props.error.code !== undefined && Object.hasOwn(connectionCodes, props.error.code)}>
+      <Go to="providers" />
+    </Match>
+    <Match when={faultWords(props.error)}>
+      {(w) => (
+        <>
+          <span class="what">{w().what}</span> <span class="why">{w().why}</span> <span class="next">{w().next}</span>
+          <Show when={w().go}>{(to) => <Go to={to()} />}</Show>
+        </>
+      )}
     </Match>
   </Switch>
 )

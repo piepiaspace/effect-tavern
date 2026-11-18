@@ -7,17 +7,19 @@
 // late subscriber's: the snapshot (the phase, and the draft: the parent it hangs under, the player's input, the prose
 // so far, the first draft a rewrite displaced; a `demand` has none, it only amends its node) then the live events,
 // no replay. A turn that fails with nobody subscribed keeps its failure for the next `attach`, which consumes it
-// (snapshot, then the `error`); a new action clears it. The calls a turn makes are filed under the node it lands
-// (`file`) here, whoever listens. The broadcast is one Queue per subscriber, private to the run.
+// (snapshot, then the `error`); a new action clears it. The action's stream passes through `observe` (the server's
+// logbook, which also files the calls under the node it lands), whoever listens. The broadcast is one Queue per
+// subscriber, private to the run.
 import type { Draft } from "@effect-tavern/runtime/src/projection.ts"
+import type { Id } from "@effect-tavern/runtime/src/log.ts"
 export type { Draft } from "@effect-tavern/runtime/src/projection.ts"
 import { textOf } from "@effect-tavern/runtime/src/journal.ts"
-import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import {
   decodeAction,
   perform,
   type Action,
   type Event,
+  type Events,
   type Phase,
   type Session,
 } from "@effect-tavern/runtime/src/session.ts"
@@ -81,7 +83,7 @@ export class Busy extends Error {
   }
 }
 
-export const makeTurn = (s: Session, file: (node: Id, calls: readonly Call[]) => void) => {
+export const makeTurn = (s: Session, observe: (action: Action, events: Events) => Events) => {
   let run: Run | undefined
   let failed: { phase: Phase; draft: Draft | null; cause: Cause.Cause<unknown> } | undefined
   const subscribe = (r: Run): Stream.Stream<Out> => {
@@ -150,13 +152,10 @@ export const makeTurn = (s: Session, file: (node: Id, calls: readonly Call[]) =>
       }
       run = r
       const events = subscribe(r)
-      const made: Call[] = [] // this action's calls, filed under its node once the node exists (an amend appends)
       r.fiber = Effect.runFork(
-        Stream.runForEach(perform(s, a, Deferred.await(r.halt)), (e) =>
+        Stream.runForEach(observe(a, perform(s, a, Deferred.await(r.halt))), (e) =>
           Effect.sync(() => {
             track(r, e)
-            if (e.kind === "call") made.push(e)
-            if (e.kind === "change" && e.node) file(e.node.id, made.splice(0))
             for (const q of r.subs) Queue.offerUnsafe(q, e)
           }),
         ).pipe(
@@ -167,12 +166,7 @@ export const makeTurn = (s: Session, file: (node: Id, calls: readonly Call[]) =>
               else failed = { phase: r.phase, draft: r.draft, cause } // nobody heard it: the next attach does
             }),
           ),
-          Effect.ensuring(
-            Effect.sync(() => {
-              if (r.node !== undefined && made.length) file(r.node, made.splice(0))
-              end(r)
-            }),
-          ),
+          Effect.ensuring(Effect.sync(() => end(r))),
         ),
       )
       return events

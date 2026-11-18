@@ -42,9 +42,10 @@ import { locked, type Layer, type Local } from "@effect-tavern/runtime/src/layer
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
 import type { Change, Id, Log, Noded, Snapshot, Store } from "@effect-tavern/runtime/src/log.ts"
 import type { Facets } from "@effect-tavern/runtime/src/session.ts"
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { linkSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { basename, dirname, join } from "node:path"
 import { DatabaseSync } from "node:sqlite"
+import { alive } from "./announce.ts"
 
 const storyColumns =
   "id integer primary key autoincrement, card text not null, title text, head integer, next integer not null default 0, updated integer not null, starred integer not null default 0, persona text"
@@ -205,34 +206,62 @@ const snippet = (text: string, q: string, before = 30, after = 90): string => {
 }
 
 /** A named frame fragment of the player's: who they are in the fiction, picked per card on the player row. */
-/** A live process (EPERM: alive, another user's); a dead one, or a lock file that names none, is not. */
-const alive = (pid: number) => {
-  try {
-    process.kill(pid, 0)
-    return true
-  } catch (e) {
-    return (e as NodeJS.ErrnoException).code === "EPERM"
+/** A library another live process holds (its pid in the lock): what `open` refuses with, by a code the terminal words
+ *  (term/explain.ts). */
+export class LibraryHeld extends Error {
+  readonly code = "library-held"
+  constructor(
+    readonly file: string,
+    readonly pid: number,
+  ) {
+    super(
+      `${file} is open in process ${pid}, a running tavern: pass --server <its address> to use it, ` +
+        `or --data <another directory>`,
+    )
   }
 }
-/** One process per library: `<file>.lock` holds the owner's pid. A dead owner's lock is taken over (and our own, when
- *  Vite re-evaluates the module in the same process); while the owner lives, opening fails. Explicit isolateOnBusy opts into a fresh library
- *  at `<dir>/<pid>/<name>` for automated work; it never opens the owner's stories. */
-const lock = (file: string, isolateOnBusy: boolean): string => {
+/** A library stamped by a newer program than this one (`user_version` past `latest`): never opened, never downgraded. */
+export class LibraryNewer extends Error {
+  readonly code = "library-newer"
+  constructor(
+    readonly version: number,
+    readonly supported: number,
+  ) {
+    super(`library version ${version} is newer than supported ${supported}`)
+  }
+}
+/** This process's locks, by lock file: how many opens hold each, and what lets it go. The last `close` releases it and
+ *  takes its process listeners off, so a process that opens a library per command (tests, `run()` called again and
+ *  again) leaves nothing locked behind it. */
+const held = new Map<string, { opens: number; release: () => void }>()
+/** One process per library: `<file>.lock` holds the owner's pid (a bare pid, nothing else: an older binary reads any
+ *  other content as a dead owner's). A dead owner's lock is taken over (and our own, when Vite re-evaluates the module
+ *  in the same process); while the owner lives, opening fails. Explicit isolateOnBusy opts into a fresh library
+ *  at `<dir>/<pid>/<name>` for automated work; it never opens the owner's stories. Answers the file and its unlock. */
+const lock = (file: string, isolateOnBusy: boolean): { file: string; unlock: () => void } => {
   const path = `${file}.lock`
   for (;;) {
     try {
-      writeFileSync(path, String(process.pid), { flag: "wx" })
+      const temp = `${path}.${process.pid}`
+      writeFileSync(temp, String(process.pid))
+      try {
+        linkSync(temp, path)
+      } finally {
+        rmSync(temp)
+      }
       break
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e
     }
     const pid = Number(readFileSync(path, "utf8"))
-    if (pid === process.pid) return file
+    if (pid === process.pid) {
+      const mine = held.get(path)
+      if (!mine) return { file, unlock: () => {} } // another evaluation of this module holds it, and lets it go
+      mine.opens++
+      return { file, unlock: () => unlock(path) }
+    }
     if (alive(pid)) {
-      if (!isolateOnBusy)
-        throw new Error(
-          `${file} is open in process ${pid}; use --url to connect to that server or a separate DATA directory`,
-        )
+      if (!isolateOnBusy) throw new LibraryHeld(file, pid)
       const own = join(dirname(file), String(process.pid), basename(file))
       console.error(`${file} is open in process ${pid}: this one opens its own library, ${own}`)
       mkdirSync(dirname(own), { recursive: true })
@@ -240,18 +269,35 @@ const lock = (file: string, isolateOnBusy: boolean): string => {
     }
     rmSync(path, { force: true })
   }
-  const release = () => {
+  const free = () => {
     try {
       if (readFileSync(path, "utf8") === String(process.pid)) rmSync(path)
     } catch {}
   }
-  process.on("exit", release)
-  for (const sig of ["SIGINT", "SIGTERM"] as const)
-    process.once(sig, () => {
-      release()
+  const signals = (["SIGINT", "SIGTERM"] as const).map((sig) => {
+    const on = () => {
+      free()
       if (!process.listenerCount(sig)) process.kill(process.pid, sig) // nobody else handles it: die of it as before
-    })
-  return file
+    }
+    process.once(sig, on)
+    return [sig, on] as const
+  })
+  process.on("exit", free)
+  held.set(path, {
+    opens: 1,
+    release: () => {
+      process.off("exit", free)
+      for (const [sig, on] of signals) process.off(sig, on)
+      free()
+    },
+  })
+  return { file, unlock: () => unlock(path) }
+}
+const unlock = (path: string) => {
+  const mine = held.get(path)
+  if (!mine || --mine.opens > 0) return
+  held.delete(path)
+  mine.release()
 }
 
 // One baseline for all previously unversioned libraries, not a reconstruction of historical releases.
@@ -276,7 +322,7 @@ const latest = baseline + steps.length
 const upgrade = (db: DatabaseSync) => {
   const version = (db.prepare("pragma user_version").get() as { user_version: number }).user_version
   if (version === latest) return
-  if (version > latest) throw new Error(`library version ${version} is newer than supported ${latest}`)
+  if (version > latest) throw new LibraryNewer(version, latest)
   if (version < baseline) rebase(db)
   for (let v = Math.max(version, baseline); v < latest; v++)
     db.exec(`begin immediate; ${steps[v - baseline]!}; pragma user_version = ${v + 1}; commit;`)
@@ -399,15 +445,23 @@ const rebase = (db: DatabaseSync) => {
 }
 
 export const open = (asked: string, { isolateOnBusy = false } = {}) => {
-  const file = asked === ":memory:" ? asked : lock(asked, isolateOnBusy)
-  const db = new DatabaseSync(file)
-  db.exec("pragma journal_mode = wal; pragma foreign_keys = on;")
+  const { file, unlock } = asked === ":memory:" ? { file: asked, unlock: () => {} } : lock(asked, isolateOnBusy)
+  let db: DatabaseSync
   try {
+    db = new DatabaseSync(file)
+  } catch (e) {
+    unlock()
+    throw e
+  }
+  try {
+    db.exec("pragma journal_mode = wal; pragma foreign_keys = on;")
     upgrade(db)
   } catch (e) {
     db.close()
+    unlock()
     throw e
   }
+  let closed = false
   const q = (sql: string) => db.prepare(sql)
   const tx = <A>(f: () => A): A => {
     db.exec("begin")
@@ -708,7 +762,13 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
           q("update story set head = ?, next = ?, updated = ? where id = ?").run(log.head, log.next, Date.now(), story)
         }),
     }),
-    close: () => db.close(),
+    /** The file closed and, with the last open of it in this process, its lock released. */
+    close: () => {
+      if (closed) return
+      closed = true
+      db.close()
+      unlock()
+    },
   }
 }
 export type Data = ReturnType<typeof open>

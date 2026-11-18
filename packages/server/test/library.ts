@@ -17,6 +17,7 @@ import type { AddressInfo } from "node:net"
 import { open, type Data } from "../src/data.ts"
 import { library, NoModel } from "../src/library.ts"
 import { shelf } from "../src/shelf.ts"
+import { openLogbook } from "../src/logbook.ts"
 import { makeTurn, type Call, type Out } from "../src/turn.ts"
 
 // the localhost upstreams below stay off a shell proxy: through one, a refused socket comes back as the proxy's 502
@@ -626,7 +627,10 @@ for (const skip of [false, true]) {
   })
   const S = makeSession({ card: chat, rows: () => ({}), model: () => M })
   const filed: unknown[] = []
-  const T = makeTurn(S, (_, calls) => filed.push(...calls))
+  const T = makeTurn(
+    S,
+    openLogbook().turn(1, (_, calls) => filed.push(...calls)),
+  )
   const done = Effect.runPromise(
     Stream.runCollect(
       T.start({ kind: "act", input: { text: "wait" } }).pipe(
@@ -672,7 +676,7 @@ for (const skip of [false, true]) {
     rows: () => ({}),
     model: () => M,
   })
-  const T = makeTurn(S, () => {})
+  const T = makeTurn(S, (_, events) => events)
   let stages = 0
   let checked = false
   await Effect.runPromise(

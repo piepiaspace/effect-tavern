@@ -5,17 +5,39 @@ sidebar:
   order: 3
 ---
 
-Effect Tavern provides two command-line entrypoints plus a standalone SillyTavern card inspector. Every command supports `--help` for self-documentation and `--json` / `--jsonl` for scripts and coding agents.
+Effect Tavern has one command, `tavern`: the compiled binary, or `bun run tavern` from the repository root (`packages/server/bin/tavern.ts`). A bare `tavern` serves, the same as `tavern serve`. Every command supports `--help` for self-documentation and `--json` / `--jsonl` for scripts and coding agents.
+
+On an Android phone (Termux) one line installs the binary as `tavern` and starts it:
+
+```sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
+```
+
+After that, `tavern` starts it and `tavern update` updates it. The binary sits beside `sh` (`$PREFIX/bin/tavern`, else `~/.local/bin/tavern`) and the library in `~/.tavern`; `rm "$(command -v tavern)"` uninstalls it. A phone set up with the earlier `start.sh` line moves over on its next `effect-tavern update` and `effect-tavern`, which then forwards to `tavern`.
+
+## 0. Running the Tavern (`tavern`, `stop`, `status`, `update`, `doctor`)
+
+The player's commands, the same on a phone (Termux) and on a computer. Help (`tavern --help`, `tavern <command> --help`) is in the player's language (Chinese; English with `TAVERN_LANG=en`) and fits a 48-column phone terminal.
+
+| Command | What it does | Exit codes |
+| --- | --- | --- |
+| `tavern` / `tavern serve` | Serves the page and its API. Holds the device's wake lock while it serves (Termux's `termux-wake-lock`); on a terminal, opens the page once the server answers (`--no-open` turns that off). A second `tavern` while one serves the same library says where it runs and exits `0`. A busy port is refused with the command to try; the port never moves by itself. | `0`, `1` |
+| `tavern stop` | Stops the tavern serving this data directory (found through its address file and PID) and waits for it to exit. The dev session (`vp dev`) is left to its own terminal. | `0` (also when none runs), `1` |
+| `tavern status` | Instant and offline: running or not, the address, the data directory, the version. `--json` gives `{running, url?, pid?, data, version}`. | `0` running, `3` not |
+| `tavern update [--yes] [--check]` | Reads the release's `release.txt`, shows the current and latest version and what changes, asks (on a terminal only), checks free space, downloads the platform's asset beside the binary, requires the new file's `--version` to answer the expected version, then renames it over the running binary. Any failure leaves the old binary in place. A tavern still serving keeps the old program until restarted. `TAVERN_MIRROR` names a mirror (an https URL or a directory). Refused from source. | `0`, `1`, `2` (no terminal and no `--yes`) |
+| `tavern doctor [--verbose]` | One line per check, marked `✓`, `!` or `✗`, each with one next step: device and platform, the command's location and version, the data directory, free space against an update, the running tavern and its port, the network to the release, the device's tools, leftovers of the old launcher, and the last failed turn from `<data>/log/turns.jsonl`. | `0`, `1` (any `✗`) |
+
+Every failure a person reads is worded in plain language: what happened, the likely cause, the one next step marked `>`, what was left as it was, and one line of raw facts. Under `--json` a failure is one line on stderr: `{"error":{"code","message","next"}}`.
 
 ## 1. Offline Card Toolchain (`card`)
 
-Run `bun packages/runtime/bin/card.ts <subcommand>` from the repository root (or `bun run card <subcommand>` inside `packages/runtime`). Offline commands never open a SQLite `DATA` directory or call external LLM APIs.
+Run `tavern card <subcommand>` (`bun run tavern card <subcommand>` from source). Offline commands never open the library or call external LLM APIs.
 
 ```sh
-bun packages/runtime/bin/card.ts init my-card --template chat
-bun packages/runtime/bin/card.ts check my-card.yaml --json
-bun packages/runtime/bin/card.ts view my-card.yaml --stage narrate --state hp=2 --events won
-bun packages/runtime/bin/card.ts test my-card.yaml scenario.yaml
+bun run tavern card init my-card --template chat
+bun run tavern card check my-card.yaml --json
+bun run tavern card view my-card.yaml --stage narrate --state hp=2 --events won
+bun run tavern card test my-card.yaml scenario.yaml
 ```
 
 ### `card init <id> [--template chat|readout|rpg|world]`
@@ -61,13 +83,13 @@ steps:
       products: { notes: 已到门口 }
 ```
 
-## 2. Unrolling SillyTavern Cards (`unroll`)
+## 2. Unrolling SillyTavern Cards (`card unroll`)
 
-`unroll` inspects SillyTavern PNG (`ccv3` / `chara` chunks) or V2/V3 JSON exports in ST's assembly order without mutating files or calling models:
+`tavern card unroll` inspects SillyTavern PNG (`ccv3` / `chara` chunks) or V2/V3 JSON exports in ST's assembly order without mutating files or calling models:
 
 ```sh
-bun packages/runtime/bin/unroll.ts card.png --user 李
-bun packages/runtime/bin/unroll.ts card.json --json
+bun run tavern card unroll card.png --user 李
+bun run tavern card unroll card.json --json
 ```
 
 Paragraph boundaries are preserved so Markdown output can feed directly into `tavern card sort`.
@@ -76,8 +98,9 @@ Paragraph boundaries are preserved so Markdown output can feed directly into `ta
 
 Run `bun run tavern <subcommand>` from the repository root (`packages/server/bin/tavern.ts`).
 
-- **Local library mode (default):** Opens `DATA/tavern.db` (defaults to `./.tavern/tavern.db`). Fails cleanly with the owning PID if a server already holds the database lock.
-- **Remote attach mode (`--url`):** Pass `--url http://127.0.0.1:7777` to connect over HTTP/SSE to a running `vp run dev` or `tavern serve` instance without touching local `DATA`.
+- **Finding the library (default):** The data directory is `--data`, else `TAVERN_DATA` (legacy `DATA`), else `~/.tavern` for the compiled binary and `./.tavern` from source; the root `bun run tavern` script sets `TAVERN_DATA=.dev`, the dev server's library. When a running `tavern serve` or `vp run dev` holds that library, it has written its address beside the lock (`tavern.db.address`) and the command goes through it over HTTP/SSE, saying so on stderr. When nobody holds it, the command opens `<data>/tavern.db` itself and answers its own requests with the same handler, in-process. A live owner that never says its address within about two seconds is exit code 3 naming its PID; `MODEL=fake` meeting a tavern on a real model is exit code 3 too.
+- **Another machine (`--server`):** Pass `--server http://192.168.1.20:7777` (or set `TAVERN_SERVER`) to talk to that tavern over HTTP/SSE; no local file is read.
+- **Anywhere on the line:** `--json`, `--data <dir>`, `--server <url>`, `-h/--help`, `-V/--version`. Exit codes: `0` done, `1` refused or failed, `2` the command line was wrong, `3` the library cannot be reached.
 
 ```sh
 # The shelf: a new library has no cards. Install from a file, list, export, remove
@@ -105,11 +128,11 @@ bun run tavern story list --json
 bun run tavern story new my-card
 bun run tavern story show 1
 bun run tavern story export 1 --format md > story.md
-bun run tavern story delete 1
+bun run tavern story remove 1
 
-# Server & standalone headless binary
+# Server (API only with --headless) and the compiled binary (bin/tavern.ts with the built page inside)
 MODEL=fake bun run tavern serve --headless --port 7777
-cd packages/server && bun run compile:headless
+cd packages/server && bun run compile && ./dist/tavern --version
 ```
 
 ## 4. Terminal Play (`tavern play`)

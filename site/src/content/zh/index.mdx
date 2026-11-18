@@ -23,7 +23,7 @@ Effect Tavern 是从零设计的 AI 角色扮演与交互叙事全栈系统，�
     掌握“两顶帽子”制卡流程、`Card` 各字段职责、实测避坑铁律，以及旧卡展开与工坊工具。
   </Card>
   <Card title="CLI 与无头宿主" icon="ph:terminal-window" href="/zh/cli/">
-    使用 `card`、`unroll` 与 `tavern` 完成零 Token 回归测试、终端游玩、工坊编译与无头服务部署。
+    用一个命令 `tavern` 完成零 Token 回归测试、终端游玩、工坊编译与无头服务部署。
   </Card>
   <Card title="玩家层、写作包与帽子" icon="ph:stack" href="/zh/layers-and-packs/">
     告别传统大杂烩预设，通过五级 `Layer` 优先级、写作开关、写作包（`Pack`）、协议壳（`Hat`）与决策预检按需定制。
@@ -53,7 +53,7 @@ Effect Tavern 是从零设计的 AI 角色扮演与交互叙事全栈系统，�
     ```sh
     bun run tavern card install packages/runtime/test/cards/wuxia.yaml
     MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
-    bun packages/runtime/bin/card.ts check packages/runtime/test/cards/wuxia.yaml
+    bun run tavern card check packages/runtime/test/cards/wuxia.yaml
     ```
   </Step>
   <Step title="运行静态检查与全仓自检">

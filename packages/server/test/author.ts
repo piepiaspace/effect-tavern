@@ -5,6 +5,7 @@ import { scaffold } from "@effect-tavern/runtime/support/author.ts"
 import { open } from "../src/data.ts"
 import { library, Routing } from "../src/library.ts"
 import { app, handle } from "../src/serve.ts"
+import { node } from "../src/wire.ts"
 import { createServer } from "node:http"
 import type { AddressInfo } from "node:net"
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs"
@@ -34,7 +35,7 @@ const lib = library({ data })
 lib.cards.install(card, { via: "file" }) // the workshop edits a card of the shelf
 /** A card's text to the install route, over the card of that id. */
 const install = (value: unknown) => request("/cards?replace=1", "POST", value)
-const server = createServer(app(handle(lib)))
+const server = createServer(node(app(handle(lib))))
 await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))
 const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 const request = (path: string, method = "GET", value?: unknown) =>
@@ -168,11 +169,10 @@ try {
   })
   assert.deepEqual(((await (await request(wholeUrl)).json()) as { card: unknown }).card, retitled)
   await install(card)
-  // CLI runs the same fixtures through both local SQLite routing and --url HTTP.
+  // CLI runs the same fixtures through both local SQLite routing and --server HTTP.
   const local = open(join(dir, "tavern.db"))
   configure(local)
-  local.close()
-  rmSync(join(dir, "tavern.db.lock"))
+  local.close() // and with it the lock: the spawned commands open the library themselves
   const file = join(dir, "card.yaml"),
     source = join(dir, "notes.md"),
     out = join(dir, "candidate.yaml")
@@ -195,7 +195,7 @@ try {
     if (args[0] === "compile") assert.match(stderr, /scenario: (PASS|FAIL)/)
     return stdout
   }
-  for (const remote of [[], ["--url", url]]) {
+  for (const remote of [[], ["--server", url]]) {
     // A failed scenario remains advisory: the remote candidate is still written.
     if (remote.length) writeFileSync(join(dir, "card.scenario.yaml"), "steps: invalid")
     fixture(good)

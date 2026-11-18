@@ -10,6 +10,7 @@ import type { Product } from "./product.ts"
 import type { DomainChange, WorldState } from "./world.ts"
 import type { Event } from "./session.ts"
 import type { Change } from "./log.ts"
+import type { WireFacts } from "@effect-tavern/provider/src/fault.ts"
 
 export interface InvocationToken {
   resourceId: string
@@ -151,4 +152,6 @@ export interface Draft {
   fresh?: boolean // the line is nowhere else (an act): a client that attaches and sees it fail puts it back in the box
 }
 export type Attach = { kind: "attach"; phase: Phase | null; draft: Draft | null }
-export type Failure = { message: string; code?: string; phase?: Phase }
+/** A failed turn as a client holds it: the message, the code it is worded by (the server's `error` event: a provider
+ *  fault code or `no-model`; a code a response carried), and the facts those words read. */
+export type Failure = { message: string; code?: string; phase?: Phase } & WireFacts

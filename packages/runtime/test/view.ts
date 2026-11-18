@@ -1,6 +1,6 @@
 // src/view.ts against the real thing: the documents a session sends for a turn, captured off a scripted model, hold
-// exactly the head fragments, the lookup index and the record asks view prints for the same state. Then bin/card.ts
-// through a process: check's exit code on the fixture cards and on a bad one, an unknown card, and --help.
+// exactly the head fragments, the lookup index and the record asks view prints for the same state. Then bin/card.ts's
+// commands as `tavern card` runs them: check's exit code on the fixture cards and on a bad one, an unknown card, --help.
 import { fake, type Message } from "@effect-tavern/provider"
 import { Effect, Stream } from "effect"
 import assert from "node:assert/strict"
@@ -12,6 +12,7 @@ import { makeSession } from "../src/session.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 import { fields, openings, view } from "../src/view.ts"
 import { cardFile, cardNames, loadCard, player } from "./cards/index.ts"
+import { runCard } from "./command.ts"
 
 // A real turn on 盐道 from its second greeting, with 局势 set on the greeting node: every call's messages kept.
 const yandao = await loadCard("yandao")
@@ -118,12 +119,11 @@ assert.deepEqual(openings(await loadCard("banxing"), player), [
 assert.throws(() => view(yandao, player, { state: { 起点: "fight" } }))
 assert.throws(() => view(yandao, player, { greeting: 5 }), /greeting 5/)
 
-// the bin, as a process: exit codes and help
-const bin = new URL("../bin/card.ts", import.meta.url).pathname
-const run = (...args: string[]) => Bun.spawnSync(["bun", bin, ...args], { stdout: "pipe", stderr: "pipe" })
-for (const name of cardNames) assert.equal(run("check", cardFile(name).pathname).exitCode, 0, name)
+// the commands, as `tavern card` runs them: exit codes and output
+const run = (...args: string[]) => runCard(args)
+for (const name of cardNames) assert.equal((await run("check", cardFile(name).pathname)).exitCode, 0, name)
 assert.match(
-  run("check", cardFile("yandao").pathname).stdout.toString(),
+  (await run("check", cardFile("yandao").pathname)).stdout,
   /^greeting 1 {2}局势=7 起点=血案 {2}bands: tense, blood/m,
 )
 const bad: Card = {
@@ -137,12 +137,12 @@ const bad: Card = {
 }
 const file = join(mkdtempSync(join(tmpdir(), "card-")), "bad.yaml")
 writeFileSync(file, Bun.YAML.stringify(bad))
-const failed = run("check", file)
+const failed = await run("check", file)
 assert.equal(failed.exitCode, 1)
-assert.match(failed.stdout.toString(), /error orphan-event lore\.x\.offer/)
-const missing = run("view", "nope")
+assert.match(failed.stdout, /error orphan-event lore\.x\.offer/)
+const missing = await run("view", "nope")
 assert.equal(missing.exitCode, 1)
-assert.match(missing.stderr.toString(), /nope/)
+assert.match(missing.stderr, /nope/)
 
 // Lore noise: an entry fully unlocked with no window is one count line, its constant gates are not explained, and a
 // stage that reads no lore (record) prints neither the list nor the lore gates.
@@ -256,7 +256,7 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
   }
   assert.match(preview("record").doc.map(text).join("\n"), /scene: At inn, score 2/)
 }
-const help = run("--help")
+const help = await run("--help")
 assert.equal(help.exitCode, 0)
-assert.match(help.stdout.toString(), /SUBCOMMANDS\n {2}init .*\n {2}check .*\n {2}view /)
+assert.match(help.stdout, /SUBCOMMANDS\n {2}init .*\n {2}check .*\n {2}view /)
 console.log("view: ok")

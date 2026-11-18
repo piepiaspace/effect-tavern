@@ -70,10 +70,12 @@ docs/           Internal engineering research and design briefs
 One line in [Termux](https://termux.dev), no Bun, Node or Vite+ to install:
 
 ```sh
-curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/start.sh | sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
-It downloads the latest release's phone build (~50 MB), starts it and opens the browser on `http://127.0.0.1:7777`. After that, `effect-tavern` starts it and `effect-tavern update` shows what the latest release changes and asks before replacing the binary; the library lives in `~/.tavern`.
+It downloads the latest release's phone build (~50 MB) as the one command `tavern`, starts it and opens the browser on `http://127.0.0.1:7777`. After that, `tavern` starts it and `tavern update` shows what the latest release changes and asks before replacing itself. The binary is `$PREFIX/bin/tavern` (beside `sh`; `~/.local/bin/tavern` when that is not writable) and the library lives in `~/.tavern`. To uninstall, `rm "$(command -v tavern)"`; `rm -r ~/.tavern` also deletes the library.
+
+A phone set up with the earlier `start.sh` line moves over by itself: its `effect-tavern update` fetches the new release, and the next `effect-tavern` moves the binary to `tavern`, removes `~/.tavern/bin` and leaves `effect-tavern` as a short forwarder to `tavern` (the library is untouched). Running the install line above does the same.
 
 The program ships with no cards. A new install's shelf is empty: open **Settings → Cards** to import one card (drop or pick a `.yaml` / `.json` file, or paste the card's own `https` link), or to add a card library by its `https` address and install cards from it.
 
@@ -96,8 +98,8 @@ bun --bun vp run dev
 MODEL=fake bun --bun vp run dev
 
 # A new library has no cards: install one from a file, or take one from a card library
-bun run tavern card install packages/runtime/test/cards/wuxia.yaml --url http://localhost:5173
-bun run tavern depot add ./my-cards            # a directory holding index.json, or an https URL
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml   # reaches the running dev server by itself, else opens .dev
+bun run tavern depot add ./my-cards            # a directory holding index.json (only while no server holds the library), or an https URL
 bun run tavern depot show <library-id>         # its cards against the shelf
 bun run tavern depot pull <library-id> <card>  # copy one onto the shelf
 
@@ -113,22 +115,32 @@ bun run tavern serve --port 7777
 bun run tavern card install packages/runtime/test/cards/wuxia.yaml
 MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
-# Manage stories & headless server (defaults to .tavern/tavern.db; pass --url to attach to a running server)
+# Manage stories & headless server (the root script uses the dev library .dev, the binary ~/.tavern, --data <dir> moves it; a command goes through the server running on that library by itself, --server <url> names one on another machine)
 bun run tavern story list
 bun run tavern serve --headless --port 7777
 ```
 
-### Card Authoring & Workshop Toolchain (`card`, `unroll`, `tavern card`)
+The tavern's life, the same commands on a phone and on a computer (`docs/tavern-cli.md`):
+
+```sh
+tavern                  # start it: the wake lock on Termux, the page opened on a terminal (--no-open); a second one just says where it runs
+tavern status           # running or not, its address, its data, the version (exit 3 when not running; --json)
+tavern stop             # stop the one serving this data directory
+tavern update           # what the latest release changes, ask, replace this binary (--check only reports, --yes does not ask)
+tavern doctor           # device, command, data, space, the tavern, network, tools, leftovers, the last failed turn: one next step each
+```
+
+### Card Authoring & Workshop Toolchain (`tavern card`)
 
 ```sh
 # Offline zero-token authoring loop (init, static lint, prompt preview, scenario assertions)
-bun packages/runtime/bin/card.ts init my-card --template readout
-bun packages/runtime/bin/card.ts check my-card.yaml
-bun packages/runtime/bin/card.ts view my-card.yaml --stage record --state affection=60
-bun packages/runtime/bin/card.ts test my-card.yaml
+bun run tavern card init my-card --template readout
+bun run tavern card check my-card.yaml
+bun run tavern card view my-card.yaml --stage record --state affection=60
+bun run tavern card test my-card.yaml
 
 # Inspect a legacy SillyTavern V2/V3 PNG or JSON card in assembly order
-bun packages/runtime/bin/unroll.ts path/to/card.png
+bun run tavern card unroll path/to/card.png
 
 # AI-assisted Workshop (compile rules/bindings, sort verbatim prose, semantic review, install)
 bun run tavern card compile my-card.yaml --select fiction.setting --intent "Add a trust readout" -o candidate.yaml

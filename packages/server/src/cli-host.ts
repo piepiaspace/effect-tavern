@@ -1,13 +1,14 @@
-// Only the operations the terminal uses. No retry policy or independent client package.
-import { Effect, Stream } from "effect"
+// Only the operations the terminal uses, written once against a Wire (wire.ts): the library this command opened, called
+// in-process, or a running tavern over the network (reach.ts picks). The same requests, the same refusals either way.
+// No retry policy or independent client package.
 import type { Local } from "@effect-tavern/runtime/src/layer.ts"
 import type { ActiveContextView, TimelineNode, TurnDetail } from "@effect-tavern/runtime/src/projection.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
 import type { Library, PublicEvent } from "./library.ts"
 import type { Attach } from "@effect-tavern/runtime/src/projection.ts"
 import type { CardRow, CardView, DepotRow, DepotView, Listing } from "@effect-tavern/runtime/src/library.ts"
-import { backup, markdown } from "./export.ts"
-import { openHost } from "./host.ts"
+import type { Wire } from "./wire.ts"
+export { Unreachable } from "./wire.ts"
 
 const named = (l: Local, user: string): Local => ({ ...l, names: { ...l.names, user } })
 export type CliEvent = PublicEvent | Attach
@@ -74,65 +75,44 @@ export const readEvents = async (response: Response, emit: Emit) => {
   if (buffer.trim() || data.length) throw new Error("incomplete event stream")
 }
 
-export const connect = async (url?: string, fakeModel?: boolean): Promise<CliHost> => {
-  if (!url) {
-    const { lib, data } = await openHost(fakeModel)
-    const drain = (stream: Stream.Stream<PublicEvent>, emit: Emit) =>
-      Effect.runPromise(Stream.runForEach(stream, (e) => Effect.sync(() => emit(e))))
-    return {
-      author: lib.author,
-      install: async (text) => lib.cards.install(text, { via: "file" }, { replace: true }),
-      link: (url) => lib.importLink(url, { replace: true }),
-      cards: async () => lib.cards.list(),
-      remove: async (card) => lib.cards.remove(card),
-      source: async (card) => lib.cards.text(card),
-      depots: {
-        list: async () => lib.depots.list(),
-        add: (location) => lib.depots.add(location, { dirs: true }),
-        view: (id) => lib.depots.view(id),
-        pull: (id, entry, replace) => lib.depots.pull(id, entry, { replace }),
-        remove: async (id) => lib.depots.remove(id),
-      },
-      list: async () => lib.stories.list(),
-      create: async (card) => lib.stories.create(card),
-      name: async (card, user) => lib.locals.write(named(lib.locals.read(card), user)),
-      drop: async (id) => {
-        lib.stories.del(id)
-      },
-      export: async (id, format) => {
-        const story = lib.stories.export(id)
-        if (!story) throw new Error(`no story ${id}`)
-        return format === "md" ? markdown(story) : JSON.stringify(backup(story), null, 2)
-      },
-      timeline: async (id) => lib.session(id).timeline(),
-      context: async (id, node) => lib.session(id).activeContext(node),
-      detail: async (id, node) => lib.session(id).detail(node),
-      trace: async (id, node) => lib.trace(id, node, true),
-      input: async (id) => lib.session(id).meta.input,
-      submit: (id, action, emit) => drain(lib.submit(id, action), emit),
-      attach: async (id, emit) => {
-        const at = lib.attach(id)
-        if (at) {
-          emit({ kind: "attach", phase: at.phase, draft: at.draft })
-          await drain(at.events, emit)
-        }
-      },
-      stop: async (id) => lib.stop(id),
-      close: () => data.close(),
-    }
+/** A refusal the tavern answered with: its own sentence and code. In-process and over the network alike, since both
+ *  are the same handler's answer. */
+export class Answered extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message)
   }
-  if (fakeModel) throw new Error("--model fake applies to local play; configure MODEL on the remote server")
-  const base = url.replace(/\/$/, "").replace(/\/api$/, "") + "/api"
+}
+/** The tavern's own `{error, code}`; anything else (a proxy's page, an older server's text) is its status alone, never
+ *  the raw body. */
+const answered = async (response: Response) => {
+  const text = await response.text()
+  try {
+    const body = JSON.parse(text) as { error?: unknown; code?: unknown }
+    if (typeof body.error === "string")
+      return new Answered(response.status, body.error, typeof body.code === "string" ? body.code : undefined)
+  } catch {}
+  return new Answered(response.status, `HTTP ${response.status}`)
+}
+
+/** The terminal's operations over a tavern's API (serve.ts `handle`, or `over` its address + /api). `close` is the
+ *  caller's to add: an in-process library is closed by whoever opened it. */
+export const host = (wire: Wire): CliHost => {
   const request = async (path: string, method = "GET", body?: unknown, story?: number, text?: string) => {
-    const response = await fetch(base + path, {
-      method,
-      headers: {
-        "content-type": text === undefined ? "application/json" : "application/yaml",
-        ...(story === undefined ? {} : { "x-tavern-story": String(story) }),
-      },
-      ...(text !== undefined ? { body: text } : body === undefined ? {} : { body: JSON.stringify(body) }),
-    })
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`)
+    const response = await wire(
+      new Request(`http://tavern${path}`, {
+        method,
+        headers: {
+          "content-type": text === undefined ? "application/json" : "application/yaml",
+          ...(story === undefined ? {} : { "x-tavern-story": String(story) }),
+        },
+        ...(text !== undefined ? { body: text } : body === undefined ? {} : { body: JSON.stringify(body) }),
+      }),
+    )
+    if (!response.ok) throw await answered(response)
     return response
   }
   const json = async <T>(path: string, method = "GET", body?: unknown, story?: number): Promise<T> =>

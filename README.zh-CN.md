@@ -70,10 +70,12 @@ docs/           内部工程调研与设计简报档案
 在 [Termux](https://termux.dev) 里运行一行，不用装 Bun、Node 或 Vite+：
 
 ```sh
-curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/start.sh | sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
-它会下载最新 Release 的手机版（约 50 MB），启动后自动打开浏览器 `http://127.0.0.1:7777`。以后输入 `effect-tavern` 启动，`effect-tavern update` 更新；数据在 `~/.tavern`。
+它会把最新 Release 的手机版（约 50 MB）装成一条命令 `tavern`，启动后自动打开浏览器 `http://127.0.0.1:7777`。以后输入 `tavern` 启动，`tavern update` 查看更新内容并在确认后替换自身。程序在 `$PREFIX/bin/tavern`（`sh` 所在的目录；那里写不进时是 `~/.local/bin/tavern`），数据在 `~/.tavern`。卸载：`rm "$(command -v tavern)"`；`rm -r ~/.tavern` 会连数据一起删掉。
+
+用以前的 `start.sh` 那行装过的手机会自己迁过来：`effect-tavern update` 取到新版本后，下一次输入 `effect-tavern` 会把程序移成 `tavern`、删掉 `~/.tavern/bin`，并把 `effect-tavern` 留作转到 `tavern` 的两行小脚本（数据不动）。直接运行上面这行安装命令效果相同。
 
 程序本身不带任何卡片，新安装的书架是空的：在 **设置 → 卡片** 里导入单张卡片（拖入或选择 `.yaml` / `.json` 文件，或粘贴这张卡自己的 `https` 链接），或填入卡库的 `https` 地址后从中安装。
 
@@ -96,8 +98,8 @@ bun --bun vp run dev
 MODEL=fake bun --bun vp run dev
 
 # 新库里没有卡片：从文件安装一张，或从卡库里取一张
-bun run tavern card install packages/runtime/test/cards/wuxia.yaml --url http://localhost:5173
-bun run tavern depot add ./my-cards            # 含 index.json 的目录，或 https 地址
+bun run tavern card install packages/runtime/test/cards/wuxia.yaml   # 开发服务在跑就经由它写入，没在跑就直接打开 .dev
+bun run tavern depot add ./my-cards            # 含 index.json 的目录（仅当没有服务占着库时），或 https 地址
 bun run tavern depot show <卡库 id>            # 卡库里的卡，以及各自在书架上的状态
 bun run tavern depot pull <卡库 id> <卡片 id>  # 复制一张到书架
 
@@ -113,22 +115,32 @@ bun run tavern serve --port 7777
 bun run tavern card install packages/runtime/test/cards/wuxia.yaml
 MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
-# 管理故事库或单独启动无头 API 服务（默认库 .tavern/tavern.db；传 --url 连接运行中服务）
+# 管理故事库或单独启动无头 API 服务（根目录脚本用开发库 .dev，二进制用 ~/.tavern，--data <目录> 可换；库上有服务在跑时命令自动经由它，--server <地址> 指定另一台机器上的）
 bun run tavern story list
 bun run tavern serve --headless --port 7777
 ```
 
-### 离线制卡与工坊工具链（`card`、`unroll`、`tavern card`）
+酒馆的启停、状态、更新与检查，手机和电脑上是同样的命令（`docs/tavern-cli.md`）：
+
+```sh
+tavern                  # 启动：Termux 上保持唤醒，在终端里会打开网页（--no-open 不打开）；已在运行时只说它在哪
+tavern status           # 在不在运行、地址、数据目录、版本（没有运行时退出码 3；--json）
+tavern stop             # 停止在这个数据目录上运行的酒馆
+tavern update           # 看最新版本改了什么，问过再替换这个程序（--check 只看，--yes 不问）
+tavern doctor           # 设备、命令、数据、空间、酒馆、网络、工具、旧文件、上次失败的回合：每项给出下一步
+```
+
+### 离线制卡与工坊工具链（`tavern card`）
 
 ```sh
 # 离线零 Token 制卡闭环（脚手架、静态 lint 检查、阶段请求预览、场景回归断言）
-bun packages/runtime/bin/card.ts init my-card --template readout
-bun packages/runtime/bin/card.ts check my-card.yaml
-bun packages/runtime/bin/card.ts view my-card.yaml --stage record --state affection=60
-bun packages/runtime/bin/card.ts test my-card.yaml
+bun run tavern card init my-card --template readout
+bun run tavern card check my-card.yaml
+bun run tavern card view my-card.yaml --stage record --state affection=60
+bun run tavern card test my-card.yaml
 
 # 按装配顺序只读展开 SillyTavern V2/V3（PNG 或 JSON）旧卡
-bun packages/runtime/bin/unroll.ts path/to/card.png
+bun run tavern card unroll path/to/card.png
 
 # AI 辅助工坊（编译规则绑定、原样段落归位、只读一致性审阅、校验安装）
 bun run tavern card compile my-card.yaml --select fiction.setting --intent "增加交情读数" -o candidate.yaml

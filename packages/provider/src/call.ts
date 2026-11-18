@@ -140,18 +140,16 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
   messages: readonly Message[],
   o: CallOptions = {},
 ) =>
-  Effect.tryPromise((abortSignal) =>
-    generateText({
+  Effect.tryPromise(async (abortSignal) => {
+    const result = await generateText({
       model: m.model,
       output: Output.object({ schema: standard(schema), name: o.name }),
       messages: wire(m.format, messages, m.prefill),
       abortSignal,
       ...settings(m.format, o),
-    }),
-  ).pipe(
-    Effect.mapError(modelError),
-    Effect.map((r) => ({ value: r.output as S["Type"], usage: usage(r.usage), finishReason: r.finishReason })),
-  )
+    })
+    return { value: result.output as S["Type"], usage: usage(result.usage), finishReason: result.finishReason }
+  }).pipe(Effect.mapError(modelError))
 
 export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}) =>
   Effect.tryPromise((abortSignal) =>
@@ -203,6 +201,9 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         model: m.model,
         messages: wired,
         abortSignal: ac.signal,
+        // the failure reaches the caller as the stream's error part; ai-sdk's default here prints the whole error
+        // object, stack and all, to the console
+        onError: () => {},
         ...settings(m.format, o),
       })
       const parts = Stream.callback<Part, ModelError>((queue) =>

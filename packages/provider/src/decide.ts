@@ -15,6 +15,7 @@ import { Effect } from "effect"
 import { modelError, type ModelError, type Usage } from "./call.ts"
 import { fetchFor, traced, type CompileOptions } from "./connection.ts"
 import type { DecisionConfig } from "./decision.ts"
+import { diagnose } from "./fault.ts"
 import type { Secret } from "./providers.ts"
 
 export type DecisionModel = Experimental_DecisionModel
@@ -62,22 +63,13 @@ export const probeDecision = (model: DecisionModel) =>
     { maxRetries: 0 },
   )
 
-const BLOCKS = ["safety", "prohibited_content", "blocklist", "image_safety", "content_blocked"]
-/** Why the service refused to judge this text, when that is what the failure was: its block code, or `refusal` when it
- *  answered with refusals. Google's decisions endpoint answers a block as HTTP 400 `{error: {code: "safety"}}`, which
- *  the SDK's error parser (numeric `code`, a `status`) does not read, so the message is a bare "Bad Request" and the
- *  code is only in the response body down the cause chain. */
+/** Why the service refused to judge this text, when that is what the failure was (fault.ts `blocked`): its block code,
+ *  or `refusal` when it answered with refusals. Google's decisions endpoint answers a block as HTTP 400
+ *  `{error: {code: "safety"}}`, which the SDK's error parser (numeric `code`, a `status`) does not read, so the message
+ *  is a bare "Bad Request" and the code is only in the response body down the cause chain, where `diagnose` reads it. */
 export const blocked = (e: ModelError): string | undefined => {
-  for (let x: unknown = e.cause, i = 0; x instanceof Error && i < 6; x = x.cause, i++) {
-    if (x.name === "AI_DecisionRefusalError") return "refusal"
-    const body = (x as { responseBody?: unknown }).responseBody
-    if (typeof body !== "string") continue
-    try {
-      const code = (JSON.parse(body) as { error?: { code?: unknown } }).error?.code
-      if (typeof code === "string" && BLOCKS.includes(code)) return code
-    } catch {} // not JSON: not a block we can name
-  }
-  return undefined
+  const f = diagnose(e)
+  return f.code === "blocked" ? (f.type ?? "refusal") : undefined
 }
 
 type Call = Parameters<Experimental_DecisionMockModelV4["doDecide"]>[0]

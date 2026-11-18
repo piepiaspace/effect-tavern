@@ -50,17 +50,17 @@ Whether invoking Workshop tools (`tavern card compile|sort|review`) or editing Y
 
 ## 4. Self-Describing CLI Toolchain
 
-All CLIs expose full flag documentation via `--help` and machine-readable output via `--json` / `--jsonl`. Inspect `--help` rather than guessing flags:
+Everything is one command, `tavern` (`bun run tavern` from source); it exposes full flag documentation via `--help` and machine-readable output via `--json` / `--jsonl`. Inspect `--help` rather than guessing flags:
 
-| Task                 | Command (from repo root)                                                                                    | Notes                                                          |
-| -------------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Scaffold new card    | `bun packages/runtime/bin/card.ts init <id> --template chat\|readout\|rpg\|world`                           | Offline; writes `<id>.yaml` exclusively                        |
-| Validate & lint      | `bun packages/runtime/bin/card.ts check <card> [--json]`                                                    | Schema, lint, `drawn` meters, openings, token budget           |
-| Preview stage prompt | `bun packages/runtime/bin/card.ts view <card> [--stage ...] [--state k=v] [--greeting n] [--lore] [--json]` | Offline; prints exact sections, cache breakpoints & conditions |
-| Zero-token test      | `bun packages/runtime/bin/card.ts test <card> [scenario.yaml]`                                              | Offline deterministic run on scripted fake model               |
-| Unroll ST V2/V3 card | `bun packages/runtime/bin/unroll.ts <card.png\|card.json> [--user name] [--json]`                           | Read-only inspection in ST assembly order; feeds `sort`        |
-| Workshop operations  | `bun run tavern card compile\|sort\|review ...`                                                             | Uses `author` model route (`--url` for running server)         |
-| Install & live play  | `bun run tavern card install <file>` / `bun run tavern play <card-or-story> [--user <name>]`                | Pass `MODEL=fake` or `--model fake` for zero-token host runs   |
+| Task                 | Command (from repo root)                                                                       | Notes                                                          |
+| -------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Scaffold new card    | `bun run tavern card init <id> --template chat\|readout\|rpg\|world`                           | Offline; writes `<id>.yaml` exclusively                        |
+| Validate & lint      | `bun run tavern card check <card> [--json]`                                                    | Schema, lint, `drawn` meters, openings, token budget           |
+| Preview stage prompt | `bun run tavern card view <card> [--stage ...] [--state k=v] [--greeting n] [--lore] [--json]` | Offline; prints exact sections, cache breakpoints & conditions |
+| Zero-token test      | `bun run tavern card test <card> [scenario.yaml]`                                              | Offline deterministic run on scripted fake model               |
+| Unroll ST V2/V3 card | `bun run tavern card unroll <card.png\|card.json> [--user name] [--json]`                      | Read-only inspection in ST assembly order; feeds `sort`        |
+| Workshop operations  | `bun run tavern card compile\|sort\|review ...`                                                | Uses `author` model route (finds a running server by itself)   |
+| Install & live play  | `bun run tavern card install <file>` / `bun run tavern play <card-or-story> [--user <name>]`   | Pass `MODEL=fake` or `--model fake` for zero-token host runs   |
 
 ## 5. Progressive Disclosure — Read On Demand
 

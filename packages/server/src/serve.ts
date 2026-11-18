@@ -128,39 +128,52 @@
 //   GET  /card    the same for the story's own card.
 // Calls never travel on SSE. `inspect` includes request and result bodies in the selected trace; otherwise only
 // phase and metrics leave this endpoint, since tool arguments and results can contain private card text.
+//   GET  /host    who answers: {version, scripted, page, pid}, the program's version, whether every stage runs on the
+//                 scripted model (MODEL=fake), and whether the page is served beside the API. A command that found this
+//                 tavern by its address (reach.ts) reads it before anything else.
+// Both `handle` and `app` are Wires (wire.ts): a Request in, its Response out, the same whether a command calls it
+// in-process or `node` mounts it on a listener.
 import { DecisionConfig, Provider, Secret } from "@effect-tavern/provider"
 import { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Effect, Fiber, Schema, Stream, Struct } from "effect"
 import { readFile } from "node:fs/promises"
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http"
+import { createServer } from "node:http"
 import { extname, join, resolve, sep } from "node:path"
+import { version } from "./cli/config.ts"
 import { attachment, backup, disposition, markdown } from "./export.ts"
 import { Routing, type Library, type PublicEvent } from "./library.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { Refused } from "./shelf.ts"
 import { Busy } from "./turn.ts"
+import { node, type Wire } from "./wire.ts"
 
 /** A request's body as text, up to `limit` bytes: 1 MB for what is a setting or an action, the card ceiling
  *  (`CARD_BYTES`) on a route that carries a card. A body over its limit is not kept but is heard out, so the answer is
- *  a 413 `too-large` the client can read and word; one that keeps coming far past it (`SLACK` more) is cut off. */
+ *  a 413 `too-large` the client can read and word; one that keeps coming far past it (`SLACK` more) is given up on
+ *  (its stream cancelled: over a socket, `node` cuts the connection). */
 const SLACK = 8 << 20
-const body = (req: IncomingMessage, limit = 1 << 20) =>
-  new Promise<string>((resolve, reject) => {
-    const chunks: Buffer[] = []
-    let size = 0
-    const over = () => new Refused("too-large", `body over ${Math.floor(limit / (1 << 20))} MB`, 413)
-    req.on("data", (c: Buffer) => {
-      size += c.length
-      if (size <= limit) return void chunks.push(c)
+const body = async (request: Request, limit = 1 << 20): Promise<string> => {
+  if (!request.body) return ""
+  const over = () => new Refused("too-large", `body over ${Math.floor(limit / (1 << 20))} MB`, 413)
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    size += value.byteLength
+    if (size <= limit) chunks.push(value)
+    else {
       chunks.length = 0
       if (size > limit + SLACK) {
-        reject(over())
-        req.destroy()
+        await reader.cancel().catch(() => {})
+        throw over()
       }
-    })
-    req.on("end", () => (size > limit ? reject(over()) : resolve(Buffer.concat(chunks).toString("utf8"))))
-    req.on("error", reject)
-  })
+    }
+  }
+  if (size > limit) throw over()
+  return Buffer.concat(chunks).toString("utf8")
+}
 // The body besides Action and the player's rows, decoded here like them.
 const PersonaBody = Schema.decodeUnknownSync(
   Schema.Struct({ name: Schema.String, text: Schema.String, default: Schema.optionalKey(Schema.Boolean) }),
@@ -202,26 +215,44 @@ const PullBody = Schema.decodeUnknownSync(
   Schema.Struct({ entry: Schema.String, replace: Schema.optionalKey(Schema.Boolean) }),
 )
 
-export const handle = (lib: Library, { inspect = false } = {}) => {
-  return async (req: IncomingMessage, res: ServerResponse) => {
-    const json = (status: number, v: unknown) => {
-      if (req.socket.destroyed || res.destroyed) return // body() cut off a request that kept coming far past its limit
-      res.writeHead(status, { "content-type": "application/json" })
-      res.end(JSON.stringify(v))
-    }
+const encoder = new TextEncoder()
+const json = (status: number, v: unknown) =>
+  new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } })
+
+export interface HandleOptions {
+  /** Request and result bodies in the trace. */
+  inspect?: boolean
+  /** A local directory may be added as a card library: only where the caller is the person at the terminal (a
+   *  command that opened the library itself), never on a listener. */
+  dirs?: boolean
+  /** Every stage runs on the scripted model (MODEL=fake): said on GET /host. */
+  scripted?: boolean
+  /** The page is served beside the API: said on GET /host. */
+  page?: boolean
+}
+
+export const handle = (
+  lib: Library,
+  { inspect = false, dirs = false, scripted = false, page = false }: HandleOptions = {},
+): Wire => {
+  return async (request: Request): Promise<Response> => {
+    const method = request.method
+    const at = new URL(request.url)
+    /** The path and query as the routes match them. */
+    const url = at.pathname + at.search
     const bad = (e: unknown, status = 400) =>
       json(e instanceof Busy ? 409 : (e instanceof Refused && e.status) || status, {
         error: e instanceof Error ? e.message : String(e),
         ...((e instanceof Busy || e instanceof Refused) && { code: e.code }),
       })
     try {
-      decodeURIComponent((req.url ?? "").split("?")[0]!)
+      decodeURIComponent(at.pathname)
     } catch (e) {
       return bad(e)
     }
     /** The body, decoded; `empty` stands in for a blank one. Throws on a bad or too-large body, for `reply`. */
     const read = async <T>(decode: (u: unknown) => T, empty?: string, limit?: number): Promise<T> =>
-      decode(JSON.parse((await body(req, limit)) || (empty ?? "")))
+      decode(JSON.parse((await body(request, limit)) || (empty ?? "")))
     /** The same for a body that holds a whole card. */
     const card = <T>(decode: (u: unknown) => T) => read(decode, undefined, CARD_BYTES)
     /** What `f` gives as 200, or what it throws as `status`. */
@@ -232,8 +263,8 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
         return bad(e, status)
       }
     }
-    const named = req.headers["x-tavern-story"]
-    const asked = typeof named === "string" && named !== "" ? Number(named) : undefined
+    const named = request.headers.get("x-tavern-story")
+    const asked = named !== null && named !== "" ? Number(named) : undefined
     /** The listing, with the story the client is to be on: the one it named while that one is still there, else the
      *  newest, none on an empty library. */
     const stories = (current?: number) => {
@@ -241,33 +272,34 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
       const named = current ?? (asked !== undefined && lib.exists(asked) ? asked : undefined)
       return { current: named ?? rows[0]?.id ?? null, stories: rows }
     }
-    if (req.method === "GET" && req.url === "/stories") return json(200, stories())
-    if (req.method === "POST" && req.url === "/stories")
+    if (method === "GET" && url === "/host") return json(200, { version, scripted, page, pid: process.pid })
+    if (method === "GET" && url === "/stories") return json(200, stories())
+    if (method === "POST" && url === "/stories")
       return reply(async () => stories(lib.stories.create((await read(NewStory)).card)))
-    if (req.method === "DELETE" && req.url === "/stories")
+    if (method === "DELETE" && url === "/stories")
       return reply(async () => (lib.stories.delMany((await read(IdsBody)).ids), stories()))
-    const searching = req.method === "GET" && /^\/stories\/search(?:\?(.*))?$/.exec(req.url ?? "")
+    const searching = method === "GET" && /^\/stories\/search(?:\?(.*))?$/.exec(url)
     if (searching) return json(200, lib.stories.search(new URLSearchParams(searching[1] ?? "").get("q") ?? ""))
-    const exporting = req.method === "GET" && /^\/stories\/(\d+)\/export\.(md|json)$/.exec(req.url ?? "")
+    const exporting = method === "GET" && /^\/stories\/(\d+)\/export\.(md|json)$/.exec(url)
     if (exporting) {
       const id = Number(exporting[1])
       const x = lib.stories.export(id)
       if (!x) return json(404, { error: `no story ${id}` })
       const md = exporting[2] === "md"
-      res.writeHead(200, {
-        "content-type": md ? "text/markdown; charset=utf-8" : "application/json",
-        "content-disposition": disposition(x.story, md ? "md" : "json"),
+      return new Response(md ? markdown(x) : JSON.stringify(backup(x), null, 2), {
+        headers: {
+          "content-type": md ? "text/markdown; charset=utf-8" : "application/json",
+          "content-disposition": disposition(x.story, md ? "md" : "json"),
+        },
       })
-      res.end(md ? markdown(x) : JSON.stringify(backup(x), null, 2))
-      return
     }
-    const storyAt = /^\/stories\/(\d+)$/.exec(req.url ?? "")
-    if (storyAt && (req.method === "PUT" || req.method === "DELETE")) {
+    const storyAt = /^\/stories\/(\d+)$/.exec(url)
+    if (storyAt && (method === "PUT" || method === "DELETE")) {
       const id = Number(storyAt[1])
       if (!lib.exists(id)) return json(404, { error: `no story ${id}` })
-      if (req.method === "PUT")
+      if (method === "PUT")
         return reply(async () => {
-          const raw = await body(req)
+          const raw = await body(request)
           if (raw === "") return stories(id) // a blank body is the switch: this story becomes the current one
           const b = StoryBody(JSON.parse(raw))
           if (b.title !== undefined) lib.stories.title(id, b.title)
@@ -278,112 +310,111 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
         })
       return reply(() => (lib.stories.del(id), stories()), 409) // busy: a turn runs on it
     }
-    if (req.method === "GET" && req.url === "/personas") return json(200, lib.personas.list())
-    const personaAt = /^\/personas\/([^/]+)$/.exec(req.url ?? "")
-    if (personaAt && (req.method === "PUT" || req.method === "DELETE")) {
+    if (method === "GET" && url === "/personas") return json(200, lib.personas.list())
+    const personaAt = /^\/personas\/([^/]+)$/.exec(url)
+    if (personaAt && (method === "PUT" || method === "DELETE")) {
       const id = decodeURIComponent(personaAt[1]!)
       return reply(async () => {
-        if (req.method === "PUT") lib.personas.put({ id, ...(await read(PersonaBody)) })
+        if (method === "PUT") lib.personas.put({ id, ...(await read(PersonaBody)) })
         else lib.personas.del(id)
         return lib.personas.list()
       })
     }
-    if (req.method === "GET" && req.url === "/hats") return json(200, lib.hats.list())
-    const hatAt = /^\/hats\/([^/]+)$/.exec(req.url ?? "")
-    if (hatAt && (req.method === "PUT" || req.method === "DELETE")) {
+    if (method === "GET" && url === "/hats") return json(200, lib.hats.list())
+    const hatAt = /^\/hats\/([^/]+)$/.exec(url)
+    if (hatAt && (method === "PUT" || method === "DELETE")) {
       const id = decodeURIComponent(hatAt[1]!)
       return reply(async () => {
-        if (req.method === "PUT") lib.hats.put({ id, ...(await read(HatBody)) })
+        if (method === "PUT") lib.hats.put({ id, ...(await read(HatBody)) })
         else lib.hats.del(id)
         return lib.hats.list()
       })
     }
-    if (req.method === "GET" && req.url === "/packs") return json(200, lib.packs.list())
-    const packAt = /^\/packs\/([^/]+)$/.exec(req.url ?? "")
-    if (packAt && (req.method === "PUT" || req.method === "DELETE")) {
+    if (method === "GET" && url === "/packs") return json(200, lib.packs.list())
+    const packAt = /^\/packs\/([^/]+)$/.exec(url)
+    if (packAt && (method === "PUT" || method === "DELETE")) {
       const id = decodeURIComponent(packAt[1]!)
       return reply(async () => {
-        if (req.method === "PUT") {
+        if (method === "PUT") {
           const raw = (await read((u) => u)) as object
           lib.packs.put({ ...raw, id })
         } else lib.packs.del(id)
         return lib.packs.list()
       })
     }
-    if (req.method === "GET" && req.url === "/secrets") return json(200, lib.secrets.list())
-    if (req.method === "POST" && req.url === "/secrets")
-      return reply(async () => lib.secrets.add(await read(SecretBody)))
-    const valueAt = req.method === "GET" && /^\/secrets\/([^/]+)\/value$/.exec(req.url ?? "")
+    if (method === "GET" && url === "/secrets") return json(200, lib.secrets.list())
+    if (method === "POST" && url === "/secrets") return reply(async () => lib.secrets.add(await read(SecretBody)))
+    const valueAt = method === "GET" && /^\/secrets\/([^/]+)\/value$/.exec(url)
     if (valueAt) {
       const value = lib.secrets.value(decodeURIComponent(valueAt[1]!))
       return value === undefined ? json(404, { error: "no such secret" }) : json(200, { value })
     }
-    const secretAt = /^\/secrets\/([^/]+)$/.exec(req.url ?? "")
-    if (secretAt && (req.method === "PUT" || req.method === "DELETE")) {
+    const secretAt = /^\/secrets\/([^/]+)$/.exec(url)
+    if (secretAt && (method === "PUT" || method === "DELETE")) {
       const id = decodeURIComponent(secretAt[1]!)
       return reply(async () => {
-        if (req.method === "PUT") lib.secrets.set(id, await read(SecretMeta))
+        if (method === "PUT") lib.secrets.set(id, await read(SecretMeta))
         else lib.secrets.del(id)
         return lib.secrets.list()
       })
     }
-    if (req.method === "GET" && req.url === "/providers") return json(200, lib.providers.list())
-    const providerAt = /^\/providers\/([^/]+)(\/models|\/test)?$/.exec(req.url ?? "")
+    if (method === "GET" && url === "/providers") return json(200, lib.providers.list())
+    const providerAt = /^\/providers\/([^/]+)(\/models|\/test)?$/.exec(url)
     if (providerAt) {
       const id = decodeURIComponent(providerAt[1]!)
       const known = lib.providers.list().some((p) => p.id === id)
-      if (!providerAt[2] && (req.method === "PUT" || req.method === "DELETE"))
+      if (!providerAt[2] && (method === "PUT" || method === "DELETE"))
         return reply(async () => {
-          if (req.method === "PUT") lib.providers.put({ id, ...(await read(ProviderBody)) })
+          if (method === "PUT") lib.providers.put({ id, ...(await read(ProviderBody)) })
           else lib.providers.del(id)
           return lib.providers.list()
         })
       if (!known && providerAt[2]) return json(404, { error: `no provider ${id}` })
-      if (providerAt[2] === "/models" && req.method === "GET") return reply(() => lib.providers.models(id), 502)
+      if (providerAt[2] === "/models" && method === "GET") return reply(() => lib.providers.models(id), 502)
       // a bad body, or the provider's configuration (no key, no endpoint): 400; a probe's finding is a 200's Probe
-      if (providerAt[2] === "/test" && req.method === "POST")
+      if (providerAt[2] === "/test" && method === "POST")
         return reply(async () => lib.providers.test(id, (await read(TestBody, "{}")).model))
     }
-    if (req.method === "GET" && req.url === "/models/names") return json(200, lib.names())
-    if (req.method === "GET" && req.url === "/decision") return json(200, lib.decision.read() ?? null)
-    if (req.method === "PUT" && req.url === "/decision")
+    if (method === "GET" && url === "/models/names") return json(200, lib.names())
+    if (method === "GET" && url === "/decision") return json(200, lib.decision.read() ?? null)
+    if (method === "PUT" && url === "/decision")
       return reply(async () => (lib.decision.write(await read(DecisionBody)), lib.decision.read()))
-    if (req.method === "POST" && req.url === "/decision/test") return reply(() => lib.decision.test())
-    if (req.method === "GET" && req.url === "/routing") return json(200, lib.routing.read())
-    if (req.method === "PUT" && req.url === "/routing")
+    if (method === "POST" && url === "/decision/test") return reply(() => lib.decision.test())
+    if (method === "GET" && url === "/routing") return json(200, lib.routing.read())
+    if (method === "PUT" && url === "/routing")
       return reply(async () => (lib.routing.write(await read(RoutingBody)), lib.routing.read()))
-    if (req.method === "GET" && req.url === "/cards") return json(200, lib.cards.list())
-    const installing = req.method === "POST" && /^\/cards(\?replace=1)?$/.exec(req.url ?? "")
+    if (method === "GET" && url === "/cards") return json(200, lib.cards.list())
+    const installing = method === "POST" && /^\/cards(\?replace=1)?$/.exec(url)
     if (installing)
       return reply(async () => ({
-        card: lib.cards.install(await body(req, CARD_BYTES), { via: "file" }, { replace: !!installing[1] }),
+        card: lib.cards.install(await body(request, CARD_BYTES), { via: "file" }, { replace: !!installing[1] }),
         cards: lib.cards.list(),
       }))
-    if (req.method === "POST" && req.url === "/cards/new")
+    if (method === "POST" && url === "/cards/new")
       return reply(async () => ({ card: lib.cards.create((await read(NewCard, "{}")).title), cards: lib.cards.list() }))
-    if (req.method === "POST" && req.url === "/cards/link")
+    if (method === "POST" && url === "/cards/link")
       return reply(async () => {
         const { url, replace } = await read(LinkBody)
         return { card: await lib.importLink(url, { replace }), cards: lib.cards.list() }
       })
-    const authorAt = req.method === "POST" && /^\/author\/(compile|sort|review)$/.exec(req.url ?? "")
+    const authorAt = method === "POST" && /^\/author\/(compile|sort|review)$/.exec(url)
     if (authorAt)
       return reply(async () => lib.author[authorAt[1] as "compile" | "sort" | "review"](await card((u) => u)))
-    if (req.method === "GET" && req.url === "/depots") return json(200, lib.depots.list())
-    if (req.method === "POST" && req.url === "/depots")
-      return reply(async () => (await lib.depots.add((await read(DepotBody)).location), lib.depots.list()))
-    const depotAt = /^\/depots\/([^/]+)(\/pull)?$/.exec(req.url ?? "")
+    if (method === "GET" && url === "/depots") return json(200, lib.depots.list())
+    if (method === "POST" && url === "/depots")
+      return reply(async () => (await lib.depots.add((await read(DepotBody)).location, { dirs }), lib.depots.list()))
+    const depotAt = /^\/depots\/([^/]+)(\/pull)?$/.exec(url)
     if (depotAt) {
       const id = decodeURIComponent(depotAt[1]!)
-      if (depotAt[2] && req.method === "POST")
+      if (depotAt[2] && method === "POST")
         return reply(async () => {
           const { entry, replace } = await read(PullBody)
           return { card: await lib.depots.pull(id, entry, { replace }), cards: lib.cards.list() }
         })
-      if (!depotAt[2] && req.method === "GET") return reply(() => lib.depots.view(id))
-      if (!depotAt[2] && req.method === "DELETE") return reply(() => (lib.depots.remove(id), lib.depots.list()))
+      if (!depotAt[2] && method === "GET") return reply(() => lib.depots.view(id))
+      if (!depotAt[2] && method === "DELETE") return reply(() => (lib.depots.remove(id), lib.depots.list()))
     }
-    const cardFile = req.method === "GET" && /^\/cards\/([^/]+)\/export\.yaml$/.exec(req.url ?? "")
+    const cardFile = method === "GET" && /^\/cards\/([^/]+)\/export\.yaml$/.exec(url)
     if (cardFile) {
       const id = decodeURIComponent(cardFile[1]!)
       let text
@@ -392,56 +423,56 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
       } catch (e) {
         return bad(e, 404)
       }
-      res.writeHead(200, {
-        "content-type": "application/yaml; charset=utf-8",
-        "content-disposition": attachment(`${id}.yaml`),
+      return new Response(text, {
+        headers: {
+          "content-type": "application/yaml; charset=utf-8",
+          "content-disposition": attachment(`${id}.yaml`),
+        },
       })
-      res.end(text)
-      return
     }
-    const wholeAt = /^\/cards\/([^/]+)\/whole$/.exec(req.url ?? "")
-    if (wholeAt && (req.method === "GET" || req.method === "PUT")) {
+    const wholeAt = /^\/cards\/([^/]+)\/whole$/.exec(url)
+    if (wholeAt && (method === "GET" || method === "PUT")) {
       const id = decodeURIComponent(wholeAt[1]!)
       if (!lib.cards.has(id)) return json(404, { error: `no card ${id}` })
-      if (req.method === "GET") return reply(() => lib.cards.whole(id))
+      if (method === "GET") return reply(() => lib.cards.whole(id))
       return reply(async () => {
         const { card: value, rev } = await card(WholeBody)
         return { card: lib.cards.save(id, value, rev), cards: lib.cards.list(), rev: lib.cards.whole(id).rev }
       })
     }
-    const localAt = /^\/cards\/([^/]+)\/local$/.exec(req.url ?? "")
-    if (localAt && (req.method === "GET" || req.method === "PUT")) {
+    const localAt = /^\/cards\/([^/]+)\/local$/.exec(url)
+    if (localAt && (method === "GET" || method === "PUT")) {
       const card = decodeURIComponent(localAt[1]!)
       if (!lib.cards.has(card)) return json(404, { error: `no card ${card}` })
       return reply(async () => {
-        if (req.method === "PUT") {
+        if (method === "PUT") {
           const raw = (await read((u) => u)) as object
           lib.locals.write({ ...raw, id: "local", name: card, card })
         }
         return lib.locals.read(card)
       })
     }
-    const removing = req.method === "DELETE" && /^\/cards\/([^/]+)$/.exec(req.url ?? "")
+    const removing = method === "DELETE" && /^\/cards\/([^/]+)$/.exec(url)
     if (removing) return reply(() => (lib.cards.remove(decodeURIComponent(removing[1]!)), lib.cards.list()), 404)
-    const cardAt = req.method === "GET" && /^\/cards\/([^/]+)$/.exec(req.url ?? "")
+    const cardAt = method === "GET" && /^\/cards\/([^/]+)$/.exec(url)
     if (cardAt) return reply(() => lib.view(decodeURIComponent(cardAt[1]!)), 404)
     // a card or library route none of the above took (a method it has no use for, a route that is gone): said here,
     // before the story's routes answer it with "no story"
-    if (/^\/(cards|depots)(?:[/?]|$)/.test(req.url ?? "")) return json(404, { error: "not found" })
+    if (/^\/(cards|depots)(?:[/?]|$)/.test(url)) return json(404, { error: "not found" })
     // Everything below is one story's: the one the request names.
     if (asked === undefined || !lib.exists(asked)) return json(404, { error: `no story ${asked ?? ""}`.trim() })
     const story = asked
-    if (req.method === "GET" && req.url === "/card") return reply(() => lib.view(lib.cardOf(story)!, story), 404)
+    if (method === "GET" && url === "/card") return reply(() => lib.view(lib.cardOf(story)!, story), 404)
     let s
     try {
       s = lib.session(story)
     } catch (e) {
       return bad(e)
     }
-    const contextAt = req.method === "GET" && /^\/context\?node=(root|\d+)$/.exec(req.url ?? "")
+    const contextAt = method === "GET" && /^\/context\?node=(root|\d+)$/.exec(url)
     if (contextAt) return reply(() => s.activeContext(contextAt[1] === "root" ? null : Number(contextAt[1])), 404)
-    if (req.method === "GET" && req.url === "/nodes") return reply(() => s.timeline())
-    const detailAt = req.method === "GET" && /^\/nodes\/(\d+)\/(detail|trace)$/.exec(req.url ?? "")
+    if (method === "GET" && url === "/nodes") return reply(() => s.timeline())
+    const detailAt = method === "GET" && /^\/nodes\/(\d+)\/(detail|trace)$/.exec(url)
     if (detailAt)
       return reply(() => {
         const id = Number(detailAt[1])
@@ -449,49 +480,56 @@ export const handle = (lib: Library, { inspect = false } = {}) => {
         if (detailAt[2] === "detail") return s.detail(id)
         return lib.trace(story, id, inspect)
       }, 404)
-    if (req.method === "POST" && req.url === "/stop") return json(200, { stopped: lib.stop(story) })
-    /** Streams `events` as SSE, after `first` when given; the response's close unsubscribes, nothing more. */
-    const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown]) => {
-      res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" })
-      let closed = false
-      const send = (name: string, v: unknown) => {
-        if (!closed) res.write(`event: ${name}\ndata: ${JSON.stringify(v)}\n\n`)
-      }
-      if (first) send(...first)
-      const fiber = Effect.runFork(
-        Stream.runForEach(events, (e) =>
-          Effect.sync(() => {
-            send(e.kind, e)
-          }),
-        ).pipe(Effect.ensuring(Effect.sync(() => void (closed || res.end())))),
-      )
-      // `req` "close" means the request body was consumed (Node ≥ 16), not that the client went away; the response's does.
-      res.on("close", () => {
-        if (res.writableFinished) return
-        closed = true
-        Effect.runFork(Fiber.interrupt(fiber))
-      })
-    }
-    if (req.method === "GET" && req.url === "/turn") {
+    if (method === "POST" && url === "/stop") return json(200, { stopped: lib.stop(story) })
+    if (method === "GET" && url === "/turn") {
       const at = lib.attach(story)
-      if (!at) {
-        res.writeHead(204)
-        return void res.end()
-      }
+      if (!at) return new Response(null, { status: 204 })
       return stream(at.events, ["attach", { phase: at.phase, draft: at.draft }])
     }
-    const dropping = req.method === "DELETE" && /^\/nodes\/(\d+)$/.exec(req.url ?? "")
-    if (!dropping && (req.method !== "POST" || req.url !== "/")) return json(404, { error: "not found" })
+    const dropping = method === "DELETE" && /^\/nodes\/(\d+)$/.exec(url)
+    if (!dropping && (method !== "POST" || url !== "/")) return json(404, { error: "not found" })
     if (dropping) return reply(() => lib.drop(story, Number(dropping[1])), 404)
     try {
       const action = await read((u) => u)
-      stream(lib.submit(story, action))
+      return stream(lib.submit(story, action))
     } catch (e) {
       return bad(e)
     }
   }
 }
-export const serve = (lib: Library, opts?: { inspect?: boolean }) => createServer(handle(lib, opts))
+/** `events` as SSE, after `first` when given, one `event:` per kind. The subscription starts now, whoever reads; the
+ *  body's cancel (the reader went away) unsubscribes, nothing more: the turn is the story's. */
+const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown]) => {
+  let closed = false
+  let fiber: Fiber.Fiber<void, unknown> | undefined
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      const send = (name: string, v: unknown) => {
+        if (!closed) c.enqueue(encoder.encode(`event: ${name}\ndata: ${JSON.stringify(v)}\n\n`))
+      }
+      if (first) send(...first)
+      fiber = Effect.runFork(
+        Stream.runForEach(events, (e) => Effect.sync(() => send(e.kind, e))).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (closed) return
+              closed = true
+              c.close()
+            }),
+          ),
+        ),
+      )
+    },
+    cancel() {
+      if (closed) return
+      closed = true
+      if (fiber) Effect.runFork(Fiber.interrupt(fiber))
+    },
+  })
+  return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } })
+}
+/** The session's wire on a node listener of its own (tests). */
+export const serve = (lib: Library, opts?: HandleOptions) => createServer(node(handle(lib, opts)))
 
 const types: Record<string, string> = {
   html: "text/html; charset=utf-8",
@@ -503,41 +541,48 @@ const types: Record<string, string> = {
   ico: "image/x-icon",
   woff2: "font/woff2",
 }
-/** The whole tavern on one port, what a phone runs: the session's handler under /api (the prefix stripped, as Vite's
+/** The whole tavern on one port, what a phone runs: the session's wire under /api (the prefix stripped, as Vite's
  *  mount does), and under everything else the client build (`vp build` → packages/client/dist): a path with an
- *  extension is that file (hashed assets cached for good) or a 404, any other path is index.html, the client's own. Without dist, only /api is served. */
-export const app = (api: (req: IncomingMessage, res: ServerResponse) => Promise<void>, dist?: string) => {
+ *  extension is that file (hashed assets cached for good) or a 404, any other path is index.html, the client's own.
+ *  Without dist, only /api is served. */
+export const app = (api: Wire, dist?: string): Wire => {
   const root = dist && resolve(dist)
-  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
-    const url = req.url ?? "/"
-    if (url === "/api" || url.startsWith("/api/")) {
-      req.url = url.slice(4) || "/"
-      return api(req, res)
+  const text = (status: number, s: string, headers?: Record<string, string>) =>
+    new Response(encoder.encode(s), { status, ...(headers && { headers }) })
+  return async (request: Request): Promise<Response> => {
+    const at = new URL(request.url)
+    if (at.pathname === "/api" || at.pathname.startsWith("/api/")) {
+      const rest = request.url.slice(at.origin.length + 4)
+      return api(
+        new Request(at.origin + (rest.startsWith("/") ? rest : `/${rest}`), {
+          method: request.method,
+          headers: request.headers,
+          signal: request.signal,
+          ...(request.body && { body: request.body, duplex: "half" }),
+        } as RequestInit),
+      )
     }
-    if (!root) {
-      res.writeHead(404).end("not found")
-      return
-    }
+    if (!root) return text(404, "not found")
     let path: string
     try {
-      path = decodeURIComponent(new URL(url, "http://x").pathname)
+      path = decodeURIComponent(at.pathname)
     } catch {
-      res.writeHead(400)
-      return void res.end("bad path")
+      return text(400, "bad path")
     }
     const file = resolve(root, `.${path}`)
     const page = !extname(path) || !file.startsWith(root + sep)
     const asset = page ? join(root, "index.html") : file
     try {
-      const body = await readFile(asset)
-      res.writeHead(200, {
-        "content-type": types[extname(asset).slice(1)] ?? "application/octet-stream",
-        "cache-control": page ? "no-cache" : "public, max-age=31536000, immutable",
+      return new Response(await readFile(asset), {
+        headers: {
+          "content-type": types[extname(asset).slice(1)] ?? "application/octet-stream",
+          "cache-control": page ? "no-cache" : "public, max-age=31536000, immutable",
+        },
       })
-      res.end(body)
     } catch {
-      res.writeHead(404, { "content-type": "text/plain" })
-      res.end(page ? "no client build: vp build in packages/client" : "not found")
+      return text(404, page ? "no client build: vp build in packages/client" : "not found", {
+        "content-type": "text/plain",
+      })
     }
   }
 }

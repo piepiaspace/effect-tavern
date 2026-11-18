@@ -3,7 +3,8 @@
 // model (MODEL=fake) that answers every stage well enough to drive the client; served in inspector mode. The library
 // (data.ts) is `tavern.db` under DATA, by default .dev/ at the repo root, so Vite re-evaluating this module after a
 // runtime/server edit, or a restart, keeps the stories; a second process on the same DATA fails fast on the lock
-// (data.ts `lock`); CLI clients connect with --url instead. No card is bound: each request names its story and the story its card. An empty story opens on no
+// (data.ts `lock`); a `tavern` command on the same DATA reaches this session by the address the Vite plugin announces
+// (`announce` below, reach.ts). No card is bound: each request names its story and the story its card. An empty story opens on no
 // greeting: the player picks one on the card page (a greet is a root, and one picked on the server would stay as an
 // orphan root beside the player's). Which model runs each stage is the library's routing (the settings page);
 // MODEL=fake puts the scripted model over it. This module is the environment's entry: it reads the environment and
@@ -21,13 +22,17 @@ import { player } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
+import { announce as announceAt, local } from "./announce.ts"
 import { open } from "./data.ts"
+import { levels, openLogbook, type Level } from "./logbook.ts"
 import { refresh } from "./names.ts"
 import { tavern } from "./tavern.ts"
+import { node } from "./wire.ts"
 
 // a compiled binary (bun build --compile) has no checkout around it: its library lives where it is run
 const dir =
-  process.env["DATA"] ??
+  process.env["TAVERN_DATA"] ||
+  process.env["DATA"] ||
   (import.meta.url.includes("$bunfs")
     ? `${process.cwd()}/.dev`
     : fileURLToPath(new URL("../../../.dev/", import.meta.url)))
@@ -97,11 +102,27 @@ const one = scripted ? { ...fake(answer), hat: process.env["HAT"] } : live() // 
 const model = one && (() => one)
 
 const key = localAnthropicKey()
-export const { handler } = tavern({
+const { handler: wire } = tavern({
   data,
   overlay: player.harness,
   model,
   pinned: scripted, // MODEL=fake scripts every stage, whatever the routing says
   ...(key && { seed: { key } }), // a first start puts the local key in the vault (tavern.ts `seed`)
   inspect: true,
+  scripted,
+  page: true, // Vite serves it
+  // a guest on Vite's terminal: finished turns and failures only (logbook.ts), its file beside the library
+  logbook: openLogbook({
+    guest: true,
+    dir: `${dir}/log`,
+    lang: process.env["TAVERN_LANG"] === "en" ? "en" : "zh",
+    ...(levels.includes(process.env["TAVERN_LOG"] as Level) && { level: process.env["TAVERN_LOG"] as Level }),
+    inspect: process.env["TAVERN_INSPECT"] === "1",
+  }),
 })
+/** What Vite's mount calls (packages/client/vite.config.ts). */
+export const handler = node(wire)
+/** Says where Vite listens, beside this library's lock, so `tavern` commands on this data directory reach the dev
+ *  session by themselves (reach.ts); the answer withdraws it. The plugin calls it once Vite's server listens. */
+export const announce = (at: { address: string; port: number }, scheme: "http" | "https" = "http") =>
+  announceAt(dir, local(at, scheme), { dev: true })

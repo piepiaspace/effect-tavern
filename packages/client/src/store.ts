@@ -371,7 +371,8 @@ const applyNow = (e: Wire): void => {
         e.phase ??
         registry.get(stage) ??
         (registry.get(latest)?.node.settlementStatus === "failed" ? "record" : undefined)
-      registry.set(error, { message: e.message, ...(e.code && { code: e.code }), ...(phase && { phase }) })
+      const { kind: _, phase: __, ...failure } = e
+      registry.set(error, { ...failure, ...(phase && { phase }) })
       registry.set(stage, null)
       running(null)
       withdraw()

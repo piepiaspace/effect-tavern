@@ -1,10 +1,9 @@
-#!/usr/bin/env bun
-// Reading instrument for SillyTavern cards (#31): unroll a V2/V3 card into the document ST's own assembly would
-// produce, for a person or an agent to read. It reads a card and never writes one; it imports nothing from src/.
-// Assembly rules follow docs/card-reading.md §1.
-import { BunServices } from "@effect/platform-bun"
-import { Cause, Console, Effect, Exit } from "effect"
+// Reading instrument for SillyTavern cards (#31), `tavern card unroll`: unroll a V2/V3 card into the document ST's
+// own assembly would produce, for a person or an agent to read. It reads a card and never writes one; it imports
+// nothing from src/. Assembly rules follow docs/card-reading.md §1.
+import { Console, Effect } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
+import { here, Json } from "./cli.ts"
 
 type Raw = Record<string, any>
 export type Block = {
@@ -224,34 +223,22 @@ export const markdown = (u: Unrolled) =>
     `not expanded: ${u.macros.join(" ") || "none"}`,
   ].join("\n\n")
 
-const cli = Command.make(
+export const unrollCommand = Command.make(
   "unroll",
   {
     file: Argument.String("file").pipe(
       Argument.withDescription("a SillyTavern card: PNG with a chara/ccv3 chunk, or V2/V3 JSON"),
     ),
     user: Flag.String("user").pipe(Flag.withDescription("the name {{user}} expands to"), Flag.withDefault("User")),
-    json: Flag.Boolean("json").pipe(Flag.withDefault(false)),
   },
-  ({ file, user, json }) =>
+  ({ file, user }) =>
     Effect.gen(function* () {
+      const json = yield* Json
+      const path = yield* here(file)
       const u = yield* Effect.tryPromise({
-        try: async () => unroll(parseCard(await Bun.file(file).bytes()), user),
+        try: async () => unroll(parseCard(await Bun.file(path).bytes()), user),
         catch: (e) => (e as Error).message,
       })
       yield* Console.log(json ? JSON.stringify(u, null, 2) : markdown(u))
     }),
 ).pipe(Command.withDescription("Print a SillyTavern card in ST's assembly order, with its trigger list"))
-
-if (import.meta.main) {
-  const exit = await Effect.runPromiseExit(
-    Command.runWith(cli, { version: "0.0.0" })(process.argv.slice(2)).pipe(
-      Effect.tapError((e) => (typeof e === "string" ? Console.error(e) : Effect.void)),
-      Effect.provide(BunServices.layer),
-    ),
-  )
-  if (Exit.isFailure(exit)) {
-    if (Cause.hasDies(exit.cause)) console.error(Cause.pretty(exit.cause))
-    process.exitCode = 1
-  }
-}
