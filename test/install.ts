@@ -206,6 +206,19 @@ for (const shell of shells) {
       rmSync(b.root, { recursive: true })
     }
 
+    // Android Linux session: GNU uname, no Termux variables, and a system linker pointing into APEX.
+    if (fakes && lang === "zh") {
+      const b = box(shell.at, { os: "GNU/Linux" })
+      const system = join(b.root, "system")
+      mkdirSync(join(system, "bin"), { recursive: true })
+      symlinkSync(shell.at, join(system, "bin/linker64"))
+      const r = run(b, [sh(b)], { stdin: script, env: env(lang, release(b, "v0.9.2"), { ANDROID_ROOT: system }) })
+      ours(`Android with a GNU/Linux shell (${at})`, r)
+      assert.equal(r.code, 0, r.err.join("\n"))
+      assert.equal(version(b, join(b.bin, "tavern")), "tavern 0.9.2")
+      rmSync(b.root, { recursive: true })
+    }
+
     // Failures: the exact words, exit 1, nothing left behind, the previous binary still there and still working.
     const failing = (
       title: string,

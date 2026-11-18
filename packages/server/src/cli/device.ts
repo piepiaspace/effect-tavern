@@ -4,7 +4,8 @@
 // desktop's opener when there is one; nothing keeps them awake), and none. A tool that is not installed is a no-op that
 // answers false, never an error: the tavern serves the same without it.
 import { spawnSync } from "node:child_process"
-import { statfsSync } from "node:fs"
+import { existsSync, statfsSync } from "node:fs"
+import { join } from "node:path"
 
 export interface Device {
   readonly kind: "termux" | "linux" | "macos" | "none"
@@ -93,10 +94,15 @@ export const noDevice: Device = {
   tools: () => [],
 }
 
-/** Termux when its environment says so, else by the platform. */
+/** Android's loader is also visible in Linux sessions that don't inherit Termux's environment. */
+export const isAndroid = (platform: string, env: Env) =>
+  platform === "android" ||
+  !!env["TERMUX_VERSION"] ||
+  /com\.termux/.test(env["PREFIX"] ?? "") ||
+  (platform === "linux" && existsSync(join(env["ANDROID_ROOT"] || "/system", "bin/linker64")))
+
 export const deviceOf = (platform: string, env: Env): Device => {
-  if (platform === "android" || env["TERMUX_VERSION"] !== undefined || /com\.termux/.test(env["PREFIX"] ?? ""))
-    return termux(env)
+  if (isAndroid(platform, env)) return termux(env)
   if (platform === "darwin") return desktop("macos", env)
   if (platform === "linux") return desktop("linux", env)
   return noDevice

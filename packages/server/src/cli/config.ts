@@ -5,7 +5,7 @@ import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { createInterface } from "node:readline"
 import { levels, type Level } from "../logbook.ts"
-import { deviceOf, type Device } from "./device.ts"
+import { deviceOf, isAndroid, type Device } from "./device.ts"
 import type { Release } from "./release.ts"
 
 /** Where a command writes: the process's stdout or stderr, or a string sink in tests. */
@@ -54,19 +54,11 @@ export const version: string = typeof TAVERN_VERSION === "string" && TAVERN_VERS
 /** Running as the compiled binary (its modules live under Bun's `$bunfs`), not from source. */
 export const compiled = import.meta.url.includes("$bunfs")
 
-/** Android, by Bun's word or by Termux's environment (a linux-built Bun on a phone says `linux`). */
-const platformOf = (env: World["env"]) =>
-  process.platform === ("android" as NodeJS.Platform) ||
-  env["TERMUX_VERSION"] !== undefined ||
-  /com\.termux/.test(env["PREFIX"] ?? "")
-    ? "android"
-    : process.platform
-
 export const thisProgram = (env: World["env"]): Self => ({
   path: process.execPath,
   compiled,
   version,
-  platform: platformOf(env),
+  platform: isAndroid(process.platform, env) ? "android" : process.platform,
   arch: process.arch,
 })
 

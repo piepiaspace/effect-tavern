@@ -586,15 +586,19 @@ try {
     assert.equal(await bare.open("http://x"), false)
     assert.ok(bare.tools().every((t) => !t.found))
     assert.equal(await desktop("linux", { PATH: "" }).open("http://x"), false)
+    const system = join(root, "system")
+    mkdirSync(join(system, "bin"), { recursive: true })
+    symlinkSync(process.execPath, join(system, "bin/linker64"))
     assert.deepEqual(
       [
         deviceOf("android", {}),
         deviceOf("linux", { TERMUX_VERSION: "0.118" }),
-        deviceOf("linux", {}),
+        deviceOf("linux", { ANDROID_ROOT: system }),
+        deviceOf("linux", { ANDROID_ROOT: join(root, "empty") }),
         deviceOf("darwin", {}),
         deviceOf("win32", {}),
       ].map((d) => d.kind),
-      ["termux", "termux", "linux", "macos", "none"],
+      ["termux", "termux", "termux", "linux", "macos", "none"],
     )
     assert.equal(typeof noDevice.free(root), "number")
     assert.equal(noDevice.free(join(root, "not-there")), undefined)

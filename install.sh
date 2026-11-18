@@ -163,10 +163,14 @@ main() {
   trap 'exit 1' INT TERM HUP
 
   os=$(uname -s 2>/dev/null)
-  # Termux's uname can report GNU/Linux. Use the same environment markers as the binary.
+  # A Linux userspace on Android can lose the Termux variables but still run the Android binary.
   case "${PREFIX:-}" in
     */com.termux/files/usr) os=Android ;;
-    *) if [ -n "${TERMUX_VERSION:-}" ] || [ "$(uname -o 2>/dev/null)" = Android ]; then os=Android; fi ;;
+    *)
+      if [ -n "${TERMUX_VERSION:-}" ] || [ "$(uname -o 2>/dev/null)" = Android ] ||
+        { [ "$os" = Linux ] && [ -x "${ANDROID_ROOT:-/system}/bin/linker64" ]; }; then
+        os=Android
+      fi ;;
   esac
   machine=$(uname -m 2>/dev/null)
   asset=$(asset_for "$os/$machine") ||
