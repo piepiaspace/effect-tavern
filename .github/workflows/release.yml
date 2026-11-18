@@ -9,51 +9,79 @@ permissions:
   contents: write
   packages: write
 
-# One build, every channel. release/targets.ts is the table: the binaries, their asset names (stamped into each, so
-# `tavern update` fetches its own build) and the Homebrew formula. Script installs (install.sh, install.ps1) and
-# `tavern update` read the GitHub release; Homebrew and the image carry the same binaries. The formula goes to
-# waylon256yhw/homebrew-tavern through a deploy key (secret HOMEBREW_TAP_KEY, the tap's write key); the image to
-# ghcr.io with the workflow's own token.
+# One build, every channel. release/targets.ts is the table: every binary, the runner that builds it and its asset
+# name (stamped into it, so `tavern update` fetches its own build). All of them build at once, one job each; the
+# release, the Homebrew formula and the image start when the last one lands. Script installs (install.sh, install.ps1)
+# and `tavern update` read the GitHub release; Homebrew and the image carry the same binaries. The formula goes to
+# waylon256yhw/homebrew-tavern through a deploy key (secret HOMEBREW_TAP_KEY); the image to ghcr.io with the
+# workflow's own token. A run by hand (workflow_dispatch) builds everything and publishes nothing.
 jobs:
-  # install.sh against a local mirror, with simulated machines.
-  installer:
+  plan:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
+      - id: targets
+        run: echo "matrix=$(bun release/targets.ts matrix)" >> "$GITHUB_OUTPUT"
 
-      - name: Test the installer
-        run: bun test/install.ts && bun test/release.ts
+  # install.sh against a local mirror with simulated machines, and the table against the installers; beside the build
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun test/install.ts && bun test/release.ts
 
-  # On macOS so the Mach-O binaries can be signed again (codesign) after Bun appends the program to them.
   build:
-    needs: installer
-    runs-on: macos-latest
+    needs: plan
+    name: build ${{ matrix.asset }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: pnpm install --frozen-lockfile
+      - name: Build the page
+        working-directory: packages/client
+        run: bun --bun vp build
+      # `tavern --version` answers the tag without its v (a run by hand: dev)
+      - name: Compile
+        run: |
+          [ "$GITHUB_REF_TYPE" = tag ] && export VERSION="${GITHUB_REF_NAME#v}"
+          bun release/targets.ts compile "${{ matrix.asset }}"
+      # the .gz alone; already compressed, so the artifact stores it as it is
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.asset }}
+          path: packages/server/dist/${{ matrix.asset }}.gz
+          compression-level: 0
+          retention-days: 7
+
+  publish:
+    needs: [test, build]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-
-      - uses: pnpm/action-setup@v6
-
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build the page
-        working-directory: packages/client
-        run: bun --bun vp build
-
-      # every target with the page inside; `tavern --version` answers the tag without its v
-      - name: Compile
-        run: VERSION="${GITHUB_REF_NAME#v}" bun release/targets.ts compile
-
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
       # release.txt: the tag, then the feat/fix/perf subjects since the previous tag; it is the release's notes, where
       # the installers read the tag, and what `tavern update` shows before it asks
       - name: Notes
@@ -62,48 +90,52 @@ jobs:
           {
             echo "$GITHUB_REF_NAME"
             git log --no-merges --format='- %s' ${prev:+"$prev.."}"$GITHUB_SHA" | grep -E '^- (feat|fix|perf)' || echo '- (no user-facing changes)'
-          } > packages/server/dist/release.txt
-          cat packages/server/dist/release.txt
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: packages/server/dist/
-          retention-days: 7
-
-  github:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/download-artifact@v8
-        with:
-          name: dist
-          path: dist
-      - name: Publish
+          } > dist/release.txt
+          cat dist/release.txt
+      - name: GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tail -n +2 dist/release.txt > notes.md
           gh release create "$GITHUB_REF_NAME" dist/*.gz dist/release.txt install.sh install.ps1 --notes-file notes.md
+      # after the release, so the formula never names files that are not there yet
+      - name: Homebrew formula
+        env:
+          TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
+        run: |
+          key="$RUNNER_TEMP/tap_key"
+          printf '%s\n' "$TAP_KEY" > "$key"
+          chmod 600 "$key"
+          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git clone --depth 1 git@github.com:waylon256yhw/homebrew-tavern.git "$RUNNER_TEMP/tap"
+          mkdir -p "$RUNNER_TEMP/tap/Formula"
+          bun release/targets.ts brew "$GITHUB_REF_NAME" dist > "$RUNNER_TEMP/tap/Formula/tavern.rb"
+          cd "$RUNNER_TEMP/tap"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/tavern.rb
+          git commit -m "tavern $GITHUB_REF_NAME"
+          git push
 
+  # one buildx run for both architectures into one multi-arch manifest; the Dockerfile only copies, so nothing is
+  # emulated
   docker:
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test, build]
+    if: github.ref_type == 'tag'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
-          name: dist
+          pattern: tavern-linux-*
           path: dist
+          merge-multiple: true
       - name: Stage the Linux binaries by Docker's architecture names
         run: |
           mkdir -p dist/docker/amd64 dist/docker/arm64
-          install -m 755 dist/tavern-linux-x64 dist/docker/amd64/tavern
-          install -m 755 dist/tavern-linux-arm64 dist/docker/arm64/tavern
-      - uses: docker/setup-qemu-action@v4
+          gzip -dc dist/tavern-linux-x64.gz > dist/docker/amd64/tavern
+          gzip -dc dist/tavern-linux-arm64.gz > dist/docker/arm64/tavern
+          chmod 755 dist/docker/*/tavern
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -119,33 +151,3 @@ jobs:
           tags: |
             ghcr.io/waylon256yhw/effect-tavern:${{ github.ref_name }}
             ghcr.io/waylon256yhw/effect-tavern:latest
-
-  homebrew:
-    needs: github
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.4
-      - uses: actions/download-artifact@v8
-        with:
-          name: dist
-          path: packages/server/dist
-      - name: Push the formula to the tap
-        env:
-          TAP_KEY: ${{ secrets.HOMEBREW_TAP_KEY }}
-        run: |
-          key="$RUNNER_TEMP/tap_key"
-          printf '%s\n' "$TAP_KEY" > "$key"
-          chmod 600 "$key"
-          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-          git clone git@github.com:waylon256yhw/homebrew-tavern.git tap
-          mkdir -p tap/Formula
-          bun release/targets.ts brew "$GITHUB_REF_NAME" > tap/Formula/tavern.rb
-          cd tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/tavern.rb
-          git commit -m "tavern $GITHUB_REF_NAME"
-          git push
