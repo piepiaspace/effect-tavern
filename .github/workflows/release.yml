@@ -13,7 +13,7 @@ permissions:
 # name (stamped into it, so `tavern update` fetches its own build). All of them build at once, one job each; the
 # release, the Homebrew formula and the image start when the last one lands. Script installs (install.sh, install.ps1)
 # and `tavern update` read the GitHub release; Homebrew and the image carry the same binaries. The formula goes to
-# waylon256yhw/homebrew-tavern through a deploy key (secret HOMEBREW_TAP_KEY); the image to ghcr.io with the
+# piepiaspace/homebrew-tavern through a deploy key (secret HOMEBREW_TAP_KEY); the image to ghcr.io with the
 # workflow's own token. A run by hand (workflow_dispatch) builds everything and publishes nothing.
 jobs:
   plan:
@@ -107,7 +107,7 @@ jobs:
           printf '%s\n' "$TAP_KEY" > "$key"
           chmod 600 "$key"
           export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-          git clone --depth 1 git@github.com:waylon256yhw/homebrew-tavern.git "$RUNNER_TEMP/tap"
+          git clone --depth 1 git@github.com:piepiaspace/homebrew-tavern.git "$RUNNER_TEMP/tap"
           mkdir -p "$RUNNER_TEMP/tap/Formula"
           bun release/targets.ts brew "$GITHUB_REF_NAME" dist > "$RUNNER_TEMP/tap/Formula/tavern.rb"
           cd "$RUNNER_TEMP/tap"
@@ -149,5 +149,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/waylon256yhw/effect-tavern:${{ github.ref_name }}
-            ghcr.io/waylon256yhw/effect-tavern:latest
+            ghcr.io/piepiaspace/effect-tavern:${{ github.ref_name }}
+            ghcr.io/piepiaspace/effect-tavern:latest

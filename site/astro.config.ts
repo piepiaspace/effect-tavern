@@ -6,13 +6,13 @@ import nimbus, {
 import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
 
 const nimbusConfig = defineNimbusConfig({
-  site: "https://waylon256yhw.github.io",
+  site: "https://piepiaspace.github.io",
   title: "Effect Tavern",
   description:
     "Declarative cards, multi-stage turn harness, and deterministic state settlement on Effect v4.",
   locale: "en",
-  github: "https://github.com/waylon256yhw/effect-tavern",
-  editPattern: "https://github.com/waylon256yhw/effect-tavern/edit/main/site/{path}",
+  github: "https://github.com/piepiaspace/effect-tavern",
+  editPattern: "https://github.com/piepiaspace/effect-tavern/edit/main/site/{path}",
   socialImageAlt: "Effect Tavern documentation",
   agents: {
     discovery: false,

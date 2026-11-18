@@ -89,7 +89,7 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
       w.changes(target),
       ...latest.notes.slice(0, NOTES).flatMap((l) => wrap(l, n - 4).map((x, i) => `${i ? "    " : "  "}${x}`)),
     ])
-    if (latest.notes.length > NOTES) say([`  ${w.allChanges} https://github.com/waylon256yhw/effect-tavern/releases`])
+    if (latest.notes.length > NOTES) say([`  ${w.allChanges} https://github.com/piepiaspace/effect-tavern/releases`])
   }
   if (asked.check) {
     say(step(w.newer, n))

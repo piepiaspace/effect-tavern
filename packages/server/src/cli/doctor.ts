@@ -236,7 +236,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
           self.channel === "brew"
             ? "brew upgrade tavern"
             : self.channel === "docker"
-              ? "docker pull ghcr.io/waylon256yhw/effect-tavern"
+              ? "docker pull ghcr.io/piepiaspace/effect-tavern"
               : w.newerNext,
       }),
       facts: `release=${release.where} tag=${latest.tag}`,

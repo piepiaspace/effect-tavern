@@ -7,15 +7,15 @@
 ## 安装
 
 ```sh
-curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/piepiaspace/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
 | 哪里 | 安装 | 更新 |
 | --- | --- | --- |
 | 安卓（Termux）、Linux、macOS | 上面这一行 | `tavern update` |
-| Windows（PowerShell） | `irm https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.ps1 \| iex` | `tavern update` |
-| Homebrew | `brew install waylon256yhw/tavern/tavern` | `brew upgrade tavern` |
-| Docker | `docker run -d -p 127.0.0.1:7777:7777 -v tavern:/data ghcr.io/waylon256yhw/effect-tavern` | 拉新镜像，重建容器 |
+| Windows（PowerShell） | `irm https://github.com/piepiaspace/effect-tavern/releases/latest/download/install.ps1 \| iex` | `tavern update` |
+| Homebrew | `brew install piepiaspace/tavern/tavern` | `brew upgrade tavern` |
+| Docker | `docker run -d -p 127.0.0.1:7777:7777 -v tavern:/data ghcr.io/piepiaspace/effect-tavern` | 拉新镜像，重建容器 |
 
 发布的二进制和它们的附件名只有一张表：`release/targets.ts`。`install.sh`（仓库根目录）按这台机器能运行哪种二进制挑附件：
 Linux 上看二进制要的加载器在不在（glibc 的 `ld-linux-*`、musl 的 `ld-musl-*`、安卓的 `/system/bin/linker64`，依次），
@@ -334,7 +334,7 @@ HTTP 客户端调用 `POST /api/author/compile {card, select, intent}`、`/api/a
 
 生产入口（`tavern start`，包括 `--headless`）共用最小 harness，不自动导入开发机密钥；数据目录见上文。开发服务器继续使用 `.dev/` 与开发用 player 配置。`--data` / `TAVERN_DATA` 可指定现有数据库目录；切换入口不会自动搬迁旧数据。
 
-二进制由 `packages/server` 的 `compile` 脚本编译 `bin/tavern.ts`，客户端构建（`packages/client/dist`）作为资源打进去；`VERSION=<版本>` 写入版本，`TARGET=<bun 目标>` 交叉编译，`ASSET=<附件名>` 写入附件名并作为文件名（不给是本机的 `dist/tavern`）。发布流程（`.github/workflows/release.yml`）按这张表同时编出每一个（`bun release/targets.ts compile <附件名>`，一个 job 一个；macOS 的两个在 macOS 上编，以便给 Mach-O 重新签名），再发到 GitHub Release、ghcr.io 镜像和 Homebrew tap `waylon256yhw/homebrew-tavern`（用 deploy key `HOMEBREW_TAP_KEY` 推送）。
+二进制由 `packages/server` 的 `compile` 脚本编译 `bin/tavern.ts`，客户端构建（`packages/client/dist`）作为资源打进去；`VERSION=<版本>` 写入版本，`TARGET=<bun 目标>` 交叉编译，`ASSET=<附件名>` 写入附件名并作为文件名（不给是本机的 `dist/tavern`）。发布流程（`.github/workflows/release.yml`）按这张表同时编出每一个（`bun release/targets.ts compile <附件名>`，一个 job 一个；macOS 的两个在 macOS 上编，以便给 Mach-O 重新签名），再发到 GitHub Release、ghcr.io 镜像和 Homebrew tap `piepiaspace/homebrew-tavern`（用 deploy key `HOMEBREW_TAP_KEY` 推送）。
 
 完整调用正文默认不暴露；`tavern start --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
 

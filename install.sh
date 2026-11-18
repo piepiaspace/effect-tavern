@@ -2,7 +2,7 @@
 # Install the released tavern binary beside sh (Termux), or in ~/.local/bin.
 # Start it with tavern start. Windows: install.ps1.
 
-REPO=waylon256yhw/effect-tavern
+REPO=piepiaspace/effect-tavern
 OLD=effect-tavern # the command the old launcher installed beside sh
 
 # The release asset this machine runs (names from release/targets.ts). A Linux binary runs where the loader it asks

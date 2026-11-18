@@ -12,7 +12,7 @@ import { open, readFile } from "node:fs/promises"
 import { isAbsolute, join, resolve } from "node:path"
 import { errno, Failed } from "./failed.ts"
 
-export const REPO = "waylon256yhw/effect-tavern"
+export const REPO = "piepiaspace/effect-tavern"
 const LATEST = `https://github.com/${REPO}/releases/latest/download`
 const TAGGED = (tag: string) => `https://github.com/${REPO}/releases/download/${tag}`
 

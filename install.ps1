@@ -1,11 +1,11 @@
 # Install the released tavern binary on Windows, in %LOCALAPPDATA%\Programs\tavern, and put it on the user's PATH.
-#   irm https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.ps1 | iex
+#   irm https://github.com/piepiaspace/effect-tavern/releases/latest/download/install.ps1 | iex
 # Start it with tavern start. The same release contract as install.sh: release.txt's first line is the tag, the
 # binary is <asset>.gz beside it (names from release/targets.ts); TAVERN_MIRROR replaces the download directory.
 # English only: Windows PowerShell 5.1 reads a script piped from irm as Latin-1, so Chinese words would arrive garbled
 # (ponytail: carry them as UTF-8 bytes decoded here if Chinese is wanted).
 # Run through iex, `exit` would close the person's own window: a failure throws to the one catch at the end instead.
-$Repo = "waylon256yhw/effect-tavern"
+$Repo = "piepiaspace/effect-tavern"
 
 function Fail($what, $why, $next) {
   Write-Host "x $what" -ForegroundColor Red

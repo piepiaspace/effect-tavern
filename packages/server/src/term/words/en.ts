@@ -9,7 +9,7 @@ const ROUTING = "in Settings, under Default model"
 const channelName = (c?: string) => (c === "docker" ? "its Docker image" : "Homebrew")
 const channelNext = (c?: string) =>
   c === "docker"
-    ? "Pull the new image (docker pull ghcr.io/waylon256yhw/effect-tavern) and recreate the container; the library stays in its volume."
+    ? "Pull the new image (docker pull ghcr.io/piepiaspace/effect-tavern) and recreate the container; the library stays in its volume."
     : "Type brew upgrade tavern."
 const wait = (s: number) => (s > 90 ? `${Math.ceil(s / 60)} minutes` : `${s} seconds`)
 const url =

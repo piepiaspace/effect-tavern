@@ -9,7 +9,7 @@ const ROUTING = "「设置」的「默认模型」"
 const channelName = (c?: string) => (c === "docker" ? "Docker" : "Homebrew")
 const channelNext = (c?: string) =>
   c === "docker"
-    ? "拉取新镜像（docker pull ghcr.io/waylon256yhw/effect-tavern），再重建容器；故事库在卷里，不受影响。"
+    ? "拉取新镜像（docker pull ghcr.io/piepiaspace/effect-tavern），再重建容器；故事库在卷里，不受影响。"
     : "输入 brew upgrade tavern。"
 const wait = (s: number) => (s > 90 ? `${Math.ceil(s / 60)} 分钟` : `${s} 秒`)
 const url =

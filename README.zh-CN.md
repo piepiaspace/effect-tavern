@@ -70,7 +70,7 @@ docs/           内部工程调研与设计简报档案
 在 [Termux](https://termux.dev) 里运行一行，不用装 Bun、Node 或 Vite+：
 
 ```sh
-curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
+curl -fsSL https://github.com/piepiaspace/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
 用旧启动器安装过的手机也可以重新运行上面的安装命令。输入 `tavern` 查看帮助，`tavern start` 启动并打开网页，`tavern update` 更新。程序装在 `$PREFIX/bin/tavern` 或 `~/.local/bin/tavern`，数据在 `~/.tavern`。运行 `rm "$(command -v tavern)"` 可卸载命令。

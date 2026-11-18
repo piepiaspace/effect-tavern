@@ -1,6 +1,6 @@
 # 设置页（Connections & Player Assets）原型与双端改造交接（2026-10-25，Issue #33）
 
-关联 Issue：`waylon256yhw/effect-tavern#33`（Connections page: model provider wire and client, a plain access point）  
+关联 Issue：`piepiaspace/effect-tavern#33`（Connections page: model provider wire and client, a plain access point）  
 交互原型：`docs/settings-prototype.html`（单文件自包含 HTML/CSS/JS，桌面端 + 390px 移动端 + 深浅双色，可直接打开对照）
 
 本文档记录原型阶段已敲定的前端骨架、交互规范，以及即将移交生产环境（`packages/client` Solid 2.0 + 纯 CSS Cascade Layers + `packages/server` + `packages/provider`）改造时需要一并落地的双端机制与高危点。
