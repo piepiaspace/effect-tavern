@@ -50,6 +50,7 @@ import {
 import {
   blocked,
   decide,
+  diagnose,
   object,
   runStageTools,
   ModelError,
@@ -63,6 +64,7 @@ import {
   type StageOptions,
   type DecisionModel,
   type Question,
+  type Fault,
 } from "@effect-tavern/provider"
 import { Deferred, Effect, Queue, Schema, Stream } from "effect"
 import { tokens } from "./tokens.ts"
@@ -100,7 +102,19 @@ export type Event =
   | { kind: "stage"; phase: Phase }
   | { kind: "delta"; part: Part | ProductDelta }
   // `via: "decision"`: lookup's or check's pass on the decision model (`decisionPass`), not a language model call
-  | { kind: "call"; phase: Phase; msgs: readonly Message[]; out: unknown; usage: Usage; ms: number; via?: "decision" }
+  // every call a stage makes, landed or failed: `model` the model's own id, `fault` (provider fault.ts) when it failed
+  // (the stream fails right after); only an interrupted turn's call in flight may report nothing
+  | {
+      kind: "call"
+      phase: Phase
+      msgs: readonly Message[]
+      out: unknown
+      usage: Usage
+      ms: number
+      via?: "decision"
+      model?: string
+      fault?: Fault
+    }
   | ({ kind: "change" } & Change) // the log moved: a node landed or was amended, nodes dropped, and where head is now
 /** A narrate block's text as it streams, beside the provider's `text-delta`: the block `<<aside>> <id>` opened. */
 export type ProductDelta = { type: "product-delta"; id: string; text: string }
@@ -109,6 +123,24 @@ export type Change = Log.Change<Node> & { invalidated?: readonly number[] }
 /** A stop signal: completes when the player halts the prose (a Deferred's await on the wire). Only narrate listens. */
 export type Stop = Effect.Effect<void>
 type Emit = (e: Event) => Effect.Effect<void>
+const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
+/** A model's own id (ai-sdk's `modelId`), for the call's report; none when it carries none. */
+const nameOf = (m: unknown): string | undefined => {
+  const id = typeof m === "object" && m !== null ? (m as { modelId?: unknown }).modelId : m
+  return typeof id === "string" && id ? id : undefined
+}
+/** The `call` a failed call reports before the stream fails: what it asked, nothing back, the fault. */
+const failedCall = (phase: Phase, msgs: readonly Message[], model: string | undefined, t0: number, e: unknown) =>
+  ({
+    kind: "call",
+    phase,
+    msgs,
+    out: undefined,
+    usage: NO_USAGE,
+    ms: Date.now() - t0,
+    ...(model && { model }),
+    fault: diagnose(e),
+  }) satisfies Event
 
 const BriefOf = (open: readonly string[]) =>
   Schema.Struct({
@@ -325,12 +357,21 @@ export const makeSession = ({
       const t0 = Date.now()
       const M = modelFor(phase)
       // effort is the bound model entry's own: the harness names none (an unset one sends nothing)
+      const model = nameOf(M.model)
       const r = yield* object(M, schema, msgs, {
         name: phase,
         effort: M.effort,
         maxOutputTokens,
+      }).pipe(Effect.tapError((e) => emit(failedCall(phase, msgs, model, t0, e))))
+      yield* emit({
+        kind: "call",
+        phase,
+        msgs,
+        out: r.value,
+        usage: r.usage,
+        ms: Date.now() - t0,
+        ...(model && { model }),
       })
-      yield* emit({ kind: "call", phase, msgs, out: r.value, usage: r.usage, ms: Date.now() - t0 })
       return r.value
     })
 
@@ -348,10 +389,12 @@ export const makeSession = ({
     Effect.gen(function* () {
       let M: DecisionModel | undefined
       let error: string | undefined
+      let fault: Fault | undefined
       try {
         M = decisionFor?.()
       } catch (e) {
         error = e instanceof Error ? e.message : String(e)
+        fault = diagnose(e)
       }
       if (!M && error === undefined) return undefined
       yield* emit({ kind: "stage", phase })
@@ -360,11 +403,12 @@ export const makeSession = ({
         ? yield* decide(M, state, questions, { maxRetries: 0 }).pipe(
             Effect.match({
               onSuccess: (ok) => ({ ok }),
-              onFailure: (e) => ({ error: blocked(e) ? `blocked:${blocked(e)}` : e.message }),
+              onFailure: (e) => ({ error: blocked(e) ? `blocked:${blocked(e)}` : e.message, fault: diagnose(e) }),
             }),
           )
-        : { error: error ?? "" }
+        : { error: error ?? "", fault }
       const v = "ok" in r ? read(r.ok.answers) : undefined
+      const model = nameOf(M)
       yield* emit({
         kind: "call",
         phase,
@@ -376,8 +420,10 @@ export const makeSession = ({
           ...("error" in r && { error: r.error }),
           ...(v?.delivered && { delivered: v.delivered }),
         },
-        usage: "ok" in r ? r.ok.usage : { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        usage: "ok" in r ? r.ok.usage : NO_USAGE,
         ms: Date.now() - t0,
+        ...(model && { model }),
+        ...("fault" in r && r.fault && { fault: r.fault }),
       })
       return v?.value
     })
@@ -389,7 +435,9 @@ export const makeSession = ({
       const started = Date.now()
       const events: StageEvent[] = []
       let reported = false
-      const report = (out: object, usage: Usage) =>
+      const M = modelFor(phase)
+      const model = nameOf(M.model)
+      const report = (out: object, usage: Usage, fault?: Fault) =>
         Effect.gen(function* () {
           reported = true
           yield* emit({
@@ -399,25 +447,19 @@ export const makeSession = ({
             out: { ...out, budget: options.budget },
             usage,
             ms: Date.now() - started,
+            ...(model && { model }),
+            ...(fault && { fault }),
           })
         })
-      return yield* runStageTools(modelFor(phase), msgs, { ...options, onEvent: (e) => events.push(e) }).pipe(
+      return yield* runStageTools(M, msgs, { ...options, onEvent: (e) => events.push(e) }).pipe(
         Effect.tap((r) => report(r, r.usage)),
-        Effect.tapError((e) => report({ status: "failed", message: e.message, trace: e.trace }, e.usage)),
+        Effect.tapError((e) => report({ status: "failed", message: e.message, trace: e.trace }, e.usage, diagnose(e))),
         Effect.mapError((e) => new ModelError({ message: e.message, cause: e })),
         Effect.ensuring(
           Effect.suspend(() =>
             reported
               ? Effect.void
-              : report(
-                  { status: "cancelled", events },
-                  events.findLast((e) => e.kind === "end")?.usage ?? {
-                    input: 0,
-                    output: 0,
-                    cacheRead: 0,
-                    cacheWrite: 0,
-                  },
-                ),
+              : report({ status: "cancelled", events }, events.findLast((e) => e.kind === "end")?.usage ?? NO_USAGE),
           ),
         ),
       )
@@ -499,8 +541,19 @@ export const makeSession = ({
       const M = modelFor("narrate")
       yield* emit({ kind: "stage", phase: "narrate" })
       const t0 = Date.now()
-      const r = yield* whole(M, msgs, { name: "narrate", maxOutputTokens: M.maxOutputTokens, effort: M.effort })
-      yield* emit({ kind: "call", phase: "narrate", msgs, out: r.text, usage: r.usage, ms: Date.now() - t0 })
+      const model = nameOf(M.model)
+      const r = yield* whole(M, msgs, { name: "narrate", maxOutputTokens: M.maxOutputTokens, effort: M.effort }).pipe(
+        Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e))),
+      )
+      yield* emit({
+        kind: "call",
+        phase: "narrate",
+        msgs,
+        out: r.text,
+        usage: r.usage,
+        ms: Date.now() - t0,
+        ...(model && { model }),
+      })
       const { reply, blocks } = split(r.parts)
       return capped({ [p.id]: blocks[p.id] ?? proseOf(reply).trim() })
     })
@@ -754,10 +807,17 @@ export const makeSession = ({
       // A stopped stream ends after the current pull without the `finish` part: the text so far is the reply, usage unknown.
       let cut = false
       // The deltas go out split live: prose as `text-delta`, a block's text as `product-delta`, the delimiter line never.
+      const model = nameOf(M.model)
       const write = (msgs: Message[], live: ReturnType<typeof splitter>) =>
         Effect.gen(function* () {
           yield* emit({ kind: "stage", phase: "narrate" })
           const t0 = Date.now()
+          return yield* writing(msgs, live, t0).pipe(
+            Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e))),
+          )
+        })
+      const writing = (msgs: Message[], live: ReturnType<typeof splitter>, t0: number) =>
+        Effect.gen(function* () {
           const { parts, reply } = yield* streamed(M, msgs, opts)
           let text = ""
           let finished = false
@@ -786,11 +846,19 @@ export const makeSession = ({
             ? {
                 text,
                 parts: [{ type: "text" as const, text }],
-                usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                usage: NO_USAGE,
                 finishReason: "stop" as const,
               }
             : yield* reply
-          yield* emit({ kind: "call", phase: "narrate", msgs, out: r.text, usage: r.usage, ms: Date.now() - t0 })
+          yield* emit({
+            kind: "call",
+            phase: "narrate",
+            msgs,
+            out: r.text,
+            usage: r.usage,
+            ms: Date.now() - t0,
+            ...(model && { model }),
+          })
           return r
         })
       const narrate = (correction?: string) =>
