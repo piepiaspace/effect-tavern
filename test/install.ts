@@ -227,7 +227,7 @@ for (const shell of shells) {
     const at = `${shell.name}, ${lang}`
     // busybox sh runs its own applets (uname among them) whatever the PATH holds: only the refusal is real there
     const fakes = shell.name !== "busybox sh"
-    const machine = fakes ? "x86_64" : spawnSync("uname", ["-m"], { encoding: "utf8" }).stdout.trim()
+    const machine = fakes ? "aarch64" : spawnSync("uname", ["-m"], { encoding: "utf8" }).stdout.trim()
 
     // A fresh install, piped as the install line is, by either published name.
     if (fakes)
@@ -300,7 +300,7 @@ for (const shell of shells) {
     if (fakes)
       for (const [layout, old] of Object.entries(launcher)) {
         for (const second of [[], ["update"]]) {
-          const b = box(shell.at)
+          const b = box(shell.at, { os: "GNU/Linux" })
           const v1 = release(b, "v0.9.1", { binary: oldBinary, start: old })
           const v2 = release(b, "v0.9.2")
           const first = run(b, [sh(b)], { stdin: old, env: env(lang, v1) })
@@ -315,7 +315,10 @@ for (const shell of shells) {
             script,
             "the old update put the new start.sh over its command",
           )
-          const hand = run(b, [sh(b), join(b.bin, "effect-tavern"), ...second], { env: env(lang, v2) })
+          const termux: Record<string, string> = second.length
+            ? { TERMUX_VERSION: "0.118" }
+            : { PREFIX: "/data/data/com.termux/files/usr" }
+          const hand = run(b, [sh(b), join(b.bin, "effect-tavern"), ...second], { env: env(lang, v2, termux) })
           ours(`field: effect-tavern${second.map((s) => ` ${s}`).join("")} after it (${at})`, hand)
           assert.equal(hand.code, 0, hand.err.join("\n"))
           assert.deepEqual(hand.err, handed(lang))
@@ -443,7 +446,7 @@ for (const shell of shells) {
           "    waylon256yhw/effect-tavern on GitHub",
         ],
       ),
-      { box: { os: "GNU/Linux", machine: "x86_64" } },
+      { box: { os: "GNU/Linux", machine: "aarch64" } },
     )
     if (fakes && (!root || setpriv)) {
       failing(

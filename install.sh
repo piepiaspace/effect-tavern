@@ -22,7 +22,7 @@
 REPO=waylon256yhw/effect-tavern
 OLD=effect-tavern # the command the old launcher installed beside sh
 
-# One line per published binary: <uname -o, else -s>/<uname -m> to the release's asset (gzipped as <asset>.gz).
+# One line per published binary: operating system and architecture to the release asset.
 asset_for() {
   case "$1" in
     Android/aarch64 | Android/arm64) echo tavern-android ;;
@@ -195,7 +195,12 @@ main() {
   trap cleanup EXIT
   trap 'exit 1' INT TERM HUP
 
-  os=$(uname -s 2>/dev/null) && [ "$(uname -o 2>/dev/null)" = Android ] && os=Android
+  os=$(uname -s 2>/dev/null)
+  # Termux's uname can report GNU/Linux. Use the same environment markers as the binary.
+  case "${PREFIX:-}" in
+    */com.termux/files/usr) os=Android ;;
+    *) if [ -n "${TERMUX_VERSION:-}" ] || [ "$(uname -o 2>/dev/null)" = Android ]; then os=Android; fi ;;
+  esac
   machine=$(uname -m 2>/dev/null)
   asset=$(asset_for "$os/$machine") ||
     fail "$(w "这台设备没有现成的 tavern" "No ready-made tavern for this device")" \
