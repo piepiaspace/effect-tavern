@@ -48,7 +48,11 @@ try {
   const updated = Bun.spawnSync([installed, "update", "--yes"], { env, stdout: "pipe", stderr: "pipe" })
   assert.equal(updated.exitCode, 0, updated.stderr.toString())
   assert.match(updated.stderr.toString(), /✓ 已更新到 0\.0\.2/)
-  assert.equal(version(installed), "tavern 0.0.2")
+  // The 0.1.6 updater could have left its shell command beside the replaced binary.
+  writeFileSync(join(root, "bin", "effect-tavern"), `#!/bin/sh\nexec '${installed}' "$@"\n`, { mode: 0o755 })
+  const menu = Bun.spawnSync([installed], { env: { ...env, TERMUX_VERSION: "0.118", PATH: `${root}/bin:${env.PATH}` } })
+  assert.equal(menu.exitCode, 0, menu.stderr.toString())
+  assert.match(menu.stdout.toString(), /Effect Tavern 0\.0\.2[\s\S]+tavern start/)
   assert.deepEqual(readdirSync(join(root, "bin")), ["tavern"]) // nothing left beside it
   // and now it is the latest
   const again = Bun.spawnSync([installed, "update", "--yes"], { env, stdout: "pipe", stderr: "pipe" })

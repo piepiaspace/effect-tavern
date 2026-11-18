@@ -1,18 +1,9 @@
-// install.sh (published as install.sh and as start.sh) in a sandbox, with no phone and no network: a temporary HOME;
-// a bin directory first on the PATH holding `sh` (a link to the shell under test, so "beside sh" is the sandbox),
-// a fake `uname` (Android aarch64), fake termux-* tools and a `curl` that answers for 127.0.0.1 (the old launchers'
-// wait-then-open loop); a local directory per release (TAVERN_URL=file://...) holding a gzipped stub "binary",
-// release.txt and the scripts. The old launchers are frozen in test/launchers: 082478e (a plain
-// ~/.tavern/bin/tavern-android and bin/version) and 4f67fbe (PR 195: a link to a hidden .tavern-android.XXXXXXXX).
-// Every case runs under dash, bash and busybox sh (those present), in Chinese and in English; every line the script
-// shows a person is checked against the 48-column rule and the glyph rule. `bun test/install.ts --show` prints the
-// transcripts.
+// The installer runs in an isolated HOME with a local release mirror.
 import assert from "node:assert/strict"
 import { spawnSync } from "node:child_process"
 import {
   chmodSync,
   chownSync,
-  existsSync,
   lstatSync,
   mkdirSync,
   mkdtempSync,
@@ -29,10 +20,6 @@ import { gzipSync } from "node:zlib"
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..")
 const script = readFileSync(join(repo, "install.sh"), "utf8")
-const launcher = {
-  plain: readFileSync(join(repo, "test/launchers/082478e.sh"), "utf8"),
-  link: readFileSync(join(repo, "test/launchers/4f67fbe.sh"), "utf8"),
-}
 const show = process.argv.includes("--show")
 
 const which = (name: string): string | undefined => {
@@ -77,10 +64,6 @@ const stub = (version: string) => `#!/bin/sh
 [ "$1" = --version ] && { echo "tavern ${version}"; exit 0; }
 echo "tavern ${version} [$*] DATA=\${DATA-} PORT=\${PORT-} TAVERN_URL=\${TAVERN_URL-} TAVERN_LANG=\${TAVERN_LANG-}"
 `
-// a binary from before the command tree: it serves whatever it is given
-const oldBinary = `#!/bin/sh\necho "old binary [$*]"\n`
-const serving = `#!/bin/sh\nexec sleep 30\n`
-
 interface Box {
   root: string
   bin: string
@@ -108,11 +91,7 @@ const box = (shell: string, o: { os?: string; machine?: string } = {}): Box => {
 }
 
 // A release directory: release.txt, the gzipped binary (raw bytes when given a Buffer; absent when null), the scripts.
-const release = (
-  b: Box,
-  tag: string,
-  o: { binary?: string | Buffer | null; start?: string; notes?: string } = {},
-): string => {
+const release = (b: Box, tag: string, o: { binary?: string | Buffer | null; notes?: string } = {}): string => {
   const dir = join(b.root, "rel", tag)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, "release.txt"), o.notes ?? `${tag}\n- feat: a change\n`)
@@ -121,7 +100,6 @@ const release = (
     writeFileSync(join(dir, "tavern-android.gz"), typeof binary === "string" ? gzipSync(binary) : binary)
   }
   writeFileSync(join(dir, "install.sh"), script)
-  writeFileSync(join(dir, "start.sh"), o.start ?? script)
   return `file://${dir}`
 }
 
@@ -182,30 +160,11 @@ const ours = (title: string, r: Ran) => {
   shown(title, r)
 }
 
-const forwarder = (b: Box) => `#!/bin/sh\nexec '${b.bin}/tavern' "$@"\n`
 const installed = (lang: Lang, v: string, where = "<root>/bin") =>
   words(
     lang,
-    [`✓ 已安装 tavern ${v}`, `  位置  ${where}`, "  启动  tavern", "  更新  tavern update", ""],
-    [`✓ Installed tavern ${v}`, `  where   ${where}`, "  start   tavern", "  update  tavern update", ""],
-  )
-const handed = (lang: Lang) =>
-  words(
-    lang,
-    [
-      "✓ 命令改名为 tavern，故事和卡片都还在",
-      "  位置  <root>/bin",
-      "  启动  tavern（effect-tavern 也还能用）",
-      "  更新  tavern update",
-      "",
-    ],
-    [
-      "✓ The command is now tavern; the library stays",
-      "  where   <root>/bin",
-      "  start   tavern (effect-tavern still works)",
-      "  update  tavern update",
-      "",
-    ],
+    [`✓ 已安装 tavern ${v}`, `  位置  ${where}`, "  启动  tavern start", "  更新  tavern update", ""],
+    [`✓ Installed tavern ${v}`, `  where   ${where}`, "  start   tavern start", "  update  tavern update", ""],
   )
 const fetching = (lang: Lang, tag: string, size: string) =>
   words(
@@ -213,15 +172,11 @@ const fetching = (lang: Lang, tag: string, size: string) =>
     [`安装 Effect Tavern ${tag}`, `  下载  tavern-android.gz  ${size} MB`],
     [`Installing Effect Tavern ${tag}`, `  downloading  tavern-android.gz  ${size} MB`],
   )
-const ran = (v: string, args: string, lang: Lang, url = "", extra: { data?: string; port?: string } = {}) =>
-  `tavern ${v} [${args}] DATA=${extra.data ?? ""} PORT=${extra.port ?? ""} TAVERN_URL=${url} TAVERN_LANG=${lang === "en" ? "en" : ""}\n`
 const env = (lang: Lang, url: string, more: Record<string, string> = {}) => ({
   TAVERN_URL: url,
   ...(lang === "en" ? { TAVERN_LANG: "en" } : {}),
   ...more,
 })
-const urlOf = (b: Box, url: string) => url.replaceAll(b.root, "<root>")
-
 for (const shell of shells) {
   for (const lang of langs) {
     const at = `${shell.name}, ${lang}`
@@ -229,109 +184,27 @@ for (const shell of shells) {
     const fakes = shell.name !== "busybox sh"
     const machine = fakes ? "aarch64" : spawnSync("uname", ["-m"], { encoding: "utf8" }).stdout.trim()
 
-    // A fresh install, piped as the install line is, by either published name.
-    if (fakes)
-      for (const name of ["install.sh", "start.sh"]) {
-        const b = box(shell.at)
-        const url = release(b, "v0.9.2")
-        const r = run(b, [sh(b)], { stdin: read(join(url.slice(7), name)), env: env(lang, url) })
-        ours(`fresh install by ${name} (${at})`, r)
-        assert.equal(r.code, 0, `${name}: ${r.err.join("\n")}`)
-        assert.deepEqual(r.err, [...fetching(lang, "v0.9.2", "0.0"), ...installed(lang, "0.9.2")])
-        assert.equal(r.out, ran("0.9.2", "", lang, urlOf(b, url)), "the first run serves, as typing tavern would")
-        assert.deepEqual(tree(b), files("bin/tavern"), "nothing but the binary")
-        assert.equal(version(b, join(b.bin, "tavern")), "tavern 0.9.2")
-        rmSync(b.root, { recursive: true })
-      }
-
-    // A hand-over from either old layout, as the new start.sh run as the old command (what the old `update` leaves);
-    // no download: the release named does not exist. DATA and PORT are honoured as the old script did.
-    if (fakes)
-      for (const layout of ["plain", "link"] as const) {
-        const b = box(shell.at)
-        const data = join(b.home, "lib")
-        const bin = join(data, "bin")
-        mkdirSync(bin, { recursive: true })
-        writeFileSync(join(data, "tavern.db"), "the library")
-        if (layout === "plain") {
-          writeFileSync(join(bin, "tavern-android"), stub("0.9.2"), { mode: 0o755 })
-          writeFileSync(join(bin, "version"), "v0.9.2\n")
-        } else {
-          writeFileSync(join(bin, ".tavern-android.Ab3dEf9h"), stub("0.9.2"), { mode: 0o755 })
-          writeFileSync(join(bin, ".tavern-android.Ab3dEf9h.version"), "v0.9.2\n")
-          writeFileSync(join(bin, "version"), "v0.9.0\n") // stale, from before the link layout
-          symlinkSync(".tavern-android.Ab3dEf9h", join(bin, "tavern-android"))
-        }
-        writeFileSync(join(b.bin, "effect-tavern"), script, { mode: 0o755 })
-        const url = `file://${b.root}/nowhere`
-        const r = run(b, [sh(b), join(b.bin, "effect-tavern")], { env: env(lang, url, { DATA: data, PORT: "8888" }) })
-        ours(`hand-over from the ${layout} layout (${at})`, r)
-        assert.equal(r.code, 0, r.err.join("\n"))
-        assert.deepEqual(r.err, handed(lang))
-        assert.equal(r.out, ran("0.9.2", "", lang, urlOf(b, url), { data: "<root>/home/lib", port: "8888" }))
-        assert.deepEqual(tree(b), files("bin/effect-tavern", "bin/tavern", "home/lib/", "home/lib/tavern.db"))
-        assert.equal(read(join(data, "tavern.db")), "the library")
-        assert.equal(read(join(b.bin, "effect-tavern")), forwarder(b))
-        rmSync(b.root, { recursive: true })
-      }
-
-    // A binary from before the command tree does not answer --version: the latest is installed instead, and the old
-    // launcher's files still go. Under one shell, the same with an old binary that serves until it is stopped.
-    if (fakes)
-      for (const old of shell === shells[0] && lang === "zh" ? [oldBinary, serving] : [oldBinary]) {
-        const b = box(shell.at)
-        const bin = join(b.home, ".tavern", "bin")
-        mkdirSync(bin, { recursive: true })
-        writeFileSync(join(bin, "tavern-android"), old, { mode: 0o755 })
-        writeFileSync(join(bin, "version"), "v0.8.0\n")
-        writeFileSync(join(b.bin, "effect-tavern"), launcher.plain, { mode: 0o755 })
-        const url = release(b, "v0.9.2")
-        const r = run(b, [sh(b)], { stdin: script, env: env(lang, url) })
-        ours(`hand-over from a binary before the tree${old === serving ? ", serving" : ""} (${at})`, r)
-        assert.equal(r.code, 0, r.err.join("\n"))
-        assert.deepEqual(r.err, [...fetching(lang, "v0.9.2", "0.0"), ...handed(lang)])
-        assert.deepEqual(tree(b), files("bin/effect-tavern", "bin/tavern", "home/.tavern/"))
-        assert.equal(read(join(b.bin, "effect-tavern")), forwarder(b))
-        rmSync(b.root, { recursive: true })
-      }
-
-    // The field sequence: installed by an old launcher from an old release; its `update` against a release that
-    // carries the new start.sh; the old command again (the hand-over); and a third time (the forwarder).
-    if (fakes)
-      for (const [layout, old] of Object.entries(launcher)) {
-        for (const second of [[], ["update"]]) {
-          const b = box(shell.at, { os: "GNU/Linux" })
-          const v1 = release(b, "v0.9.1", { binary: oldBinary, start: old })
-          const v2 = release(b, "v0.9.2")
-          const first = run(b, [sh(b)], { stdin: old, env: env(lang, v1) })
-          shown(`field: install with the ${layout} launcher (${at})`, first)
-          assert.equal(first.code, 0, first.err.join("\n"))
-          assert.equal(first.out, "old binary []\n")
-          const update = run(b, [sh(b), join(b.bin, "effect-tavern"), "update"], { env: env(lang, v2) })
-          shown(`field: its update (${at})`, update)
-          assert.equal(update.code, 0, update.err.join("\n"))
-          assert.equal(
-            read(join(b.bin, "effect-tavern")),
-            script,
-            "the old update put the new start.sh over its command",
-          )
-          const termux: Record<string, string> = second.length
-            ? { TERMUX_VERSION: "0.118" }
-            : { PREFIX: "/data/data/com.termux/files/usr" }
-          const hand = run(b, [sh(b), join(b.bin, "effect-tavern"), ...second], { env: env(lang, v2, termux) })
-          ours(`field: effect-tavern${second.map((s) => ` ${s}`).join("")} after it (${at})`, hand)
-          assert.equal(hand.code, 0, hand.err.join("\n"))
-          assert.deepEqual(hand.err, handed(lang))
-          assert.equal(hand.out, ran("0.9.2", second.join(" "), lang, urlOf(b, v2)))
-          assert.deepEqual(tree(b), files("bin/effect-tavern", "bin/tavern", "home/.tavern/"))
-          const third = run(b, [sh(b), join(b.bin, "effect-tavern")], { env: env(lang, v2) })
-          shown(`field: effect-tavern a third time (${at})`, third)
-          assert.equal(third.code, 0)
-          assert.deepEqual(third.err, [], "the forwarder says nothing")
-          assert.equal(third.out, ran("0.9.2", "", lang, urlOf(b, v2)))
-          rmSync(b.root, { recursive: true })
-        }
-      }
+    // A Termux install replaces the previous launcher and leaves the library in place.
+    if (fakes) {
+      const b = box(shell.at, { os: "GNU/Linux" })
+      const url = release(b, "v0.9.2")
+      const legacy = join(b.bin, "effect-tavern")
+      writeFileSync(legacy, `#!/bin/sh\nexec '${b.bin}/tavern' "$@"\n`)
+      mkdirSync(join(b.home, ".tavern/bin"), { recursive: true })
+      writeFileSync(join(b.home, ".tavern/bin/tavern-android"), stub("0.1.6"))
+      writeFileSync(join(b.home, ".tavern/tavern.db"), "my stories")
+      const termux: Record<string, string> =
+        lang === "zh" ? { PREFIX: "/data/data/com.termux/files/usr" } : { TERMUX_VERSION: "0.118" }
+      const r = run(b, [sh(b)], { stdin: script, env: env(lang, url, termux) })
+      ours(`install on Termux (${at})`, r)
+      assert.equal(r.code, 0, r.err.join("\n"))
+      assert.equal(r.out, "")
+      assert.deepEqual(r.err, [...fetching(lang, "v0.9.2", "0.0"), ...installed(lang, "0.9.2")])
+      assert.deepEqual(tree(b), files("bin/tavern", "home/.tavern/", "home/.tavern/tavern.db"))
+      assert.equal(read(join(b.home, ".tavern/tavern.db")), "my stories")
+      assert.equal(version(b, join(b.bin, "tavern")), "tavern 0.9.2")
+      rmSync(b.root, { recursive: true })
+    }
 
     // Failures: the exact words, exit 1, nothing left behind, the previous binary still there and still working.
     const failing = (
@@ -483,18 +356,18 @@ for (const shell of shells) {
             "  sh 所在的目录写不进，装到了这里，",
             "  但这里不在 PATH 上。",
             "  > 把它加进 PATH，或用完整路径启动：",
-            "    ~/.local/bin/tavern",
+            "    ~/.local/bin/tavern start",
           ],
           [
             "  Cannot write beside sh, so it went here,",
             "  but this is not on the PATH.",
             "  > add it to the PATH, or type the full path:",
-            "    ~/.local/bin/tavern",
+            "    ~/.local/bin/tavern start",
           ],
         ),
         "",
       ])
-      assert.equal(r.out, ran("0.9.2", "", lang, urlOf(b, url)))
+      assert.equal(r.out, "")
       assert.deepEqual(tree(b), files("home/.local/", "home/.local/bin/", "home/.local/bin/tavern"))
       chmodSync(b.bin, 0o755)
       rmSync(b.root, { recursive: true })
@@ -513,5 +386,4 @@ function chownTree(path: string) {
 }
 
 if (show) console.log(transcripts.join("\n\n"))
-assert.ok(!existsSync(join(repo, "start.sh")), "start.sh is published from install.sh, not kept beside it")
 console.log(`install.sh: ${transcripts.length} runs under ${shells.map((s) => s.name).join(", ")} ✓`)

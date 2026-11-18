@@ -104,7 +104,7 @@ export const zh: Table = {
   "port-in-use": (f) => ({
     what: f.port ? `端口 ${f.port} 已被占用` : "端口已被占用",
     why: "可能是别的程序，或另一个数据目录的酒馆。",
-    next: f.port ? `换个端口启动：tavern --port ${f.port + 1}` : "加上 --port 换个端口，再启动。",
+    next: f.port ? `换个端口启动：tavern start --port ${f.port + 1}` : "加上 --port 换个端口，再启动。",
   }),
   "library-held": (f) => ({
     what: "数据目录正被另一个酒馆使用",
@@ -208,7 +208,7 @@ export const zh: Table = {
   "unsupported-device": (f) => ({
     what: "这台设备没有现成的发布版",
     why: `发布版只有 64 位 ARM 安卓手机的${f.platform ? `，这台是 ${f.platform}` : ""}。`,
-    next: "从源码运行：git pull 后用 bun run tavern。",
+    next: "从源码运行：git pull 后用 bun run tavern start。",
     kept: "现在的版本不受影响，照常能用。",
   }),
   "update-bad-binary": () => ({

@@ -1,23 +1,6 @@
 #!/bin/sh
-# Effect Tavern's installer: puts the one `tavern` binary on the PATH, then runs it.
-#
-#   curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
-#
-# It reads the release's release.txt (the tag on its first line), downloads this device's binary from that tag's
-# directory, checks that `tavern --version` answers `tavern <tag without v>`, and moves it into place as `tavern`
-# beside `sh` on the PATH (Termux: $PREFIX/bin), else in ~/.local/bin. Nothing else is installed. Then it runs
-# `tavern` with the arguments it was given, which serves; `tavern update` updates it from then on. The library
-# (~/.tavern, or DATA) is never touched. To uninstall: rm "$(command -v tavern)"; rm -r ~/.tavern drops the library.
-#
-# The release publishes this same file as start.sh, because the old launcher's `update` downloads start.sh over its
-# own command (`effect-tavern`, beside sh). Run on such a phone, by either name, it hands over: the binary the old
-# launcher downloaded into ~/.tavern/bin (a plain tavern-android, or a link to a hidden .tavern-android.XXXXXXXX with
-# its .version) becomes `tavern` if it answers --version (else the latest is installed), ~/.tavern/bin goes, and
-# `effect-tavern` is left as a two-line forwarder to `tavern`, said once. A failure changes nothing and says so.
-#
-# Env: TAVERN_MIRROR (legacy TAVERN_URL) replaces the releases/latest/download base for every file; DATA (where the
-# old launcher kept bin/); TAVERN_LANG=en (English words); PORT and the rest pass through to `tavern`. Every line a
-# person reads goes to stderr and fits 48 columns. test/install.ts drives it in a sandbox under dash, bash, busybox.
+# Install the released tavern binary beside sh, or in ~/.local/bin.
+# Start it with tavern start.
 
 REPO=waylon256yhw/effect-tavern
 OLD=effect-tavern # the command the old launcher installed beside sh
@@ -158,27 +141,11 @@ the mirror's files may not match.")
 these lines to whoever helps you")" "$(printf '%s' "$got" | cut -c 1-45)"
 }
 
-# The binary the old launcher downloaded: a plain tavern-android, or a link to a hidden .tavern-android.XXXXXXXX.
-found() {
-  link=$data/bin/tavern-android
-  if [ -L "$link" ]; then
-    to=$(readlink "$link") || return 1
-    case "$to" in /*) ;; *) to=$data/bin/$to ;; esac
-    [ -f "$to" ] && printf '%s' "$to"
-  else
-    [ -f "$link" ] && printf '%s' "$link"
-  fi
-}
-
-# Shell-quoted, for the forwarder's one command.
-quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
-
-# $1 is the old launcher, this script installed as it, or a forwarder this script wrote: safe to rewrite.
+# Match the released installer/launcher or its two-line forwarder.
 ours() {
-  grep -q 'Effect Tavern' "$1" 2>/dev/null && return 0
-  [ "$(sed -n 1p "$1")" = "#!/bin/sh" ] || return 1
-  case "$(sed -n 2p "$1")" in "exec '"*"/tavern' \"\$@\"") return 0 ;; esac
-  return 1
+  grep -Fxq "REPO=$REPO" "$1" && grep -q '^# Effect Tavern' "$1" && return 0
+  forward=$(printf '#!/bin/sh\nexec '\''%s'\'' "$@"' "$bin")
+  [ "$(cat "$1")" = "$forward" ]
 }
 
 main() {
@@ -222,22 +189,7 @@ $REPO on GitHub")"
 $(tilde "$HOME/.local/bin")" \
       "$(w "检查这两个目录的权限，再重新运行" "check their permissions and run it again")"
 
-  # An old launcher's phone: its binary is moved instead of downloaded, if it answers --version.
-  old=$(found) || old=
-  handover=
-  [ -n "$old" ] && handover=1
-  [ -f "$old_cmd" ] && grep -q 'Effect Tavern' "$old_cmd" 2>/dev/null && handover=1
-  got= && [ -n "$old" ] && got=$(answer "$old")
-  case "$got" in
-    "tavern "?*)
-      cp -p "$old" "$part" ||
-        fail "$(w 没能复制原来的程序 "Could not copy the old binary")" \
-          "$(w "手机的存储空间可能不够。" "The storage may be full.")" \
-          "$(w "腾出 150 MB 空间后重新运行刚才的命令" "free 150 MB and run it again")"
-      version=${got#tavern }
-      ;;
-    *) fetch ;;
-  esac
+  fetch
   if [ -d "$dir/tavern" ] || ! mv -f "$part" "$dir/tavern"; then
     fail "$(w "没能安装 tavern" "Could not install tavern")" "$(tilde "$dir/tavern")" \
       "$(w "检查目标路径和写入权限后重试" "check the destination and its permissions, then retry")"
@@ -246,13 +198,8 @@ $(tilde "$HOME/.local/bin")" \
   part=
   bin=$dir/tavern
 
-  # The hand-over: the old command forwards to tavern, the old launcher's files go, the library stays.
-  forward="#!/bin/sh
-exec $(quote "$bin") \"\$@\""
-  if [ -f "$old_cmd" ] && ours "$old_cmd" && [ "$(cat "$old_cmd")" != "$forward" ]; then
-    { printf '%s\n' "$forward" >"$old_cmd.part" && chmod +x "$old_cmd.part" && mv -f "$old_cmd.part" "$old_cmd"; } ||
-      { rm -f "$old_cmd.part"; fail "$(w "没能更新旧命令" "Could not update the old command")" "$(tilde "$old_cmd")" \
-          "$(w "检查写入权限后重试" "check its permissions and retry")"; }
+  if [ -f "$old_cmd" ] && ours "$old_cmd"; then
+    rm -f "$old_cmd" || exit 1
   fi
   if [ -d "$data/bin" ]; then
     rm -f "$data/bin/tavern-android" "$data/bin/tavern-android.gz" "$data/bin/tavern-android.part" \
@@ -260,17 +207,9 @@ exec $(quote "$bin") \"\$@\""
     rmdir "$data/bin" 2>/dev/null
   fi
 
-  if [ -n "$handover" ]; then
-    good "$(w "命令改名为 tavern，故事和卡片都还在" "The command is now tavern; the library stays")"
-  else
-    good "$(w "已安装 tavern $version" "Installed tavern $version")"
-  fi
+  good "$(w "已安装 tavern $version" "Installed tavern $version")"
   row "$(w 位置 'where ')" "$(tilde "$dir")"
-  if [ -n "$handover" ] && [ -f "$old_cmd" ]; then
-    row "$(w 启动 'start ')" "tavern$(w "（$OLD 也还能用）" " ($OLD still works)")"
-  else
-    row "$(w 启动 'start ')" tavern
-  fi
+  row "$(w 启动 'start ')" "tavern start"
   row "$(w 更新 update)" "tavern update"
   case ":$PATH:" in
     *":$dir:"*) ;;
@@ -278,14 +217,10 @@ exec $(quote "$bin") \"\$@\""
       line "  $(w "sh 所在的目录写不进，装到了这里，" "Cannot write beside sh, so it went here,")"
       line "  $(w "但这里不在 PATH 上。" "but this is not on the PATH.")"
       line "  > $(w "把它加进 PATH，或用完整路径启动：" "add it to the PATH, or type the full path:")"
-      line "    $(tilde "$bin")"
+      line "    $(tilde "$bin") start"
       ;;
   esac
   line
-
-  # The first run serves, as typing `tavern` would. A piped script's stdin is the script: give it the terminal.
-  if [ ! -t 0 ] && (: </dev/tty) 2>/dev/null; then exec "$bin" "$@" </dev/tty; fi
-  exec "$bin" "$@"
 }
 
 main "$@"

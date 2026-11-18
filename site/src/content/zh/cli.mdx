@@ -5,23 +5,23 @@ sidebar:
   order: 3
 ---
 
-Effect Tavern 只有一个命令 `tavern`：编译出的二进制，或从源码在仓库根目录运行 `bun run tavern`（`packages/server/bin/tavern.ts`）。不带命令的 `tavern` 等于 `tavern serve`。所有命令均内置 `--help` 自述说明，并提供 `--json` / `--jsonl` 结构化输出供脚本与 Agent 调用。
+输入 `tavern` 查看命令菜单。从源码运行时，在仓库根目录输入 `bun run tavern`。用 `tavern start --help` 查看启动选项。
 
-在安卓手机（Termux）上，一行命令把二进制装成 `tavern` 并启动：
+在安卓手机的 Termux 中安装：
 
 ```sh
 curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
-以后输入 `tavern` 启动，`tavern update` 更新。程序在 `sh` 旁边（`$PREFIX/bin/tavern`，写不进时是 `~/.local/bin/tavern`），数据在 `~/.tavern`；`rm "$(command -v tavern)"` 即卸载。用以前的 `start.sh` 那行装过的手机，在下一次 `effect-tavern update` 和 `effect-tavern` 时自动迁过来，此后 `effect-tavern` 转到 `tavern`。
+运行 `tavern start` 启动，`tavern update` 更新。用旧启动器安装过的手机可以重新运行上面的安装命令，故事库保存在 `~/.tavern`。
 
-## 0. 运行酒馆（`tavern`、`stop`、`status`、`update`、`doctor`）
+## 0. 运行酒馆（`start`、`stop`、`status`、`update`、`doctor`）
 
 玩家用的命令，手机（Termux）和电脑上一样。帮助（`tavern --help`、`tavern <命令> --help`）用玩家的语言（中文；`TAVERN_LANG=en` 为英文），按手机终端的 48 列排版。
 
 | 命令 | 做什么 | 退出码 |
 | --- | --- | --- |
-| `tavern` / `tavern serve` | 提供网页和它的接口。服务期间持有设备的唤醒锁（Termux 的 `termux-wake-lock`）；在终端上，等服务有回应后打开网页（`--no-open` 不打开）。同一个库已有酒馆在运行时，第二个 `tavern` 说出它在哪并以 `0` 退出。端口被占用时不启动，并给出要试的命令；端口不会自己换。 | `0`、`1` |
+| `tavern start` | 提供网页和它的接口。服务期间持有设备的唤醒锁（Termux 的 `termux-wake-lock`）；在终端上，等服务有回应后打开网页（`--no-open` 不打开）。同一个库已有酒馆在运行时，第二个 `tavern start` 说出它在哪并以 `0` 退出。端口被占用时不启动，并给出要试的命令；端口不会自己换。 | `0`、`1` |
 | `tavern stop` | 经由地址文件和 PID 找到服务这个数据目录的酒馆，停止它并等它退出。开发服务（`vp dev`）留给它自己的终端。 | `0`（没有在运行也是）、`1` |
 | `tavern status` | 立即返回、不联网：在不在运行、地址、数据目录、版本。`--json` 为 `{running, url?, pid?, data, version}`。 | 运行中 `0`，没有 `3` |
 | `tavern update [--yes] [--check]` | 读发布的 `release.txt`，显示现在与最新的版本和变化，询问（只在终端上），检查剩余空间，把平台的发布文件下载到二进制旁边，要求新文件的 `--version` 回答预期的版本，再改名覆盖正在运行的二进制。任何失败都保留旧的二进制。仍在运行的酒馆要重启后才是新版本。`TAVERN_MIRROR` 指定镜像（https 地址或目录）。从源码运行时拒绝。 | `0`、`1`、`2`（没有终端又没有 `--yes`） |
@@ -98,7 +98,7 @@ bun run tavern card unroll card.json --json
 
 在仓库根目录运行 `bun run tavern <subcommand>`（`packages/server/bin/tavern.ts`）：
 
-- **自动找库（默认）：** 数据目录依次取 `--data`、`TAVERN_DATA`（旧名 `DATA`），都没有时编译出的二进制用 `~/.tavern`，从源码运行用 `./.tavern`；根目录的 `bun run tavern` 脚本设了 `TAVERN_DATA=.dev`，即开发服务的库。若运行中的 `tavern serve` 或 `vp run dev` 占着这个库，它已在锁文件旁写下地址（`tavern.db.address`），命令就经由它（HTTP/SSE）执行，并在 stderr 说明；没有人占着时，命令自己打开 `<数据目录>/tavern.db`，在本进程里用同一个处理函数回答自己的请求。占着库的进程约 2 秒内都没写出地址，退出码 3 并写出它的 PID；设了 `MODEL=fake` 却找到用真实模型的酒馆，也是退出码 3。绝不静默切库。
+- **自动找库（默认）：** 数据目录依次取 `--data`、`TAVERN_DATA`（旧名 `DATA`），都没有时编译出的二进制用 `~/.tavern`，从源码运行用 `./.tavern`；根目录的 `bun run tavern` 脚本设了 `TAVERN_DATA=.dev`，即开发服务的库。若运行中的 `tavern start` 或 `vp run dev` 占着这个库，它已在锁文件旁写下地址（`tavern.db.address`），命令就经由它（HTTP/SSE）执行，并在 stderr 说明；没有人占着时，命令自己打开 `<数据目录>/tavern.db`，在本进程里用同一个处理函数回答自己的请求。占着库的进程约 2 秒内都没写出地址，退出码 3 并写出它的 PID；设了 `MODEL=fake` 却找到用真实模型的酒馆，也是退出码 3。绝不静默切库。
 - **另一台机器（`--server`）：** 传入 `--server http://192.168.1.20:7777`（或设 `TAVERN_SERVER`）即可通过 HTTP/SSE 连接那台机器上的酒馆，不读任何本地文件。
 - **任意位置：** `--json`、`--data <目录>`、`--server <地址>`、`-h/--help`、`-V/--version`。退出码：`0` 完成，`1` 被拒绝或失败，`2` 命令行写错，`3` 库无法访问。
 
@@ -131,7 +131,7 @@ bun run tavern story export 1 --format md > story.md
 bun run tavern story remove 1
 
 # 启动服务（--headless 只提供 API）与编译二进制（bin/tavern.ts，内含构建好的页面）
-MODEL=fake bun run tavern serve --headless --port 7777
+MODEL=fake bun run tavern start --headless --port 7777
 cd packages/server && bun run compile && ./dist/tavern --version
 ```
 

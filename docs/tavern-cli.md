@@ -1,7 +1,7 @@
 # `tavern` 命令：安装、游玩与故事管理
 
 `tavern` 是一棵命令树（`packages/server/bin/tavern.ts`），也是编译出的二进制本身；从源码在仓库根目录运行
-`bun run tavern …`。不带命令的 `tavern` 等于 `tavern serve`（安装脚本装好后就这样运行它）。
+`bun run tavern …`。输入 `tavern` 显示帮助，`tavern start --help` 列出启动参数。
 `tavern card init|check|view|test|unroll` 是[离线制卡工具](card-cli.md)；其余命令如下：
 
 ## 安装（安卓手机，Termux）
@@ -14,28 +14,18 @@ curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/downloa
 读 `release.txt` 第一行的标签，从那个标签的目录下载（有 `TAVERN_MIRROR` / 旧名 `TAVERN_URL` 时全部从镜像取），
 在目标目录里解压成临时文件，确认 `--version` 回答 `tavern <标签去掉 v>`，再改名为 `tavern`：放在 `sh` 旁边
 （Termux 上是 `$PREFIX/bin/tavern`），写不进时放 `~/.local/bin/tavern`（不在 PATH 上会说明）。只装这一个文件。
-然后带着同样的参数运行 `tavern`（有终端时以终端为 stdin），第一次就和输入 `tavern` 一样开始服务。
 下载失败、文件损坏、版本不符或目录写不进时，说明发生了什么、可能的原因和下一步，退出码 1，不留下任何文件，原来的 `tavern` 不动。
 
-以后：`tavern` 启动，`tavern update` 更新（程序自己更新，不再需要安装脚本）。数据在 `~/.tavern`（`TAVERN_DATA` / `DATA` 可改）。
+以后：`tavern start` 启动，`tavern update` 更新（程序自己更新，不再需要安装脚本）。数据在 `~/.tavern`（`TAVERN_DATA` / `DATA` 可改）。
 卸载：`rm "$(command -v tavern)"`；`rm -r ~/.tavern` 会连库一起删掉。
 
-**从旧的启动脚本迁过来。** 旧脚本装的是 `sh` 旁边的 `effect-tavern` 命令和 `~/.tavern/bin/` 里的程序（旧布局是普通文件
-`tavern-android` 加 `bin/version`；PR 195 之后是指向隐藏文件 `.tavern-android.XXXXXXXX` 的链接，版本在它旁边的 `.version`）。
-旧脚本的 `update` 会下载发布里的 `start.sh` 盖住自己，所以发布把同一个 `install.sh` 也以 `start.sh` 的名字发出去。
-它在这样的手机上（无论以哪个名字运行）先找到旧程序：能回答 `--version`（10 秒内，用临时的库目录跑，不碰玩家的库）就直接移成 `tavern`，
-否则下载最新版；然后删掉 `~/.tavern/bin` 里旧脚本的文件（含过时的 `bin/version`），把 `effect-tavern` 改写成两行的转发
-（`exec '<目录>/tavern' "$@"`），说一次「命令改名为 tavern」，再运行 `tavern`。`~/.tavern` 里的库从不动。旧手机上依次是：
-
-1. `effect-tavern update`（旧脚本）：显示新版本的内容、询问，下载新的 `tavern-android` 到 `~/.tavern/bin`，再用新的 `start.sh` 盖住 `effect-tavern`。
-2. 下一次 `effect-tavern`（或 `effect-tavern update`）：运行的是新的 `start.sh`，完成上面的交接，然后运行 `tavern`（或 `tavern update`，此时已是最新）。
-3. 以后的 `effect-tavern …`：转发到 `tavern …`，什么也不多说。
+用旧启动器装过的手机可以重新运行上面的安装命令。脚本会清理旧启动器和它的程序文件，保留故事库。
 
 `test/install.ts`（根目录 `vp run verify` 和发布流程都会跑）在沙箱里用 dash、bash、busybox sh 驱动这些情况。
 
 ```
-tavern            等于 tavern serve
-tavern serve      --port/-p  --bind  --headless  --inspect  --log  --no-open
+tavern            显示命令帮助
+tavern start      --port/-p  --bind  --headless  --inspect  --log  --no-open
 tavern stop       停止在这个数据目录上运行的酒馆
 tavern status     在不在运行、地址、数据目录、版本（离线，立即返回）
 tavern update     --yes  --check
@@ -60,11 +50,11 @@ tavern play       <卡片|故事>
 剩余空间；Termux 用 `termux-wake-lock` / `termux-wake-unlock` / `termux-open-url`，Linux 用 `xdg-open`，macOS 用
 `open`，都没有时什么也不做，从不报错）和 `Release`（`cli/release.ts`：发布页的 https 适配器，和一个目录适配器）。
 
-- **`tavern`（= `tavern serve`）**：服务期间持有设备的唤醒锁（Android 会停掉切到后台的 Termux），结束时放开；
+- **`tavern start`**：服务期间持有设备的唤醒锁（Android 会停掉切到后台的 Termux），结束时放开；
   在终端上（stderr 是 TTY）等自己的地址有回应后在浏览器打开页面。`--no-open` 不打开；stderr 不是终端、
   `--headless`、或没有页面可开时也不打开。横幅仍是日志的（见下文）。
-  同一个数据目录上已有酒馆在运行时，第二个 `tavern` 不算出错：说它已在运行、给出地址、（在终端上）打开页面，退出码 0。
-  端口被占用时不启动，用大白话说明，并给出要试的命令（`tavern --port 7778`）；端口不会自己换。
+  同一个数据目录上已有酒馆在运行时，第二个 `tavern start` 不算出错：说它已在运行、给出地址、（在终端上）打开页面，退出码 0。
+  端口被占用时不启动，用大白话说明，并给出要试的命令（`tavern start --port 7778`）；端口不会自己换。
 - **`tavern stop`**：经由地址文件和 pid 找到服务这个数据目录的酒馆，发 SIGTERM（与 Ctrl+C 相同），等它退出后说一句
   「已停止酒馆（进程 N）」；没有在运行的就说没有，退出码 0；15 秒内没停下是 `stop-timeout`（退出码 1）。
   开发服务（`vp dev`，地址文件里带 `"dev": true`）不由它停止：那要回到运行 `vp dev` 的终端按 Ctrl+C。
@@ -144,7 +134,7 @@ bun run tavern story show 1
 bun run tavern story export 1 --format md > story.md
 bun run tavern story export 1 --format json > story.json
 bun run tavern story remove 1
-MODEL=fake bun run tavern serve --headless --port 7777
+MODEL=fake bun run tavern start --headless --port 7777
 ```
 
 数据目录依次取 `--data`、`TAVERN_DATA`、`DATA`；都没有时，编译出的二进制用 `~/.tavern`，从源码运行用当前目录的
@@ -160,7 +150,7 @@ MODEL=fake bun run tavern serve --headless --port 7777
 三种情况走的是同一套请求（`packages/server/src/reach.ts`，传输在 `wire.ts`）：
 
 1. 传了 `--server <地址>`（或 `TAVERN_SERVER`）：连那个酒馆，比如另一台机器上的。末尾带 `/api` 也可。这时不读任何本地文件。
-2. 数据目录正被一个运行中的酒馆占着（`tavern serve`，或开发网页服务）：它在库的锁文件旁边写下自己的地址
+2. 数据目录正被一个运行中的酒馆占着（`tavern start`，或开发网页服务）：它在库的锁文件旁边写下自己的地址
    （`<数据目录>/tavern.db.address`，一行 JSON `{"pid":…,"url":"http://127.0.0.1:7777"}`，关闭时删除），
    命令读到地址后经由它执行，并在 stderr 说一句「经由正在运行的酒馆 <地址>」。写入的东西网页刷新后就能看到。
 3. 没有人占着：命令自己打开 `<数据目录>/tavern.db`，在本进程里调用和服务端同一个处理函数，用完即关、释放锁。
@@ -174,7 +164,7 @@ MODEL=fake bun run tavern serve --headless --port 7777
 - `--server` 或宣告的地址上没有酒馆应答；
 - 有活着的进程占着库，却约 2 秒内都没写出地址（还在启动，或是不写地址的旧版本；会写出它的 pid，旧版本可用 `--server` 指定它的地址）；
 - 设了 `MODEL=fake`，可找到的酒馆用的是真实模型（命令不会替你花 token；用 `MODEL=fake` 重启那个酒馆，或去掉它）；
-- 库来自更新的版本；或 `tavern serve` 时库已被另一个酒馆占着。
+- 库来自更新的版本；或 `tavern start` 时库已被另一个酒馆占着。
 
 地址文件指向的进程已经不在（或它不再持有锁）时，地址文件作废并被删除。锁文件本身的格式不变（只有 pid），
 旧版程序读到别的内容会把它当成死掉的进程而抢走锁。运行中的酒馆在 `GET /api/host` 回答
@@ -191,7 +181,7 @@ bun run tavern play 1 --server http://192.168.1.20:7777 --input '继续' --jsonl
 终端经由服务写入后，网页刷新或重新 attach 才能看到；本轮没有增加空闲客户端的推送通知。
 
 `MODEL=fake` 在本地宿主使用零 Token 脚本模型，单次游玩也可传 `play --model fake`；真实游玩使用库中已有的 provider/routing。
-不会读取开发机私有凭据。远程模式由服务端决定模型。`serve` 默认同时服务已构建的
+不会读取开发机私有凭据。远程模式由服务端决定模型。`tavern start` 默认同时服务已构建的
 `packages/client/dist`（需要有 `index.html`）；构建不存在时自动只提供 `/api`，
 `--headless` 则始终只提供 `/api`。默认监听 `127.0.0.1:7777`，`--bind` / `TAVERN_BIND` 与 `--port` / `TAVERN_PORT` 可覆盖。
 
@@ -201,7 +191,7 @@ show 默认打印阅读文本。`story remove` 是正式命令；`story delete` 
 
 ## 运行中的服务在终端里显示什么（日志）
 
-`tavern serve` 运行时，终端（stderr）上的内容都来自日志（代码里叫 logbook，`packages/server/src/logbook.ts`）。
+`tavern start` 运行时，终端（stderr）上的内容都来自日志（代码里叫 logbook，`packages/server/src/logbook.ts`）。
 单位是一轮：一轮调用了模型才记一行；HTTP 请求、静态文件、保存、切换版本这类不调用模型的动作不记。
 中文为默认，`TAVERN_LANG=en` 换英文；每行不超过终端宽度减一（手机按 48 列排版）。
 
@@ -236,7 +226,7 @@ Effect Tavern v0.9.2
   一次调用等了 60 秒还没回答时，打印一行说明。
 - 开发服务（`vp dev`）的终端归 Vite：只打印结束的一轮和失败，不打印横幅。
 
-三档（`tavern serve --log quiet|turn|detail` 或 `TAVERN_LOG`，默认 `turn`）：
+三档（`tavern start --log quiet|turn|detail` 或 `TAVERN_LOG`，默认 `turn`）：
 
 - `quiet`：只有横幅和失败。
 - `turn`：每轮一行（上面的样子）。
@@ -330,10 +320,10 @@ HTTP 客户端调用 `POST /api/author/compile {card, select, intent}`、`/api/a
 
 卡片地址由 `runtime/src/paths.ts` 提供：预览采用 `rules.actions.<id>.when`、`rules.readouts.<id>.when`，条件子节点为 `.all[n]`、`.any[n]`、`.not`。单条件 lore 解锁地址为 `lore.<id>.unlock`，分层数组为 `.unlock[n]`，两者可直接作为 compile 绑定目标；数组形式必须指定层。Catalog 列诊断定位到真实的 `.shape…columns[n].catalog`。
 
-生产入口（`tavern`、`tavern serve`，包括 `--headless`）共用最小 harness，不自动导入开发机密钥；数据目录见上文。开发服务器继续使用 `.dev/` 与开发用 player 配置。`--data` / `TAVERN_DATA` 可指定现有数据库目录；切换入口不会自动搬迁旧数据。
+生产入口（`tavern start`，包括 `--headless`）共用最小 harness，不自动导入开发机密钥；数据目录见上文。开发服务器继续使用 `.dev/` 与开发用 player 配置。`--data` / `TAVERN_DATA` 可指定现有数据库目录；切换入口不会自动搬迁旧数据。
 
 二进制由 `packages/server` 的 `compile`（本机）与 `compile:android` 脚本编译 `bin/tavern.ts`，客户端构建（`packages/client/dist`）作为资源打进去；`VERSION=<版本>` 写入版本，发布流程取自标签。
 
-完整调用正文默认不暴露；`tavern serve --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
+完整调用正文默认不暴露；`tavern start --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
 
 未带版本戳的 SQLite 库首次打开时执行既有升级，并在同一事务内写入 `user_version=1`；失败会回滚整批升级，再次打开可重试。已升级库跳过旧表探测和节点 JSON 扫描。新建库使用相同基线；版本高于当前支持范围的库拒绝打开。

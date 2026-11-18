@@ -1,5 +1,5 @@
 // Where a running tavern says it listens: `<data>/tavern.db.address`, beside the library's pid lock (data.ts `lock`),
-// one JSON line {pid, url} (and `dev: true` from the dev session, which `tavern stop` leaves to its own terminal). The process that listens writes it once its port is open (`tavern serve`, start.ts; the dev
+// one JSON line {pid, url} (and `dev: true` from the dev session, which `tavern stop` leaves to its own terminal). The process that listens writes it once its port is open (`tavern start`, start.ts; the dev
 // session, through the Vite plugin) and removes it on close; a command finds the owner of a data directory by it
 // (reach.ts). The lock's own format stays a bare pid: an older binary reads anything else as a dead owner and takes the
 // lock over. An address whose pid is gone is stale: the reader ignores it and removes it.
@@ -28,7 +28,7 @@ export interface Address {
   readonly pid: number
   /** The tavern's origin, with no `/api`: `http://127.0.0.1:7777`. */
   readonly url: string
-  /** The dev session inside Vite (`vp dev`), not a `tavern serve`. */
+  /** The dev session inside Vite (`vp dev`), not a `tavern start`. */
   readonly dev?: true
 }
 

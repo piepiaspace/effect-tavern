@@ -73,9 +73,7 @@ One line in [Termux](https://termux.dev), no Bun, Node or Vite+ to install:
 curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
-It downloads the latest release's phone build (~50 MB) as the one command `tavern`, starts it and opens the browser on `http://127.0.0.1:7777`. After that, `tavern` starts it and `tavern update` shows what the latest release changes and asks before replacing itself. The binary is `$PREFIX/bin/tavern` (beside `sh`; `~/.local/bin/tavern` when that is not writable) and the library lives in `~/.tavern`. To uninstall, `rm "$(command -v tavern)"`; `rm -r ~/.tavern` also deletes the library.
-
-A phone set up with the earlier `start.sh` line moves over by itself: its `effect-tavern update` fetches the new release, and the next `effect-tavern` moves the binary to `tavern`, removes `~/.tavern/bin` and leaves `effect-tavern` as a short forwarder to `tavern` (the library is untouched). Running the install line above does the same.
+Run the install line again to replace an older launcher. Use `tavern` for help, `tavern start` to open the tavern and `tavern update` to update it. The binary lives at `$PREFIX/bin/tavern` (or `~/.local/bin/tavern`), and your library lives in `~/.tavern`. To uninstall the command, run `rm "$(command -v tavern)"`.
 
 The program ships with no cards. A new install's shelf is empty: open **Settings → Cards** to import one card (drop or pick a `.yaml` / `.json` file, or paste the card's own `https` link), or to add a card library by its `https` address and install cards from it.
 
@@ -105,7 +103,7 @@ bun run tavern depot pull <library-id> <card>  # copy one onto the shelf
 
 # Build client & run single-port server (serves /api + built client on :7777)
 cd packages/client && bun --bun vp build
-bun run tavern serve --port 7777
+bun run tavern start --port 7777
 ```
 
 ### CLI Host & Headless Play (`tavern`)
@@ -117,7 +115,7 @@ MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
 
 # Manage stories & headless server (the root script uses the dev library .dev, the binary ~/.tavern, --data <dir> moves it; a command goes through the server running on that library by itself, --server <url> names one on another machine)
 bun run tavern story list
-bun run tavern serve --headless --port 7777
+bun run tavern start --headless --port 7777
 ```
 
 The tavern's life, the same commands on a phone and on a computer (`docs/tavern-cli.md`):

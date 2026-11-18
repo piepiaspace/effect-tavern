@@ -71,7 +71,11 @@ const done = async (...argv: string[]) => {
   assert.equal(await done("--version"), "tavern dev\n")
   assert.equal(await done("-V"), "tavern dev\n")
   const help = await done("--help")
-  for (const word of ["serve", "card", "depot", "story", "play", "--data", "--server", "--json"])
+  assert.equal(await done(), help)
+  assert.equal(await done("help", "start"), await done("start", "-h"))
+  assert.equal((await run(["serve"])).code, 2)
+  assert.equal((await run(["--port", "7777"])).code, 2)
+  for (const word of ["start", "card", "depot", "story", "play", "--data", "--server", "--json"])
     assert.ok(help.includes(word), word)
   for (const absent of ["--wizard", "--log-level", "--completions"]) assert.ok(!help.includes(absent), absent)
   assert.match(await done("card", "--help"), /unroll/)
@@ -202,7 +206,7 @@ try {
   await ok("play", String(story), "--input", "/greet")
   const before = JSON.parse(await here("story", "show", String(story), "--json"))
 
-  server = Bun.spawn(["bun", bin, "serve", "--headless", "-p", "0"], { cwd: dir, env, stdout: "pipe", stderr: "pipe" })
+  server = Bun.spawn(["bun", bin, "start", "--headless", "-p", "0"], { cwd: dir, env, stdout: "pipe", stderr: "pipe" })
   const url = await announced(server)
   assert.match(url, /\/api$/)
   assert.equal((await fetch(url.replace(/\/api$/, "/"))).status, 404)
@@ -233,7 +237,7 @@ try {
   const now = JSON.parse(await ok("story", "show", String(story), "--json"))
   assert.equal(now.nodes.length, before.nodes.length + 1)
   // a second serve on the same directory is not an error: it says one runs, and where
-  const twice = await spawned("serve", "--headless", "-p", "0")
+  const twice = await spawned("start", "--headless", "-p", "0")
   assert.equal(twice.code, 0, twice.err)
   assert.ok(twice.err.startsWith(`✓ 酒馆已经在运行\n  地址  ${address.url}\n`), twice.err)
   assert.equal(twice.out, "")
@@ -276,9 +280,9 @@ try {
   assert.ok(!existsSync(join(dir, "tavern.db.lock")))
   const alone = await spawned("story", "list", "--json")
   assert.deepEqual([alone.code, alone.err, JSON.parse(alone.out).length], [0, "", 1])
-  // A bare `tavern` serves, as start.sh runs it: the legacy names, explicit inspect and clean shutdown.
+  // Starting with PORT and TAVERN_INSPECT honors both settings and shuts down cleanly.
   for (const inspect of [false, true]) {
-    server = Bun.spawn(["bun", bin], {
+    server = Bun.spawn(["bun", bin, "start"], {
       cwd: dir,
       env: { ...env, PORT: "0", TAVERN_INSPECT: inspect ? "1" : "0" },
       stdout: "pipe",

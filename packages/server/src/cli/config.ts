@@ -1,4 +1,4 @@
-// The one reader of the host's flags and environment: every command, `serve` and the bare `tavern` take their settings
+// The one reader of the host's flags and environment: all commands take their settings
 // from `config`, nothing else reads `process.env` for them. Precedence: flag > TAVERN_* > the legacy name > default.
 // The legacy names (DATA, PORT, HOST, TAVERN_URL) stay because people have them exported from the old launcher's days.
 import { homedir } from "node:os"
@@ -33,7 +33,7 @@ export interface World {
   readonly terminal?: { readonly in: boolean; readonly err: boolean }
   /** One line the person types (stdin), the question already on stderr; undefined at the end of input. */
   readonly ask?: () => Promise<string | undefined>
-  /** Ends a running `serve` (a test's); otherwise the process's SIGINT and SIGTERM. */
+  /** Ends a running `tavern start` (a test's); otherwise the process's SIGINT and SIGTERM. */
   readonly signal?: AbortSignal
 }
 
@@ -130,7 +130,7 @@ export interface Config {
   readonly fake: boolean
   /** How much the running server's log says (`--log`, TAVERN_LOG): quiet, turn (the default) or detail. */
   readonly log: Level
-  /** Open the page once a `serve` on a terminal answers (`--no-open` turns it off). */
+  /** Open the page once a `tavern start` on a terminal answers (`--no-open` turns it off). */
   readonly open: boolean
   /** The release asset `tavern update` fetches, when the platform table names none (TAVERN_ASSET: a self-built
    *  mirror for another machine, and the tests). */

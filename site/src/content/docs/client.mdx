@@ -5,7 +5,7 @@ sidebar:
   order: 5
 ---
 
-The web client (`packages/client`) is a single-page interactive fiction reader, workbench, and harness inspector built on **Solid 2.0** and **UI SDK (`@ui-sdk/solid` + `@ui-sdk/core`)**. It runs identically against the Vite+ dev server (`bun --bun vp run dev`) and the single-port standalone server (`tavern serve`).
+The web client (`packages/client`) is a single-page interactive fiction reader, workbench, and harness inspector built on **Solid 2.0** and **UI SDK (`@ui-sdk/solid` + `@ui-sdk/core`)**. It runs identically against the Vite+ dev server (`bun --bun vp run dev`) and the single-port standalone server (`tavern start`).
 
 ## 1. Three-Layer Spatial Shell & Page Stack
 
@@ -30,7 +30,7 @@ On desktop viewports (`≥ 72rem`), `shell.tsx` organizes the workspace into thr
 
 - **Timeline (`timeline.tsx`):** Projects the immutable `Log` tree across branches—distinguishing `swipe`, `reword`, `edit`, post-record `passage` epoch boundaries, and `over` leaves—with instant `checkout` and subtree `drop`.
 - **Turn Inspector (`inspector.tsx`, `inspect.ts`):** Inspects any node from the harness's point of view (`[` / `]` to walk the path) across two side-by-side panes:
-  - **Pipeline pane:** Lists only the calls that ran—including `DecisionModel` pre-check passes for `lookup` and `check`—with aligned metric columns (latency, `↑` input tokens, `↓` output tokens, and `↻`/`+` KV cache reads/writes). Expanding a row offers **Result** (verdicts, tool steps, and probability bars against `LO` / `HI` / `LOOKUP` thresholds), **Prompt** (assembled messages with KV cache breakpoints marked as hairlines when `TAVERN_INSPECT=1` / `tavern serve --inspect` is active), and **JSON**.
+  - **Pipeline pane:** Lists only the calls that ran—including `DecisionModel` pre-check passes for `lookup` and `check`—with aligned metric columns (latency, `↑` input tokens, `↓` output tokens, and `↻`/`+` KV cache reads/writes). Expanding a row offers **Result** (verdicts, tool steps, and probability bars against `LO` / `HI` / `LOOKUP` thresholds), **Prompt** (assembled messages with KV cache breakpoints marked as hairlines when `TAVERN_INSPECT=1` / `tavern start --inspect` is active), and **JSON**.
   - **Node pane:** Displays input channel, untold lore hooks, state deltas against the parent node, and shaped `world` / `chronicle` / `theater` products.
 - **Card Page (`card.tsx`):** Previews card modules and token budgets, and configures `Field.start` parameters and dynamic opening notes before `greet`.
 - **Workshop (`workshop.tsx`, `manuscript.ts`):** Its own list of the install's cards with New, and one card open as plain text: always-on setting sections, openings, and single-layer entries read on demand. There is no draft: New is a card on the shelf at once, and edits autosave to the card through the install gate. Anything the editor does not show (rules, conditions, layered entries) is carried through untouched.

@@ -1,4 +1,4 @@
-// `tavern serve` (and the bare `tavern`): listener, shutdown and optional static-file handling over the host. What the
+// `tavern start`: listener, shutdown and optional static-file handling over the host. What the
 // running server says (the banner, its turns, a failure to start) is its logbook's (logbook.ts). While it serves it
 // holds the device's wake lock (Android stops a backgrounded Termux otherwise), and on a terminal it opens the page in
 // the browser once its own address answers (cli/device.ts; a missing tool does nothing).

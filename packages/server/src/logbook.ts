@@ -84,7 +84,7 @@ export const openLogbook = (
   o: {
     /** `<data>/log`; absent: no file. */
     dir?: string
-    /** TAVERN_LOG / tavern serve --log; default "turn". */
+    /** TAVERN_LOG / tavern start --log; default "turn". */
     level?: Level
     inspect?: boolean
     /** Someone else owns the terminal (Vite's dev server): finished lines only. */

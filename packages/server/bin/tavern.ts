@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 // The `tavern` command: one tree, the compiled binary's entry (package.json `compile`) and `bun run tavern` from
-// source. Bare `tavern` serves; install.sh ends by running it so. Settings come from cli/config.ts alone; a command
+// source. `tavern` shows help and `tavern start` serves. Settings come from cli/config.ts alone; a command
 // reaches its library by itself (src/reach.ts): the tavern at --server, else the running tavern that announced itself on
 // the data directory, else the library opened here. `run(argv, world)` is the whole of it, for tests.
 //
-// The player's commands are a tavern's life: `tavern` (= `serve`) holds the wake lock and opens the page on a
+// The player's commands are a tavern's life: `tavern start` holds the wake lock and opens the page on a
 // terminal, `stop`, `status`, `update`, `doctor` (src/cli/). Every failure a person reads is worded by the terminal's
 // tables (src/term/: `explain`, then `failure`), or is one `{"error":{code,message,next}}` line under --json; the help
 // is the player's language at the terminal's width (src/cli/help.ts).
@@ -20,8 +20,8 @@ import { runScenario } from "@effect-tavern/runtime/support/scenario.ts"
 import { decodeCard } from "@effect-tavern/runtime/src/card.ts"
 import { Cause, Console, Effect, Exit, Option } from "effect"
 import { Argument, CliConfig, CliError, CliOutput, Command, Flag, GlobalFlag } from "effect/cli"
-import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import { resolve } from "node:path"
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
+import { basename, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { format } from "node:util"
 import { compiled, config, processWorld, version, type Config, type Flags, type World } from "../src/cli/config.ts"
@@ -101,22 +101,7 @@ const tree = (world: World, ending: Ending) => {
         host.close()
       }
     }, more)
-  /** `tavern` and `tavern serve`: one already serving this library is told, not fought; otherwise it starts here, holds
-   *  the wake lock while it serves and, with a person at the terminal, opens the page once it answers. */
-  const serve = (more: Flags & { headless?: boolean } = {}) =>
-    task(async (c) => {
-      const device = world.device ?? noDevice
-      const opening = c.open && (world.terminal?.err ?? false)
-      if (await already(c, world, { device, opening: opening && !more.headless })) return
-      await start(c, {
-        dist: more.headless ? undefined : dist,
-        screen: screenOf(world),
-        device,
-        opening,
-        ...(world.signal && { signal: world.signal }),
-      })
-    }, more)
-  const serveFlags = {
+  const startFlags = {
     port: Flag.Int("port").pipe(
       Flag.withAlias("p"),
       Flag.withDescription("TCP port to listen on (TAVERN_PORT; default 7777)"),
@@ -144,23 +129,6 @@ const tree = (world: World, ending: Ending) => {
     ),
     open: Flag.Boolean("open").pipe(Flag.withDefault(true), Flag.withDescription("--no-open: do not open the page")),
   }
-  const served = (f: {
-    port: Option.Option<number>
-    bind: Option.Option<string>
-    headless: boolean
-    inspect: boolean
-    log: Option.Option<"quiet" | "turn" | "detail">
-    open: boolean
-  }) =>
-    serve({
-      port: Option.getOrUndefined(f.port),
-      bind: Option.getOrUndefined(f.bind),
-      headless: f.headless,
-      inspect: f.inspect,
-      log: Option.getOrUndefined(f.log),
-      open: f.open,
-    })
-
   const install = Command.make(
     "install",
     {
@@ -488,9 +456,29 @@ const tree = (world: World, ending: Ending) => {
     Command.withDescription("Play a story interactively, via --input, or from stdin (/help inside for slash commands)"),
   )
 
-  const serving = Command.make("serve", serveFlags, served).pipe(
-    Command.withDescription("Serve the page and its API on this machine (the same as a bare `tavern`)"),
-  )
+  const serving = Command.make("start", startFlags, (f) =>
+    task(
+      async (c) => {
+        const device = world.device ?? noDevice
+        const opening = c.open && (world.terminal?.err ?? false)
+        if (await already(c, world, { device, opening: opening && !f.headless })) return
+        await start(c, {
+          dist: f.headless ? undefined : dist,
+          screen: screenOf(world),
+          device,
+          opening,
+          ...(world.signal && { signal: world.signal }),
+        })
+      },
+      {
+        port: Option.getOrUndefined(f.port),
+        bind: Option.getOrUndefined(f.bind),
+        inspect: f.inspect,
+        log: Option.getOrUndefined(f.log),
+        open: f.open,
+      },
+    ),
+  ).pipe(Command.withDescription("Start the page and its API on this machine"))
   const stopping = Command.make("stop", {}, () => task((c) => stop(c, world))).pipe(
     Command.withDescription("Stop the tavern serving this data directory"),
   )
@@ -519,8 +507,8 @@ const tree = (world: World, ending: Ending) => {
       }),
   ).pipe(Command.withDescription("Check the device, the command, the data, the network and the last failure"))
 
-  return Command.make("tavern", serveFlags, served).pipe(
-    Command.withDescription("Effect Tavern. With no command it serves, as `tavern serve` does."),
+  return Command.make("tavern").pipe(
+    Command.withDescription("Effect Tavern command-line interface."),
     Command.withSubcommands([serving, stopping, statusing, updating, doctoring, card, depot, story, playing]),
     Command.withGlobalFlags([Json, Data, Server]),
   )
@@ -534,13 +522,13 @@ const unreachable = (e: unknown) =>
   )
 
 export const run = async (given: readonly string[], world: World): Promise<ExitCode> => {
-  // `tavern help` and `tavern help card` are the same as --help: what people type first, and what the old launcher took
+  // `tavern help` and `tavern help card` are the same as --help: including nested commands
   const argv = given[0] === "help" ? [...given.slice(1), "--help"] : given
   const lang = world.env["TAVERN_LANG"] === "en" ? "en" : "zh"
   const json = argv.includes("--json")
   const columns = () => (world.out as { columns?: number }).columns || Number(world.env["COLUMNS"]) || 80
   const base = CliOutput.defaultFormatter({ colors: false })
-  const formatter = helpFormatter(base, { lang, columns, version: world.self?.version ?? version, data: "" })
+  const formatter = helpFormatter(base, { lang, columns, version: world.self?.version ?? version })
   const console_: Console.Console = Object.assign(Object.create(console), {
     log: (...a: unknown[]) => world.out.write(`${format(...a)}\n`),
     info: (...a: unknown[]) => world.out.write(`${format(...a)}\n`),
@@ -579,6 +567,20 @@ export const run = async (given: readonly string[], world: World): Promise<ExitC
 }
 
 if (import.meta.main) {
-  const code = await run(process.argv.slice(2), processWorld())
+  const world = processWorld()
+  // A 0.1.6 self-update replaces only the binary. Retire the forwarder its installer left on PATH.
+  if (compiled && world.device?.kind === "termux" && basename(process.execPath) === "tavern") {
+    const old = Bun.which("effect-tavern")
+    const installed = Bun.which("tavern")
+    if (old && installed) {
+      const forward = `#!/bin/sh\nexec '${installed.replaceAll("'", "'\\''")}' "$@"\n`
+      try {
+        if (Bun.file(old).size === Buffer.byteLength(forward) && readFileSync(old, "utf8") === forward) unlinkSync(old)
+      } catch {
+        // A read-only old launcher is reported by tavern doctor.
+      }
+    }
+  }
+  const code = await run(process.argv.slice(2), world)
   if (code) process.exitCode = code
 }

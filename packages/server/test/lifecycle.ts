@@ -1,6 +1,6 @@
 // The player's commands, through run(argv, world) with recording sinks and a fake Device and Release: golden
 // transcripts at a phone's 48 columns in both languages (every line measured with Bun.stringWidth), `update` end to end
-// over a directory release holding a stub binary, `stop` and `status` against a spawned `serve`, failures in plain words
+// over a directory release holding a stub binary, `stop` and `status` against a spawned `tavern start`, failures in plain words
 // and as one JSON line, and the exit-code table. test/update.ts compiles two real binaries and updates one into the other.
 import assert from "node:assert/strict"
 import { execFileSync } from "node:child_process"
@@ -184,7 +184,7 @@ try {
     const stopping = new AbortController()
     // a start through run(), headless (whether the client is built or not): nothing to open; the wake lock
     // is held while it serves and let go when it ends
-    const serving = run(["serve", "--headless", "--port", String(port)], {
+    const serving = run(["start", "--headless", "--port", String(port)], {
       env: { COLUMNS: "48", NO_COLOR: "1", MODEL: "fake", DATA: data, ...(lang === "en" && { TAVERN_LANG: "en" }) },
       home: root,
       cwd: root,
@@ -196,11 +196,11 @@ try {
     })
     await until(() => existsSync(join(data, "tavern.db.address")), "the address")
     assert.deepEqual(log, ["wake-lock"])
-    golden(`tavern serve --headless (a start) ${lang}`, rows(err))
+    golden(`tavern start --headless (a start) ${lang}`, rows(err))
     // a second `tavern` on the same library: not an error, it says where, exit 0
-    const second = await tavern([], { env: { DATA: data }, terminal: { in: true, err: true } }, lang)
+    const second = await tavern(["start"], { env: { DATA: data }, terminal: { in: true, err: true } }, lang)
     assert.deepEqual([second.code, second.out], [0, ""], second.err)
-    golden(`tavern (a second, while one runs) ${lang}`, second.shown)
+    golden(`tavern start (a second, while one runs) ${lang}`, second.shown)
     stopping.abort()
     assert.equal(await serving, 0)
     assert.deepEqual(log, ["wake-lock", "wake-unlock"])
@@ -208,14 +208,14 @@ try {
 
     // a busy port: refused in plain words with the command to try; the port never moves
     const busy = await hold(port)
-    const refused = await tavern(["--port", String(port)], { env: { DATA: data } }, lang)
-    const json = await tavern(["--port", String(port), "--json"], { env: { DATA: data } }, lang)
+    const refused = await tavern(["start", "--port", String(port)], { env: { DATA: data } }, lang)
+    const json = await tavern(["start", "--port", String(port), "--json"], { env: { DATA: data } }, lang)
     assert.equal(json.code, 1)
     assert.equal(JSON.parse(json.err).error.code, "port-in-use")
     busy.close()
     assert.equal(refused.code, 1)
     assert.ok(!existsSync(join(data, "tavern.db.lock")))
-    golden(`tavern --port <port> (busy) ${lang}`, refused.shown)
+    golden(`tavern start --port <port> (busy) ${lang}`, refused.shown)
   }
 
   // with a page, on a terminal: the page is opened once the server answers, and a second tavern opens it again
@@ -242,13 +242,21 @@ try {
     await until(() => log.includes(`open ${url}`), "the page opened")
     assert.deepEqual(log, ["wake-lock", `open ${url}`])
     assert.match(said, new RegExp(`地址  ${url}\n`))
-    const again = await tavern([], { env: { DATA: data }, device: fakeDevice(log), terminal: { in: true, err: true } })
+    const again = await tavern(["start"], {
+      env: { DATA: data },
+      device: fakeDevice(log),
+      terminal: { in: true, err: true },
+    })
     assert.deepEqual([again.code, again.shown.at(-1)], [0, "  > 已在浏览器打开；要停止它：tavern stop"])
     vary(port, "<port>")
-    golden("tavern (a second, with a page, on a terminal) zh", again.shown)
+    golden("tavern start (a second, with a page, on a terminal) zh", again.shown)
     // --no-open, or no terminal: the page is not opened
-    await tavern(["--no-open"], { env: { DATA: data }, device: fakeDevice(log), terminal: { in: true, err: true } })
-    await tavern([], { env: { DATA: data }, device: fakeDevice(log), terminal: { in: false, err: false } })
+    await tavern(["start", "--no-open"], {
+      env: { DATA: data },
+      device: fakeDevice(log),
+      terminal: { in: true, err: true },
+    })
+    await tavern(["start"], { env: { DATA: data }, device: fakeDevice(log), terminal: { in: false, err: false } })
     assert.deepEqual(log, ["wake-lock", `open ${url}`, `open ${url}`])
     stopping.abort()
     await serving
@@ -270,7 +278,7 @@ try {
     })
     const nothing = await tavern(["stop"], { env: { DATA: data } })
     assert.deepEqual([nothing.code, nothing.out], [0, "没有酒馆在运行，不用停止。\n"])
-    const child = Bun.spawn(["bun", bin, "serve", "--headless", "-p", "0"], {
+    const child = Bun.spawn(["bun", bin, "start", "--headless", "-p", "0"], {
       env: { ...process.env, DATA: data, MODEL: "fake" },
       stdout: "pipe",
       stderr: "pipe",
@@ -546,7 +554,7 @@ try {
 
   // ---- help: the player's language, 48 columns, the player's commands first, no built-ins beyond -h and -V -------
   for (const lang of LANGS)
-    for (const argv of [["--help"], ["card", "--help"], ["serve", "--help"], ["update", "--help"]]) {
+    for (const argv of [["--help"], ["card", "--help"], ["start", "--help"], ["update", "--help"]]) {
       const ran = await tavern(argv, {}, lang)
       assert.equal(ran.code, 0)
       golden(`tavern ${argv.join(" ")} ${lang}`, rows(ran.out))

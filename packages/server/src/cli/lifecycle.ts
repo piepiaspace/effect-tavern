@@ -1,6 +1,6 @@
 // A tavern's life seen from another command on the same data directory: whether one serves it (its address file and
 // pid, announce.ts), `tavern status` (instant and offline: the library is never opened), `tavern stop`, and what a
-// second `tavern` says while one already serves.
+// second `tavern start` says while one already serves.
 import { alive, announced, holder, libraryFile, type Address } from "../announce.ts"
 import { HostSilent, type HostFacts } from "../reach.ts"
 import { over } from "../wire.ts"
@@ -24,7 +24,7 @@ export const serving = async (dir: string, patience = 2000): Promise<Address | u
   }
 }
 
-/** A second `tavern` while one serves this library: not an error. It says so, shows the address, opens the page (on a
+/** A second `tavern start` while one serves this library: not an error. It says so, shows the address, opens the page (on a
  *  terminal, unless --no-open) and the command ends 0. Undefined when none serves (or it does not answer: the start
  *  that follows says why). */
 export const already = async (

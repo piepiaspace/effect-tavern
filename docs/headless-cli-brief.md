@@ -2,7 +2,7 @@
 
 归档状态（2026-11-09）：Phase 1（Step 1.1–1.4）已全部实现；Phase 2、3 仍为计划（追踪见 Issue #155）。
 
-当前可用入口（2026-11-18 起）：`tavern serve --headless`（从源码 `bun run tavern serve --headless`）；独立的 headless 入口与二进制已并入 `tavern`，见 [tavern-cli.md](tavern-cli.md)。无头入口默认使用当前目录的 `.tavern/tavern.db`，支持 `DATA`、`HOST`、`PORT`（2026-11-17 起程序不带卡片，`CARDS` 已移除，卡片经书架安装）；`MODEL=fake` 显式启用脚本模型，否则使用库内配置的模型路由，不自动读取本机开发者凭据。HTTP 挂载于 `/api`，不提供静态前端。
+当前可用入口（2026-11-18 起）：`tavern start --headless`（从源码 `bun run tavern start --headless`）；独立的 headless 入口与二进制已并入 `tavern`，见 [tavern-cli.md](tavern-cli.md)。无头入口默认使用当前目录的 `.tavern/tavern.db`，支持 `DATA`、`HOST`、`PORT`（2026-11-17 起程序不带卡片，`CARDS` 已移除，卡片经书架安装）；`MODEL=fake` 显式启用脚本模型，否则使用库内配置的模型路由，不自动读取本机开发者凭据。HTTP 挂载于 `/api`，不提供静态前端。
 
 CLI 入口：`bun run tavern`，支持 `card init|check|view|test|install`、`play`、`story` 和 `serve`；宿主命令支持本地直连与显式远程模式（原 `--url`，2026-11-18 起为全局的 `--server`）。程序不带卡片：四张测试夹具卡位于 `packages/runtime/test/cards/`，示例玩家配置位于 `packages/runtime/support/rows.ts`，卡片文件读写位于 `packages/runtime/support/author.ts`，脚本回答辅助位于 `packages/runtime/support/script.ts`。`card install` 通过 `checkCard` 校验后把文件原文交给书架（`packages/server/src/shelf.ts` 的 `install`），覆盖同 ID 的已安装卡。运行中更新卡会标记旧 Session 过期，回合完成后重新加载；无人订阅的失败保留到下一次 attach 消费后再加载新卡。
 

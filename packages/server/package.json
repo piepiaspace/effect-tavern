@@ -8,11 +8,11 @@
   "type": "module",
   "scripts": {
     "verify": "bun check && bun test/data.ts && bun test/export.ts && bun test/term.ts && bun test/logbook.ts && bun test/tavern.ts && bun test/library.ts && bun test/shelf.ts && bun test/depot.ts && bun test/serve.ts && bun test/headless.ts && bun test/reach.ts && bun test/cli.ts && bun test/lifecycle.ts && bun test/update.ts && bun test/author.ts",
-    "start": "bun bin/tavern.ts serve",
+    "start": "bun bin/tavern.ts start",
     "names": "bun src/names.ts",
     "compile": "bun build --compile --define TAVERN_VERSION=\\\"${VERSION:-dev}\\\" bin/tavern.ts --asset ../client/dist --outfile dist/tavern && rm -f .*.bun-build",
     "compile:android": "bun build --compile --target=bun-linux-arm64-android --define TAVERN_VERSION=\\\"${VERSION:-dev}\\\" bin/tavern.ts --asset ../client/dist --outfile dist/tavern-android && rm -f .*.bun-build",
-    "start:headless": "bun bin/tavern.ts serve --headless",
+    "start:headless": "bun bin/tavern.ts start --headless",
     "cli": "bun bin/tavern.ts"
   },
   "dependencies": {

@@ -1,8 +1,5 @@
 name: Release
 
-# A tag v* builds the phone's binary (server + client page, no cards; Bun's android runtime) and publishes, under
-# releases/latest/download: tavern-android.gz, release.txt, install.sh, and the same install.sh as start.sh (the old
-# launcher's `update` downloads start.sh over its own command; that file hands such a phone over to `tavern`).
 on:
   push:
     tags: ["v*"]
@@ -12,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  # install.sh in a sandbox, no phone and no network: fresh installs, both hand-overs, the field sequence, failures
+  # install.sh against a local mirror, with a simulated Termux environment.
   installer:
     runs-on: ubuntu-latest
     steps:
@@ -70,5 +67,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tail -n +2 release.txt > notes.md
-          mkdir -p out && cp install.sh out/install.sh && cp install.sh out/start.sh
-          gh release create "$GITHUB_REF_NAME" packages/server/dist/tavern-android.gz release.txt out/install.sh out/start.sh --notes-file notes.md
+          gh release create "$GITHUB_REF_NAME" packages/server/dist/tavern-android.gz release.txt install.sh --notes-file notes.md

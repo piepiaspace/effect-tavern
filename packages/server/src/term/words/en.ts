@@ -114,7 +114,9 @@ export const en: Table = {
   "port-in-use": (f) => ({
     what: f.port ? `Port ${f.port} is already in use` : "The port is already in use",
     why: "Another program, or a tavern on another data directory, is using it.",
-    next: f.port ? `Start on another port: tavern --port ${f.port + 1}` : "Start again with --port and another port.",
+    next: f.port
+      ? `Start on another port: tavern start --port ${f.port + 1}`
+      : "Start again with --port and another port.",
   }),
   "library-held": (f) => ({
     what: "The data directory is in use by another tavern",
@@ -229,7 +231,7 @@ export const en: Table = {
   "unsupported-device": (f) => ({
     what: "There is no release build for this device",
     why: `Releases are built for 64-bit ARM Android phones only${f.platform ? `; this is ${f.platform}` : ""}.`,
-    next: "Run it from source: git pull, then bun run tavern.",
+    next: "Run it from source: git pull, then bun run tavern start.",
     kept: "The version you have is untouched and works as before.",
   }),
   "update-bad-binary": () => ({
