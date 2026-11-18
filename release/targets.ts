@@ -27,7 +27,10 @@ export const TARGETS: readonly Target[] = [
 ]
 
 /** Mach-O binaries build on macOS: Bun's appended program breaks their signature, and only codesign mends it. */
-const runner = (t: Target) => (t.os === "darwin" ? "macos-latest" : "ubuntu-latest")
+const runner = (t: Target) => {
+  if (t.os !== "darwin") return "ubuntu-latest"
+  return t.bun === "bun-darwin-x64" ? "macos-15-intel" : "macos-latest"
+}
 
 const root = join(import.meta.dir, "..")
 const dist = join(root, "packages/server/dist")
