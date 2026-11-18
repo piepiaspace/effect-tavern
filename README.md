@@ -70,10 +70,12 @@ docs/           Internal engineering research and design briefs
 One line in [Termux](https://termux.dev), no Bun, Node or Vite+ to install:
 
 ```sh
-curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/start.sh | sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
 ```
 
-It downloads the latest release's phone build (~50 MB), starts it and opens the browser on `http://127.0.0.1:7777`. After that, `effect-tavern` starts it and `effect-tavern update` shows what the latest release changes and asks before replacing the binary; the library lives in `~/.tavern`.
+It downloads the latest release's phone build (~50 MB) as the one command `tavern`, starts it and opens the browser on `http://127.0.0.1:7777`. After that, `tavern` starts it and `tavern update` shows what the latest release changes and asks before replacing itself. The binary is `$PREFIX/bin/tavern` (beside `sh`; `~/.local/bin/tavern` when that is not writable) and the library lives in `~/.tavern`. To uninstall, `rm "$(command -v tavern)"`; `rm -r ~/.tavern` also deletes the library.
+
+A phone set up with the earlier `start.sh` line moves over by itself: its `effect-tavern update` fetches the new release, and the next `effect-tavern` moves the binary to `tavern`, removes `~/.tavern/bin` and leaves `effect-tavern` as a short forwarder to `tavern` (the library is untouched). Running the install line above does the same.
 
 The program ships with no cards. A new install's shelf is empty: open **Settings → Cards** to import one card (drop or pick a `.yaml` / `.json` file, or paste the card's own `https` link), or to add a card library by its `https` address and install cards from it.
 

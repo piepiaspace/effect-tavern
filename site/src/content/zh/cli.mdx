@@ -7,6 +7,14 @@ sidebar:
 
 Effect Tavern 只有一个命令 `tavern`：编译出的二进制，或从源码在仓库根目录运行 `bun run tavern`（`packages/server/bin/tavern.ts`）。不带命令的 `tavern` 等于 `tavern serve`。所有命令均内置 `--help` 自述说明，并提供 `--json` / `--jsonl` 结构化输出供脚本与 Agent 调用。
 
+在安卓手机（Termux）上，一行命令把二进制装成 `tavern` 并启动：
+
+```sh
+curl -fsSL https://github.com/waylon256yhw/effect-tavern/releases/latest/download/install.sh | sh
+```
+
+以后输入 `tavern` 启动，`tavern update` 更新。程序在 `sh` 旁边（`$PREFIX/bin/tavern`，写不进时是 `~/.local/bin/tavern`），数据在 `~/.tavern`；`rm "$(command -v tavern)"` 即卸载。用以前的 `start.sh` 那行装过的手机，在下一次 `effect-tavern update` 和 `effect-tavern` 时自动迁过来，此后 `effect-tavern` 转到 `tavern`。
+
 ## 1. 离线制卡工具（`card`）
 
 运行 `tavern card <subcommand>`（从源码为 `bun run tavern card <subcommand>`）。所有离线命令均不打开库、不调用在线模型。
