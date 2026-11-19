@@ -28,4 +28,10 @@ minimumReleaseAgeExcludes = [
   "@ai-sdk/typesafe-ai",
   "@ui-sdk/core",
   "@ui-sdk/solid",
+  "solid-js",
+  "@solidjs/web",
+  "@solidjs/signals",
+  "@solidjs/diagnostics",
+  "@solidjs/vite-plugin",
+  "@solidjs/compiler",
 ]

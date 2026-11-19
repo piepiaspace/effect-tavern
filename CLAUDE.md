@@ -29,10 +29,10 @@ release. Add a tool name to select part of the graph. For example, run
 
 ## Solid 2.0
 
-The client (`packages/client`) uses Solid 2.0 (`solid-js` 2.x with `@solidjs/web`), pinned to one RC; move the
+The client (`packages/client`) uses Solid 2.0 (`solid-js` 2.x with `@solidjs/web`), pinned exactly; move the
 `solid-js`, `@solidjs/web`, `@solidjs/vite-plugin` and `@solidjs/diagnostics` pins together. Components run once; there
-is no re-render. Read `packages/client/node_modules/solid-js/CHEATSHEET.md` before writing Solid code, especially its
-last section, "What changed from 1.x".
+is no re-render. Read the `solid-2.0` skill (`packages/client/node_modules/solid-js/skills/solid-2.0/SKILL.md`) and `CHEATSHEET.md`
+beside it before writing Solid code, especially the cheatsheet's last section, "What changed from 1.x".
 
 Rules that matter most:
 
@@ -65,7 +65,6 @@ Tooling:
 - Skills: the Solid packages ship their own under `packages/client/node_modules/<pkg>/skills/<name>/SKILL.md`; read them
   there: `solid-js` `reactivity-diagnostics` (every warning code and its fix), `@solidjs/diagnostics` `agent-loops`
   (capture evidence, assert budgets), `@solidjs/web` `server-components` (unused, no SSR).
-  The `solid-2.0` primer skill ships from rc.16 on; until the pin moves, the cheatsheet is the primer.
 - A console warning with a bracketed code, such as `[REACTIVE_WRITE_IN_OWNED_SCOPE]`, is a defect.
   Look it up in the repair guide; do not suppress it.
 - Verify a reactive change with `captureArtifact` and `expectNoDiagnostics` from `@solidjs/diagnostics`,
