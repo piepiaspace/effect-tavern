@@ -1,8 +1,8 @@
 // The terminal's words for every failure, the source (Chinese). en.ts says the same under the same codes. Next steps
 // name the client's own places by its own words (client src/locales/zh-CN.ts: 设置, 模型服务, 默认模型, 卡片,
-// API 地址, API 密钥, 网络代理, 上下文上限), and the client's turn-failure words (its `fault` keys) say the same thing.
+// API 地址, API 密钥, 网络代理, 上下文上限).
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
-import { gateLines, mb, sentence, type Facts, type Table, type Words } from "../codes.ts"
+import { gateLines, mb, type Facts, type Table, type Words } from "../codes.ts"
 
 const PROVIDERS = "「设置」的「模型服务」"
 const ROUTING = "「设置」的「默认模型」"
@@ -11,7 +11,6 @@ const channelNext = (c?: string) =>
   c === "docker"
     ? "拉取新镜像（docker pull ghcr.io/piepiaspace/effect-tavern），再重建容器；故事库在卷里，不受影响。"
     : "输入 brew upgrade tavern。"
-const wait = (s: number) => (s > 90 ? `${Math.ceil(s / 60)} 分钟` : `${s} 秒`)
 const url =
   (why: string): ((f: Facts) => Words) =>
   () => ({
@@ -21,72 +20,6 @@ const url =
   })
 
 export const zh: Table = {
-  "key-refused": () => ({
-    what: "服务商不认这把密钥",
-    why: "密钥可能填错、过期，或已被停用。",
-    next: `到${PROVIDERS}里重新填写这家的 API 密钥，再发送一次。`,
-  }),
-  "no-credit": () => ({
-    what: "服务商账户的余额不够了",
-    why: "免费额度或充值的余额已经用完。",
-    next: `到服务商的网站充值；或到${ROUTING}里换一家的模型。`,
-  }),
-  "rate-limited": (f) => ({
-    what: "发得太快，服务商要你等一等",
-    why: "短时间内请求太多，或账户的速率上限较低。",
-    next: f.retryAfter ? `等 ${wait(f.retryAfter)}左右，再发送一次。` : "等一分钟左右，再发送一次。",
-  }),
-  overloaded: () => ({
-    what: "服务商现在太忙",
-    why: "是服务商那边的高峰，不是你的设置有问题。",
-    next: `过几分钟再发送一次；一直这样，就到${ROUTING}里换个模型。`,
-  }),
-  "model-not-found": (f) => ({
-    what: f.model ? `服务商找不到模型 ${f.model}` : "服务商找不到这个模型",
-    why: "模型名可能写错或已下线，也可能 API 地址少了一段路径。",
-    next: `到${PROVIDERS}里核对模型名和 API 地址。`,
-  }),
-  "context-too-long": () => ({
-    what: "这次要发给模型的内容太长",
-    why: "故事和设定加起来，超过了模型能读的长度。",
-    next: `到${PROVIDERS}里把这个模型的「上下文上限」调小，再发送一次。`,
-  }),
-  blocked: () => ({
-    what: "服务商拒绝处理这段内容",
-    why: "内容触发了服务商的安全审核。",
-    next: `换个说法再发送；或到${ROUTING}里换个模型。`,
-  }),
-  unreachable: () => ({
-    what: "连不上服务商",
-    why: "网络断了、地址写错，或需要代理才能访问。",
-    next: `先检查网络；再到${PROVIDERS}里核对 API 地址和「网络代理」。`,
-  }),
-  timeout: () => ({
-    what: "服务商太久没有回应",
-    why: "网络太慢，或服务商那边卡住了。",
-    next: "稍后再发送一次；常常这样，就检查网络和「网络代理」。",
-  }),
-  "bad-request": (f) => ({
-    what: "服务商不接受这次请求",
-    why: sentence(f.message) ?? "这个模型可能不支持当前的某项设置。",
-    next: `到${PROVIDERS}里检查这个模型的设置；或到${ROUTING}里换个模型。`,
-  }),
-  "bad-answer": () => ({
-    what: "模型的回答没法使用",
-    why: "回答的格式不对；也可能 API 地址指向了一个网页。",
-    next: `再发送一次；一直这样，就到${ROUTING}里换个模型。`,
-  }),
-  "provider-down": () => ({
-    what: "服务商那边出错了",
-    why: "不是你的设置问题，通常过一会儿就好。",
-    next: "过几分钟再发送一次。",
-  }),
-  unknown: (f) => ({
-    what: "遇到一个没见过的错误",
-    why: sentence(f.message),
-    next: "再试一次；还不行，就把这几行发给帮你的人。",
-  }),
-  // a pair with no connection (providers.ts ConnectionError, url.ts UrlError)
   "provider-missing": () => ({ what: "选中的服务商已经不在了", next: `到${ROUTING}里重新选一个模型。` }),
   "provider-disabled": () => ({
     what: "选中的服务商已停用",

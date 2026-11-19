@@ -9,6 +9,8 @@ import type { Effort, Model } from "./call.ts"
 import { capabilities, type Capabilities } from "./capabilities.ts"
 import { formatsOf, plan, type Endpoint, type Format } from "./url.ts"
 
+import { observe, type OnExchange } from "./exchange.ts"
+
 export { capabilities, DEFAULTS, type Capabilities } from "./capabilities.ts"
 export type { Endpoint, Format } from "./url.ts"
 
@@ -101,6 +103,7 @@ export const traced =
   }
 
 export interface CompileOptions {
+  onExchange?: OnExchange
   onTrace?: (t: Trace) => void
   traceBody?: boolean
   fetch?: Fetch
@@ -141,9 +144,11 @@ export const compile = (c: Connection, o: CompileOptions = {}): LanguageModel =>
  *  unset stays unset. */
 export const bind = (c: Connection, o?: CompileOptions): Model => {
   const caps = capabilities(c)
+  const exchange = o?.onExchange && observe(o.onExchange, c.model, secret(c.credential), c.headers)
   return {
     format: c.format,
-    model: compile(c, o),
+    model: compile(c, exchange ? { ...o, fetch: exchange.wrap(o?.fetch ?? fetchFor(c)) } : o),
+    ...(exchange && { exchange }),
     tools: caps.tools,
     prefill: caps.prefill,
     reasoningBack: caps.reasoningBack,

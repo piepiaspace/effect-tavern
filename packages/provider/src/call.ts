@@ -11,7 +11,9 @@ import {
   type ModelMessage,
   type TextStreamPart,
 } from "ai"
-import { Effect, Queue, Schema, Stream } from "effect"
+import { Cause, Effect, Queue, Schema, Stream } from "effect"
+import type { Observer } from "./exchange.ts"
+import type { Fault } from "./fault.ts"
 import type { Format } from "./url.ts"
 
 export type Message = ModelMessage
@@ -112,14 +114,41 @@ export const usage = (u: LanguageModelUsage): Usage => ({
 export class ModelError extends Schema.TaggedError<ModelError>()("ModelError", {
   message: Schema.String,
   cause: Schema.Unknown,
+  fault: Schema.optional(
+    Schema.declare((v): v is Fault => typeof v === "object" && v !== null && "code" in v && "message" in v),
+  ),
 }) {}
 // tryPromise wraps the rejection in an UnknownError; the ai-sdk error underneath carries the provider's message.
 export const modelError = (wrapped: unknown) => {
-  const cause = wrapped instanceof Error && wrapped.cause instanceof Error ? wrapped.cause : wrapped
+  const cause = Cause.isUnknownError(wrapped) ? wrapped.cause : wrapped
   return new ModelError({ message: cause instanceof Error ? cause.message : String(cause), cause })
 }
 
+export const observedError = (wrapped: unknown, observer?: Observer, partial?: string, raw?: unknown) => {
+  const error = modelError(wrapped)
+  const fault = observer?.fail(error.cause, partial, raw)
+  if (
+    fault &&
+    error.cause &&
+    typeof error.cause === "object" &&
+    "errors" in error.cause &&
+    Array.isArray(error.cause.errors)
+  )
+    fault.attempts = error.cause.errors.length
+  return fault ? new ModelError({ message: fault.message, cause: error.cause, fault }) : error
+}
+
+export const replyText = (messages: readonly ModelMessage[]) =>
+  messages
+    .flatMap((m) =>
+      typeof m.content === "string"
+        ? [m.content]
+        : m.content.map((p) => (p.type === "text" || p.type === "reasoning" ? p.text : JSON.stringify(p, null, 2))),
+    )
+    .join("\n")
+
 export interface Model {
+  exchange?: Observer
   format: Format
   model: LanguageModel
   /** Explicitly false disables native tool stages; absence uses the format baseline. */
@@ -148,8 +177,9 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
       abortSignal,
       ...settings(m.format, o),
     })
+    m.exchange?.finish(replyText(result.response.messages))
     return { value: result.output as S["Type"], usage: usage(result.usage), finishReason: result.finishReason }
-  }).pipe(Effect.mapError(modelError))
+  }).pipe(Effect.mapError((e) => observedError(e, m.exchange)))
 
 export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}) =>
   Effect.tryPromise((abortSignal) =>
@@ -160,7 +190,8 @@ export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}
       ...settings(m.format, o),
     }),
   ).pipe(
-    Effect.mapError(modelError),
+    Effect.mapError((e) => observedError(e, m.exchange)),
+    Effect.tap((r) => Effect.sync(() => m.exchange?.finish(replyText(r.response.messages)))),
     Effect.map((r) => ({
       text: r.text,
       reasoning: r.reasoningText,
@@ -204,20 +235,44 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         // the failure reaches the caller as the stream's error part; ai-sdk's default here prints the whole error
         // object, stack and all, to the console
         onError: () => {},
+        includeRawChunks: !!m.exchange,
         ...settings(m.format, o),
       })
       const parts = Stream.callback<Part, ModelError>((queue) =>
         Effect.gen(function* () {
-          yield* Effect.addFinalizer(() => Effect.sync(() => ac.abort()))
+          let partial = ""
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => {
+              m.exchange?.finish(partial)
+              ac.abort()
+            }),
+          )
           void (async () => {
+            let lastRaw: unknown
             try {
               for await (const p of r.fullStream as AsyncIterable<Part>) {
-                if (p.type === "error") return void (await Effect.runPromise(Queue.fail(queue, modelError(p.error))))
+                if (p.type === "raw") {
+                  // Drivers emit the wire chunk immediately before its decoded part. Only an
+                  // error envelope belongs to the following error; a broken socket has no such chunk.
+                  const raw = p.rawValue
+                  lastRaw =
+                    raw && typeof raw === "object" && ("error" in raw || ("type" in raw && raw.type === "error"))
+                      ? raw
+                      : undefined
+                  continue
+                }
+                if (p.type === "error")
+                  return void (await Effect.runPromise(
+                    Queue.fail(queue, observedError(p.error, m.exchange, partial, lastRaw)),
+                  ))
+                lastRaw = undefined
+                if (m.exchange && (p.type === "text-delta" || p.type === "reasoning-delta")) partial += p.text
+                if (p.type === "finish" || p.type === "abort") m.exchange?.finish(partial)
                 if (p.type !== "abort") await Effect.runPromise(Queue.offer(queue, p))
               }
               await Effect.runPromise(Queue.end(queue))
             } catch (e) {
-              await Effect.runPromise(Queue.fail(queue, modelError(e)))
+              await Effect.runPromise(Queue.fail(queue, observedError(e, m.exchange, partial)))
             }
           })()
         }),

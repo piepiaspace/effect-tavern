@@ -12,11 +12,12 @@ import { createTypeSafeAi } from "@ai-sdk/typesafe-ai"
 import { experimental_decide, type Experimental_DecisionModel, type Experimental_DecisionQuestion } from "ai"
 import { Experimental_DecisionMockModelV4 } from "ai/test"
 import { Effect } from "effect"
-import { modelError, type ModelError, type Usage } from "./call.ts"
+import { modelError, observedError, type ModelError, type Usage } from "./call.ts"
 import { fetchFor, traced, type CompileOptions } from "./connection.ts"
 import type { DecisionConfig } from "./decision.ts"
-import { diagnose } from "./fault.ts"
-import type { Secret } from "./providers.ts"
+import { causes, readFault } from "./fault.ts"
+import { observe } from "./exchange.ts"
+import { ConnectionError, type Secret } from "./providers.ts"
 
 export type DecisionModel = Experimental_DecisionModel
 export type Question = Exclude<Experimental_DecisionQuestion, { type: "box" }>
@@ -26,17 +27,36 @@ const FACTORY = { google: createGoogleGenerativeAI, openai: createOpenAI, typesa
 /** A config as a model, whether or not it is enabled (the player tests before switching it on). What is missing fails
  *  here; an unset `url` is the driver's own address. `onTrace` sees each fetch, as on `compile`. */
 export const compileDecision = (c: DecisionConfig, s: Secret | undefined, o: CompileOptions = {}): DecisionModel => {
-  if (!s) throw new Error("decision model: no key")
-  if (!c.model.trim()) throw new Error("decision model: no model")
+  if (!s) throw new ConnectionError("provider-no-key", "decision model: no key")
+  if (!c.model.trim()) throw new ConnectionError("provider-no-model", "decision model: no model")
   const inner = o.fetch ?? fetchFor(c)
   const fetch = o.onTrace ? traced(o.onTrace, o.traceBody ?? false, inner) : inner
-  return FACTORY[c.driver]({
+  const exchange = o.onExchange && observe(o.onExchange, c.model, s.value, c.headers)
+  const model = FACTORY[c.driver]({
     apiKey: s.value,
     ...(c.url?.trim() && { baseURL: c.url.trim() }),
     ...(c.headers && { headers: c.headers }),
     // ai-sdk types `fetch` as `typeof fetch`, which under Bun types also requires `preconnect`; the SDK only calls it
-    fetch: fetch as typeof globalThis.fetch,
+    fetch: (exchange ? exchange.wrap(fetch) : fetch) as typeof globalThis.fetch,
   }).decisionModel(c.model.trim())
+  if (!exchange) return model
+  return {
+    specificationVersion: model.specificationVersion,
+    provider: model.provider,
+    modelId: model.modelId,
+    supportedQuestionTypes: model.supportedQuestionTypes,
+    async doDecide(options) {
+      try {
+        const result = await model.doDecide(options)
+        exchange.finish(JSON.stringify(result.answers, null, 2))
+        return result
+      } catch (e) {
+        // Keep the SDK error intact so its retry policy still sees isRetryable.
+        if (e instanceof Error) Object.assign(e, { fault: observedError(e, exchange).fault })
+        throw e
+      }
+    },
+  }
 }
 
 export const decide = <const Q extends Record<string, Question>>(
@@ -66,10 +86,16 @@ export const probeDecision = (model: DecisionModel) =>
 /** Why the service refused to judge this text, when that is what the failure was (fault.ts `blocked`): its block code,
  *  or `refusal` when it answered with refusals. Google's decisions endpoint answers a block as HTTP 400
  *  `{error: {code: "safety"}}`, which the SDK's error parser (numeric `code`, a `status`) does not read, so the message
- *  is a bare "Bad Request" and the code is only in the response body down the cause chain, where `diagnose` reads it. */
+ *  is a bare "Bad Request" and the code is only in the response body down the cause chain, where this driver reads it. */
 export const blocked = (e: ModelError): string | undefined => {
-  const f = diagnose(e)
-  return f.code === "blocked" ? (f.type ?? "refusal") : undefined
+  for (const c of causes(e)) if (c.name === "AI_DecisionRefusalError") return "refusal"
+  const body = readFault(e).body
+  if (body) {
+    try {
+      if (JSON.parse(body)?.error?.code === "safety") return "safety"
+    } catch {}
+  }
+  return undefined
 }
 
 type Call = Parameters<Experimental_DecisionMockModelV4["doDecide"]>[0]

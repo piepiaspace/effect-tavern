@@ -52,7 +52,9 @@ import {
 import {
   blocked,
   decide,
-  diagnose,
+  readFault,
+  type OnExchange,
+  type Exchange,
   object,
   runStageTools,
   ModelError,
@@ -101,6 +103,7 @@ export type Pair = typeof Pair.Type
 
 export type { Node } from "./derived.ts" // internal complete projection; clients use projection.ts
 export type Event =
+  | { kind: "exchange"; phase: Phase; attempt: number; model: string; exchange: Exchange }
   | { kind: "stage"; phase: Phase }
   | { kind: "delta"; part: Part | ProductDelta }
   // `via: "decision"`: lookup's or check's pass on the decision model (`decisionPass`), not a language model call
@@ -128,7 +131,7 @@ export type Events = Stream.Stream<Event, TurnError>
 export type Change = Log.Change<Node> & { invalidated?: readonly number[] }
 /** A stop signal: completes when the player halts the prose (a Deferred's await on the wire). Only narrate listens. */
 export type Stop = Effect.Effect<void>
-type Emit = (e: Event) => Effect.Effect<void>
+type Emit = ((e: Event) => Effect.Effect<void>) & { observe: (phase: Phase) => OnExchange }
 const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 /** A model's own id (ai-sdk's `modelId`), for the call's report; none when it carries none. */
 const nameOf = (m: unknown): string | undefined => {
@@ -145,7 +148,7 @@ const failedCall = (phase: Phase, msgs: readonly Message[], model: string | unde
     usage: NO_USAGE,
     ms: Date.now() - t0,
     ...(model && { model }),
-    fault: diagnose(e),
+    fault: readFault(e),
   }) satisfies Event
 
 const BriefOf = (open: readonly string[]) =>
@@ -178,11 +181,20 @@ export const outcome = <E>(events: Stream.Stream<Event, E>): Effect.Effect<Turn,
  *  A defect in the body (an invalid action found mid-turn, such as an unavailable invocation) fails the stream too;
  *  swallowing it would leave the stream open forever. */
 const emitting = (body: (emit: Emit) => Effect.Effect<unknown, TurnError>): Events =>
-  Stream.callback<Event, TurnError>((q) =>
-    Effect.exit(body((e) => Effect.asVoid(Queue.offer(q, e)))).pipe(
+  Stream.callback<Event, TurnError>((q) => {
+    let serial = 0
+    const observe = (phase: Phase): OnExchange => {
+      let attempt = 0
+      return (exchange, model) => {
+        if (exchange.kind === "request") attempt = ++serial
+        Queue.offerUnsafe(q, { kind: "exchange", phase, attempt, model, exchange })
+      }
+    }
+    const emit = Object.assign((e: Event) => Effect.asVoid(Queue.offer(q, e)), { observe })
+    return Effect.exit(body(emit)).pipe(
       Effect.andThen((x) => (x._tag === "Success" ? Queue.end(q) : Queue.failCause(q, x.cause))),
-    ),
-  )
+    )
+  })
 
 /** What a card is, read off its structure (design/new-story-and-tags.md §5.1): the harness's closed vocabulary (the
  *  player's own filing words are `Local.tags`, #133). `mode` is the default channel; each flag is whether the card has that mechanism (a
@@ -250,10 +262,10 @@ export const makeSession = ({
   /** The model each stage runs on (provider `bind`), asked on every call like `hat`: the library's routing, in force
    *  from the next request. lookup and check can take a light model; record answers readouts (state judgement), not
    *  pure extraction: never route it down by default. */
-  model: (phase: Phase) => Model
+  model: (phase: Phase, onExchange?: OnExchange) => Model
   /** The decision model, read per check like `model` (library.ts: the saved config when enabled); none = check runs on
    *  its language model alone. A throw here (a config missing its key) is a failed fast pass, not a failed turn. */
-  decision?: () => DecisionModel | undefined
+  decision?: (onExchange?: OnExchange) => DecisionModel | undefined
   store?: Log.Store<Turn> // the log's persistence; none = in memory
   hat?: (id: string) => Hat | undefined // a connection's hat by id, read per request (library.ts); none = no hat
   // the fold boundary, a value or read on every fold (library.ts: the narrate model's window, so a routing edit is in
@@ -361,7 +373,7 @@ export const makeSession = ({
     Effect.gen(function* () {
       yield* emit({ kind: "stage", phase })
       const t0 = Date.now()
-      const M = modelFor(phase)
+      const M = modelFor(phase, emit.observe(phase))
       // effort is the bound model entry's own: the harness names none (an unset one sends nothing)
       const model = nameOf(M.model)
       const r = yield* object(M, schema, msgs, {
@@ -397,10 +409,10 @@ export const makeSession = ({
       let error: string | undefined
       let fault: Fault | undefined
       try {
-        M = decisionFor?.()
+        M = decisionFor?.(emit.observe(phase))
       } catch (e) {
         error = e instanceof Error ? e.message : String(e)
-        fault = diagnose(e)
+        fault = readFault(e)
       }
       if (!M && error === undefined) return undefined
       yield* emit({ kind: "stage", phase })
@@ -409,7 +421,7 @@ export const makeSession = ({
         ? yield* decide(M, state, questions, { maxRetries: 0 }).pipe(
             Effect.match({
               onSuccess: (ok) => ({ ok }),
-              onFailure: (e) => ({ error: blocked(e) ? `blocked:${blocked(e)}` : e.message, fault: diagnose(e) }),
+              onFailure: (e) => ({ error: blocked(e) ? `blocked:${blocked(e)}` : e.message, fault: readFault(e) }),
             }),
           )
         : { error: error ?? "", fault }
@@ -441,7 +453,7 @@ export const makeSession = ({
       const started = Date.now()
       const events: StageEvent[] = []
       let reported = false
-      const M = modelFor(phase)
+      const M = modelFor(phase, emit.observe(phase))
       const model = nameOf(M.model)
       const report = (out: object, usage: Usage, fault?: Fault) =>
         Effect.gen(function* () {
@@ -459,7 +471,7 @@ export const makeSession = ({
         })
       return yield* runStageTools(M, msgs, { ...options, onEvent: (e) => events.push(e) }).pipe(
         Effect.tap((r) => report(r, r.usage)),
-        Effect.tapError((e) => report({ status: "failed", message: e.message, trace: e.trace }, e.usage, diagnose(e))),
+        Effect.tapError((e) => report({ status: "failed", message: e.message, trace: e.trace }, e.usage, readFault(e))),
         Effect.mapError((e) => new ModelError({ message: e.message, cause: e })),
         Effect.ensuring(
           Effect.suspend(() =>
@@ -544,7 +556,7 @@ export const makeSession = ({
           blocks: { question: wording("narrate.blocks"), asks: [`${p.id}: ${p.text}`] },
         },
       )
-      const M = modelFor("narrate")
+      const M = modelFor("narrate", emit.observe("narrate"))
       yield* emit({ kind: "stage", phase: "narrate" })
       const t0 = Date.now()
       const model = nameOf(M.model)
@@ -809,7 +821,7 @@ export const makeSession = ({
       const penned = askedAt(products(), "narrate", here.context(s1))
 
       // No output cap by default: the model's own limit (128k on Haiku) is the ceiling. A cap is connection config.
-      const M = modelFor("narrate")
+      const M = modelFor("narrate", emit.observe("narrate"))
       const opts = { name: "narrate", maxOutputTokens: M.maxOutputTokens, effort: M.effort }
       // A stopped stream ends after the current pull without the `finish` part: the text so far is the reply, usage unknown.
       let cut = false

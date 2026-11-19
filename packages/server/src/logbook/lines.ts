@@ -1,6 +1,6 @@
-// What the logbook draws, as text: pure functions of an entry, a call or a fact and the width, no screen and no state.
-// Every line fits `cells` (term `cells`: `columns - 1`, at most 99); a row of fields breaks between fields, the rest of it
-// indented under the first. No story text unless `inspect`: ids, counts, sizes, timings, usage and failure facts only.
+// Terminal layout for the banner, live progress, wait notices and completed turns. Summaries aggregate
+// usage across stage calls and fit labels to the available cells. logbook.ts writes exchange bodies
+// separately so terminal width never clips a prompt, reply or upstream error.
 import type { Usage } from "@effect-tavern/provider"
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import type { Action, Event, Phase } from "@effect-tavern/runtime/src/session.ts"
@@ -84,67 +84,29 @@ export const named = (lang: Lang, story: Id, action: Action["kind"]): string => 
   return a ? `${w.story(story)} ${a}` : w.story(story)
 }
 
-/** A finished action that did not fail, as one permanent line: 14:02 ✓ 故事3  18.4s  6 次调用  入3.1k 出642. */
+/** A turn's final summary. Only the header and metrics are fitted to the terminal width. */
 export const finished = (e: Entry, cells: number, p: Paint): string[] => {
   const w = words[p.lang]
-  const mark = e.end === "withdrawn" ? "-" : tint(p, 32, "✓")
+  const mark = e.end === "withdrawn" ? "-" : e.end === "failed" ? tint(p, 31, "✗") : tint(p, 32, "✓")
   const u = sum(e.calls)
+  const result =
+    e.end === "failed"
+      ? w.failed(e.phase && w.stage[e.phase])
+      : e.end === "stopped"
+        ? w.stopped
+        : e.end === "withdrawn"
+          ? w.withdrawn
+          : undefined
   return fields(
     `${dim(p, stamp(e.at + e.ms, p.full))} ${mark} ${named(p.lang, e.story, e.action)}`,
     [
-      ...(e.end === "stopped" ? [w.stopped] : e.end === "withdrawn" ? [w.withdrawn] : []),
+      ...(result ? [result] : []),
       secs(e.ms),
       ...(e.calls.length ? [w.calls(e.calls.length), w.usage(count(u.input), count(u.output))] : []),
+      ...(u.cacheRead && u.input ? [w.cache(Math.round((100 * u.cacheRead) / u.input))] : []),
     ],
     cells,
   )
-}
-
-/** A failed action's head line, above the failure's block: 14:07 ✗ 故事3  叙事没有完成  3.1s. */
-export const failedHead = (e: Entry, cells: number, p: Paint): string[] => {
-  const w = words[p.lang]
-  return fields(
-    `${dim(p, stamp(e.at + e.ms, p.full))} ${tint(p, 31, "✗")} ${named(p.lang, e.story, e.action)}`,
-    [w.failed(e.phase && w.stage[e.phase]), secs(e.ms)],
-    cells,
-  )
-}
-
-const textOf = (m: Call["msgs"][number]): string =>
-  typeof m.content === "string"
-    ? m.content
-    : m.content.map((c) => ("text" in c && typeof c.text === "string" ? c.text : "")).join("")
-const oneLine = (s: string) => s.replace(/\s+/g, " ").trim()
-
-/** `detail`: one call as a row (stage, seconds, tokens in and out, cache share, model), and its request as an outline of
- *  roles and sizes; the text itself, a line a message, only under `inspect`. */
-export const callRows = (c: Call, cells: number, p: Paint, inspect: boolean): string[] => {
-  const w = words[p.lang]
-  const stage = c.via === "decision" ? `${w.stage[c.phase]} ${w.precheck}` : w.stage[c.phase]
-  const share = c.usage.input ? Math.round((c.usage.cacheRead / c.usage.input) * 100) : 0
-  const rows = fields(
-    `  ${c.fault ? tint(p, 31, "✗") : " "} ${stage}`,
-    [
-      secs(c.ms),
-      ...(c.fault ? [c.fault.code] : [w.usage(count(c.usage.input), count(c.usage.output))]),
-      ...(c.usage.cacheRead ? [w.cache(share)] : []),
-      ...(c.model ? [c.model] : []),
-    ],
-    cells,
-    6,
-  )
-  if (!c.msgs.length) return rows
-  const roles = new Map<string, number>()
-  for (const m of c.msgs) roles.set(m.role, (roles.get(m.role) ?? 0) + textOf(m).length)
-  const sizes = [...roles].map(([role, n]) => `${role} ${count(n)}`)
-  // the unit once, at the end of the outline
-  const outline = fields(`      ${w.request(c.msgs.length)}`, [...sizes.slice(0, -1), w.chars(sizes.at(-1)!)], cells, 6)
-  rows.push(...outline.map((l) => dim(p, l)))
-  if (inspect) {
-    for (const m of c.msgs) rows.push(dim(p, clip(`        ${m.role}  ${oneLine(textOf(m))}`, cells)))
-    if (typeof c.out === "string") rows.push(dim(p, clip(`        ${w.answer}  ${oneLine(c.out)}`, cells)))
-  }
-  return rows
 }
 
 /** The one live row while a turn runs: 故事3  叙事 6.4s  已写 312 字  共 8.8s. No glyph: the ticking tenths say it is

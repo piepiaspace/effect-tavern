@@ -134,7 +134,7 @@ export interface Config {
   readonly inspect: boolean
   /** The scripted zero-token model (MODEL=fake). */
   readonly fake: boolean
-  /** How much the running server's log says (`--log`, TAVERN_LOG): quiet, turn (the default) or detail. */
+  /** How much the running server's log says (`--log`, TAVERN_LOG): full (the default), turn or quiet. */
   readonly log: Level
   /** Open the page once a `tavern start` on a terminal answers (`--no-open` turns it off). */
   readonly open: boolean
@@ -182,7 +182,7 @@ export const config = (
     json: flags.json ?? false,
     inspect: flags.inspect || world.env["TAVERN_INSPECT"] === "1",
     fake: flags.fake || world.env["MODEL"] === "fake",
-    log: flags.log ?? level(env("TAVERN_LOG")?.value ?? "turn"),
+    log: flags.log ?? level(env("TAVERN_LOG")?.value ?? "full"),
     open: flags.open ?? true,
     ...(asset && { asset }),
     version: world.self?.version ?? version,

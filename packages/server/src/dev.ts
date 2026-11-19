@@ -16,7 +16,7 @@ import {
   localAnthropic,
   localAnthropicKey,
   type FakeCall,
-  type Model,
+  type CompileOptions,
 } from "@effect-tavern/provider"
 import { player } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
@@ -88,14 +88,15 @@ const answer = (o: FakeCall) => {
 
 /** The environment's model, in force for any stage the routing row does not name: the local Anthropic key, when the
  *  machine has one. */
-const live = async (): Promise<Model | undefined> => {
+const live = async () => {
   const conn = await localAnthropic()
   if (!conn) return undefined
-  return bind({ ...conn, effort: "low", hat: Bun.env["HAT"] ?? conn.hat }) // HAT=<id> puts a library hat on it
+  return (_phase: string, onExchange?: CompileOptions["onExchange"]) =>
+    bind({ ...conn, effort: "low", hat: Bun.env["HAT"] ?? conn.hat }, { onExchange }) // HAT=<id> puts a library hat on it
 }
 const scripted = Bun.env["MODEL"] === "fake"
-const one = scripted ? { ...fake(answer), hat: Bun.env["HAT"] } : await live() // HAT works on the scripted model too
-const model = one && (() => one)
+const scriptedModel = scripted && { ...fake(answer), hat: Bun.env["HAT"] }
+const model = scriptedModel ? () => scriptedModel : await live()
 
 const key = await localAnthropicKey()
 const { handler: wire } = tavern({
@@ -113,7 +114,6 @@ const { handler: wire } = tavern({
     dir: `${dir}/log`,
     lang: Bun.env["TAVERN_LANG"] === "en" ? "en" : "zh",
     ...(levels.includes(Bun.env["TAVERN_LOG"] as Level) && { level: Bun.env["TAVERN_LOG"] as Level }),
-    inspect: Bun.env["TAVERN_INSPECT"] === "1",
   }),
 })
 /** What Vite's mount calls (packages/client/vite.config.ts). */

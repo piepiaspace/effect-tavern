@@ -27,7 +27,9 @@ curl -fsSL https://github.com/piepiaspace/effect-tavern/releases/latest/download
 | `tavern update [--yes] [--check]` | 读发布的 `release.txt`，显示现在与最新的版本和变化，询问（只在终端上），检查剩余空间，把平台的发布文件下载到二进制旁边，要求新文件的 `--version` 回答预期的版本，再改名覆盖正在运行的二进制。任何失败都保留旧的二进制。仍在运行的酒馆要重启后才是新版本。`TAVERN_MIRROR` 指定镜像（https 地址或目录）。从源码运行时拒绝。 | `0`、`1`、`2`（没有终端又没有 `--yes`） |
 | `tavern doctor [--verbose]` | 每项一行，`✓`、`!` 或 `✗`，每项一个下一步：设备与平台、命令的位置与版本、数据目录、剩余空间与更新所需、运行中的酒馆和它的端口、到发布页的网络、设备工具、旧启动器留下的文件、`<数据目录>/log/turns.jsonl` 里上次失败的回合。 | `0`、`1`（有 `✗`） |
 
-任何失败都用大白话说：发生了什么、可能的原因、`>` 标出的一个下一步、什么被原样留下，以及一行原始事实。`--json` 时失败是 stderr 上的一行 `{"error":{"code","message","next"}}`。
+本地操作被拒绝时，酒馆会说明发生了什么、可能的原因、`>` 标出的一个下一步、什么被原样留下，以及一行原始事实。`--json` 时失败是 stderr 上的一行 `{"error":{"code","message","next"}}`。
+
+服务默认在终端打印每次模型请求和回复。`tavern start --log turn` 显示回合摘要，`--log quiet` 只报告失败。上游错误保留 HTTP 状态和原文，失败请求可在 `<数据目录>/log/turns.jsonl` 查找。
 
 ## 1. 离线制卡工具（`card`）
 

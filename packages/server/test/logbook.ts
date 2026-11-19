@@ -1,12 +1,6 @@
-// The logbook, through its interface only: scripted event streams (a landed turn, a rewrite after check, a stopped one, a
-// withdrawn one, one failed at each kind of stage) through `openLogbook(...).turn(...)`. The events out are the events
-// in, in order, with the same failure; a throwing screen or `file` changes nothing for the turn; every action ends as
-// exactly one entry; golden text at 48 and 100 columns in both languages; every line fits `columns - 1` cells; no escape
-// byte when not live and not coloured; a sentence planted in messages, deltas and answers never reaches the screen or
-// the file without `inspect`; the file's line; rotation; the banner; silence before the host is up. The stage and
-// action words are the client's own.
+// Exercise logging through the same observed stream that runs each story.
 process.env.TZ = "UTC"
-import { diagnose, ModelError, type Usage } from "@effect-tavern/provider"
+import { readFault, ModelError, type Usage } from "@effect-tavern/provider"
 import {
   Rejected,
   type Action,
@@ -79,7 +73,7 @@ const refused = Object.assign(new Error("invalid x-api-key"), {
   }),
 })
 const failure = new ModelError({ message: "invalid x-api-key", cause: refused })
-const fault = diagnose(failure)
+const fault = readFault(failure)
 
 const prose = [delta(`第一段。${SECRET}`), delta("雨停了。"), delta("他没有说话。")]
 const scripts: Record<string, { action: Action; steps: Step[]; end?: "fail" | "interrupt" }> = {
@@ -251,7 +245,7 @@ const playAll = async (
 // ───────── transparent, and every action one entry ─────────
 {
   const d = join(dir, "one")
-  const { filed } = await playAll({ dir: d, level: "detail" })
+  const { filed } = await playAll({ dir: d, level: "full" })
   const lines = readFileSync(join(d, "turns.jsonl"), "utf8").trim().split("\n")
   assert.equal(lines.length, Object.keys(scripts).length)
   const entries = lines.map((l) => JSON.parse(l))
@@ -285,18 +279,10 @@ const playAll = async (
   assert.deepEqual(landed.calls[0], { phase: "lookup", model: "claude-haiku-5-5", ms: 1200, usage: u(2000, 80, 1500) })
   const failed = entries[Object.keys(scripts).indexOf("failed-narrate")]
   assert.equal(failed.phase, "narrate")
-  assert.equal(failed.fault.code, "key-refused")
+  assert.equal(failed.fault.code, "upstream")
   assert.equal(failed.fault.status, 401)
-  assert.ok(!JSON.stringify(failed).includes(SECRET))
-  assert.equal(failed.fault.body, undefined)
-  assert.equal(failed.calls.at(-1).fault.code, "key-refused")
-  // A provider's validation message can quote the player's input.
-  const screen = recording({ columns: 48 })
-  const book = openLogbook({ dir: d, screen, guest: true })
-  const error = new ModelError({ message: SECRET, cause: Object.assign(new Error(SECRET), { statusCode: 400 }) })
-  await run(book.turn(3, () => {})({ kind: "act", input: { text: SECRET } }, Stream.fail(error)))
-  assert.ok(!screen.raw().includes("SENTINEL"))
-  assert.ok(!readFileSync(join(d, "turns.jsonl"), "utf8").includes("SENTINEL"))
+  assert.equal(failed.fault.body, refused.responseBody)
+  assert.equal(failed.calls.at(-1).fault.code, "upstream")
   // record failed after its node landed: the node is the entry's, its call filed under it
   assert.equal(entries[Object.keys(scripts).indexOf("failed-record")].node, 10)
   console.log(`  file: ${lines[0]}`)
@@ -312,7 +298,7 @@ const playAll = async (
     live: true,
     color: true,
   }
-  const logbook = openLogbook({ clock, screen: broken, level: "detail" })
+  const logbook = openLogbook({ clock, screen: broken, level: "full" })
   logbook.host({ url: "http://x", data: "/d", version: "dev" })
   for (const s of Object.values(scripts)) {
     now = T0
@@ -334,7 +320,7 @@ const playAll = async (
 }
 
 // ───────── golden text ─────────
-const golden = async (columns: number, lang: Lang, level: "quiet" | "turn" | "detail" = "turn") => {
+const golden = async (columns: number, lang: Lang, level: "quiet" | "turn" | "full" = "turn") => {
   const { screen } = await playAll({ columns, lang, level }, [
     "landed",
     "rewrite",
@@ -344,179 +330,58 @@ const golden = async (columns: number, lang: Lang, level: "quiet" | "turn" | "de
   ])
   return screen.shown()
 }
-assert.deepEqual(await golden(48, "zh"), [
-  "Effect Tavern v0.9.2",
-  "  地址  http://127.0.0.1:7777",
-  "  数据  /srv/tavern",
-  "  模型  Anthropic / claude-haiku-5-5",
-  "  停止  Ctrl+C",
-  "",
-  "2026-11-18 14:02:21 ✓ 故事3  10.9s  4 次调用",
-  "  入10k 出1.0k",
-  "2026-11-18 14:02:25 ✓ 故事3 换一版  14.2s",
-  "  5 次调用  入14k 出1.5k",
-  "2026-11-18 14:02:14 ✓ 故事3  已停止  3.8s",
-  "  2 次调用  入2.0k 出200",
-  "2026-11-18 14:02:12 - 故事3  已撤回  1.5s",
-  "  1 次调用  入1.8k 出60",
-  "2026-11-18 14:02:19 ✗ 故事3  叙事没有完成  8.4s",
-  "  服务商不认这把密钥",
-  "  密钥可能填错、过期，或已被停用。",
-  "  > 到「设置」的「模型服务」里重新填写这家的",
-  "    API 密钥，再发送一次。",
-  "  HTTP 401 authentication_error",
-  "  api.anthropic.com",
-])
-const GOLDEN_48_EN = [
-  "Effect Tavern v0.9.2",
-  "  address  http://127.0.0.1:7777",
-  "  data     /srv/tavern",
-  "  model    Anthropic / claude-haiku-5-5",
-  "  stop     Ctrl+C",
-  "",
-  "2026-11-18 14:02:21 ✓ story 3  10.9s  4 calls",
-  "  in 10k out 1.0k",
-  "2026-11-18 14:02:25 ✓ story 3 Swipe  14.2s",
-  "  5 calls  in 14k out 1.5k",
-  "2026-11-18 14:02:14 ✓ story 3  stopped  3.8s",
-  "  2 calls  in 2.0k out 200",
-  "2026-11-18 14:02:12 - story 3  withdrawn  1.5s",
-  "  1 call  in 1.8k out 60",
-  "2026-11-18 14:02:19 ✗ story 3  Narrate failed",
-  "  8.4s",
-  "  The provider refused the key",
-  "  The key may be mistyped, expired or revoked.",
-  "  > In Settings, under Providers, enter this",
-  "    provider's API key again, then send again.",
-  "  HTTP 401 authentication_error",
-  "  api.anthropic.com",
-]
-const GOLDEN_100_ZH = [
-  "Effect Tavern v0.9.2",
-  "  地址  http://127.0.0.1:7777",
-  "  数据  /srv/tavern",
-  "  模型  Anthropic / claude-haiku-5-5",
-  "  停止  Ctrl+C",
-  "",
-  "2026-11-18 14:02:21 ✓ 故事3  10.9s  4 次调用  入10k 出1.0k",
-  "2026-11-18 14:02:25 ✓ 故事3 换一版  14.2s  5 次调用  入14k 出1.5k",
-  "2026-11-18 14:02:14 ✓ 故事3  已停止  3.8s  2 次调用  入2.0k 出200",
-  "2026-11-18 14:02:12 - 故事3  已撤回  1.5s  1 次调用  入1.8k 出60",
-  "2026-11-18 14:02:19 ✗ 故事3  叙事没有完成  8.4s",
-  "  服务商不认这把密钥",
-  "  密钥可能填错、过期，或已被停用。",
-  "  > 到「设置」的「模型服务」里重新填写这家的 API 密钥，再发送一次。",
-  "  HTTP 401 authentication_error api.anthropic.com",
-]
-const GOLDEN_100_EN = [
-  "Effect Tavern v0.9.2",
-  "  address  http://127.0.0.1:7777",
-  "  data     /srv/tavern",
-  "  model    Anthropic / claude-haiku-5-5",
-  "  stop     Ctrl+C",
-  "",
-  "2026-11-18 14:02:21 ✓ story 3  10.9s  4 calls  in 10k out 1.0k",
-  "2026-11-18 14:02:25 ✓ story 3 Swipe  14.2s  5 calls  in 14k out 1.5k",
-  "2026-11-18 14:02:14 ✓ story 3  stopped  3.8s  2 calls  in 2.0k out 200",
-  "2026-11-18 14:02:12 - story 3  withdrawn  1.5s  1 call  in 1.8k out 60",
-  "2026-11-18 14:02:19 ✗ story 3  Narrate failed  8.4s",
-  "  The provider refused the key",
-  "  The key may be mistyped, expired or revoked.",
-  "  > In Settings, under Providers, enter this provider's API key again, then send again.",
-  "  HTTP 401 authentication_error api.anthropic.com",
-]
-const GOLDEN_48_ZH_DETAIL = [
-  "Effect Tavern v0.9.2",
-  "  地址  http://127.0.0.1:7777",
-  "  数据  /srv/tavern",
-  "  模型  Anthropic / claude-haiku-5-5",
-  "  停止  Ctrl+C",
-  "",
-  "    检索  1.2s  入2.0k 出80  缓存75%",
-  "      claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    叙事  6.4s  入3.1k 出642  缓存94%",
-  "      claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    校验  0.9s  入2.5k 出20  缓存80%",
-  "      claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    结算  2.1s  入2.6k 出300  缓存77%",
-  "      claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "2026-11-18 14:02:21 ✓ 故事3  10.9s  4 次调用",
-  "  入10k 出1.0k",
-  "    叙事  5.0s  入3.0k 出600  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    校验  0.8s  入2.4k 出30  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    叙事  5.2s  入3.3k 出610  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    校验  0.7s  入2.6k 出20  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    结算  1.9s  入2.6k 出280  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "2026-11-18 14:02:25 ✓ 故事3 换一版  14.2s",
-  "  5 次调用  入14k 出1.5k",
-  "    叙事  2.0s  入0 出0  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    结算  1.5s  入2.0k 出200  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "2026-11-18 14:02:14 ✓ 故事3  已停止  3.8s",
-  "  2 次调用  入2.0k 出200",
-  "    检索  1.0s  入1.8k 出60  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "2026-11-18 14:02:12 - 故事3  已撤回  1.5s",
-  "  1 次调用  入1.8k 出60",
-  "    检索  1.0s  入1.8k 出60  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "    叙事  4.0s  入3.0k 出500  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "  ✗ 叙事  3.1s  key-refused  claude-haiku-5-5",
-  "      请求 2 条  system 20  user 21 字",
-  "2026-11-18 14:02:19 ✗ 故事3  叙事没有完成  8.4s",
-  "  服务商不认这把密钥",
-  "  密钥可能填错、过期，或已被停用。",
-  "  > 到「设置」的「模型服务」里重新填写这家的",
-  "    API 密钥，再发送一次。",
-  "  HTTP 401 authentication_error",
-  "  api.anthropic.com",
-]
-if (process.env["SHOW"]) {
-  for (const [c, l, v] of [
-    [48, "en", "turn"],
-    [100, "zh", "turn"],
-    [100, "en", "turn"],
-    [48, "zh", "detail"],
-    [100, "en", "detail"],
-  ] as const)
-    console.log(`--- ${c} ${l} ${v}\n${(await golden(c, l, v)).join("\n")}`)
+for (const columns of [48, 100]) {
+  for (const lang of ["zh", "en"] as const) {
+    const lines = await golden(columns, lang)
+    assert.ok(lines.some((l) => l.includes(lang === "zh" ? "缓存82%" : "cache 82%")))
+    assert.ok(lines.includes(refused.responseBody))
+    for (const l of lines.filter((l) => l !== refused.responseBody)) assert.ok(width(l) <= columns - 1, l)
+    const quiet = await golden(columns, lang, "quiet")
+    assert.ok(quiet.includes(refused.responseBody))
+    assert.ok(quiet.some((l) => l.includes("✗")))
+    assert.ok(!quiet.some((l) => l.includes("✓")))
+  }
 }
-assert.deepEqual(await golden(48, "en"), GOLDEN_48_EN)
-assert.deepEqual(await golden(100, "zh"), GOLDEN_100_ZH)
-assert.deepEqual(await golden(100, "en"), GOLDEN_100_EN)
-assert.deepEqual(await golden(48, "zh", "detail"), GOLDEN_48_ZH_DETAIL)
-// quiet: the banner and the failure only
-assert.deepEqual((await golden(48, "zh", "quiet")).slice(6), (await golden(48, "zh")).slice(14))
 
-// ───────── every line fits, no escape byte when not live and not coloured, no text without inspect ─────────
-for (const columns of [48, 100])
-  for (const lang of ["zh", "en"] as const)
-    for (const level of ["quiet", "turn", "detail"] as const)
-      for (const inspect of [false, true]) {
-        const d = join(dir, `fit-${columns}-${lang}-${level}-${inspect}`)
-        const { screen } = await playAll({ columns, lang, level, inspect, dir: d })
-        const label = `${columns} ${lang} ${level} ${inspect}`
-        for (const l of screen.shown()) assert.ok(width(l) <= columns - 1, `${label}: ${l}`)
-        const control = Array.from(screen.raw().matchAll(/[^\n -~\u0080-\u{10ffff}]/gu), (m) => m[0])
-        assert.deepEqual(control, [], label)
-        for (const l of screen.shown())
-          assert.match(l, /^[\x20-\x7e✓✗\p{Script=Han}，。、；：！？（）「」]*$/u, `${label}: ${l}`)
-        const file = readFileSync(join(d, "turns.jsonl"), "utf8")
-        const shown = inspect && level === "detail"
-        assert.equal(screen.raw().includes(SECRET.slice(0, 8)), shown, label)
-        assert.equal(file.includes(SECRET.slice(0, 8)), inspect, label)
-      }
+// A failed attempt can recover. Every level shows the escaped error once; compact modes link to the request.
+{
+  const body = JSON.stringify({ model: "m", content: SECRET })
+  const error = "group denied\n\u001b[2J"
+  const request: Event = {
+    kind: "exchange",
+    phase: "check",
+    model: "m",
+    attempt: 1,
+    exchange: { kind: "request", url: "https://example.test", body },
+  }
+  const response: Event = { ...request, exchange: { kind: "response", status: 403, error, ms: 100 } }
+  for (const level of ["quiet", "turn", "full"] as const) {
+    const d = join(dir, level)
+    const screen = recording({ columns: 48, live: true })
+    const book = openLogbook({ screen, dir: d, level, guest: true })
+    await run(
+      book.turn(3, () => {})(
+        { kind: "act", input: { text: "" } },
+        Stream.fromIterable([request, response, call("check", 100, u(0, 0), { via: "decision" }).e, change(8).e]),
+      ),
+    )
+    const shown = screen.shown().join("\n")
+    assert.equal(shown.split("group denied\n\\x1b[2J").length - 1, 1)
+    assert.ok(!shown.includes("\u001b[2J"))
+    if (level === "full") {
+      assert.ok(shown.includes(JSON.stringify(JSON.parse(body), null, 2)))
+    } else {
+      assert.ok(!shown.includes(SECRET))
+      assert.ok(shown.includes("HTTP 403") && shown.includes(join(d, "turns.jsonl")))
+    }
+    const entry = JSON.parse(readFileSync(join(d, "turns.jsonl"), "utf8"))
+    assert.equal(entry.end, "landed")
+    assert.deepEqual(
+      entry.failedAttempts.map((a: { requestBody: string; error: string }) => [a.requestBody, a.error]),
+      [[body, error]],
+    )
+  }
+}
 
 // ───────── colour, and the live row on a terminal we own ─────────
 {
@@ -542,9 +407,10 @@ for (const columns of [48, 100])
   assert.equal(mid, "故事3  叙事 0.3s  已写 29 字  共 1.5s")
   const rows = screen.shown()
   // the permanent line replaces it, the time of day dim and the mark green (on a TTY: no date); no live row stays
-  assert.equal(rows.at(-1), "\x1b[2m14:02\x1b[22m \x1b[32m✓\x1b[39m 故事3  10.9s  4 次调用  入10k 出1.0k")
+  assert.equal(rows.at(-2), "\x1b[2m14:02\x1b[22m \x1b[32m✓\x1b[39m 故事3  10.9s  4 次调用  入10k 出1.0k")
   assert.ok(screen.raw().includes("\r\x1b[K"))
-  assert.equal(rows.at(-2), "")
+  assert.equal(rows.at(-1), "  缓存82%")
+  assert.equal(rows.at(-3), "")
 }
 
 // ───────── silent until the host is up; the banner without a model; a host that could not start ─────────

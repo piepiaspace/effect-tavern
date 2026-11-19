@@ -2,7 +2,7 @@
 // Places are the client's own words (client src/locales/en.ts: Settings, Providers, Default model, Cards, API URL,
 // API key, Network proxy, Context window).
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
-import { gateLines, mb, sentence, type Facts, type Table, type Words } from "../codes.ts"
+import { gateLines, mb, type Facts, type Table, type Words } from "../codes.ts"
 
 const PROVIDERS = "In Settings, under Providers,"
 const ROUTING = "in Settings, under Default model"
@@ -11,7 +11,6 @@ const channelNext = (c?: string) =>
   c === "docker"
     ? "Pull the new image (docker pull ghcr.io/piepiaspace/effect-tavern) and recreate the container; the library stays in its volume."
     : "Type brew upgrade tavern."
-const wait = (s: number) => (s > 90 ? `${Math.ceil(s / 60)} minutes` : `${s} seconds`)
 const url =
   (why: string): ((f: Facts) => Words) =>
   () => ({
@@ -21,71 +20,6 @@ const url =
   })
 
 export const en: Table = {
-  "key-refused": () => ({
-    what: "The provider refused the key",
-    why: "The key may be mistyped, expired or revoked.",
-    next: `${PROVIDERS} enter this provider's API key again, then send again.`,
-  }),
-  "no-credit": () => ({
-    what: "The provider account is out of credit",
-    why: "The free allowance or the paid balance has run out.",
-    next: `Top up on the provider's website, or pick another provider's model ${ROUTING}.`,
-  }),
-  "rate-limited": (f) => ({
-    what: "Too fast: the provider asks you to wait",
-    why: "Too many requests in a short time, or the account's rate limit is low.",
-    next: f.retryAfter ? `Wait about ${wait(f.retryAfter)}, then send again.` : "Wait a minute or so, then send again.",
-  }),
-  overloaded: () => ({
-    what: "The provider is too busy right now",
-    why: "It is busy on their side; nothing is wrong with your settings.",
-    next: `Send again in a few minutes; if it keeps happening, pick another model ${ROUTING}.`,
-  }),
-  "model-not-found": (f) => ({
-    what: f.model ? `The provider has no model ${f.model}` : "The provider has no such model",
-    why: "The model name may be mistyped or retired, or the API URL is missing part of its path.",
-    next: `${PROVIDERS} check the model name and the API URL.`,
-  }),
-  "context-too-long": () => ({
-    what: "This request is too long for the model",
-    why: "The story and its settings together are more than the model can read.",
-    next: `${PROVIDERS} lower this model's Context window, then send again.`,
-  }),
-  blocked: () => ({
-    what: "The provider refused this content",
-    why: "It tripped the provider's safety review.",
-    next: `Say it another way and send again, or pick another model ${ROUTING}.`,
-  }),
-  unreachable: () => ({
-    what: "Could not reach the provider",
-    why: "The network is down, the address is wrong, or it needs a proxy.",
-    next: "Check the network first; then check the API URL and Network proxy in Settings, under Providers.",
-  }),
-  timeout: () => ({
-    what: "The provider took too long to answer",
-    why: "The network is slow, or the provider is stuck.",
-    next: "Send again later; if it happens often, check the network and the Network proxy.",
-  }),
-  "bad-request": (f) => ({
-    what: "The provider would not take this request",
-    why: sentence(f.message) ?? "The model may not support one of the current settings.",
-    next: `${PROVIDERS} check this model's settings, or pick another model ${ROUTING}.`,
-  }),
-  "bad-answer": () => ({
-    what: "The model's answer could not be used",
-    why: "The answer was not in the right shape, or the API URL points at a web page.",
-    next: `Send again; if it keeps happening, pick another model ${ROUTING}.`,
-  }),
-  "provider-down": () => ({
-    what: "The provider had an error on its side",
-    why: "Not your settings; it usually passes soon.",
-    next: "Send again in a few minutes.",
-  }),
-  unknown: (f) => ({
-    what: "An error we have not seen before",
-    why: sentence(f.message),
-    next: "Try again; if it keeps happening, send these lines to whoever helps you.",
-  }),
   "provider-missing": () => ({
     what: "The chosen provider no longer exists",
     next: `Pick a model again ${ROUTING}.`,

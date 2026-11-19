@@ -34,7 +34,7 @@ import { fetchContext, fetchDetail } from "./wire.ts"
 import { t } from "./i18n.ts"
 import { connectionCodes } from "@effect-tavern/provider/src/fault.ts"
 import type { Failure } from "@effect-tavern/runtime/src/projection.ts"
-import { faultWords } from "./failure.ts"
+import { failureText } from "./failure.ts"
 
 /** The button into the Settings section a failure's next step is in. */
 const Go = (props: { to: Section }) => (
@@ -42,25 +42,13 @@ const Go = (props: { to: Section }) => (
     {t(props.to === "routing" ? "app.goDefaultModel" : "app.goProviders")}
   </button>
 )
-/** A failure's words: no default model, or a pair with no connection (providers.ts `ConnectionError`), is a button into
- *  the settings that fix it (no sentence, no params); a model call's failure its words by the fault's code
- *  (failure.ts), with the button where its next step is; anything else, `unknown` among them, its message as it came
- *  (a provider's text, verbatim). */
 export const Failed = (props: { error: Failure }) => (
-  <Switch fallback={props.error.message}>
+  <Switch fallback={<span class="failure-raw">{failureText(props.error)}</span>}>
     <Match when={props.error.code === "no-model"}>
       <Go to="routing" />
     </Match>
     <Match when={props.error.code !== undefined && Object.hasOwn(connectionCodes, props.error.code)}>
       <Go to="providers" />
-    </Match>
-    <Match when={faultWords(props.error)}>
-      {(w) => (
-        <>
-          <span class="what">{w().what}</span> <span class="why">{w().why}</span> <span class="next">{w().next}</span>
-          <Show when={w().go}>{(to) => <Go to={to()} />}</Show>
-        </>
-      )}
     </Match>
   </Switch>
 )

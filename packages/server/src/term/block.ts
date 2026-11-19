@@ -3,7 +3,7 @@
 // breathing up to 100; every line within `columns - 1` cells. Meaning never rests on colour: bold and dim only, and
 // none without `color`. `failure` is a command's own: no head, the first line marked `✗`.
 import type { Trouble } from "./explain.ts"
-import type { Screen } from "./screen.ts"
+import { terminalText, type Screen } from "./screen.ts"
 import { clip, width, wrap } from "./width.ts"
 
 /** The cells a line may take on this screen. */
@@ -18,7 +18,7 @@ const render = (screen: Screen, head: string, t: Trouble, mark: string): void =>
   const dim = (s: string) => (screen.color ? `\x1b[2m${s}\x1b[22m` : s)
   const lines: string[] = []
   if (head) lines.push(clip(head, n))
-  wrap(t.what, n - 2).forEach((l, i) => lines.push(`${i ? "  " : mark}${bold(l)}`))
+  wrap(terminalText(t.what), n - 2).forEach((l, i) => lines.push(`${i ? "  " : mark}${bold(l)}`))
   const under = t.lines ?? []
   for (const line of under.slice(0, SHOWN))
     wrap(line, n - 6, { spaces: true }).forEach((l, i) => lines.push(`${i ? "      " : "    "}${l}`))
@@ -31,7 +31,8 @@ const render = (screen: Screen, head: string, t: Trouble, mark: string): void =>
   }
   for (const step of t.next ?? []) wrap(step, n - 4).forEach((l, i) => lines.push(`${i ? "    " : "  > "}${l}`))
   if (t.kept) for (const l of wrap(t.kept, n - 2)) lines.push(`  ${l}`)
-  if (t.facts) for (const l of wrap(t.facts, n - 2, { spaces: true })) lines.push(`  ${dim(l)}`)
+  if (t.facts) for (const l of wrap(terminalText(t.facts), n - 2, { spaces: true })) lines.push(`  ${dim(l)}`)
+  if (t.raw) lines.push(terminalText(t.raw))
   screen.write(`${lines.join("\n")}\n`)
 }
 

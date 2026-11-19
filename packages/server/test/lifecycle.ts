@@ -444,12 +444,22 @@ try {
   {
     const data = join(root, "doctored")
     mkdirSync(join(data, "log"), { recursive: true })
-    const fault = { code: "key-refused", message: "invalid x-api-key", status: 401, type: "authentication_error" }
+    const fault = { code: "upstream", status: 403, attempt: 2 }
+    const failedAttempts = [{ attempt: 2, requestBody: "private request", error: '{"error":"group_model_denied"}' }]
     writeFileSync(
       join(data, "log", "turns.jsonl"),
       [
         { at: "2026-11-18T13:00:00.000Z", story: 3, action: "act", end: "landed", ms: 900, calls: [] },
-        { at: "2026-11-18T14:07:00.000Z", story: 3, action: "act", end: "failed", ms: 3100, calls: [], fault },
+        {
+          at: "2026-11-18T14:07:00.000Z",
+          story: 3,
+          action: "act",
+          end: "failed",
+          ms: 3100,
+          calls: [],
+          fault,
+          failedAttempts,
+        },
       ]
         .map((e) => JSON.stringify(e))
         .join("\n") + "\n",
@@ -511,6 +521,10 @@ try {
     writeFileSync(join(data, "log/turns.jsonl"), '{"end":"landed"}\n')
     const after = JSON.parse((await tavern(["doctor", "--json"], offline)).out)
     assert.match(after.checks.find((c: { check: string }) => c.check === "failure").what, /14:07/)
+    const earlier = after.checks.find((c: { check: string }) => c.check === "failure")
+    assert.equal(earlier.raw, failedAttempts[0]!.error)
+    assert.ok(earlier.file.endsWith("/turns.1.jsonl"))
+    assert.ok(!JSON.stringify(after).includes("private request"))
   }
 
   // ---- failures in plain words, through explain: both languages, and one JSON line each -------------------------

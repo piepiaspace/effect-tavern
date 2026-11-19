@@ -35,7 +35,7 @@ import { channelOf, fields, lineOf, versions, whens } from "./record.ts"
 import { card, log, path, registry, type Id } from "./store.ts"
 import { close, open } from "./pages.ts"
 import { t } from "./i18n.ts"
-import { faultWords } from "./failure.ts"
+import { failureText } from "./failure.ts"
 
 // the input's channel in the harness's own words (the inspector speaks English like its stage names)
 const CHANNEL = { act: "act", note: "note", both: "act + note", invoke: "invoke", greeting: "greeting" } as const
@@ -299,7 +299,7 @@ const Step = (props: {
           <Pills pills={head().pills} />
           <Show when={head().note}>{(n) => <span class="dtext">{n()}</span>}</Show>
           <Show when={head().line}>{(l) => <span class="dprose">{l()}</span>}</Show>
-          <Show when={c().fault}>{(f) => <span class="dtext">{faultWords(f())?.what ?? f().message}</span>}</Show>
+          <Show when={c().fault}>{(f) => <span class="dtext">{failureText(f())}</span>}</Show>
           <Show when={c().model}>{(m) => <span class="dtext">{m()}</span>}</Show>
         </span>
         <Metrics ms={c().ms} usage={c().usage} cache={props.cache} />

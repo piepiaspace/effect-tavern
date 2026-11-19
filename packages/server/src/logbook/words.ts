@@ -21,9 +21,7 @@ export interface Words {
   written: (n: number) => string
   total: (s: string) => string
   waiting: (stage: string, s: string) => string
-  request: (n: number) => string
-  chars: (n: string) => string
-  answer: string
+  noResponse: string
   banner: { address: string; data: string; model: string; stop: string }
   didNotStart: string
   fileBroken: (dir: string, why: string) => string
@@ -60,9 +58,7 @@ export const words: Record<Lang, Words> = {
     written: (n) => `已写 ${n} 字`,
     total: (s) => `共 ${s}`,
     waiting: (stage, s) => `${stage}已等 ${s}，还在等服务商回答`,
-    request: (n) => `请求 ${n} 条`,
-    chars: (n) => `${n} 字`,
-    answer: "回答",
+    noResponse: "未收到响应",
     banner: { address: "地址", data: "数据", model: "模型", stop: "停止" },
     didNotStart: "Effect Tavern 没有启动",
     fileBroken: (dir, why) => `日志文件写不进 ${dir} (${why})，故事照常进行`,
@@ -97,9 +93,7 @@ export const words: Record<Lang, Words> = {
     written: (n) => `${n} chars`,
     total: (s) => `total ${s}`,
     waiting: (stage, s) => `${stage}: waiting ${s} for the provider`,
-    request: (n) => `request ${n} ${n === 1 ? "msg" : "msgs"}`,
-    chars: (n) => `${n} chars`,
-    answer: "answer",
+    noResponse: "no response",
     banner: { address: "address", data: "data", model: "model", stop: "stop" },
     didNotStart: "Effect Tavern did not start",
     fileBroken: (dir, why) => `cannot write the log file in ${dir} (${why}); stories go on`,

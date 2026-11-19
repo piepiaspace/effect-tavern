@@ -228,11 +228,15 @@ const sse = (text: string) =>
     assert.equal((await post("{")).status, 400)
 
     const err = sse(await (await post({ kind: "setField", node: node.id, effects: [{ path: "x", set: 1 }] })).text())
-    assert.deepEqual([err.length, err[0]!.event, /x/.test(err[0]!.data.message!)], [1, "error", true])
-    assert.equal(err[0]!.data.code, "unknown") // every failure carries a code; one no model call made is unknown
+    const incident = err[0]!.data as unknown as { code: string; message: string; story: number; at: number }
+    assert.deepEqual(
+      [err.length, err[0]!.event, incident.code, incident.message, incident.story],
+      [1, "error", "internal", "", story],
+    )
+    assert.ok(Number.isFinite(incident.at))
     // A parent that does not exist is a defect on the stream, not a new root (it once became its own parent and spun).
     const orphan = sse(await (await post({ kind: "act", parent: 99, input: { text: "hi" } })).text())
-    assert.deepEqual([orphan.length, orphan[0]!.event, /99/.test(orphan[0]!.data.message!)], [1, "error", true])
+    assert.deepEqual([orphan.length, orphan[0]!.event, orphan[0]!.data.code], [1, "error", "internal"])
 
     // a new thread is a greeting root; dropping a root takes its subtree, the trace with it, and ids never come back
     const greeted = sse(await (await post({ kind: "greet" })).text())
@@ -846,10 +850,13 @@ const sse = (text: string) =>
       ).text(),
     ).at(-1)!
     assert.deepEqual([off.event, off.data.code], ["error", "provider-disabled"])
-    // a model call the provider refuses: the fault's code and the facts its words read ride the event, never the body
+    // An unfamiliar gateway error reaches the browser whole.
+    const body = JSON.stringify({
+      error: { code: "group_model_denied", message: "Forbidden", detail: "x".repeat(8000) },
+    })
     const refusing = createServer((_, res) => {
-      res.writeHead(401, { "content-type": "application/json", "request-id": "req_1" })
-      res.end(JSON.stringify({ type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } }))
+      res.writeHead(403, { "content-type": "application/json", "request-id": "req_1" })
+      res.end(body)
     }).listen(0)
     await once(refusing, "listening")
     const port = (refusing.address() as AddressInfo).port
@@ -869,16 +876,11 @@ const sse = (text: string) =>
           await fetch(base, { method: "POST", headers, body: JSON.stringify({ kind: "act", input: { text: "hi" } }) })
         ).text(),
       ).at(-1)!
-      const { phase: _, ...wire } = refused.data as Record<string, unknown>
-      assert.deepEqual(wire, {
-        kind: "error",
-        message: "invalid x-api-key",
-        code: "key-refused",
-        status: 401,
-        type: "authentication_error",
-        host: `localhost:${port}`,
-        model: "m",
-      })
+      const wire = refused.data as Record<string, unknown>
+      assert.deepEqual(
+        [wire.kind, wire.code, wire.status, wire.body, wire.requestId],
+        ["error", "upstream", 403, body, "req_1"],
+      )
     } finally {
       refusing.close()
     }
@@ -928,21 +930,19 @@ const sse = (text: string) =>
     const error = events.at(-1)!
     assert.deepEqual(
       [error.event, error.data.code, (error.data as { phase?: string }).phase],
-      ["error", "key-refused", "record"],
+      ["error", "upstream", "record"],
     )
     const node = t.lib.session(story).log.head!
     const stored = t.lib.trace(story, node) as { phase: string; model?: string; fault?: Record<string, unknown> }[]
     const failed = stored.find((c) => c.fault)!
     assert.equal(failed.phase, "record")
     assert.equal(failed.model, "m")
-    assert.equal(failed.fault!["code"], "key-refused")
+    assert.equal(failed.fault!["code"], "upstream")
     assert.equal(failed.fault!["status"], 401)
     assert.equal(failed.fault!["body"], undefined)
-    const shown = screen.shown()
-    const at = shown.findIndex((l) => / ✗ 故事\d+ +结算没有完成/.test(l))
-    assert.ok(at > 0, shown.join("\n"))
-    assert.deepEqual(shown.slice(at + 1, at + 3), ["  服务商不认这把密钥", "  密钥可能填错、过期，或已被停用。"])
-    assert.ok(shown.some((l) => l.includes("HTTP 401 authentication_error")))
+    const shown = screen.shown().join("\n")
+    assert.match(shown, /HTTP 401/)
+    assert.match(shown, /invalid x-api-key/)
   } finally {
     bare.close()
     refusing.close()

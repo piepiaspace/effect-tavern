@@ -101,10 +101,9 @@ $ tavern doctor
             > tavern update
 ✓ 工具      唤醒锁、打开网页都可用
 ✓ 旧文件    没有旧版本留下的文件
-! 上次失败  11-18 14:07 故事3：服务商不认这把密
-            钥
-            > 到「设置」的「模型服务」里重新填
-              写这家的 API 密钥，再发送一次。
+! 上次失败  11-18 14:07 故事3  HTTP 403
+            group_model_denied
+            ~/.tavern/log/turns.jsonl
 
 3 处要留意。
 技术细节：tavern doctor --verbose
@@ -112,11 +111,9 @@ $ tavern doctor
 
 ### 失败怎样说
 
-任何命令的失败都经过 `packages/server/src/term/` 的 `explain` 和 `failure`：第一行 `✗ 发生了什么`，下面是可能的原因、
-`>` 标出的下一步、什么被原样留下（「旧版本还在，没有被改动」「书架上原来的 wuxia 没有被改动」），最后一行是原始事实。
-卡片没通过闸门时，第一行之下逐行列出闸门自己的 `路径  说明`。`--json` 时失败是 stderr 上的一行
-`{"error":{"code","message","next"}}`。错误码与两种语言的说法在 `term/codes.ts` 和 `term/words/`，缺一种语言就编译不过。
-各种说法的实际样子（48 列，两种语言）在 `packages/server/test/lifecycle.golden.txt`。
+酒馆主动拒绝操作时，会说明发生了什么，以及可以采取的下一步。例如卡片没通过闸门，会逐行列出出错的路径与说明。服务端错误码和中英文提示在 `term/codes.ts` 和 `term/words/`。
+
+模型或中转站拒绝请求时，终端与浏览器展示阶段、HTTP 状态及上游原文。连接失败时展示目标和传输错误。流中断时，终端保留已经收到的回复。内部异常在终端记录原始 message 和 stack，玩家可以按故事和时间查找。玩家点停止时，回合记为停止或撤回。
 
 ```
 $ tavern card install wuxia.yaml
@@ -204,60 +201,19 @@ show 默认打印阅读文本。`story remove` 是正式命令；`story delete` 
 ## 运行中的服务在终端里显示什么（日志）
 
 `tavern start` 运行时，终端（stderr）上的内容都来自日志（代码里叫 logbook，`packages/server/src/logbook.ts`）。
-单位是一轮：一轮调用了模型才记一行；HTTP 请求、静态文件、保存、切换版本这类不调用模型的动作不记。
-中文为默认，`TAVERN_LANG=en` 换英文；每行不超过终端宽度减一（手机按 48 列排版）。
+默认档 `full` 在模型请求发出前打印故事、阶段、请求序号、模型、目标和完整请求体。同一轮中的工具步骤及 SDK 重试各有自己的序号。上游返回后，同一序号下显示状态、耗时、模型回复或错误原文。正文随终端自然换行，保留段落、工具参数和重复上下文。TTY 上的 JSON 会缩进，重定向到文件或管道时保留发送的 JSON 格式。凭据在输出时遮蔽。
 
-启动时先打印横幅：名称与版本、地址、数据目录、默认模型（没有设置时，是一条提示和去「设置」的「默认模型」的下一步）、
-怎样停止。启动失败（端口被占用、库正被另一个酒馆使用）打印同一种失败块，退出码不变。
+横幅给出版本、地址、数据目录和模型。一轮结束后，摘要显示结果、耗时、调用和用量。预检失败、常规模型接手并完成时，失败请求和成功的回合摘要都可见。中文为默认，`TAVERN_LANG=en` 切换英文。
 
-```
-Effect Tavern v0.9.2
-  地址  http://127.0.0.1:7777
-  数据  ~/.tavern
-  模型  Anthropic / claude-haiku-5-5
-  停止  Ctrl+C
+| 模式 | 终端输出 |
+| --- | --- |
+| `full`（默认） | 每次实际请求的正文和结果，以及回合摘要 |
+| `turn` | 回合摘要、上游错误原文与完整记录的位置 |
+| `quiet` | 启动信息、上游错误原文与完整记录的位置 |
 
-故事3  叙事 6.4s  已写 312 字  共 8.8s          （进行中的一行，原地刷新）
-14:02 ✓ 故事3  18.4s  6 次调用  入3.1k 出642
-14:05 ✓ 故事3 换一版  9.0s  4 次调用  入2.9k 出588
-14:07 ✗ 故事3  叙事没有完成  3.1s
-  服务商不认这把密钥
-  密钥可能填错、过期，或已被停用。
-  > 到「设置」的「模型服务」里重新填写这家的
-    API 密钥，再发送一次。
-  HTTP 401 authentication_error api.anthropic.com
-```
+例如 `tavern start --log turn`，也可通过 `TAVERN_LOG` 设置。`--inspect` 控制 Inspector 的可见内容，默认终端即可查看完整请求。命令从正在运行的服务取结果时，服务日志留在启动它的终端。
 
-一轮按故事 id 命名，不是普通的新一轮时加上动作（换一版、重写、编辑、重试、小剧场）；不显示故事标题。
-结束方式：`✓` 完成，`✓ … 已停止` 停在半路但留下了节点，`- … 已撤回` 在第一个字之前撤回、什么都没留下，
-`✗` 失败：失败块说明发生了什么、可能的原因、`>` 标出的下一步，最后一行是原始事实，转给帮你的人看。
-
-- 在 TTY 上，一轮进行时有一行原地刷新（阶段、这个阶段的秒数、已写字数、总秒数；跳动的十分位就是它还活着的信号），
-  结束后换成一行永久记录。颜色只在 TTY 上出现，`NO_COLOR` 或 `TERM=dumb` 关掉；含义从不只靠颜色。
-- 不是 TTY（管道、runit、journald）：同样的永久记录，带完整日期，没有转义字符，没有刷新行；
-  一次调用等了 60 秒还没回答时，打印一行说明。
-- 开发服务（`vp dev`）的终端归 Vite：只打印结束的一轮和失败，不打印横幅。
-
-三档（`tavern start --log quiet|turn|detail` 或 `TAVERN_LOG`，默认 `turn`）：
-
-- `quiet`：只有横幅和失败。
-- `turn`：每轮一行（上面的样子）。
-- `detail`：另加每次调用一行（阶段、秒数、输入/输出 token、缓存命中比例、模型），以及这次请求的提纲：
-  消息条数与各角色的字数。
-
-默认不在终端或文件里写任何故事文字（玩家输入、模型回答、提示词、故事标题），只有 id、计数、大小、耗时、用量和失败事实。
-`--inspect` / `TAVERN_INSPECT=1` 是唯一的开关：`detail` 下逐条显示消息的开头，文件里带上请求与回答。
-
-每轮结束后，`<数据目录>/log/turns.jsonl` 追加一行 JSON：开始时间 `at`、`story`、`action`、`end`
-（`landed` / `stopped` / `withdrawn` / `failed`）、`ms`、`node`、失败时的 `phase` 与 `fault`（错误码与事实；默认省略响应体，清空可能回显正文的错误消息）、
-`usage` 合计，以及 `calls`（每次调用的 `phase`、`model`、`ms`、`usage`、失败时的 `fault`）。
-文件约 2 MB 时改名为 `turns.1.jsonl`（覆盖更早的那份），只保留两个文件。目录写不进时打印一行说明，故事照常进行。
-
-```json
-{"at":"2026-11-18T11:18:36.831Z","story":1,"action":"act","end":"failed","ms":38,"phase":"narrate","usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"calls":[{"phase":"narrate","model":"claude-haiku-5-5","ms":29,"usage":{"input":0,"output":0,"cacheRead":0,"cacheWrite":0},"fault":{"code":"key-refused","message":"","status":401,"type":"authentication_error","host":"127.0.0.1:7793","model":"claude-haiku-5-5","requestId":"req_demo"}}],"fault":{"code":"key-refused","message":"","status":401,"type":"authentication_error","host":"127.0.0.1:7793","model":"claude-haiku-5-5","requestId":"req_demo"}}
-```
-
-命令（`tavern play`、`card install` 等）自己不打印日志：日志只在服务说“已启动”之后开口。
+服务把回合摘要追加到 `<数据目录>/log/turns.jsonl`，包括故事、操作、结束方式、耗时、用量和各阶段调用。失败的请求另有完整请求体、上游响应或传输错误。文件约 2 MiB 时轮转到 `turns.1.jsonl`，单条较大的记录完整写入。`tavern doctor` 在这两个文件里查找最近一次整轮失败，给出错误和记录位置。成功调用的 HTTP 请求体只打印到终端；Inspector 仍读取节点上的调用记录。
 
 ## 普通终端游玩
 
@@ -336,6 +292,6 @@ HTTP 客户端调用 `POST /api/author/compile {card, select, intent}`、`/api/a
 
 二进制由 `packages/server` 的 `compile` 脚本编译 `bin/tavern.ts`，客户端构建（`packages/client/dist`）作为资源打进去；`VERSION=<版本>` 写入版本，`TARGET=<bun 目标>` 交叉编译，`ASSET=<附件名>` 写入附件名并作为文件名（不给是本机的 `dist/tavern`）。发布流程（`.github/workflows/release.yml`）按这张表同时编出每一个（`bun release/targets.ts compile <附件名>`，一个 job 一个；macOS 的两个在 macOS 上编，以便给 Mach-O 重新签名），再发到 GitHub Release、ghcr.io 镜像和 Homebrew tap `piepiaspace/homebrew-tavern`（用 deploy key `HOMEBREW_TAP_KEY` 推送）。
 
-完整调用正文默认不暴露；`tavern start --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
+Inspector 的完整调用正文默认不暴露；`tavern start --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
 
 未带版本戳的 SQLite 库首次打开时执行既有升级，并在同一事务内写入 `user_version=1`；失败会回滚整批升级，再次打开可重试。已升级库跳过旧表探测和节点 JSON 扫描。新建库使用相同基线；版本高于当前支持范围的库拒绝打开。
