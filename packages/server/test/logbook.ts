@@ -9,66 +9,19 @@ import {
   type Phase,
   type TurnError,
 } from "@effect-tavern/runtime/src/session.ts"
-import clientEn from "../../client/src/locales/en.ts"
-import clientZh from "../../client/src/locales/zh-CN.ts"
 import assert from "node:assert/strict"
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Cause, Effect, Exit, Stream } from "effect"
-import { play, shaped, unknownBlock } from "../bin/log-preview.ts"
+import { play, shaped } from "../bin/log-preview.ts"
 import { storyName } from "../src/cli/doctor.ts"
 import { readRequest } from "../src/logbook/body.ts"
 import { open } from "../src/data.ts"
 import { library } from "../src/library.ts"
 import { openLogbook } from "../src/logbook.ts"
-import { words } from "../src/logbook/words.ts"
-import { memoryScreen, width, wrapKept, type Lang, type Screen } from "../src/term/index.ts"
-
-// ───────── the words: the client's own ─────────
-// Every word the logbook says is the client's (its locales, with i18n.ts's `{n|one|other}` holes), key by key; only the
-// host's own lines (the banner, a start that failed, a log file that cannot be written) are the logbook's.
-const say = (template: string, n: number, lang: Lang) =>
-  template.replace(/\{n(?:\|([^|{}]*)\|([^|{}]*))?\}/g, (_, one?: string, other?: string) =>
-    one === undefined ? String(n) : `${n} ${new Intl.PluralRules(lang).select(n) === "one" ? one : other}`,
-  )
-for (const [lang, client] of [
-  ["zh", clientZh],
-  ["en", clientEn],
-] as const) {
-  const w = words[lang]
-  assert.deepEqual(Object.keys(w.action).sort(), [
-    "demand",
-    "edit",
-    "greet",
-    "retryRecord",
-    "reword",
-    "skipRecord",
-    "swipe",
-  ])
-  assert.equal(w.action.swipe, client.common.swipe)
-  assert.equal(w.action.reword, client.common.reword)
-  assert.equal(w.action.edit, client.common.edit)
-  assert.equal(w.action.retryRecord, client.common.retry)
-  assert.equal(w.action.demand, client.readings.aside)
-  assert.equal(w.action.greet, client.card.begin)
-  assert.equal(w.action.skipRecord, client.readings.skipRecord)
-  const checked = {
-    precheck: client.inspector.precheck,
-    escalate: client.inspector.escalate,
-    exhausted: client.inspector.exhausted,
-    failed: client.inspector.failed,
-    stopped: client.common.stopped,
-    breakpoint: client.inspector.breakpoint,
-    json: client.inspector.json,
-    waiting: client.app.waiting,
-    noResponse: client.app.noResponse,
-  }
-  for (const [k, v] of Object.entries(checked)) assert.equal(w[k as keyof typeof checked], v, `${lang} ${k}`)
-  for (const n of [1, 312]) assert.equal(w.chars(n), say(client.common.chars, n, lang))
-  // nothing else: a new word must be added here, against the client's
-  assert.deepEqual(Object.keys(w).sort(), ["action", "chars", "host", ...Object.keys(checked)].sort())
-}
+import { callHead, finished, type Title } from "../src/logbook/lines.ts"
+import { memoryScreen, screenOn, width, type Lang, type Screen } from "../src/term/index.ts"
 
 // ───────── scripted streams ─────────
 const SECRET = "SENTINEL 这句不该出现"
@@ -350,6 +303,17 @@ const playAll = async (
   assert.equal(screen.shown().filter((l) => l.includes("日志文件写不进")).length, 1)
 }
 
+/** A summary rule's rows, joined back into one line of text. */
+const summaries = (rows: readonly string[]) =>
+  rows
+    .map((r, i) =>
+      r.startsWith("── ")
+        ? [r, ...rows.slice(i + 1).filter((_, j, a) => a.slice(0, j + 1).every((x) => x.startsWith("   ")))].join(" ")
+        : "",
+    )
+    .filter(Boolean)
+    .map((s) => s.replace(/\s+/g, " "))
+
 // ───────── golden text ─────────
 const golden = async (columns: number, lang: Lang, level: "quiet" | "turn" | "full" = "turn") => {
   const { screen } = await playAll({ columns, lang, level }, [
@@ -364,7 +328,7 @@ const golden = async (columns: number, lang: Lang, level: "quiet" | "turn" | "fu
 for (const columns of [48, 100]) {
   for (const lang of ["zh", "en"] as const) {
     const lines = await golden(columns, lang)
-    assert.ok(lines.some((l) => l.includes("↑10,200 ↓1,042 ↻8,400")))
+    assert.ok(summaries(lines).some((l) => l.includes("─ lookup narrate check record · 10.9s ↑10,200 ↓1,042 ↻8,400")))
     assert.ok(lines.includes(refused.responseBody))
     for (const l of lines.filter((l) => l !== refused.responseBody)) assert.ok(width(l) <= columns - 1, l)
     const quiet = await golden(columns, lang, "quiet")
@@ -400,7 +364,8 @@ for (const columns of [48, 100]) {
     assert.equal(shown.split("group denied\n\\x1b[2J").length - 1, 1)
     assert.ok(!shown.includes("\u001b[2J"))
     if (level === "full") {
-      assert.ok(shown.includes(JSON.stringify(JSON.parse(body), null, 2)))
+      // the request beside the failed call, byte for byte, even on a terminal
+      assert.ok(shown.includes(`[JSON]\n${body}`))
     } else {
       assert.ok(!shown.includes(SECRET))
       assert.ok(shown.includes("HTTP 403") && shown.includes(join(d, "turns.jsonl")))
@@ -441,10 +406,10 @@ for (const columns of [48, 100]) {
   // date); at 48 columns the facts run on under it; no live row stays
   assert.equal(
     rows.at(-2),
-    "\x1b[2m──\x1b[22m \x1b[2m14:02\x1b[22m \x1b[32m✓\x1b[39m 伴星 \x1b[2m#3\x1b[22m\x1b[2m ─ \x1b[22m10.9s ↑10,200 ↓1,042",
+    "\x1b[2m──\x1b[22m \x1b[2m14:02\x1b[22m \x1b[32m✓\x1b[39m 伴星 \x1b[2m#3\x1b[22m\x1b[2m ─ \x1b[22mlookup narrate check",
   )
   assert.ok(screen.raw().includes("\r\x1b[K"))
-  assert.equal(rows.at(-1), "   ↻8,400 \x1b[2m──\x1b[22m")
+  assert.equal(rows.at(-1), "   record · 10.9s ↑10,200 ↓1,042 ↻8,400 \x1b[2m──\x1b[22m")
   assert.equal(rows.at(-3), "")
 }
 
@@ -603,40 +568,181 @@ rmSync(dir, { recursive: true, force: true })
   for (const body of ["not json", "[1]", '{"prompt":"x"}']) assert.equal(readRequest(body), undefined)
 }
 
-// ───────── the preview's turns, as a pipe gets them and on a terminal ─────────
+// ───────── the preview's turns, through the real path, as a pipe gets them and on a terminal ─────────
 for (const columns of [48, 100]) {
   const plain = memoryScreen({ columns })
   await play(plain)
   const rows = plain.shown()
   // the raw texts are verbatim, unwrapped: an upstream error, the request as sent beside a failed call
-  const raws = new Set(rows.filter((r, i) => rows[i - 1] === "[JSON]" || r.startsWith('{"error"')))
-  assert.equal(raws.size, 3)
-  assert.ok(rows.includes("ECONNRESET socket hang up"))
-  for (const r of rows) if (!raws.has(r)) assert.ok(width(r.trimEnd()) <= columns - 1, r)
-  assert.ok(!rows.some((r) => r.includes("\x1b")))
-  assert.ok(rows.includes("[system]") && rows.includes("[assistant]") && rows.includes("[lookup_entry]"))
-  // the system prompt's blank rows, indents and runs of spaces come back exactly
-  const kept = shaped.split("\n").map((l) => (l ? `  ${l}` : ""))
-  assert.ok(rows.some((_, i) => kept.every((k, j) => rows[i + j] === k)))
-  // the breakpoint's hairline right under the text that carries it
-  assert.match(
-    rows[rows.findIndex((_, i) => kept.every((k, j) => rows[i + j] === k)) + kept.length]!,
-    /^ {2}╌╌ 断点 ╌+$/,
+  const raws = new Set(
+    rows.filter((r, i) => rows[i - 1] === "[JSON]" || r.startsWith('{"error"') || r.startsWith("ECONNRESET")),
   )
-  // the Inspector's pills and metrics: a pre-check passed on, a failed stage by its phase id, whole numbers
-  assert.ok(rows.some((r) => r.includes("lookup 预检 转交 · narrate 失败")))
-  assert.ok(rows.join("\n").includes("↑1,620"))
-  // the block no reading knows, in its place between the two texts
-  const at = rows.indexOf("  我在竹林边停下。")
-  const block = wrapKept(JSON.stringify(unknownBlock), columns - 3).map((l) => `  ${l}`)
-  assert.deepEqual(rows.slice(at + 2, at + 2 + block.length), block)
-  assert.equal(rows[at + 3 + block.length], "  （远处有箫声）")
-  // the turn's name: card and story titles, or the card and the story's number
-  assert.ok(rows.some((r) => r.startsWith("→ 理 · 竹林夜谈 · record · #1")))
-  assert.ok(rows.some((r) => r.startsWith("── ") && r.includes("✓ 伴星 #3 ─ ")))
+  assert.equal(raws.size, 4)
+  for (const r of rows) if (!raws.has(r)) assert.ok(width(r) <= columns - 1, r)
+  assert.ok(!rows.some((r) => r.includes("\x1b")))
+  assert.ok(rows.includes("[system]") && rows.includes("[assistant]") && rows.includes("[finish_record]"))
+  // the card's setting: its blank rows, indents and runs of spaces come back exactly, a breakpoint's hairline after it
+  const kept = shaped.split("\n").map((l) => (l ? `  ${l}` : ""))
+  const at = rows.findIndex((_, i) => kept.every((k, j) => rows[i + j] === k))
+  assert.ok(at > 0)
+  assert.equal(rows[at + kept.length], "  </setting>")
+  assert.match(rows[at + kept.length + 1]!, /^ {2}╌╌ 断点 ╌+$/)
+  // a call's #n counts across the turn (session.ts `emitting`): narrate #1, the settlement #2, its repair #3
+  assert.ok(rows.some((r) => r.startsWith("→ 伴星 #1 · narrate · #1")))
+  assert.ok(rows.some((r) => r.startsWith("→ 伴星 #1 · record · #2")))
+  assert.ok(rows.some((r) => r.startsWith("→ 理 · 竹林夜谈 · record · #3")))
+  // every summary names what ran, in pipeline order; a stage that called twice is counted
+  const said = summaries(rows)
+  assert.equal(said.length, 4)
+  assert.match(said[0]!, /✓ 伴星 #1 ─ narrate record · /)
+  assert.match(said[1]!, /✓ 理 · 竹林夜谈 ─ narrate record ×2 · /)
+  assert.match(said[2]!, /✗ 雾港 · 第一夜 ─ narrate · narrate 失败 · /)
+  assert.match(said[3]!, /✗ 伴星 #1 ─ narrate · narrate 失败 · /)
   const tty = memoryScreen({ columns, color: true, live: true })
   await play(tty)
   assert.ok(tty.shown().includes("\x1b[7m system \x1b[27m"))
+}
+
+// ───────── a long name keeps the stage, the attempt and the status in place; a cut never splits an escape ─────────
+{
+  // no escape cut in half, and the last bold opened is closed
+  const closed = (r: string) =>
+    !Bun.stripANSI(r).includes("\x1b") && r.lastIndexOf("\x1b[1m") <= r.lastIndexOf("\x1b[22m")
+  const long: Title = { card: "一张名字非常非常长的卡片用来试截断", story: "以及一个同样很长很长的故事标题" }
+  for (const color of [false, true]) {
+    const p = { lang: "zh" as const, color, full: false }
+    const head = callHead(
+      {
+        arrow: "←",
+        failed: true,
+        title: long,
+        story: 3,
+        stage: "record",
+        attempt: 2,
+        status: "HTTP 403",
+        facts: ["0.40s"],
+      },
+      47,
+      p,
+    )
+    const plainRows = head.map((r) => Bun.stripANSI(r))
+    assert.ok(
+      plainRows.some((r) => r.includes("record · #2") && r.includes("HTTP 403")),
+      plainRows.join("\n"),
+    )
+    for (const r of plainRows) assert.ok(width(r) <= 47, r)
+    // every bold that opens closes on its row
+    for (const r of head) assert.ok(closed(r), JSON.stringify(r))
+    const rule = finished(
+      { story: 3, title: long, action: "act", at: T0, ms: 6200, end: "failed", phase: "record", calls: [] },
+      47,
+      p,
+    )
+    for (const r of rule) assert.ok(width(r) <= 47, r)
+    for (const r of rule) assert.ok(closed(r), JSON.stringify(r))
+  }
+}
+
+// ───────── what ran and the Inspector's pills, from a turn's exchanges and calls ─────────
+{
+  const screen = recording({ columns: 100 })
+  const book = openLogbook({ screen, level: "turn", clock, guest: true })
+  const sent = (phase: Phase, attempt: number): Event => ({
+    kind: "exchange",
+    phase,
+    model: "m",
+    attempt,
+    exchange: { kind: "request", url: "https://example.test", body: "{}" },
+  })
+  const back = (phase: Phase, attempt: number): Event => ({
+    kind: "exchange",
+    phase,
+    model: "m",
+    attempt,
+    exchange: { kind: "response", status: 200, ms: 10 },
+  })
+  now = T0
+  await run(
+    book.turn(3, card, () => {})(
+      { kind: "act", input: { text: "go" } },
+      Stream.fromIterable([
+        sent("check", 1),
+        back("check", 1),
+        call("check", 100, u(0, 0), { via: "decision", out: { verdict: "escalate" } }).e,
+        sent("narrate", 2),
+        back("narrate", 2),
+        call("narrate", 100, u(1000, 10)).e,
+        change(5).e,
+        sent("record", 3),
+        back("record", 3),
+        sent("record", 4),
+        back("record", 4),
+        call("record", 100, u(1200, 20, 1100), { out: { status: "budget_exhausted" } }).e,
+        change(5).e,
+      ]),
+    ),
+  )
+  const said = summaries(screen.shown())
+  assert.equal(said.length, 1)
+  assert.match(said[0]!, /─ narrate record ×2 · check 预检 转交 · record 超出预算 · [\d.]+s ↑2,200 ↓30 ↻1,100 ─/)
+}
+
+// ───────── a request partly unknown is still all there; a failed call's request is what the gateway got ─────────
+{
+  // a message with a role and no content, beside anthropic's top-level system
+  const body = JSON.stringify({
+    model: "m",
+    system: "规则",
+    messages: [{ role: "user" }, { role: "user", content: "你好" }],
+  })
+  assert.deepEqual(readRequest(body)!.said, [
+    { who: "system", texts: ["规则"] },
+    { who: "user", texts: [JSON.stringify({ role: "user" })] },
+    { who: "user", texts: ["你好"] },
+  ])
+  const openaiBody = JSON.stringify({ model: "m", messages: [{ role: "assistant" }] })
+  assert.deepEqual(readRequest(openaiBody)!.said, [
+    { who: "assistant", texts: [JSON.stringify({ role: "assistant" })] },
+  ])
+  // on a TTY too, beside a failed call the request prints byte for byte, as does a body no reading knows
+  const odd = '{ "prompt" :  "x",\n  "n": 1.0 }'
+  for (const sentBody of [body, odd]) {
+    const m = memoryScreen({ columns: 48 })
+    const screen: Screen = { ...m, tty: true }
+    const book = openLogbook({ screen, level: "full", guest: true })
+    const request: Event = {
+      kind: "exchange",
+      phase: "narrate",
+      model: "m",
+      attempt: 1,
+      exchange: { kind: "request", url: "https://example.test", body: sentBody },
+    }
+    const failed: Event = { ...request, exchange: { kind: "response", status: 400, ms: 5, error: "bad" } }
+    await run(
+      book.turn(3, card, () => {})({ kind: "act", input: { text: "" } }, Stream.fromIterable([request, failed])),
+    )
+    const rows = m.shown()
+    assert.ok(!rows.some((r) => r.includes("undefined")))
+    const text = rows.join("\n")
+    assert.ok(text.includes(`[JSON]\n${sentBody}`), text)
+    if (sentBody === body) assert.ok(rows.includes('  {"role":"user"}'))
+  }
+}
+
+// ───────── NO_COLOR on a TTY: no escape of any kind, the live row included ─────────
+{
+  let raw = ""
+  const stream = { isTTY: true, columns: 48, write: (s: string) => void (raw += s) }
+  const screen = screenOn(stream, { env: { NO_COLOR: "1" } })
+  assert.deepEqual([screen.tty, screen.color, screen.live], [true, false, false])
+  const book = openLogbook({ screen, clock })
+  book.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev" })
+  now = T0
+  await run(book.turn(3, card, () => {})(scripts["landed"]!.action, streamOf(scripts["landed"]!)))
+  assert.ok(raw.length > 0)
+  assert.ok(!raw.includes("\x1b"), JSON.stringify(raw))
+  // with colour the same TTY redraws its live row
+  assert.equal(screenOn(stream, { env: {} }).live, true)
 }
 
 // doctor names the last failed turn as the logbook did: the file keeps the story's id, the library its card and title;

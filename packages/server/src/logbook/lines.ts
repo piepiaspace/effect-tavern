@@ -6,9 +6,11 @@
 // dim). A call shows a head (→ sent, ← back, red when it failed; name, stage and attempt bold; model, host or timing
 // dim), then its content: each speaker's label on its own row (reversed with colour, `[system]` without), the texts
 // under it two cells in, kept exactly as written and wrapped only at the width (`wrapKept`), then the envelope as one
-// dim row of facts. A turn ends on a rule carrying its summary (`── 14:02 ✓ 伴星 #3 ─ 9.10s ↑1,620 ↓212 ↻1,100 ──`),
-// drawn to the width. Usage is summed across stage calls; heads and facts fit the cells, a prompt, a reply or an
-// upstream error is never clipped. Meaning never rests on colour: without it the same rows, the same glyphs, no escapes.
+// dim row of facts. A turn ends on a rule carrying its summary: the stages that ran, its pills, its metrics
+// (`── 14:02 ✓ 伴星 #3 ─ narrate record · 9.10s ↑1,620 ↓212 ↻1,100 ──`), drawn to the width. Usage is summed across stage
+// calls; heads and facts fit the cells (a long name is cut, never the stage, attempt or status), a prompt, a reply or an
+// upstream error is never clipped. Every row is laid out plain and coloured after, so a cut never splits an escape.
+// Meaning never rests on colour: without it the same rows, the same glyphs, no escapes.
 import type { Usage } from "@effect-tavern/provider"
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import type { Action, Event, Phase } from "@effect-tavern/runtime/src/session.ts"
@@ -40,6 +42,8 @@ export interface Entry {
   /** The node it landed or amended, when one exists. */
   node?: Id
   calls: readonly Call[]
+  /** The requests each stage sent (its exchanges): a tool stage's steps are one call each. */
+  requests?: Partial<Record<Phase, number>>
   /** A failed action: the stage it failed in, and what failed. */
   phase?: Phase
   fault?: Facts
@@ -94,21 +98,37 @@ export const named = (
   return a ? `${name} ${a}` : name
 }
 
-/** A rule across the width carrying `head ─ state · state · 9.10s ↑1,620 ↓212`: `── ` before, dashes after to the
- *  last cell. The states part with ` · `, the metrics (from `metric` on) with a space. When it does not fit on one row
- *  the facts go on under it, three cells in, the last row closed by ` ──`. */
-const rule = (head: string, facts: readonly string[], metric: number, cells: number, p: Paint): string[] => {
+/** The turn's name in at most `room` cells: whole and coloured (the story's number dim) when it fits, else cut plain
+ *  (a cut never splits an escape, since the colour comes after it), or undefined when not even a few cells are left. */
+const fitName = (
+  o: { title: Title; story: Id; action?: Action["kind"] },
+  room: number,
+  p: Paint,
+): string | undefined => {
+  const plain = named(p.lang, o.title, o.story, o.action ?? "act")
+  if (width(plain) <= room) return named(p.lang, o.title, o.story, o.action ?? "act", (s) => dim(p, s))
+  return room >= 8 ? clip(plain, room) : undefined
+}
+
+/** A rule across the width carrying `head ─ narrate record · narrate 失败 · 9.10s ↑1,620 ↓212`: `── ` before, dashes
+ *  after to the last cell. Groups part with ` · `, the facts in a group with a space. When it does not fit on one row
+ *  the facts go on under it, three cells in, a group's mark opening the row, the last row closed by ` ──`. `head` already fits. */
+const rule = (head: string, groups: readonly (readonly string[])[], cells: number, p: Paint): string[] => {
   const room = cells - 6
   const rows: string[] = []
-  let row = clip(head, room)
-  facts.forEach((f, i) => {
-    const sep = !i ? dim(p, " ─ ") : i > metric ? " " : " · "
-    if (width(row + sep + f) <= room) row += sep + f
-    else {
-      rows.push(row)
-      row = clip(f, room)
-    }
-  })
+  let row = head
+  groups.forEach((g, i) =>
+    g.forEach((f, j) => {
+      const sep = j ? " " : i ? " · " : dim(p, " ─ ")
+      if (width(row + sep + f) <= room) row += sep + f
+      else {
+        // a group's mark opens the row it moved to (`· narrate 失败`), so the parts never run together
+        rows.push(row)
+        const mark = j ? "" : i ? "· " : dim(p, "─ ")
+        row = mark + clip(f, room - width(mark))
+      }
+    }),
+  )
   rows.push(row)
   const last = rows.length - 1
   return rows.map(
@@ -116,6 +136,18 @@ const rule = (head: string, facts: readonly string[], metric: number, cells: num
       `${i ? "   " : `${dim(p, "──")} `}${r}${i === last ? ` ${dim(p, "─".repeat(last ? 2 : Math.max(2, cells - 4 - width(r))))}` : ""}`,
   )
 }
+
+const PIPELINE: readonly Phase[] = ["lookup", "decide", "direct", "narrate", "check", "polish", "record"]
+/** The stages that ran, in pipeline order, by phase id: `narrate record`, `record ×2` when a stage made more than one
+ *  call. A call is a request sent (each step of a tool stage is one, each `#n` of the call heads); where no request was
+ *  observed, a stage's own call. A pre-check on the decision model is its pill's, not a stage's call. */
+export const ran = (calls: readonly Call[], requests: Partial<Record<Phase, number>> = {}): string[] =>
+  PIPELINE.flatMap((phase) => {
+    const of = calls.filter((c) => c.phase === phase)
+    const decided = of.filter((c) => c.via === "decision").length
+    const n = Math.max(of.length - decided, (requests[phase] ?? 0) - decided)
+    return n > 0 ? [n > 1 ? `${phase} ×${n}` : phase] : []
+  })
 
 /** The Inspector's pills for a turn (client inspect.ts `digest`), each by its stage: a pre-check (and `转交` when its
  *  verdict was not a pass), a tool stage over budget, then the turn's end (`narrate 失败`; `已停止` for a stop, which
@@ -141,15 +173,21 @@ export const metrics = (ms: number, u?: Usage): string[] => [
   ...(u?.cacheRead ? [`↻${fmt(u.cacheRead)}`] : u?.cacheWrite ? [`+${fmt(u.cacheWrite)}`] : []),
 ]
 
-/** A turn's final summary, a rule that parts it from the next turn: its pills, then its metrics. A withdrawn turn is
- *  marked `-`, a failed one ✗, the rest ✓. */
+/** A turn's final summary, a rule that parts it from the next turn: the stages that ran, its pills, then its metrics.
+ *  A withdrawn turn is marked `-`, a failed one ✗, the rest ✓. */
 export const finished = (e: Entry, cells: number, p: Paint): string[] => {
-  const mark = e.end === "withdrawn" ? "-" : e.end === "failed" ? tint(p, 31, "✗") : tint(p, 32, "✓")
-  const states = pills(e, p.lang)
+  const mark = e.end === "withdrawn" ? "-" : e.end === "failed" ? "✗" : "✓"
+  const when = stamp(e.at + e.ms, p.full)
+  const room = cells - 6 - width(`${when} ${mark} `)
+  const name = fitName(e, Math.max(room, 1), p) ?? clip(named(p.lang, e.title, e.story, e.action), Math.max(room, 1))
+  const marked = mark === "-" ? mark : tint(p, mark === "✗" ? 31 : 32, mark)
   return rule(
-    `${dim(p, stamp(e.at + e.ms, p.full))} ${mark} ${named(p.lang, e.title, e.story, e.action, (s) => dim(p, s))}`,
-    [...states, ...metrics(e.ms, e.calls.length ? sum(e.calls) : undefined)],
-    states.length,
+    `${dim(p, when)} ${marked} ${name}`,
+    [
+      ran(e.calls, e.requests),
+      ...pills(e, p.lang).map((x) => [x]),
+      metrics(e.ms, e.calls.length ? sum(e.calls) : undefined),
+    ].filter((g) => g.length),
     cells,
     p,
   )
@@ -196,7 +234,9 @@ export const waitLine = (
   )
 
 /** A call's head: the arrow (→ sent, ← back; red when the call failed), the turn's name, stage and attempt bold, the
- *  status, then the facts dim: on the same row when they fit, else under it two cells in. */
+ *  status, then the facts dim: on the same row when they fit, else under it two cells in. The stage, the attempt and
+ *  the status always keep their place: a long name is cut to make room, or takes a row of its own. Laid out plain,
+ *  coloured after. */
 export const callHead = (
   o: {
     arrow: "→" | "←"
@@ -212,12 +252,17 @@ export const callHead = (
   p: Paint,
 ): string[] => {
   const arrow = tint(p, o.failed ? 31 : o.arrow === "→" ? 36 : 32, o.arrow)
-  const name = bold(p, `${titled(o.title, o.story, (s) => dim(p, s))} · ${o.stage} · #${o.attempt}`)
-  const status = o.status ? `  ${o.failed ? tint(p, 31, o.status) : o.status}` : ""
-  const head = clip(`${arrow} ${name}${status}`, cells)
+  const at = `${o.stage} · #${o.attempt}`
+  const status = o.status ? `  ${o.status}` : ""
+  const shown = o.status ? `  ${o.failed ? tint(p, 31, o.status) : o.status}` : ""
+  const name = fitName(o, cells - 2 - width(` · ${at}${status}`), p)
+  const heads = name
+    ? [`${arrow} ${bold(p, `${name} · ${at}`)}${shown}`]
+    : [`${arrow} ${bold(p, clip(named(p.lang, o.title, o.story, "act"), cells - 2))}`, `  ${bold(p, at)}${shown}`]
+  const last = heads.at(-1)!
   const tail = terminalText(o.facts.join(" · "))
-  if (width(head) + 2 + width(tail) <= cells) return [`${head}  ${dim(p, tail)}`]
-  return [head, ...wrap(tail, cells - 2, { spaces: true }).map((l) => `  ${dim(p, l)}`)]
+  if (width(last) + 2 + width(tail) <= cells) return [...heads.slice(0, -1), `${last}  ${dim(p, tail)}`]
+  return [...heads, ...wrap(tail, cells - 2, { spaces: true }).map((l) => `  ${dim(p, l)}`)]
 }
 
 /** A cache breakpoint as the Inspector's prompt view draws it: a dim hairline under the text that carries it. */

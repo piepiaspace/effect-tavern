@@ -23,7 +23,8 @@ export interface Reading {
 
 type J = Record<string, unknown>
 const isObj = (v: unknown): v is J => typeof v === "object" && v !== null && !Array.isArray(v)
-const json = (v: unknown) => JSON.stringify(v)
+// `undefined` (an absent field) is no JSON: it is shown by its name rather than lost
+const json = (v: unknown): string => JSON.stringify(v) ?? String(v)
 const str = (v: unknown): v is string => typeof v === "string"
 
 /** A field of the envelope: a flag by its name, a scalar beside it, a short value as its JSON, a long one (a schema) by
@@ -121,7 +122,9 @@ const anthropic = (b: J): Reading => {
   if (b["system"] !== undefined) blocks("system", b["system"])
   for (const m of b["messages"] as unknown[]) {
     r.open()
-    if (!isObj(m) || !str(m["role"])) r.put("?", json(m))
+    // a message of another shape (no content, say) is shown whole, in its place
+    if (!isObj(m) || !str(m["role"]) || !(str(m["content"]) || Array.isArray(m["content"])))
+      r.put(isObj(m) && str(m["role"]) ? m["role"] : "?", json(m))
     else {
       blocks(m["role"], m["content"])
       rest(r, m["role"], m, ["role", "content", "cache_control"])
@@ -134,13 +137,22 @@ const anthropic = (b: J): Reading => {
 const openai = (b: J): Reading => {
   const r = reading(b, ["messages"])
   const names = new Map<unknown, string>()
-  for (const m of b["messages"] as unknown[]) {
+  for (const item of b["messages"] as unknown[]) {
     r.open()
-    if (!isObj(m) || !str(m["role"])) {
-      r.put("?", json(m))
+    // a message of another shape (no content and no tool calls, say) is shown whole, in its place
+    const shaped =
+      isObj(item) &&
+      str(item["role"]) &&
+      (str(item["content"]) ||
+        Array.isArray(item["content"]) ||
+        item["content"] === null ||
+        Array.isArray(item["tool_calls"]))
+    if (!shaped) {
+      r.put(isObj(item) && str(item["role"]) ? item["role"] : "?", json(item))
       continue
     }
-    const who = m["role"] === "tool" ? (names.get(m["tool_call_id"]) ?? "tool") : m["role"]
+    const m = item as J
+    const who = m["role"] === "tool" ? (names.get(m["tool_call_id"]) ?? "tool") : (m["role"] as string)
     const content = m["content"]
     if (str(content)) r.put(who, content)
     else if (Array.isArray(content))

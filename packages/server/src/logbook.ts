@@ -6,11 +6,12 @@
 // A standalone server starts printing at host(). A turn is named by its card and story titles (lines.ts `titled`),
 // read when it starts; the file keeps the story's id. Full mode shows each request before fetch and its reply as
 // content (body.ts reads the three wire formats: every text word for word, the envelope folded into one row of facts;
-// a body it cannot read is printed as it came). A failed call shows the upstream error and, in full mode, the request
-// as it was sent, raw: a fault in a parameter is only seen there. Every level shows upstream errors, including failed
+// a body it cannot read, or one that fails to lay out, is printed exactly as it came). A failed call shows the upstream
+// error and, in full mode, the request as it was sent, byte for byte (copied off the terminal it is what the gateway
+// received): a fault in a parameter is only seen there. Every summary names the stages that ran. Every level shows upstream errors, including failed
 // attempts in a turn that later recovers. Turn mode adds the final summary; quiet shows it for failed turns. Compact
 // modes give the path to the full failed request.
-// An owned TTY can redraw one live row. Redirected output has dated summaries and a one-minute wait notice
+// An owned TTY with colour can redraw one live row (screen.ts `screenOn`: no escapes without colour). Redirected output has dated summaries and a one-minute wait notice
 // in full and turn modes. A guest on Vite's terminal writes permanent lines immediately, without the banner.
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import type { Action, Event, Events, Phase } from "@effect-tavern/runtime/src/session.ts"
@@ -129,18 +130,16 @@ const hostOf = (url: string) => {
   }
 }
 
-const formattedBody = (body: string, tty: boolean) => {
-  if (tty) {
-    try {
-      const pretty = JSON.stringify(JSON.parse(body), null, 2)
-      // Re-serializing can round integers or drop duplicate fields. Keep those requests verbatim.
-      const tokens = (s: string) => s.replace(/"(?:\\.|[^"\\])*"|\s+/g, (token) => (token.startsWith('"') ? token : ""))
-      return tokens(pretty) === tokens(body) ? pretty : body
-    } catch {
-      // A non-JSON request is shown verbatim.
-    }
+/** A request as content (body.ts, lines.ts `spoken` and `envelope`); a body no reading knows, or any trouble reading
+ *  or laying it out, prints it exactly as it came: the log never loses a request. */
+const content = (body: string, n: number, p: Parameters<typeof spoken>[2]): string[] => {
+  try {
+    const read = readRequest(body)
+    if (read) return [...spoken(read.said, n, p), ...envelope(read, n, p)]
+  } catch {
+    // shown as it came, below
   }
-  return body
+  return ["", terminalText(body)]
 }
 
 export const openLogbook = (
@@ -310,25 +309,17 @@ export const openLogbook = (
         const callFaults = new Map<Call, ReturnType<typeof filedFault>>()
         const requests = new Map<number, { url: string; requestBody?: string }>()
         const failedAttempts: FailedAttempt[] = []
+        const sent: Partial<Record<Phase, number>> = {}
         const exchange = ({ phase, model, attempt, exchange: x }: Extract<Event, { kind: "exchange" }>) => {
           const p = paint()
           const n = cells(screen)
-          const tty = screen.tty ?? screen.live
           const head = (arrow: "→" | "←", facts: string[], status?: string, failed?: boolean) =>
             callHead({ arrow, title, story, stage: phase, attempt, facts, failed, status }, n, p)
           if (x.kind === "request") {
             requests.set(attempt, { url: x.url, ...(x.body !== undefined && { requestBody: x.body }) })
+            sent[phase] = (sent[phase] ?? 0) + 1
             if (level === "full") {
-              const read = x.body === undefined ? undefined : readRequest(x.body)
-              say([
-                "",
-                ...head("→", [model, hostOf(x.url)]),
-                ...(read
-                  ? [...spoken(read.said, n, p), ...envelope(read, n, p)]
-                  : x.body !== undefined
-                    ? ["", terminalText(formattedBody(x.body, tty))]
-                    : []),
-              ])
+              say(["", ...head("→", [model, hostOf(x.url)]), ...(x.body === undefined ? [] : content(x.body, n, p))])
             }
             return
           }
@@ -348,7 +339,7 @@ export const openLogbook = (
               ...(x.body ? spoken([{ who: "assistant", texts: [x.body] }], n, p) : []),
               ...(x.error !== undefined ? ["", terminalText(x.error)] : []),
               ...(x.error !== undefined && request?.requestBody !== undefined
-                ? raw(w.json, formattedBody(request.requestBody, tty), p)
+                ? raw(w.json, request.requestBody, p)
                 : []),
             ])
           else if (x.error !== undefined)
@@ -415,6 +406,7 @@ export const openLogbook = (
                   : "landed",
             ...(at !== undefined && { node: at }),
             calls,
+            requests: sent,
             ...(failed && {
               ...((failedAt ?? run.phase) && { phase: failedAt ?? run.phase }),
               fault: factsOf(exit.cause),
