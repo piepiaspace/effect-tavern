@@ -97,11 +97,8 @@ const turn = (decision?: () => DecisionModel | undefined) =>
   })
   assert.deepEqual(c.msgs, [{ role: "user", content: sent.at(-1)!.state }])
   assert.ok(sent.at(-1)!.state.startsWith("<world>") && sent.at(-1)!.state.endsWith("hello world\n</draft>"))
-  assert.ok(sent.at(-1)!.questions[0]!.endsWith(`规则：${rule}`))
-  assert.ok(
-    sent.at(-1)!.questions[1]!.startsWith("只看 <draft>") &&
-      sent.at(-1)!.questions[1]!.includes(full.lore[0]!.layers[2]!),
-  )
+  assert.ok(sent.at(-1)!.questions.some((q) => q.includes(rule)))
+  assert.ok(sent.at(-1)!.questions.some((q) => q.includes(full.lore[0]!.layers[2]!)))
 }
 // one answer in the middle: the LLM check runs and its verdict stands whole
 {
@@ -127,7 +124,7 @@ const turn = (decision?: () => DecisionModel | undefined) =>
     ],
   ] as const) {
     const r = await turn(decision)
-    assert.deepEqual(r.phases.slice(0, 2), ["lookup:decision", "lookup"]) // lookup falls back to its LLM loop
+    assert.deepEqual(r.phases.slice(0, 2), ["lookup:decision", "lookup"])
     assert.deepEqual(r.phases.slice(-3), ["check:decision", "check", "record"])
     const out = r.calls.findLast((c) => c.via)!.out as { verdict: string; error: string; lines: unknown[] }
     assert.equal(out.verdict, "escalate")

@@ -57,7 +57,6 @@ const g = wired(config("google"), () =>
   }),
 )
 const r = await Effect.runPromise(decide(g.model, "林默接过怀表。", questions))
-assert.equal(g.sent[0]?.url, decisionUrl(config("google")))
 assert.equal(g.sent[0]?.url, "https://generativelanguage.googleapis.com/v1beta/decisions")
 assert.equal(g.sent[0]?.headers.get("x-goog-api-key"), key.value)
 assert.equal(g.sent[0]?.body.model, "gemini-decision-1")

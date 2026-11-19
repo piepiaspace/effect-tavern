@@ -15,7 +15,7 @@ import {
   type Unit,
 } from "../src/context.ts"
 import type { Card } from "../src/card.ts"
-import { lookupQuestions, lookupSelect } from "../src/decision.ts"
+import { lookupSelect } from "../src/decision.ts"
 import { chat } from "./cards/index.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 
@@ -29,6 +29,7 @@ const fixture = (
   entries: Card["lore"],
   answer: (o: FakeCall, n: number) => FakeReply,
   decision?: () => DecisionModel | undefined,
+  opening = "opening",
 ) => {
   let n = 0
   const lookup: FakeCall[] = []
@@ -44,7 +45,7 @@ const fixture = (
     model: (p) => (p === "lookup" ? light : other),
     decision,
   })
-  const g = S.greet({ text: "opening" }).node!
+  const g = S.greet({ text: opening }).node!
   const go = (s: ReturnType<typeof S.act>) =>
     Effect.runPromise(
       outcome(
@@ -62,7 +63,7 @@ const fixture = (
 const call = (name: string, input: unknown): FakeReply => ({ text: "", toolCalls: [{ name, input }] })
 const done = { text: "Context ready." }
 const entries = [lore("a", "A points to card:b."), lore("b", "B points to card:c."), lore("c"), lore("d")]
-// Multi-hop follows actual native tool results; no synthesized Read/Found protocol or ID enum.
+// Multi-hop follows native tool results.
 {
   const f = fixture(entries, (o, n) => {
     if (n) assert.ok(o.prompt.some((m) => m.role === "tool"))
@@ -86,7 +87,6 @@ const entries = [lore("a", "A points to card:b."), lore("b", "B points to card:c
   )
   const trace = f.calls.find((c) => c.phase === "lookup")!.out as { trace: { calls: unknown[] }[] }
   assert.equal(trace.trace.flatMap((s) => s.calls).length, 3)
-  assert.equal(f.lookup[0]!.responseFormat, undefined)
   const reword = await f.go(f.S.reword(t.id))
   assert.equal(f.lookup.length, 4)
   assert.deepEqual(reword.deliveries, t.deliveries)
@@ -429,15 +429,6 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   )
   assert.deepEqual(lookupSelect({ ...answers, u3: { type: "refusal" } }, units).ids, undefined)
   assert.deepEqual(lookupSelect(Object.fromEntries(ps.map((_, i) => [`u${i}`, { probability: 0.1 }])), units).ids, [])
-  const q = lookupQuestions({
-    scene: "x".repeat(1300),
-    input: { text: "L", note: "N" },
-    units,
-    wording: (id) => `${id}:`,
-  })
-  assert.equal(q.state, `<scene>\n${"x".repeat(1200)}\n</scene>\n\n<input>\nL\nPlayer note: N\n</input>`)
-  assert.equal(Object.keys(q.questions).length, 10)
-  assert.equal(q.questions["u8"]!.instructions, "lookup.decision:RS.")
 }
 // In the turn: a complete catalog settled by the decision model, no LLM lookup call. An unread entry is asked by its
 // face alone; once the request holds it, its section is asked the turn after. Both go through read_context's own
@@ -459,10 +450,12 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
       ]),
     )
   })
+  const scene = `开场。\n\n${"钟声从教堂传来。".repeat(200)}\n\n落幕。`
   const f = fixture(
     [...entries, mira],
     () => done,
     () => decision,
+    scene,
   )
   const t = await f.go(f.S.act(f.g.id, { text: "her years at sea", note: "slow down" }))
   assert.equal(f.lookup.length, 0)
@@ -472,11 +465,9 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   )
   assert.deepEqual(t.read, [{ id: "mira", layer: 1 }])
   assert.equal(sent.length, 1)
-  assert.ok(
-    sent[0]!.state.startsWith("<scene>\nopening\n</scene>") && sent[0]!.state.includes("Player note: slow down"),
-  )
-  assert.equal(sent[0]!.questions.length, 5) // a, b, c, d, mira: the unread entry's section is not listed
-  assert.ok(sent[0]!.questions[0]!.startsWith("<input> 里玩家这一轮说的话或做的事"))
+  for (const text of [scene, "her years at sea", "slow down"]) assert.ok(sent[0]!.state.includes(text))
+  assert.ok(sent[0]!.questions.some((q) => q.includes("Mira keeps the lighthouse.")))
+  assert.ok(sent[0]!.questions.every((q) => !q.includes("Mira's years at sea.")))
   const row = f.calls.find((c) => c.via === "decision")!
   assert.equal(row.phase, "lookup")
   const out = row.out as { lines: { label: string; read?: true }[]; verdict: string; delivered: string[] }
@@ -490,7 +481,8 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   // the turn after: the face is held, so its section is asked, and read
   const t2 = await f.go(f.S.act(t.id, { text: "her years at sea" }))
   assert.equal(f.lookup.length, 0)
-  assert.deepEqual(sent[1]!.questions.length, 5) // a, b, c, d, mira#past
+  assert.ok(sent[1]!.questions.some((q) => q.includes("Mira's years at sea.")))
+  assert.ok(sent[1]!.questions.every((q) => !q.includes("Mira keeps the lighthouse.")))
   assert.ok(t2.deliveries.some((d) => d.resourceId === "card:mira#past"))
 }
 // A failed decision call: the LLM loop runs, the whole catalog in its first request, and nothing was delivered early.

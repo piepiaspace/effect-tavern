@@ -29,7 +29,7 @@ export interface Line {
   read?: true
 }
 
-/** Lookup's state (the scene's tail, then `<input>`: the line and the note) and one boolean question per catalog unit
+/** Lookup's state (the full parent scene, then `<input>`: the line and the note) and one boolean question per catalog unit
  *  (`u<i>`): an unread entry's face, or an unread section of a held one. The ask is layer.ts `lookup.decision`,
  *  followed by the unit's title. `scene` is the parent turn's prose; "" leaves the tag out. */
 export const lookupQuestions = (o: {
@@ -41,7 +41,7 @@ export const lookupQuestions = (o: {
   const asked = askedOf(o.units)
   return {
     state: [
-      o.scene && tag("scene", o.scene.slice(-SCENE)),
+      o.scene && tag("scene", o.scene),
       tag("input", [o.input.text, o.input.note && `Player note: ${o.input.note}`].filter(Boolean).join("\n")),
     ]
       .filter(Boolean)
@@ -52,9 +52,6 @@ export const lookupQuestions = (o: {
     asked,
   }
 }
-// ponytail: the scene tail as decision-lookup.ts asked it (1200 characters); it barely moved the readings, unmeasured
-// beyond that.
-const SCENE = 1200
 // an unread entry's face, or the unread sections of a face the request holds (context.ts `units` lists no others)
 const askedOf = (units: readonly Unit[]) =>
   units.flatMap((u) => (u.resident ? (u.sections ?? []) : [{ resourceId: u.resourceId, title: u.title }]))

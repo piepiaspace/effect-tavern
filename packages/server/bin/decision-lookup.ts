@@ -5,7 +5,7 @@
 //
 // Per stored turn with an input: the pool a lookup had (session `readable` at the parent, as catalog lines), asked as the
 // turn asks a complete catalog (runtime decision.ts `lookupQuestions`: the `lookup.decision` ask, then each unit's
-// title), over the scene's tail and the input; `--no-scene` leaves the scene out.
+// title), over the full scene and the input; `--no-scene` leaves the scene out.
 // The label is what the stored lookup delivered from that pool. CASES are hand-written inputs asked at a card's
 // newest stored turn, each naming the entries it should need: the library alone holds only turns that read nothing.
 // `--card <yaml>` asks a card file's CASES over its pool at the story's start (a large card no story has played);
