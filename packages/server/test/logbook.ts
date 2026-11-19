@@ -334,14 +334,16 @@ for (const columns of [48, 100]) {
   for (const lang of ["zh", "en"] as const) {
     const lines = await golden(columns, lang)
     assert.ok(lines.some((l) => l.includes(lang === "zh" ? "缓存82%" : "cache 82%")))
-    for (const l of lines) assert.ok(width(l) <= columns - 1, l)
+    assert.ok(lines.includes(refused.responseBody))
+    for (const l of lines.filter((l) => l !== refused.responseBody)) assert.ok(width(l) <= columns - 1, l)
     const quiet = await golden(columns, lang, "quiet")
+    assert.ok(quiet.includes(refused.responseBody))
     assert.ok(quiet.some((l) => l.includes("✗")))
     assert.ok(!quiet.some((l) => l.includes("✓")))
   }
 }
 
-// A failed attempt can recover. The TTY shows the complete exchange and compact modes point to its record.
+// A failed attempt can recover. Every level shows the escaped error once; compact modes link to the request.
 {
   const body = JSON.stringify({ model: "m", content: SECRET })
   const error = "group denied\n\u001b[2J"
@@ -364,12 +366,12 @@ for (const columns of [48, 100]) {
       ),
     )
     const shown = screen.shown().join("\n")
+    assert.equal(shown.split("group denied\n\\x1b[2J").length - 1, 1)
+    assert.ok(!shown.includes("\u001b[2J"))
     if (level === "full") {
       assert.ok(shown.includes(JSON.stringify(JSON.parse(body), null, 2)))
-      assert.ok(shown.includes("group denied\n\\x1b[2J"))
-      assert.ok(!shown.includes("\u001b[2J"))
     } else {
-      assert.ok(!shown.includes(SECRET) && !shown.includes("group denied"))
+      assert.ok(!shown.includes(SECRET))
       assert.ok(shown.includes("HTTP 403") && shown.includes(join(d, "turns.jsonl")))
     }
     const entry = JSON.parse(readFileSync(join(d, "turns.jsonl"), "utf8"))

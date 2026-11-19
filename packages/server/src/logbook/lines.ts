@@ -1,3 +1,6 @@
+// Terminal layout for the banner, live progress, wait notices and completed turns. Summaries aggregate
+// usage across stage calls and fit labels to the available cells. logbook.ts writes exchange bodies
+// separately so terminal width never clips a prompt, reply or upstream error.
 import type { Usage } from "@effect-tavern/provider"
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import type { Action, Event, Phase } from "@effect-tavern/runtime/src/session.ts"

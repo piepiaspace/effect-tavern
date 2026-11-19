@@ -1,3 +1,6 @@
+// factsOf unwraps an Effect Cause and recognizes refusals from the server and its configuration.
+// troubleOf also reads stored facts for doctor. Local codes select translated guidance; upstream failures
+// carry the original text, and internal defects carry their stack. block.ts handles terminal rendering.
 import { readFault, mask } from "@effect-tavern/provider/src/fault.ts"
 import { Cause } from "effect"
 import { isServerCode, type Code, type Facts, type Table } from "./codes.ts"

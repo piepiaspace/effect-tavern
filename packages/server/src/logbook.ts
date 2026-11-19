@@ -1,4 +1,13 @@
-// Observe HTTP exchanges as they happen. File turn summaries and failed requests separately from Inspector calls.
+// The logbook observes one story action from start to exit and forwards its events and exit unchanged.
+// Each turn that made a model call gets one JSONL entry. A failed or interrupted action is also recorded,
+// except for a Rejected action that made no call. Successful housekeeping actions leave the log quiet.
+// Inspector calls are filed under their nodes. The turn record holds usage and the complete failed attempts.
+//
+// A standalone server starts printing at host(). Full mode shows each request before fetch and its reply.
+// Every level shows upstream errors, including failed attempts in a turn that later recovers. Turn mode adds
+// the final summary; quiet shows it for failed turns. Compact modes give the path to the full failed request.
+// An owned TTY can redraw one live row. Redirected output has dated summaries and a one-minute wait notice
+// in full and turn modes. A guest on Vite's terminal writes permanent lines immediately, without the banner.
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import type { Action, Event, Events, Phase } from "@effect-tavern/runtime/src/session.ts"
 import { Cause, Effect, Exit, Stream } from "effect"
@@ -226,9 +235,7 @@ export const openLogbook = (
       }),
     )
     if (fault && !("attempt" in fault)) {
-      const trouble = troubleOf(fault, lang)
-      if (fault.code === "upstream" && level !== "full") delete trouble.raw
-      sayBlock([], () => trouble)
+      sayBlock([], () => troubleOf(fault, lang))
       if (record && level !== "full") say([record])
     }
     if (level !== "quiet" || e.end === "failed") say(finished(e, cells(screen), paint()))
@@ -280,7 +287,7 @@ export const openLogbook = (
           }
           if (level === "full")
             say([head, ...[x.body, x.error].filter((s): s is string => s !== undefined).map(terminalText)])
-          else if (x.error !== undefined) say([head, ...(record ? [record] : [])])
+          else if (x.error !== undefined) say([head, terminalText(x.error), ...(record ? [record] : [])])
         }
         let pending: Call[] = []
         let node: Id | undefined

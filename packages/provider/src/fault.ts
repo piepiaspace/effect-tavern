@@ -1,3 +1,9 @@
+// Error facts shared by the runtime, server and reader. A model error can carry a masked fault from the
+// exchange observer. Otherwise readFault follows cause and the SDK retry wrapper's lastError (errors.length
+// gives the attempt count). AI_APICallError supplies statusCode, responseHeaders and responseBody;
+// AI_StreamProviderError can carry the provider event in data. A transport failure may have no HTTP status.
+// Connection validation supplies its own code. An unrecognized exception retains its message and stack.
+// This module also runs in the browser and reads the SDK error fields without importing provider drivers.
 import type { ConnectionCode } from "./providers.ts"
 
 export const connectionCodes: Record<ConnectionCode, true> = {
