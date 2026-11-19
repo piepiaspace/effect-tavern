@@ -4,7 +4,7 @@ import { object, stream, text } from "../src/call.ts"
 import { bind, type Fetch } from "../src/connection.ts"
 import { readFault, mask } from "../src/fault.ts"
 import { ConnectionError } from "../src/providers.ts"
-import type { Exchange, OnExchange } from "../src/exchange.ts"
+import { observe as observer, type Exchange, type OnExchange } from "../src/exchange.ts"
 import type { Format } from "../src/url.ts"
 
 // the SDK's default stream error logger and its compatibility warnings are not this test's output
@@ -111,4 +111,23 @@ assert.equal(internal.code, "internal")
 assert.match(internal.stack!, /invariant failed/)
 assert.equal(readFault(new ConnectionError("provider-no-key", "missing key")).code, "provider-no-key")
 assert.ok(!mask("Bearer relay-secret sk-test-0123456789abcdef").includes("relay-secret"))
+// a dropped connection names its errno once, whether or not the message already opens with it
+for (const [message, shown] of [
+  [
+    "ECONNRESET: The socket connection was closed unexpectedly.",
+    "ECONNRESET: The socket connection was closed unexpectedly.",
+  ],
+  ["socket hang up", "ECONNRESET socket hang up"],
+] as const) {
+  const seen: Exchange[] = []
+  const o = observer((e) => void seen.push(e), "m", "key")
+  const dropped: Fetch = async () => {
+    throw Object.assign(new Error(message), { code: "ECONNRESET" })
+  }
+  await o
+    .wrap(dropped)("https://example.test", { method: "POST", body: "{}" })
+    .catch(() => {})
+  const answer = seen.find((e) => e.kind === "response")
+  assert.equal(answer?.kind === "response" ? answer.error : undefined, shown)
+}
 console.log("fault ok")

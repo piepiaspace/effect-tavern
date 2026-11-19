@@ -20,7 +20,7 @@ import { readRequest } from "../src/logbook/body.ts"
 import { open } from "../src/data.ts"
 import { library } from "../src/library.ts"
 import { openLogbook } from "../src/logbook.ts"
-import { callHead, finished, type Title } from "../src/logbook/lines.ts"
+import { callHead, finished, type Call, type Title } from "../src/logbook/lines.ts"
 import { memoryScreen, screenOn, width, type Lang, type Screen } from "../src/term/index.ts"
 
 // ───────── scripted streams ─────────
@@ -596,8 +596,8 @@ for (const columns of [48, 100]) {
   assert.equal(said.length, 4)
   assert.match(said[0]!, /✓ 伴星 #1 ─ narrate record · /)
   assert.match(said[1]!, /✓ 理 · 竹林夜谈 ─ narrate record ×2 · /)
-  assert.match(said[2]!, /✗ 雾港 · 第一夜 ─ narrate · narrate 失败 · /)
-  assert.match(said[3]!, /✗ 伴星 #1 ─ narrate · narrate 失败 · /)
+  assert.match(said[2]!, /✗ 雾港 · 第一夜 ─ narrate 失败 · /)
+  assert.match(said[3]!, /✗ 伴星 #1 ─ narrate 失败 · /)
   const tty = memoryScreen({ columns, color: true, live: true })
   await play(tty)
   assert.ok(tty.shown().includes("\x1b[7m system \x1b[27m"))
@@ -685,6 +685,24 @@ for (const columns of [48, 100]) {
   const said = summaries(screen.shown())
   assert.equal(said.length, 1)
   assert.match(said[0]!, /─ narrate record ×2 · check 预检 转交 · record 超出预算 · [\d.]+s ↑2,200 ↓30 ↻1,100 ─/)
+}
+
+// ───────── a failed stage that is the last one listed takes its pill in place ─────────
+{
+  const p = { lang: "zh" as const, color: false, full: false }
+  const said = (calls: Call[], phase: Phase) =>
+    summaries(
+      finished(
+        { story: 3, title: { card: "伴星" }, action: "act", at: T0, ms: 100, end: "failed", phase, calls },
+        99,
+        p,
+      ),
+    )[0]!
+  const c = (phase: Phase) => call(phase, 10, u(1, 1)).e as Call
+  assert.match(said([c("narrate"), c("record")], "record"), /─ narrate record 失败 · /)
+  assert.match(said([c("record"), c("record")], "record"), /─ record ×2 失败 · /)
+  // a stage that failed with nothing listed after it keeps the pill apart
+  assert.match(said([c("narrate")], "record"), /─ narrate · record 失败 · /)
 }
 
 // ───────── a request partly unknown is still all there; a failed call's request is what the gateway got ─────────

@@ -181,13 +181,19 @@ export const finished = (e: Entry, cells: number, p: Paint): string[] => {
   const room = cells - 6 - width(`${when} ${mark} `)
   const name = fitName(e, Math.max(room, 1), p) ?? clip(named(p.lang, e.title, e.story, e.action), Math.max(room, 1))
   const marked = mark === "-" ? mark : tint(p, mark === "✗" ? 31 : 32, mark)
+  // a failed stage that is the last one listed takes its pill in place: `─ narrate 失败`, not `─ narrate · narrate 失败`
+  const stages = ran(e.calls, e.requests)
+  const states = pills(e, p.lang)
+  const last = stages.at(-1)
+  if (e.end === "failed" && e.phase && last && (last === e.phase || last.startsWith(`${e.phase} ×`))) {
+    stages[stages.length - 1] = `${last} ${words[p.lang].failed}`
+    states.splice(states.lastIndexOf(`${e.phase} ${words[p.lang].failed}`), 1)
+  }
   return rule(
     `${dim(p, when)} ${marked} ${name}`,
-    [
-      ran(e.calls, e.requests),
-      ...pills(e, p.lang).map((x) => [x]),
-      metrics(e.ms, e.calls.length ? sum(e.calls) : undefined),
-    ].filter((g) => g.length),
+    [stages, ...states.map((x) => [x]), metrics(e.ms, e.calls.length ? sum(e.calls) : undefined)].filter(
+      (g) => g.length,
+    ),
     cells,
     p,
   )
