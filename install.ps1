@@ -79,9 +79,22 @@ function Install-Tavern {
   }
 
   # a tavern still running keeps its .exe from being replaced, not from being renamed
-  Remove-Item "$bin.old" -Force -ErrorAction SilentlyContinue
-  if (Test-Path $bin) { Rename-Item $bin "tavern.exe.old" }
-  Move-Item $part $bin
+  $movedAside = $false
+  try {
+    if (Test-Path -LiteralPath $bin) {
+      Remove-Item -LiteralPath "$bin.old" -Force -ErrorAction SilentlyContinue
+      Rename-Item -LiteralPath $bin -NewName "tavern.exe.old"
+      $movedAside = $true
+    }
+    Move-Item -LiteralPath $part -Destination $bin
+  } catch {
+    if ($movedAside -and -not (Test-Path -LiteralPath $bin)) {
+      Rename-Item -LiteralPath "$bin.old" -NewName "tavern.exe"
+    }
+    throw
+  } finally {
+    Remove-Item -LiteralPath $part -Force -ErrorAction SilentlyContinue
+  }
 
   $path = [Environment]::GetEnvironmentVariable("Path", "User")
   if (-not (($path -split ";") -contains $dir)) {

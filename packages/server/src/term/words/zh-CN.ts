@@ -137,7 +137,10 @@ export const zh: Table = {
     why: "设了 MODEL=fake，可那个酒馆的回合会花费 token。",
     next: "去掉 MODEL=fake 再运行；或用 MODEL=fake 重新启动那个酒馆。",
   }),
-  "no-card": () => ({ what: "没有这张卡片", next: "到「设置」的「卡片」里看看已安装的卡片。" }),
+  "no-card": () => ({
+    what: "没有这张卡片",
+    next: "到「设置」的「卡片」里查看已安装的卡片。若要继续旧故事，请重新导入相同 ID 的卡片。",
+  }),
   "card-exists": () => ({
     what: "同 id 的卡片已安装",
     next: "要覆盖就选择替换；不想覆盖，就先改卡片的 id。",

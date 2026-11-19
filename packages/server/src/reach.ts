@@ -56,11 +56,12 @@ export const origin = (url: string) =>
     .replace(/\/api$/, "")
 
 /** The tavern at `url`, after it has said who it is (and so that it answers at all). */
-const remote = async (url: string, c: Pick<Config, "fake">): Promise<CliHost> => {
+const remote = async (url: string, c: Pick<Config, "fake" | "data">, owner?: number): Promise<CliHost> => {
   const api = over(`${url}/api`)
   const r = await api(new Request("http://tavern/host"))
   // an older tavern has no /host: not scripted, as far as anyone can tell
   const about = r.ok ? ((await r.json()) as HostFacts) : await r.body?.cancel()
+  if (owner !== undefined && about?.pid !== owner) throw new HostSilent(owner, libraryFile(c.data))
   if (c.fake && !about?.scripted) throw new HostNotScripted(url)
   return host(api)
 }
@@ -86,7 +87,7 @@ export const reach = async (
     const said = await announced(c.data)
     if (said) {
       try {
-        return { host: await remote(said.url, c), at: said.url, found: true }
+        return { host: await remote(said.url, c, said.pid), at: said.url, found: true }
       } catch (e) {
         // the owner said where it listens and does not answer there: it may be going away; past the wait, it is so
         if (!(e instanceof Unreachable) || Date.now() > until) throw e

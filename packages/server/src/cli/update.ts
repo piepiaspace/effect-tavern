@@ -6,7 +6,7 @@
 // until it is started again: the last lines say so.
 //
 // What a person reads goes to stderr; under --json, stdout gets one value: {current, latest, newer, updated, notes}.
-import { chmodSync, realpathSync, renameSync, rmSync, statSync } from "node:fs"
+import { chmodSync, existsSync, realpathSync, renameSync, rmSync, statSync } from "node:fs"
 import { dirname, extname, join } from "node:path"
 import { announced } from "../announce.ts"
 import { cells, wrap, type Screen } from "../term/index.ts"
@@ -150,15 +150,18 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
         answered: answered || reason,
       })
     say([`✓ ${w.runs(answered)}`])
+    let movedAside = false
     try {
       // Windows keeps a running .exe from being replaced but lets it be renamed: the old one steps aside, and the one
       // left from the update before goes now that nothing runs it
       if (process.platform === "win32") {
         rmSync(`${file}.old`, { force: true })
         renameSync(file, `${file}.old`)
+        movedAside = true
       }
       renameSync(part, file)
     } catch (e) {
+      if (movedAside && !existsSync(file)) renameSync(`${file}.old`, file)
       throw new Failed("update-not-replaced", `rename over ${file}: ${(e as Error).message}`, {
         file: dir,
         ...(errno(e) && { errno: errno(e) }),

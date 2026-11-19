@@ -113,4 +113,14 @@ gate.release()
 assert.equal(await creating, false)
 await leaving
 assert.deepEqual([at().story, registry.get(stories)?.current], [null, null])
+// An old story still names its card after an upgrade to an empty shelf.
+const fetchInstalled = globalThis.fetch
+globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+  if (input === "/api/card" || input === "/api/nodes")
+    return Response.json({ error: "no card c2", code: "no-card" }, { status: 404 })
+  return fetchInstalled(input, init)
+}, fetchInstalled)
+await openStory(2)
+assert.deepEqual([at().page, at().story, registry.get(stories)?.current], ["home", null, null])
+assert.ok(registry.get(stories)?.stories.some((s) => s.card === "c2"))
 console.log("navigation ok")

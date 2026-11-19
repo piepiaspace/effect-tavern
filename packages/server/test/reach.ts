@@ -361,8 +361,17 @@ try {
       )
       assert.match(said, new RegExp(`进程 ${sleeper.pid}`))
       assert.equal(readFileSync(lockFile(silent), "utf8"), String(sleeper.pid)) // the owner's lock untouched
-      // it says its address late, within the wait: the command waits for it and goes through
-      setTimeout(() => writeFileSync(addressFile(silent), JSON.stringify({ pid: sleeper.pid, url: origin })), 300)
+      // An unrelated tavern at a stale address must never be selected, even when it answers.
+      writeFileSync(addressFile(silent), JSON.stringify({ pid: sleeper.pid, url: origin }))
+      await assert.rejects(reach({ data: silent, fake: true }), HostSilent)
+      assert.equal(await tavern(["start", "--headless", "--data", silent], world({})), 3)
+
+      // The starting owner is replaced by the process serving the library within the wait.
+      rmSync(addressFile(silent))
+      setTimeout(() => {
+        writeFileSync(lockFile(silent), String(process.pid))
+        writeFileSync(addressFile(silent), JSON.stringify({ pid: process.pid, url: origin }))
+      }, 300)
       const late = await reach({ data: silent, fake: true })
       assert.deepEqual([late.at, late.found], [origin, true])
     } finally {

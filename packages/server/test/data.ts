@@ -699,6 +699,18 @@ data.close()
     () => open(file),
     (e: Error) => e.message.includes(file) && e.message.includes(String(process.ppid)),
   )
+  // Without an application handler, SIGTERM cleans every library and retains signal termination.
+  const childFiles = [join(dir, "one.db"), join(dir, "two.db")]
+  const stopped = spawnSync(process.execPath, [
+    "-e",
+    `import { open } from ${JSON.stringify(new URL("../src/data.ts", import.meta.url).href)}
+     for (const file of process.argv.slice(1)) open(file)
+     process.kill(process.pid, "SIGTERM")
+     await Bun.sleep(1000)`,
+    ...childFiles,
+  ])
+  assert.equal(stopped.signal, "SIGTERM", stopped.stderr.toString())
+  for (const childFile of childFiles) assert.ok(!existsSync(`${childFile}.lock`))
   const other = open(file, { isolateOnBusy: true })
   assert.equal(other.file, join(dir, String(process.pid), "tavern.db"))
   assert.equal(readFileSync(`${other.file}.lock`, "utf8"), String(process.pid))
@@ -707,6 +719,12 @@ data.close()
   writeFileSync(`${file}.lock`, String(spawnSync("true").pid)) // exited: a stale lock
   const taken = open(file)
   assert.equal(taken.file, file)
+  assert.equal(readFileSync(`${file}.lock`, "utf8"), String(process.pid))
+  // Ctrl-C can be handled by interactive play while this library stays open.
+  const interrupted = Promise.withResolvers<void>()
+  process.once("SIGINT", () => interrupted.resolve())
+  process.kill(process.pid, "SIGINT")
+  await interrupted.promise
   assert.equal(readFileSync(`${file}.lock`, "utf8"), String(process.pid))
   assert.equal(open(file).file, file) // our own lock (Vite re-evaluating the module): the same library
   taken.close()

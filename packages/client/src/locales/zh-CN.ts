@@ -420,6 +420,7 @@ const zh = {
     navigation: "导航",
     newStory: "新建故事",
     noCardMatch: "没有匹配的卡片",
+    missingStoryCards: "要继续旧故事，请重新导入 ID 为 {ids} 的卡片。",
     noCards: "书架上还没有卡片",
     noPersona: "不用人设",
     noPersonaMatch: "没有匹配「{q}」的人设",

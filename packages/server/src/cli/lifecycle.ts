@@ -25,8 +25,7 @@ export const serving = async (dir: string, patience = 2000): Promise<Address | u
 }
 
 /** A second `tavern start` while one serves this library: not an error. It says so, shows the address, opens the page (on a
- *  terminal, unless --no-open) and the command ends 0. Undefined when none serves (or it does not answer: the start
- *  that follows says why). */
+ *  terminal, unless --no-open) and the command ends 0. An announced owner must answer with its own pid. */
 export const already = async (
   c: Pick<Config, "data" | "lang">,
   world: World,
@@ -34,7 +33,8 @@ export const already = async (
 ): Promise<true | undefined> => {
   const a = await serving(c.data)
   const facts = a && (await about(a.url))
-  if (!a || !facts) return undefined
+  if (!a) return undefined
+  if (facts?.pid !== a.pid) throw new HostSilent(a.pid, libraryFile(c.data))
   const w = words[c.lang]
   const screen = screenOf(world)
   const n = cells(screen)

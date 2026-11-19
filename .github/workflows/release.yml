@@ -58,6 +58,16 @@ jobs:
         run: |
           [ "$GITHUB_REF_TYPE" = tag ] && export VERSION="${GITHUB_REF_NAME#v}"
           bun release/targets.ts compile "${{ matrix.asset }}"
+      - name: Check the packaged version on its native runner
+        if: startsWith(matrix.asset, 'tavern-darwin-') || matrix.asset == 'tavern-linux-x64'
+        run: |
+          expected=dev
+          if [ "$GITHUB_REF_TYPE" = tag ]; then expected=${GITHUB_REF_NAME#v}; fi
+          gzip -dc "packages/server/dist/${{ matrix.asset }}.gz" > "$RUNNER_TEMP/tavern"
+          chmod +x "$RUNNER_TEMP/tavern"
+          actual=$("$RUNNER_TEMP/tavern" --version)
+          echo "$actual"
+          test "$actual" = "tavern $expected"
       # the .gz alone; already compressed, so the artifact stores it as it is
       - uses: actions/upload-artifact@v7
         with:

@@ -37,10 +37,18 @@ export const readHttps = async (
     if (res.url && !remote(res.url)) throw refuse(`${url.href}: redirected off https`)
     if (!res.ok) throw refuse(`${url.href}: HTTP ${res.status}`)
     if (Number(res.headers.get("content-length") ?? 0) > CARD_BYTES) throw refuse(`${url.href}: too large`)
-    const bytes = await res.arrayBuffer()
-    if (bytes.byteLength > CARD_BYTES) throw refuse(`${url.href}: too large`)
-    return new TextDecoder().decode(bytes)
+    if (!res.body) return ""
+    const decoder = new TextDecoder()
+    let size = 0
+    let text = ""
+    for await (const chunk of res.body) {
+      size += chunk.byteLength
+      if (size > CARD_BYTES) throw refuse(`${url.href}: too large`)
+      text += decoder.decode(chunk, { stream: true })
+    }
+    return text + decoder.decode()
   } catch (e) {
+    gone.abort()
     throw e instanceof Refused ? e : refuse(`${url.href}: ${e instanceof Error ? e.message : "no answer"}`)
   } finally {
     clearTimeout(timer)

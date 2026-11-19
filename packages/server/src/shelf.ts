@@ -57,7 +57,7 @@ const blank = (id: string, title?: string): Card => ({
 })
 
 export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: string) => void } = {}) => {
-  const row = (id: string) => data.cards.list().find((c) => c.id === id)
+  const row = data.cards.row
   const get = (id: string): Card => {
     const raw = data.cards.get(id)
     if (raw === undefined) throw noCard(id)

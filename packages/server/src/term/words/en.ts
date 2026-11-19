@@ -149,7 +149,10 @@ export const en: Table = {
     why: "MODEL=fake is set, but that tavern's turns would spend tokens.",
     next: "Run again without MODEL=fake, or restart that tavern with MODEL=fake.",
   }),
-  "no-card": () => ({ what: "There is no such card", next: "See the installed cards in Settings, under Cards." }),
+  "no-card": () => ({
+    what: "There is no such card",
+    next: "See the installed cards in Settings, under Cards. To resume an old story, import its card again with the same ID.",
+  }),
   "card-exists": () => ({
     what: "A card with this id is installed",
     next: "To overwrite it, choose Replace; otherwise change the card's id first.",

@@ -85,6 +85,14 @@ const migrations: readonly { table: string; column: string; add: string }[] = [
   { table: "card", column: "facets", add: "alter table card add column facets text" },
 ]
 type Row = Record<string, unknown>
+const cardColumns = "id, title, summary, facets, origin"
+const cardRow = (r: Row): CardRow => ({
+  id: r["id"] as string,
+  title: r["title"] as string,
+  ...(r["summary"] ? { summary: r["summary"] as string } : {}),
+  ...(r["facets"] ? { facets: JSON.parse(r["facets"] as string) as Facets } : {}),
+  origin: r["origin"] ? (JSON.parse(r["origin"] as string) as Origin) : { via: "file" },
+})
 const set = <V>(k: string, v: V | undefined) => (v === undefined || (Array.isArray(v) && !v.length) ? {} : { [k]: v })
 /** The shape of the `player` row before layer.ts, as far as the one-shot below reads it. */
 interface OldPlayer {
@@ -234,6 +242,15 @@ export class LibraryNewer extends Error {
  *  takes its process listeners off, so a process that opens a library per command (tests, `run()` called again and
  *  again) leaves nothing locked behind it. */
 const held = new Map<string, { opens: number; release: () => void }>()
+const signals = ["SIGINT", "SIGTERM"] as const
+/** Run before any one-shot application listener removes itself. A handled signal can leave play and its library
+ *  running. With no other listener, clean every lock before restoring the default signal termination. */
+const onSignal = (signal: (typeof signals)[number]) => {
+  if (process.listenerCount(signal) > 1) return
+  for (const lock of held.values()) lock.release()
+  process.off(signal, onSignal)
+  process.kill(process.pid, signal)
+}
 /** One process per library: `<file>.lock` holds the owner's pid (a bare pid, nothing else: an older binary reads any
  *  other content as a dead owner's). A dead owner's lock is taken over (and our own, when Vite re-evaluates the module
  *  in the same process); while the owner lives, opening fails. Explicit isolateOnBusy opts into a fresh library
@@ -274,20 +291,12 @@ const lock = (file: string, isolateOnBusy: boolean): { file: string; unlock: () 
       if (readFileSync(path, "utf8") === String(process.pid)) rmSync(path)
     } catch {}
   }
-  const signals = (["SIGINT", "SIGTERM"] as const).map((sig) => {
-    const on = () => {
-      free()
-      if (!process.listenerCount(sig)) process.kill(process.pid, sig) // nobody else handles it: die of it as before
-    }
-    process.once(sig, on)
-    return [sig, on] as const
-  })
+  if (!held.size) for (const signal of signals) process.prependListener(signal, onSignal)
   process.on("exit", free)
   held.set(path, {
     opens: 1,
     release: () => {
       process.off("exit", free)
-      for (const [sig, on] of signals) process.off(sig, on)
       free()
     },
   })
@@ -297,6 +306,7 @@ const unlock = (path: string) => {
   const mine = held.get(path)
   if (!mine || --mine.opens > 0) return
   held.delete(path)
+  if (!held.size) for (const signal of signals) process.off(signal, onSignal)
   mine.release()
 }
 
@@ -548,14 +558,11 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
     cards: {
       /** The install's cards by id and title, with the summary, facets and origin `put` stored beside the json, the Card
        *  in the json column left unread. */
-      list: (): CardRow[] =>
-        (q("select id, title, summary, facets, origin from card order by title").all() as Row[]).map((r) => ({
-          id: r["id"] as string,
-          title: r["title"] as string,
-          ...(r["summary"] ? { summary: r["summary"] as string } : {}),
-          ...(r["facets"] ? { facets: JSON.parse(r["facets"] as string) as Facets } : {}),
-          origin: r["origin"] ? (JSON.parse(r["origin"] as string) as Origin) : { via: "file" },
-        })),
+      list: (): CardRow[] => (q(`select ${cardColumns} from card order by title`).all() as Row[]).map(cardRow),
+      row: (id: string): CardRow | undefined => {
+        const r = q(`select ${cardColumns} from card where id = ?`).get(id) as Row | null
+        return r ? cardRow(r) : undefined
+      },
       /** A card written whole, with its facets (session.ts `facets`, the caller's reading) and its origin as projections
        *  beside the json, so the shelf's rows never decode a card. */
       put: ({ id, ...card }: Card, facets: Facets, origin: Origin) =>

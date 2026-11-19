@@ -203,7 +203,7 @@ export const putLocal = (cardId: string, edit: (l: Local) => Local): Promise<voi
 // The settings (/providers, /secrets, /routing, /hats): each write answers the list it changed, which replaces the
 // atom; nothing is optimistic. A key goes up once (POST /secrets) and comes back as a hint only;
 // the eye and copy read one value on purpose (secretValue).
-const json = (method: string, v: unknown): RequestInit => ({ method, body: JSON.stringify(v) })
+const json = (method: string, v: unknown) => ({ method, body: JSON.stringify(v) })
 const enc = encodeURIComponent
 export const fetchCards = async (): Promise<void> => registry.set(cards, await got(call(`${base}/cards`)))
 // The shelf and the card libraries (server shelf.ts, depot.ts). A card arrives as a file's text or from a library; both
@@ -234,7 +234,7 @@ export const saveCard = async (card: Card, rev: string, last = false): Promise<s
   const answer = await got<{ cards: readonly ShelfCard[]; rev: string }>(
     call(`${base}/cards/${enc(card.id)}/whole`, {
       ...init,
-      ...(last && (init.body as string).length < KEEPALIVE && { keepalive: true }),
+      ...(last && new Blob([init.body]).size < KEEPALIVE && { keepalive: true }),
     }),
   )
   registry.set(cards, answer.cards)
