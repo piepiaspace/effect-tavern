@@ -290,6 +290,19 @@ export const spoken = (said: readonly Said[], cells: number, p: Paint): string[]
     ]),
   ])
 
+/** A decision question has its own heading. Its id links it to the probability in the reply. */
+export const questionRows = (questions: NonNullable<Reading["questions"]>, cells: number, p: Paint): string[] =>
+  questions.flatMap(({ id, type, texts }) => {
+    const w = words[p.lang]
+    const boolean = type === "noul" || type === "predicate" || type === "boolean"
+    const title = `${boolean ? w.booleanQuestion : w.question} ${id}${type && !boolean ? ` · ${type}` : ""}`
+    return [
+      "",
+      ...wrapKept(terminalText(title), cells).map((line) => bold(p, line)),
+      ...texts.flatMap((text) => wrapKept(terminalText(text), cells - 2).map((line) => (line ? `  ${line}` : ""))),
+    ]
+  })
+
 /** The envelope, after the content: one dim row of facts (more when they do not fit); breakpoints the content does not
  *  hold (on the tools, say) are counted there. */
 export const envelope = (r: Reading, cells: number, p: Paint): string[] => {

@@ -20,6 +20,8 @@ export interface Words {
   exhausted: string
   failed: string
   stopped: string
+  booleanQuestion: string
+  question: string
   breakpoint: string
   json: string
   chars: (n: number) => string
@@ -63,6 +65,8 @@ const client = (c: typeof zh, locale: string) => ({
 export const words: Record<Lang, Words> = {
   zh: {
     ...client(zh, "zh-CN"),
+    booleanQuestion: "判断题",
+    question: "决策问题",
     host: {
       banner: { address: "地址", data: "数据", model: "模型", stop: "停止" },
       didNotStart: "Effect Tavern 没有启动",
@@ -71,6 +75,8 @@ export const words: Record<Lang, Words> = {
   },
   en: {
     ...client(en as typeof zh, "en"),
+    booleanQuestion: "Yes/no question",
+    question: "Decision question",
     host: {
       banner: { address: "address", data: "data", model: "model", stop: "stop" },
       didNotStart: "Effect Tavern did not start",

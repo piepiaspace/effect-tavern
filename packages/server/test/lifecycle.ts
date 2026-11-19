@@ -503,7 +503,11 @@ try {
       }
     busy.close()
     // the network unreachable is a ✗: exit 1, and --json says the same
-    const offline = { env: { DATA: data, PATH: "" }, self, release: directory(join(root, "nowhere")) }
+    const offline = {
+      env: { DATA: data, PATH: "", TAVERN_PORT: String(port) },
+      self,
+      release: directory(join(root, "nowhere")),
+    }
     const ran = await tavern(["doctor"], offline)
     assert.equal(ran.code, 1)
     golden("tavern doctor (offline, a fresh phone) zh", rows(ran.out))

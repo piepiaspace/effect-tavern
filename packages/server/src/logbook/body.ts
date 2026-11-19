@@ -2,7 +2,7 @@
 // name and arguments, each tool result) word for word, in order, under who says it, each cache breakpoint
 // (`cache_control`) marked after the text that carries it, apart from the envelope (the limits, stream, tool schemas,
 // tool_choice and every other field), which is folded into short facts. One reading
-// per body the drivers send (anthropic, openai-compatible, gemini), told apart by shape. A block or a message field a
+// per body the chat and decision drivers send, told apart by shape. A block or a message field a
 // reading does not know stays in its place as its JSON; a body none of them knows (not JSON, another shape) reads as
 // undefined, for the caller to print as it came. The model is the call head's, so it is not repeated here.
 
@@ -15,6 +15,7 @@ export interface Said {
 }
 export interface Reading {
   said: Said[]
+  questions?: { id: string; type?: string; texts: string[] }[]
   /** The envelope: `max_tokens 16384`, `stream`, `tools: a, b`, a field and its short JSON, or a field's name alone. */
   facts: string[]
   /** The `cache_control` marks the content does not place (on the tools, say). */
@@ -200,6 +201,40 @@ const gemini = (b: J): Reading => {
   return r.done()
 }
 
+/** Decisions carry state and named questions. Keep the wire ids so each answer can be matched to its question. */
+const decision = (b: J, questions: J | unknown[]): Reading => {
+  const r = reading(b, ["input", "state", "questions"])
+  const part = (who: string, item: unknown) => {
+    if (isObj(item) && (item["type"] === "text" || item["type"] === "input_text") && str(item["text"])) {
+      r.put(who, item["text"])
+      rest(r, who, item, ["type", "text"])
+    } else r.put(who, json(item))
+  }
+  if ("state" in b) r.put("state", str(b["state"]) ? b["state"] : json(b["state"]))
+  if (Array.isArray(b["input"])) {
+    for (const item of b["input"]) {
+      if (isObj(item) && str(item["role"]) && Array.isArray(item["content"])) {
+        for (const c of item["content"]) part(item["role"], c)
+        rest(r, item["role"], item, ["role", "content"])
+      } else part("input", item)
+    }
+  }
+  const items = Object.entries(questions).map(([key, q]) => {
+    const name = Array.isArray(questions) && isObj(q) ? q["name"] : undefined
+    const id = str(name) ? name : key
+    if (!isObj(q) || !str(q["type"]) || !str(q["instructions"])) return { id, texts: [json(q)] }
+    const extra = Object.fromEntries(
+      Object.entries(q).filter(([k]) => k !== "type" && k !== "instructions" && !(str(name) && k === "name")),
+    )
+    return {
+      id,
+      type: q["type"],
+      texts: [q["instructions"], ...(Object.keys(extra).length ? [json(extra)] : [])],
+    }
+  })
+  return { ...r.done(), questions: items }
+}
+
 const ANTHROPIC_BLOCKS = new Set(["tool_use", "tool_result", "thinking", "redacted_thinking"])
 /** The body read by its shape: gemini's `contents`; anthropic's top-level `system`, its own blocks or tool schemas;
  *  else openai's `messages` (which reads a plain anthropic text exchange the same way). */
@@ -212,6 +247,9 @@ export const readRequest = (body: string): Reading | undefined => {
   }
   if (!isObj(b)) return undefined
   if (Array.isArray(b["contents"])) return gemini(b)
+  const questions = b["questions"]
+  if ((Array.isArray(b["input"]) || "state" in b) && (isObj(questions) || Array.isArray(questions)))
+    return decision(b, questions)
   const messages = b["messages"]
   if (!Array.isArray(messages)) return undefined
   const tools = Array.isArray(b["tools"]) ? b["tools"] : []

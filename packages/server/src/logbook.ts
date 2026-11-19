@@ -5,7 +5,7 @@
 //
 // A standalone server starts printing at host(). A turn is named by its card and story titles (lines.ts `titled`),
 // read when it starts; the file keeps the story's id. Full mode shows each request before fetch and its reply as
-// content (body.ts reads the three wire formats: every text word for word, the envelope folded into one row of facts;
+// content (body.ts reads chat and decision requests: every text word for word, the envelope folded into one row of facts;
 // a body it cannot read, or one that fails to lay out, is printed exactly as it came). A failed call shows the upstream
 // error and, in full mode, the request as it was sent, byte for byte (copied off the terminal it is what the gateway
 // received): a fault in a parameter is only seen there. Every summary names the stages that ran. Every level shows upstream errors, including failed
@@ -30,6 +30,7 @@ import {
   envelope,
   raw,
   spoken,
+  questionRows,
   type Call,
   type Entry,
   type Title,
@@ -135,7 +136,7 @@ const hostOf = (url: string) => {
 const content = (body: string, n: number, p: Parameters<typeof spoken>[2]): string[] => {
   try {
     const read = readRequest(body)
-    if (read) return [...spoken(read.said, n, p), ...envelope(read, n, p)]
+    if (read) return [...spoken(read.said, n, p), ...questionRows(read.questions ?? [], n, p), ...envelope(read, n, p)]
   } catch {
     // shown as it came, below
   }

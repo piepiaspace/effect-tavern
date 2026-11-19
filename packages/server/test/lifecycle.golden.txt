@@ -380,7 +380,7 @@ Technical details: tavern doctor --verbose
 ✓ 数据      ~/doctored 可读写，1 MB
 ! 存储      查不到剩余空间
             > 更新前确认至少有 21 MB 空闲
-✓ 酒馆      没有运行；端口 7777 空闲
+✓ 酒馆      没有运行；端口 <port> 空闲
 ✗ 网络      连不上 <tmp>/nowhere
             > 换个网络；不影响启动，只影响更新
 ✓ 工具      唤醒锁、打开网页都可用

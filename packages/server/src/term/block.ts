@@ -1,13 +1,14 @@
 // A failure on the terminal: the caller's head line, then what happened (and the lines under it: a refused card's own),
-// the likely cause, the next step marked `>`, what was left as it was, and the raw facts dim. Laid out for 48 columns,
-// breathing up to 100; every line within `columns - 1` cells. Meaning never rests on colour: bold and dim only, and
+// the likely cause, the next step marked `>`, what was left as it was, and the raw facts dim. Laid out at the current terminal width.
+// Meaning never rests on colour: bold and dim only, and
 // none without `color`. `failure` is a command's own: no head, the first line marked `✗`.
 import type { Trouble } from "./explain.ts"
 import { terminalText, type Screen } from "./screen.ts"
 import { clip, width, wrap } from "./width.ts"
 
 /** The cells a line may take on this screen. */
-export const cells = (screen: Screen): number => Math.max(20, Math.min(screen.columns, 100) - 1)
+export const cells = (screen: Screen): number =>
+  Math.max(20, (Number.isSafeInteger(screen.columns) ? screen.columns : 80) - 1)
 
 /** A refused card can carry many lines; past this many the rest are counted, not shown. */
 const SHOWN = 8

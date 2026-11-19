@@ -568,6 +568,50 @@ rmSync(dir, { recursive: true, force: true })
   for (const body of ["not json", "[1]", '{"prompt":"x"}']) assert.equal(readRequest(body), undefined)
 }
 
+// The same lookup request before and after a terminal resize. Rejoin its displayed rows to check every character.
+{
+  const scene = "窗边的茶杯".repeat(14)
+  const state = `<scene>\n${scene}\n</scene>\n\n<input>\n当然可以了\n</input>`
+  const question = { type: "noul", instructions: "提到了吊坠吗？\n仔细看。" }
+  const body = JSON.stringify({ model: "d", input: [{ type: "text", text: state }], questions: { u0: question } })
+  let output = ""
+  const stream = { isTTY: true, columns: 48, write: (s: string) => void (output += s) }
+  const book = openLogbook({ screen: screenOn(stream, { env: { NO_COLOR: "1" } }), guest: true })
+  for (const columns of [48, 180]) {
+    stream.columns = columns
+    output = ""
+    const request: Event = {
+      kind: "exchange",
+      phase: "lookup",
+      model: "d",
+      attempt: 1,
+      exchange: { kind: "request", url: "https://example.test", body },
+    }
+    await run(book.turn(3, card, () => {})({ kind: "act", input: { text: "当然可以了" } }, Stream.make(request)))
+    const rows = output.split("\n")
+    assert.ok(rows.includes("[input]"))
+    const prose = rows.slice(rows.indexOf("  <scene>") + 1, rows.indexOf("  </scene>"))
+    assert.equal(prose.map((row) => row.slice(2)).join(""), scene)
+    if (columns === 48) assert.ok(prose.length > 1)
+    else assert.equal(prose.length, 1)
+    assert.ok(rows.every((row) => width(row) < columns))
+    assert.ok(output.includes("  <input>\n  当然可以了\n  </input>"))
+    assert.ok(output.includes("判断题 u0\n  提到了吊坠吗？\n  仔细看。"))
+  }
+  const predicate = { name: "u0", type: "predicate", instructions: "read?" }
+  const openai = readRequest(
+    JSON.stringify({
+      input: [{ role: "user", content: [{ type: "input_text", text: state }] }],
+      questions: [predicate],
+    }),
+  )!
+  assert.deepEqual(openai.said, [{ who: "user", texts: [state] }])
+  assert.deepEqual(openai.questions, [{ id: "u0", type: "predicate", texts: ["read?"] }])
+  const typesafe = readRequest(JSON.stringify({ state, questions: { u0: question } }))!
+  assert.deepEqual(typesafe.said, [{ who: "state", texts: [state] }])
+  assert.deepEqual(typesafe.questions, [{ id: "u0", type: "noul", texts: [question.instructions] }])
+}
+
 // ───────── the preview's turns, through the real path, as a pipe gets them and on a terminal ─────────
 for (const columns of [48, 100]) {
   const plain = memoryScreen({ columns })
