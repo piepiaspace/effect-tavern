@@ -1,11 +1,14 @@
-// Terminal layout for the banner, live progress, wait notices, model calls and completed turns. A turn is named by its
-// card's title and the story's (`伴星 · 初遇`), or the card's and the story's number (`伴星 #3`, the number dim). A call
-// shows a head (→ sent, ← back, red when it failed; name, stage and attempt bold; model, target or timing dim), then
-// its content: each speaker's label on its own row (reversed with colour, `[system]` without), the texts under it two
-// cells in, kept exactly as written and wrapped only at the width (`wrapKept`), then the envelope as one dim row of
-// facts. A turn ends on a rule carrying its summary (`── 14:02 ✓ 伴星 #3 ─ 9.2s · 2 次调用 ──`), drawn to the width.
-// Usage is summed across stage calls; heads and facts fit the cells, a prompt, a reply or an upstream error is never
-// clipped. Meaning never rests on colour: without it the same rows, the same glyphs, no escapes.
+// Terminal layout for the banner, live progress, wait notices, model calls and completed turns. Full mode is the
+// Inspector's terminal twin and draws what it draws (client inspector.tsx): a stage by its phase id, a call's state by
+// the Inspector's pills, its numbers by the Inspector's metrics (time `6.20s`, `↑1,600` in, `↓212` out, `↻1,088` cache
+// read or `+N` written when nothing was read, en-US thousands), a cache breakpoint as a hairline in place. A turn is
+// named by its card's title and the story's (`伴星 · 初遇`), or the card's and the story's number (`伴星 #3`, the number
+// dim). A call shows a head (→ sent, ← back, red when it failed; name, stage and attempt bold; model, host or timing
+// dim), then its content: each speaker's label on its own row (reversed with colour, `[system]` without), the texts
+// under it two cells in, kept exactly as written and wrapped only at the width (`wrapKept`), then the envelope as one
+// dim row of facts. A turn ends on a rule carrying its summary (`── 14:02 ✓ 伴星 #3 ─ 9.10s ↑1,620 ↓212 ↻1,100 ──`),
+// drawn to the width. Usage is summed across stage calls; heads and facts fit the cells, a prompt, a reply or an
+// upstream error is never clipped. Meaning never rests on colour: without it the same rows, the same glyphs, no escapes.
 import type { Usage } from "@effect-tavern/provider"
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import type { Action, Event, Phase } from "@effect-tavern/runtime/src/session.ts"
@@ -49,15 +52,10 @@ export const stamp = (t: number, full: boolean): string => {
   const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`
   return full ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${hm}:${pad(d.getSeconds())}` : hm
 }
-export const secs = (ms: number): string => (ms < 100_000 ? `${(ms / 1000).toFixed(1)}s` : `${Math.round(ms / 1000)}s`)
-export const count = (n: number): string =>
-  n < 1000
-    ? String(n)
-    : n < 10_000
-      ? `${(n / 1000).toFixed(1)}k`
-      : n < 1_000_000
-        ? `${Math.round(n / 1000)}k`
-        : `${(n / 1_000_000).toFixed(1)}M`
+/** The Inspector's time and token counts (inspector.tsx `secs`, `fmt`): two decimals under ten seconds, one above;
+ *  whole numbers with en-US thousands. */
+export const secs = (ms: number): string => `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`
+export const fmt = (n: number): string => n.toLocaleString("en-US")
 
 export const sum = (calls: readonly Call[]): Usage =>
   calls.reduce(
@@ -96,14 +94,15 @@ export const named = (
   return a ? `${name} ${a}` : name
 }
 
-/** A rule across the width carrying `head ─ fact · fact`: `── ` before, dashes after to the last cell. When it does not
- *  fit on one row the facts go on under it, three cells in, the last row closed by ` ──`. */
-const rule = (head: string, facts: readonly string[], cells: number, p: Paint): string[] => {
+/** A rule across the width carrying `head ─ state · state · 9.10s ↑1,620 ↓212`: `── ` before, dashes after to the
+ *  last cell. The states part with ` · `, the metrics (from `metric` on) with a space. When it does not fit on one row
+ *  the facts go on under it, three cells in, the last row closed by ` ──`. */
+const rule = (head: string, facts: readonly string[], metric: number, cells: number, p: Paint): string[] => {
   const room = cells - 6
   const rows: string[] = []
   let row = clip(head, room)
   facts.forEach((f, i) => {
-    const sep = i ? " · " : dim(p, " ─ ")
+    const sep = !i ? dim(p, " ─ ") : i > metric ? " " : " · "
     if (width(row + sep + f) <= room) row += sep + f
     else {
       rows.push(row)
@@ -118,34 +117,46 @@ const rule = (head: string, facts: readonly string[], cells: number, p: Paint): 
   )
 }
 
-/** A turn's final summary, a rule that parts it from the next turn. */
+/** The Inspector's pills for a turn (client inspect.ts `digest`), each by its stage: a pre-check (and `转交` when its
+ *  verdict was not a pass), a tool stage over budget, then the turn's end (`narrate 失败`; `已停止` for a stop, which
+ *  before the first character withdraws the turn, after it halts the prose: GLOSSARY `Stop`). */
+const pills = (e: Entry, lang: Lang): string[] => {
+  const w = words[lang]
+  const out: string[] = []
+  for (const c of e.calls) {
+    const o = (c.out ?? {}) as { status?: unknown; verdict?: unknown }
+    if (c.via === "decision") out.push(`${c.phase} ${w.precheck}${o.verdict !== "pass" ? ` ${w.escalate}` : ""}`)
+    else if (o.status === "budget_exhausted") out.push(`${c.phase} ${w.exhausted}`)
+  }
+  if (e.end === "failed") out.push(e.phase ? `${e.phase} ${w.failed}` : w.failed)
+  if (e.end === "stopped" || e.end === "withdrawn") out.push(w.stopped)
+  return out
+}
+
+/** The Inspector's metrics (inspector.tsx `Metrics`): time, ↑ in, ↓ out, and the cache when there is any: ↻ read, or
+ *  + written when nothing was read. */
+export const metrics = (ms: number, u?: Usage): string[] => [
+  secs(ms),
+  ...(u ? [`↑${fmt(u.input)}`, `↓${fmt(u.output)}`] : []),
+  ...(u?.cacheRead ? [`↻${fmt(u.cacheRead)}`] : u?.cacheWrite ? [`+${fmt(u.cacheWrite)}`] : []),
+]
+
+/** A turn's final summary, a rule that parts it from the next turn: its pills, then its metrics. A withdrawn turn is
+ *  marked `-`, a failed one ✗, the rest ✓. */
 export const finished = (e: Entry, cells: number, p: Paint): string[] => {
-  const w = words[p.lang]
   const mark = e.end === "withdrawn" ? "-" : e.end === "failed" ? tint(p, 31, "✗") : tint(p, 32, "✓")
-  const u = sum(e.calls)
-  const result =
-    e.end === "failed"
-      ? w.failed(e.phase && w.stage[e.phase])
-      : e.end === "stopped"
-        ? w.stopped
-        : e.end === "withdrawn"
-          ? w.withdrawn
-          : undefined
+  const states = pills(e, p.lang)
   return rule(
     `${dim(p, stamp(e.at + e.ms, p.full))} ${mark} ${named(p.lang, e.title, e.story, e.action, (s) => dim(p, s))}`,
-    [
-      ...(result ? [result] : []),
-      secs(e.ms),
-      ...(e.calls.length ? [w.calls(e.calls.length), w.usage(count(u.input), count(u.output))] : []),
-      ...(u.cacheRead && u.input ? [w.cache(Math.round((100 * u.cacheRead) / u.input))] : []),
-    ],
+    [...states, ...metrics(e.ms, e.calls.length ? sum(e.calls) : undefined)],
+    states.length,
     cells,
     p,
   )
 }
 
-/** The one live row while a turn runs: 伴星 #3  叙事 6.4s  已写 312 字  共 8.8s. No glyph: the ticking tenths say it is
- *  alive. */
+/** The one live row while a turn runs: 伴星 #3  narrate 6.40s  312 字. No glyph: the ticking time says it is alive;
+ *  the turn's whole time is the summary's. */
 export const liveRow = (
   o: {
     story: Id
@@ -162,14 +173,13 @@ export const liveRow = (
   const w = words[lang]
   const parts = [
     named(lang, o.title, o.story, o.action),
-    ...(o.phase ? [`${w.stage[o.phase]} ${secs(o.stageMs)}`] : []),
-    ...(o.written ? [w.written(o.written)] : []),
-    w.total(secs(o.ms)),
+    ...(o.phase ? [`${o.phase} ${secs(o.stageMs)}`] : []),
+    ...(o.written ? [w.chars(o.written)] : []),
   ]
   return clip(parts.join("  "), cells)
 }
 
-/** A call that has waited a minute, on a terminal with no live row: one line, once. */
+/** A call that has waited a minute, on a terminal with no live row: one line, once (`narrate 等待中 60.00s`). */
 export const waitLine = (
   t: number,
   title: Title,
@@ -181,7 +191,7 @@ export const waitLine = (
   cells: number,
 ) =>
   clip(
-    `${stamp(t, p.full)}   ${named(p.lang, title, story, action)}  ${words[p.lang].waiting(words[p.lang].stage[phase], secs(ms))}`,
+    `${stamp(t, p.full)}   ${named(p.lang, title, story, action)}  ${phase} ${words[p.lang].waiting} ${secs(ms)}`,
     cells,
   )
 
@@ -210,8 +220,14 @@ export const callHead = (
   return [head, ...wrap(tail, cells - 2, { spaces: true }).map((l) => `  ${dim(p, l)}`)]
 }
 
+/** A cache breakpoint as the Inspector's prompt view draws it: a dim hairline under the text that carries it. */
+const hairline = (cells: number, p: Paint) => {
+  const head = `  ╌╌ ${words[p.lang].breakpoint} `
+  return dim(p, head + "╌".repeat(Math.max(2, cells - width(head))))
+}
+
 /** What a body says, speaker by speaker: a blank row, the label on its own row, then each text under it two cells in,
- *  kept as written, a blank row between texts. */
+ *  kept as written, a blank row between texts, a breakpoint's hairline right under the text that carries it. */
 export const spoken = (said: readonly Said[], cells: number, p: Paint): string[] =>
   said.flatMap((s) => [
     "",
@@ -219,23 +235,22 @@ export const spoken = (said: readonly Said[], cells: number, p: Paint): string[]
     ...s.texts.flatMap((t, i) => [
       ...(i ? [""] : []),
       ...wrapKept(terminalText(t), cells - 2).map((l) => (l ? `  ${l}` : "")),
+      ...(s.marks?.includes(i) ? [hairline(cells, p)] : []),
     ]),
   ])
 
-/** The envelope, after the content: one dim row of facts (more when they do not fit), the cache marks before the tools. */
+/** The envelope, after the content: one dim row of facts (more when they do not fit); breakpoints the content does not
+ *  hold (on the tools, say) are counted there. */
 export const envelope = (r: Reading, cells: number, p: Paint): string[] => {
-  const facts = [...r.facts]
-  if (r.cache) {
-    const at = facts.findIndex((f) => f.startsWith("tools: "))
-    facts.splice(at < 0 ? facts.length : at, 0, words[p.lang].marks(r.cache))
-  }
+  const b = words[p.lang].breakpoint
+  const facts = [...r.facts, ...(r.cache ? [r.cache > 1 ? `${b} ×${r.cache}` : b] : [])]
   return facts.length
     ? ["", ...wrap(terminalText(facts.join(" · ")), cells, { spaces: true }).map((l) => dim(p, l))]
     : []
 }
 
-/** A raw text under its label: an upstream error, or the request as it was sent beside a failed call. Verbatim, never
- *  wrapped, so it can be copied whole. */
+/** A raw text under its label (the request as it was sent beside a failed call, under the Inspector's `JSON` tab
+ *  word). Verbatim, never wrapped, so it can be copied whole. */
 export const raw = (label: string, text: string, p: Paint): string[] => ["", tag(p, label), terminalText(text)]
 
 /** The banner: name and version, then address, data, model and how to stop, each label padded to the longest. No model:
@@ -246,7 +261,7 @@ export const banner = (
   cells: number,
   lang: Lang,
 ): string[] => {
-  const b = words[lang].banner
+  const b = words[lang].host.banner
   const labels = [b.address, b.data, b.model, b.stop]
   const span = Math.max(...labels.map(width))
   const at = 2 + span + 2

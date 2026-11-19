@@ -234,7 +234,10 @@ export const openLogbook = (
       ? undefined
       : turnsFile(o.dir, (e) => {
           const code = (e as { code?: unknown } | null)?.code
-          const line = w.fileBroken(tilde(o.dir!), typeof code === "string" ? code : String((e as Error)?.message ?? e))
+          const line = w.host.fileBroken(
+            tilde(o.dir!),
+            typeof code === "string" ? code : String((e as Error)?.message ?? e),
+          )
           if (speaking) say([line])
           else held.push(line)
         })
@@ -279,7 +282,7 @@ export const openLogbook = (
   return {
     host: (fact) =>
       safe(() => {
-        if ("failed" in fact) return sayBlock([w.didNotStart], () => explain(fact.failed, lang), true)
+        if ("failed" in fact) return sayBlock([w.host.didNotStart], () => explain(fact.failed, lang), true)
         speaking = true
         if (!guest) {
           const t = troubleOf({ code: "no-model", message: "" }, lang)
@@ -312,7 +315,7 @@ export const openLogbook = (
           const n = cells(screen)
           const tty = screen.tty ?? screen.live
           const head = (arrow: "→" | "←", facts: string[], status?: string, failed?: boolean) =>
-            callHead({ arrow, title, story, stage: w.stage[phase], attempt, facts, failed, status }, n, p)
+            callHead({ arrow, title, story, stage: phase, attempt, facts, failed, status }, n, p)
           if (x.kind === "request") {
             requests.set(attempt, { url: x.url, ...(x.body !== undefined && { requestBody: x.body }) })
             if (level === "full") {
@@ -345,7 +348,7 @@ export const openLogbook = (
               ...(x.body ? spoken([{ who: "assistant", texts: [x.body] }], n, p) : []),
               ...(x.error !== undefined ? ["", terminalText(x.error)] : []),
               ...(x.error !== undefined && request?.requestBody !== undefined
-                ? raw(w.sent, formattedBody(request.requestBody, tty), p)
+                ? raw(w.json, formattedBody(request.requestBody, tty), p)
                 : []),
             ])
           else if (x.error !== undefined)

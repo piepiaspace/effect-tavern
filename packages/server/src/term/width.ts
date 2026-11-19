@@ -106,8 +106,9 @@ export const wrap = (s: string, cells: number, o: { spaces?: boolean } = {}): st
 
 /** `s` as rows of at most `cells` cells with every character kept: its own newlines, blank lines, indents and runs of
  *  spaces stand, and the rows joined (with the breaks this added taken out) are `s` again. A row breaks only where it
- *  would overflow: after spaces or beside a wide character (`wrap`'s rules for marks), else inside a word. The spaces
- *  at a break hang past the edge, as CSS `pre-wrap`'s do, so no row starts with the space it broke at. */
+ *  would overflow: after spaces or beside a wide character (`wrap`'s rules for marks), else inside a word; never so that
+ *  a row holds only spaces. A row holds no more spaces than fit (a real terminal would wrap the rest onto a row of its
+ *  own): the spaces past the edge start the next row. */
 export const wrapKept = (s: string, cells: number): string[] => {
   const n = Math.max(1, cells)
   // ponytail: a tab counts as 8 cells wherever it stands; exact tab stops if indented tabbed code matters
@@ -121,11 +122,17 @@ export const wrapKept = (s: string, cells: number): string[] => {
     let prev = ""
     for (const c of chars(row)) {
       const w = cellsOf(c)
-      if (c !== " " && prev && (prev === " " || ((wide(c) || wide(prev)) && !CLOSING.has(c) && !OPENING.has(prev)))) {
+      const breaks = prev === " " || ((wide(c) || wide(prev)) && !CLOSING.has(c) && !OPENING.has(prev))
+      if (c !== " " && prev && breaks && line.trim()) {
         cut = line.length
         usedAtCut = used
       }
-      if (c !== " " && used + w > n) {
+      if (c === " " && used + w > n) {
+        out.push(line)
+        line = ""
+        used = 0
+        cut = -1
+      } else if (used + w > n) {
         if (cut > 0) {
           out.push(line.slice(0, cut))
           line = line.slice(cut)

@@ -3,8 +3,8 @@
 // width (48: a phone), `--plain` draws what a pipe or journald gets (no escapes, `[system]` labels, dated summaries);
 // otherwise it is what `tavern start` prints on this terminal. Four turns, each through the logbook itself: an empty
 // card's 「你好」 (narrate, then a settlement with tools, a system prompt holding a code block's blank rows, indents and
-// runs of spaces), a settlement retried with tool history and a block no reading knows (openai-compatible), a 403
-// (gemini) and a stream that broke midway. test/logbook.ts plays the same turns.
+// runs of spaces, under a cache breakpoint), a settlement retried with tool history and a block no reading knows
+// (openai-compatible), a 403 (gemini) after a pre-check that passed the turn on, and a stream that broke midway. test/logbook.ts plays the same turns.
 import { ModelError } from "@effect-tavern/provider"
 import type { Fault } from "@effect-tavern/provider/src/fault.ts"
 import type { Action, Event, Phase } from "@effect-tavern/runtime/src/session.ts"
@@ -160,6 +160,19 @@ export const samples: Sample[] = [
     title: { card: "雾港", story: "第一夜" },
     action: { kind: "act", input: { text: "上岸" } },
     steps: [
+      stage("lookup"),
+      {
+        dt: 300,
+        e: {
+          kind: "call",
+          phase: "lookup",
+          via: "decision",
+          msgs: [],
+          out: { verdict: "escalate", lines: [] },
+          usage: usage(0, 0),
+          ms: 300,
+        },
+      },
       stage("narrate"),
       sent("narrate", "gemini-2.5-flash", 1, GEMINI, {
         systemInstruction: { parts: [{ text: "你是雾港的叙事者。" }] },

@@ -9,6 +9,7 @@ import { Database } from "bun:sqlite"
 import { accessSync, constants, existsSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { announced, holder } from "../announce.ts"
+import { STORY_ROW } from "../data.ts"
 import { titled } from "../logbook/lines.ts"
 import { cells, troubleOf, wrap, width, type Facts, type Lang } from "../term/index.ts"
 import { mb } from "../term/codes.ts"
@@ -111,20 +112,21 @@ export const lastFailure = async (
   return undefined
 }
 
-/** A story as the logbook names its turns (`伴星 · 初遇`, `伴星 #3`), read from the library without writing to it; a
- *  story no longer there (or no library) by its number alone. */
+/** A story as the logbook names its turns (`伴星 · 初遇`, `伴星 #3`), read from the library without writing to it, by
+ *  the row data.ts `stories.get` reads (`STORY_ROW`, shared so a schema change updates both); a story no longer there
+ *  (or no library) by its number alone. */
 export const storyName = (data: string, story: number, lang: Lang): string => {
   const file = join(data, "tavern.db")
   if (existsSync(file))
     try {
       const db = new Database(file, { readonly: true })
       try {
-        const r = db
-          .query(
-            "select s.title, coalesce(c.title, s.card) as card from story s left join card c on c.id = s.card where s.id = ?",
-          )
-          .get(story) as { title: string | null; card: string } | null
-        if (r) return terminalText(titled({ card: r.card, story: r.title }, story))
+        const r = db.query(STORY_ROW).get(story) as {
+          title: string | null
+          card: string
+          cardTitle: string | null
+        } | null
+        if (r) return terminalText(titled({ card: r.cardTitle ?? r.card, story: r.title }, story))
       } finally {
         db.close()
       }

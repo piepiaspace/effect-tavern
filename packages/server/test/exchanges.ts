@@ -96,16 +96,15 @@ try {
   assert.ok(output.includes(denied), "unfamiliar gateway error survives in full")
   // beside each failed call, the request as the gateway received it, raw
   assert.equal(output.filter((l) => l === received).length, 2)
-  assert.equal(output[output.indexOf(received) - 1], "[发出的请求原文]")
+  assert.equal(output[output.indexOf(received) - 1], "[JSON]")
   const at = (re: RegExp) => output.findIndex((l) => re.test(l))
   const head = (story: number, attempt: number, rest: string) =>
-    new RegExp(`^${rest} .* #${story} · 叙事 · #${attempt}`)
+    new RegExp(`^${rest} .* #${story} · narrate · #${attempt}`)
   assert.ok(at(head(fast, 1, "→")) >= 0)
   assert.match(output[at(head(fast, 1, "←"))]!, /HTTP 200/)
-  assert.deepEqual(output.slice(at(head(fast, 1, "←")) + 2, at(head(fast, 1, "←")) + 4), [
-    "[assistant]",
-    "  The other story",
-  ])
+  const reply1 = output.indexOf("[assistant]", at(head(fast, 1, "←")))
+  assert.ok(reply1 - at(head(fast, 1, "←")) <= 3)
+  assert.equal(output[reply1 + 1], "  The other story")
   assert.match(output[at(head(slow, 1, "←"))]!, /HTTP 503/)
   // the error just under its head (and the head's facts, when they took a row of their own)
   const under = (line: string, re: RegExp) => {

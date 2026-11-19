@@ -26,14 +26,26 @@ import { words } from "../src/logbook/words.ts"
 import { memoryScreen, width, wrapKept, type Lang, type Screen } from "../src/term/index.ts"
 
 // ───────── the words: the client's own ─────────
+// Every word the logbook says is the client's (its locales, with i18n.ts's `{n|one|other}` holes), key by key; only the
+// host's own lines (the banner, a start that failed, a log file that cannot be written) are the logbook's.
+const say = (template: string, n: number, lang: Lang) =>
+  template.replace(/\{n(?:\|([^|{}]*)\|([^|{}]*))?\}/g, (_, one?: string, other?: string) =>
+    one === undefined ? String(n) : `${n} ${new Intl.PluralRules(lang).select(n) === "one" ? one : other}`,
+  )
 for (const [lang, client] of [
   ["zh", clientZh],
   ["en", clientEn],
 ] as const) {
   const w = words[lang]
-  const stage = client.settings as Record<string, string>
-  for (const p of ["lookup", "decide", "direct", "narrate", "check", "polish", "record"] as const)
-    assert.equal(w.stage[p], stage[`stage${p[0]!.toUpperCase()}${p.slice(1)}`], `${lang} ${p}`)
+  assert.deepEqual(Object.keys(w.action).sort(), [
+    "demand",
+    "edit",
+    "greet",
+    "retryRecord",
+    "reword",
+    "skipRecord",
+    "swipe",
+  ])
   assert.equal(w.action.swipe, client.common.swipe)
   assert.equal(w.action.reword, client.common.reword)
   assert.equal(w.action.edit, client.common.edit)
@@ -41,8 +53,21 @@ for (const [lang, client] of [
   assert.equal(w.action.demand, client.readings.aside)
   assert.equal(w.action.greet, client.card.begin)
   assert.equal(w.action.skipRecord, client.readings.skipRecord)
-  assert.equal(w.stopped, client.common.stopped)
-  assert.equal(w.precheck, client.inspector.precheck)
+  const checked = {
+    precheck: client.inspector.precheck,
+    escalate: client.inspector.escalate,
+    exhausted: client.inspector.exhausted,
+    failed: client.inspector.failed,
+    stopped: client.common.stopped,
+    breakpoint: client.inspector.breakpoint,
+    json: client.inspector.json,
+    waiting: client.app.waiting,
+    noResponse: client.app.noResponse,
+  }
+  for (const [k, v] of Object.entries(checked)) assert.equal(w[k as keyof typeof checked], v, `${lang} ${k}`)
+  for (const n of [1, 312]) assert.equal(w.chars(n), say(client.common.chars, n, lang))
+  // nothing else: a new word must be added here, against the client's
+  assert.deepEqual(Object.keys(w).sort(), ["action", "chars", "host", ...Object.keys(checked)].sort())
 }
 
 // ───────── scripted streams ─────────
@@ -339,7 +364,7 @@ const golden = async (columns: number, lang: Lang, level: "quiet" | "turn" | "fu
 for (const columns of [48, 100]) {
   for (const lang of ["zh", "en"] as const) {
     const lines = await golden(columns, lang)
-    assert.ok(lines.some((l) => l.includes(lang === "zh" ? "缓存82%" : "cache 82%")))
+    assert.ok(lines.some((l) => l.includes("↑10,200 ↓1,042 ↻8,400")))
     assert.ok(lines.includes(refused.responseBody))
     for (const l of lines.filter((l) => l !== refused.responseBody)) assert.ok(width(l) <= columns - 1, l)
     const quiet = await golden(columns, lang, "quiet")
@@ -409,17 +434,17 @@ for (const columns of [48, 100]) {
       ),
     ),
   )
-  // mid-turn the last row is the live one: the stage, its seconds, what has been written, the total
-  assert.equal(mid, "伴星 #3  叙事 0.3s  已写 29 字  共 1.5s")
+  // mid-turn the last row is the live one: the stage by its phase id, its seconds, what has been written
+  assert.equal(mid, "伴星 #3  narrate 0.30s  29 字")
   const rows = screen.shown()
   // the permanent rule replaces it, its dashes, the time of day and the story's number dim, the mark green (on a TTY: no
   // date); at 48 columns the facts run on under it; no live row stays
   assert.equal(
     rows.at(-2),
-    "\x1b[2m──\x1b[22m \x1b[2m14:02\x1b[22m \x1b[32m✓\x1b[39m 伴星 \x1b[2m#3\x1b[22m\x1b[2m ─ \x1b[22m10.9s · 4 次调用",
+    "\x1b[2m──\x1b[22m \x1b[2m14:02\x1b[22m \x1b[32m✓\x1b[39m 伴星 \x1b[2m#3\x1b[22m\x1b[2m ─ \x1b[22m10.9s ↑10,200 ↓1,042",
   )
   assert.ok(screen.raw().includes("\r\x1b[K"))
-  assert.equal(rows.at(-1), "   入10k 出1.0k · 缓存82% \x1b[2m──\x1b[22m")
+  assert.equal(rows.at(-1), "   ↻8,400 \x1b[2m──\x1b[22m")
   assert.equal(rows.at(-3), "")
 }
 
@@ -496,7 +521,7 @@ rmSync(dir, { recursive: true, force: true })
       {
         role: "user",
         content: [
-          { type: "text", text: "你好" },
+          { type: "text", text: "你好", cache_control: { type: "ephemeral" } },
           { type: "mystery", x: 1 },
           { type: "text", text: "再见" },
         ],
@@ -513,8 +538,9 @@ rmSync(dir, { recursive: true, force: true })
   }
   const a = readRequest(JSON.stringify(anthropic))!
   assert.deepEqual(a.said, [
-    { who: "system", texts: [system] },
-    { who: "user", texts: ["你好", JSON.stringify({ type: "mystery", x: 1 }), "再见"] },
+    // a breakpoint after the text that carries it, in place
+    { who: "system", texts: [system], marks: [0] },
+    { who: "user", texts: ["你好", JSON.stringify({ type: "mystery", x: 1 }), "再见"], marks: [0] },
     { who: "assistant", texts: ['finish_record {"notes":""}'] },
     { who: "finish_record", texts: ["ok"] },
   ])
@@ -524,7 +550,7 @@ rmSync(dir, { recursive: true, force: true })
     'tool_choice {"type":"any"}',
     "stream",
   ])
-  assert.equal(a.cache, 1)
+  assert.equal(a.cache, 0)
   const openai = {
     model: "m",
     messages: [
@@ -583,7 +609,7 @@ for (const columns of [48, 100]) {
   await play(plain)
   const rows = plain.shown()
   // the raw texts are verbatim, unwrapped: an upstream error, the request as sent beside a failed call
-  const raws = new Set(rows.filter((r, i) => rows[i - 1] === "[发出的请求原文]" || r.startsWith('{"error"')))
+  const raws = new Set(rows.filter((r, i) => rows[i - 1] === "[JSON]" || r.startsWith('{"error"')))
   assert.equal(raws.size, 3)
   assert.ok(rows.includes("ECONNRESET socket hang up"))
   for (const r of rows) if (!raws.has(r)) assert.ok(width(r.trimEnd()) <= columns - 1, r)
@@ -592,13 +618,21 @@ for (const columns of [48, 100]) {
   // the system prompt's blank rows, indents and runs of spaces come back exactly
   const kept = shaped.split("\n").map((l) => (l ? `  ${l}` : ""))
   assert.ok(rows.some((_, i) => kept.every((k, j) => rows[i + j] === k)))
+  // the breakpoint's hairline right under the text that carries it
+  assert.match(
+    rows[rows.findIndex((_, i) => kept.every((k, j) => rows[i + j] === k)) + kept.length]!,
+    /^ {2}╌╌ 断点 ╌+$/,
+  )
+  // the Inspector's pills and metrics: a pre-check passed on, a failed stage by its phase id, whole numbers
+  assert.ok(rows.some((r) => r.includes("lookup 预检 转交 · narrate 失败")))
+  assert.ok(rows.join("\n").includes("↑1,620"))
   // the block no reading knows, in its place between the two texts
   const at = rows.indexOf("  我在竹林边停下。")
   const block = wrapKept(JSON.stringify(unknownBlock), columns - 3).map((l) => `  ${l}`)
   assert.deepEqual(rows.slice(at + 2, at + 2 + block.length), block)
   assert.equal(rows[at + 3 + block.length], "  （远处有箫声）")
   // the turn's name: card and story titles, or the card and the story's number
-  assert.ok(rows.some((r) => r.startsWith("→ 理 · 竹林夜谈 · 结算 · #1")))
+  assert.ok(rows.some((r) => r.startsWith("→ 理 · 竹林夜谈 · record · #1")))
   assert.ok(rows.some((r) => r.startsWith("── ") && r.includes("✓ 伴星 #3 ─ ")))
   const tty = memoryScreen({ columns, color: true, live: true })
   await play(tty)

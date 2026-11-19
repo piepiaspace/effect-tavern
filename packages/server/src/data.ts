@@ -70,6 +70,11 @@ create index if not exists call_node on call (story, node);
  *  request (the wire strips it for a player client, serve.ts `shown`), so an unbounded trace would grow the library by a fold budget per turn. */
 export const traced = 200
 /** Columns added to a table after libraries were made with it, applied once to an unversioned library when the table lacks it. */
+/** One story's own columns and its card's title (`stories.get`); `tavern doctor` reads the same row from a library it
+ *  opens read-only (cli/doctor.ts `storyName`), so a schema change here reaches both. */
+export const STORY_ROW =
+  "select s.id, s.card, s.persona, s.yields, s.title, c.title as cardTitle from story s left join card c on c.id = s.card where s.id = ?"
+
 const migrations: readonly { table: string; column: string; add: string }[] = [
   { table: "story", column: "starred", add: "alter table story add column starred integer not null default 0" },
   // the card's pick (the old player row's `persona[card]`) as it stood copied in, so a running story keeps its persona on
@@ -603,9 +608,7 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
       ):
         | { id: Id; card: string; persona: string | null; yields: boolean; title: string | null; cardTitle: string }
         | undefined => {
-        const r = q(
-          "select s.id, s.card, s.persona, s.yields, s.title, c.title as cardTitle from story s left join card c on c.id = s.card where s.id = ?",
-        ).get(id) as Row | null
+        const r = q(STORY_ROW).get(id) as Row | null
         if (!r) return undefined
         return {
           id: r["id"] as Id,

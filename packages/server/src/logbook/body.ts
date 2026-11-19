@@ -1,21 +1,23 @@
 // A model request's body as a person checks it: the content (each system text, each message's text, each tool call's
-// name and arguments, each tool result) word for word, in order, under who says it, apart from the envelope (the limits,
-// stream, cache marks, tool schemas, tool_choice and every other field), which is folded into short facts. One reading
+// name and arguments, each tool result) word for word, in order, under who says it, each cache breakpoint
+// (`cache_control`) marked after the text that carries it, apart from the envelope (the limits, stream, tool schemas,
+// tool_choice and every other field), which is folded into short facts. One reading
 // per body the drivers send (anthropic, openai-compatible, gemini), told apart by shape. A block or a message field a
 // reading does not know stays in its place as its JSON; a body none of them knows (not JSON, another shape) reads as
 // undefined, for the caller to print as it came. The model is the call head's, so it is not repeated here.
 
 /** One speaker's turn in the body: a role (`system`, `user`, `assistant`, gemini's `model`) or a tool's name for its
- *  result, and its texts, each exactly as in the body. */
+ *  result, and its texts, each exactly as in the body; `marks`, the texts a cache breakpoint follows (by index). */
 export interface Said {
   who: string
   texts: string[]
+  marks?: number[]
 }
 export interface Reading {
   said: Said[]
   /** The envelope: `max_tokens 16384`, `stream`, `tools: a, b`, a field and its short JSON, or a field's name alone. */
   facts: string[]
-  /** How many `cache_control` marks the body carries. */
+  /** The `cache_control` marks the content does not place (on the tools, say). */
   cache: number
 }
 
@@ -59,6 +61,7 @@ const toolNames = (tools: unknown) =>
 const reading = (body: J, content: readonly string[]) => {
   const said: Said[] = []
   let fresh = true
+  let placed = 0
   const facts = Object.entries(body)
     .filter(([k]) => k !== "model" && !content.includes(k))
     .flatMap(([k, v]) =>
@@ -76,7 +79,14 @@ const reading = (body: J, content: readonly string[]) => {
       fresh = false
     },
     open: () => void (fresh = true),
-    done: (): Reading => ({ said, facts, cache: marks(body) }),
+    /** A breakpoint after the last text put, when `v` carries one. */
+    mark: (v: unknown) => {
+      const last = said.at(-1)
+      if (!isObj(v) || v["cache_control"] === undefined || !last) return
+      ;(last.marks ??= []).push(last.texts.length - 1)
+      placed++
+    },
+    done: (): Reading => ({ said, facts, cache: marks(body) - placed }),
   }
 }
 type R = ReturnType<typeof reading>
@@ -101,8 +111,11 @@ const anthropic = (b: J): Reading => {
       } else if (isObj(c) && c["type"] === "tool_result") {
         r.open()
         blocks(names.get(c["tool_use_id"]) ?? "tool", c["content"] ?? "")
+        r.mark(c)
         r.open()
+        continue
       } else r.put(who, json(c))
+      r.mark(c)
     }
   }
   if (b["system"] !== undefined) blocks("system", b["system"])
@@ -111,7 +124,8 @@ const anthropic = (b: J): Reading => {
     if (!isObj(m) || !str(m["role"])) r.put("?", json(m))
     else {
       blocks(m["role"], m["content"])
-      rest(r, m["role"], m, ["role", "content"])
+      rest(r, m["role"], m, ["role", "content", "cache_control"])
+      r.mark(m)
     }
   }
   return r.done()
@@ -130,7 +144,10 @@ const openai = (b: J): Reading => {
     const content = m["content"]
     if (str(content)) r.put(who, content)
     else if (Array.isArray(content))
-      for (const c of content) r.put(who, isObj(c) && c["type"] === "text" && str(c["text"]) ? c["text"] : json(c))
+      for (const c of content) {
+        r.put(who, isObj(c) && c["type"] === "text" && str(c["text"]) ? c["text"] : json(c))
+        r.mark(c)
+      }
     else if (content != null) r.put(who, json(content))
     for (const t of Array.isArray(m["tool_calls"]) ? m["tool_calls"] : []) {
       const f = isObj(t) && isObj(t["function"]) ? t["function"] : undefined
@@ -141,7 +158,8 @@ const openai = (b: J): Reading => {
     }
     if (m["tool_calls"] !== undefined && !Array.isArray(m["tool_calls"]))
       r.put(who, json({ tool_calls: m["tool_calls"] }))
-    rest(r, who, m, ["role", "content", "tool_calls", "tool_call_id"])
+    rest(r, who, m, ["role", "content", "tool_calls", "tool_call_id", "cache_control"])
+    r.mark(m)
   }
   return r.done()
 }
