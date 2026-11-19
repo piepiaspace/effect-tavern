@@ -1,7 +1,4 @@
-// Any failure as a person reads it: what happened, the likely cause, the one next step, and one line of raw facts to
-// send whoever helps. The server's own failures are known by their `code` (read off the error, not its class, so a
-// module Vite evaluated twice still counts); everything else goes through the provider's `diagnose`.
-import { diagnose } from "@effect-tavern/provider/src/fault.ts"
+import { readFault, mask } from "@effect-tavern/provider/src/fault.ts"
 import { Cause } from "effect"
 import { isServerCode, type Code, type Facts, type Table } from "./codes.ts"
 import { en } from "./words/en.ts"
@@ -22,7 +19,8 @@ export interface Trouble {
   next?: string[]
   /** What was left as it was. */
   kept?: string
-  /** One dim line of raw facts: "HTTP 401 authentication_error api.anthropic.com". */
+  /** Gateway payload or internal stack, preserved across line breaks. */
+  raw?: string
   facts?: string
 }
 
@@ -30,11 +28,12 @@ type Obj = Record<string, unknown>
 const isObj = (x: unknown): x is Obj => typeof x === "object" && x !== null
 const num = (x: unknown) => (typeof x === "number" && Number.isFinite(x) ? x : undefined)
 
-/** The facts of a failure: the server's own by its code, a busy port by its errno, the rest diagnosed. */
+/** The facts of a failure: the server's own by its code, a busy port by its errno, the rest by their source. */
 export const factsOf = (error: unknown): Facts => {
   const e = Cause.isCause(error) ? Cause.squash(error) : error
   if (isObj(e)) {
     const message = typeof e.message === "string" ? e.message : ""
+    if (e._tag === "Rejected") return { code: "rejected", message: mask(message) }
     if (e.code === "EADDRINUSE") {
       const port = num(e.port) ?? Number(/\bport (\d+)/i.exec(message)?.[1] ?? /:(\d+)\s*$/.exec(message)?.[1] ?? NaN)
       return {
@@ -69,7 +68,7 @@ export const factsOf = (error: unknown): Facts => {
         ...(isObj(e.cause) && typeof e.cause.code === "string" && { errno: e.cause.code }),
       }
   }
-  return diagnose(e)
+  return readFault(e)
 }
 
 /** The raw facts as one line: what the provider answered, or the server failure's own detail. */
@@ -148,7 +147,6 @@ const factLine = (f: Facts, lang: Lang): string | undefined => {
       }
       parts.push(
         f.status !== undefined ? `HTTP ${f.status}` : undefined,
-        f.type,
         f.errno,
         f.host,
         f.model,
@@ -157,7 +155,6 @@ const factLine = (f: Facts, lang: Lang): string | undefined => {
             ? `试了${f.attempts}次`
             : `tries=${f.attempts}`
           : undefined,
-        f.retryAfter !== undefined ? `retry-after=${f.retryAfter}s` : undefined,
         f.requestId,
       )
   }
@@ -167,7 +164,16 @@ const factLine = (f: Facts, lang: Lang): string | undefined => {
 
 /** A failure's facts in the player's language. */
 export const troubleOf = (f: Facts, lang: Lang): Trouble => {
-  const w = words[lang][f.code](f)
+  if (f.code === "rejected") return { code: f.code, what: f.message }
+  if (f.code === "internal")
+    return { code: f.code, what: lang === "zh" ? "酒馆内部错误" : "Internal error", raw: f.stack || f.message }
+  const table = words[lang]
+  if (!Object.hasOwn(table, f.code)) {
+    // Older log files can carry a provider-specific code.
+    const what = f.status !== undefined ? `HTTP ${f.status}` : lang === "zh" ? "未收到响应" : "No response received"
+    return { code: f.code, what, raw: f.body || f.message, facts: factLine({ ...f, status: undefined }, lang) }
+  }
+  const w = table[f.code as keyof Table](f)
   const facts = factLine(f, lang)
   return {
     code: f.code,

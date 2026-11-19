@@ -30,10 +30,6 @@ import {
   connection,
   ConnectionError,
   decisionUrl,
-  diagnose,
-  facts,
-  type FaultCode,
-  type WireFacts,
   probeDecision,
   type CompileOptions,
   type DecisionConfig,
@@ -76,8 +72,9 @@ import {
   type Session,
   type Turn as Logged,
 } from "@effect-tavern/runtime/src/session.ts"
-import { Cause, Effect, Stream } from "effect"
-import type { TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
+import { Effect, Stream } from "effect"
+import { factsOf, type Code } from "./term/index.ts"
+import type { Failure, TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
 import type { Data } from "./data.ts"
 import { depots } from "./depot.ts"
 import { openLogbook, type Logbook } from "./logbook.ts"
@@ -87,9 +84,7 @@ import { readHttps } from "./remote.ts"
 import { shelf } from "./shelf.ts"
 import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
 
-/** A failed turn on the wire: the thrower's message as it came (the CLI's and the logs'), and the code a client words
- *  it by (provider fault.ts `diagnose`, or `no-model`), with the facts those words read. Never the response body. */
-export type PublicError = { kind: "error"; message: string; code: FaultCode | "no-model"; phase: Phase } & WireFacts
+export type PublicError = Failure & { kind: "error"; code: Code; phase: Phase }
 export type PublicEvent = TimelineEvent | PublicError
 
 /** The model test asks for this many output tokens: the least a gateway accepts (CommandCode refuses `max_tokens` under
@@ -118,7 +113,7 @@ export const library = ({
 }: {
   data: Data
   overlay?: Layer // the harness overlay until one is stored
-  model?: (phase: Phase) => Model
+  model?: (phase: Phase, onExchange?: CompileOptions["onExchange"]) => Model
   pinned?: boolean
   fetch?: typeof globalThis.fetch // what a card library is read over (depot.ts); a test's own
   logbook?: Logbook
@@ -145,18 +140,18 @@ export const library = ({
   const decision = (): DecisionConfig | undefined => data.decision.read() as DecisionConfig | undefined
   const decisionKey = (c: DecisionConfig) => data.secrets.list().find((s) => s.id === c.secret)
   /** A pair as the session runs it: the flattened connection, bound. */
-  const resolve = (pair: Pair): Model => {
+  const resolve = (pair: Pair, onExchange?: CompileOptions["onExchange"]): Model => {
     const p = providerOf(pair.provider)
     const m = p.models.find((x) => x.id === pair.model)
     if (!m) throw new ConnectionError("provider-no-model", `provider "${p.name}": no model ${pair.model}`)
-    return bind(connection(p, m, secretOf(p)))
+    return bind(connection(p, m, secretOf(p)), { onExchange })
   }
-  const model = (phase: Phase | "author"): Model => {
+  const model = (phase: Phase | "author", onExchange?: CompileOptions["onExchange"]): Model => {
     const r = pinned ? {} : routing()
     const pair = r.stages?.[phase] ?? r.default
-    if (pair) return resolve(pair)
+    if (pair) return resolve(pair, onExchange)
     if (!env) throw new NoModel()
-    return env(phase === "author" ? "record" : phase)
+    return env(phase === "author" ? "record" : phase, onExchange)
   }
   /** The fold policy off the narrate pair's model entry (the one stage that reads the unfolded tail), never throwing:
    *  `GET /nodes` folds before any model is needed, on a fresh install too. No pair, no entry, or pinned → 8000. */
@@ -297,9 +292,9 @@ export const library = ({
       model,
       // check's fast pass (#171): the saved decision model while it is switched on; what it lacks throws on the turn's
       // fast pass, which records it and falls back to the LLM check
-      decision: () => {
+      decision: (onExchange) => {
         const c = decision()
-        return c?.enabled ? compileDecision(c, decisionKey(c)) : undefined
+        return c?.enabled ? compileDecision(c, decisionKey(c), { onExchange }) : undefined
       },
       store,
       hat,
@@ -312,19 +307,20 @@ export const library = ({
   }
   const session = (id: Id): Session => open(id).session
   // Capture the session which produced the stream, even when its card is replaced before consumption.
-  const events = (s: Session, stream: Stream.Stream<Out>): Stream.Stream<PublicEvent> =>
+  const events = (story: Id, s: Session, stream: Stream.Stream<Out>): Stream.Stream<PublicEvent> =>
     stream.pipe(
-      Stream.filter((e) => e.kind !== "call"),
+      Stream.filter((e) => e.kind !== "call" && e.kind !== "exchange"),
       Stream.map((e): PublicEvent => {
         if (e.kind === "error") {
-          const error = Cause.squash(e.cause)
-          const fault = diagnose(error) // a ConnectionError keeps its code
+          const f = factsOf(e.cause)
+          const event = { kind: "error" as const, phase: e.phase, code: f.code }
+          if (f.code === "internal") return { ...event, message: "", story, at: e.at }
           return {
-            kind: "error",
-            phase: e.phase,
-            message: error instanceof Error ? error.message : String(error),
-            code: error instanceof NoModel ? error.code : fault.code,
-            ...facts(fault),
+            ...event,
+            message: f.message,
+            ...(f.status !== undefined && { status: f.status }),
+            ...(f.body !== undefined && { body: f.body }),
+            ...(f.requestId && { requestId: f.requestId }),
           }
         }
         if (e.kind !== "change") return e
@@ -355,14 +351,14 @@ export const library = ({
     turn: (id: Id): Turn => open(id).turn,
     submit: (id: Id, action: unknown) => {
       const { session, turn } = open(id)
-      return events(session, turn.start(action))
+      return events(id, session, turn.start(action))
     },
     attach: (id: Id) => {
       const had = sessions.get(id)
       const { session, turn } = had ?? open(id)
       const at = turn.attach()
       if (had?.stale && had.turn.busy === null) sessions.delete(id)
-      return at && { ...at, events: events(session, at.events) }
+      return at && { ...at, events: events(id, session, at.events) }
     },
     stop: (id: Id) => open(id).turn.stop(),
     drop: (id: Id, node: Id) => open(id).turn.drop(node),
@@ -376,8 +372,10 @@ export const library = ({
           if (inspect) return c
           // a fast pass's verdict is no one's text: it stays, so the row reads pass / escalate without the bodies
           const verdict = c.via === "decision" ? (c.out as { verdict?: unknown } | undefined)?.verdict : undefined
-          // a failed call keeps its fault's facts and the thrower's sentence, never the response body
-          const fault = c.fault && { ...c.fault, body: undefined }
+          const fault =
+            c.fault?.code === "internal"
+              ? { code: c.fault.code, message: `story ${id} · node ${node}` }
+              : c.fault && { ...c.fault, body: undefined }
           return { ...c, msgs: [], out: verdict === undefined ? undefined : { verdict }, ...(fault && { fault }) }
         })
     },

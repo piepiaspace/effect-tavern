@@ -1,6 +1,6 @@
 // Every failure the terminal words, by code: a model call's (provider fault.ts) and the server's own. Each language's
 // table (words/) is typed `Table`, so a code without words in either does not compile.
-import { connectionCodes, faultCodes, type Fault, type FaultCode } from "@effect-tavern/provider/src/fault.ts"
+import { connectionCodes, type Fault, type FaultCode } from "@effect-tavern/provider/src/fault.ts"
 import type { Refused } from "../shelf.ts"
 
 export type ServerCode =
@@ -61,10 +61,9 @@ const SERVER: Record<ServerCode, true> = {
 export const isServerCode = (code: unknown): code is ServerCode =>
   typeof code === "string" && Object.hasOwn(SERVER, code)
 
-export type Code = FaultCode | ServerCode
-export const codes: readonly Code[] = [
-  ...faultCodes,
-  ...(Object.keys(connectionCodes) as FaultCode[]),
+export type Code = FaultCode | ServerCode | "rejected"
+export const codes = [
+  ...(Object.keys(connectionCodes) as (keyof typeof connectionCodes)[]),
   ...(Object.keys(SERVER) as ServerCode[]),
 ]
 
@@ -100,7 +99,7 @@ export interface Words {
   /** What was left as it was: "the old version is still there, unchanged". */
   kept?: string
 }
-export type Table = Record<Code, (f: Facts) => Words>
+export type Table = Record<(typeof codes)[number], (f: Facts) => Words>
 
 /** The gate's refusal (`error <rule> <path>: <message>` a line, shelf.ts) as `path  message` lines. */
 export const gateLines = (message: string): string[] => {
@@ -120,9 +119,3 @@ export const gateLines = (message: string): string[] => {
 
 /** Bytes as whole megabytes, rounded up: what a person compares with their phone's storage page. */
 export const mb = (bytes: number) => `${Math.max(1, Math.ceil(bytes / 1024 / 1024))} MB`
-
-/** The thrower's first sentence, for the codes whose words carry it (a request refused, a failure never seen). */
-export const sentence = (message: string): string | undefined => {
-  const m = /^(.+?[.!?。！？])(\s|$)/.exec(message.trim())
-  return (m?.[1] ?? message.trim()) || undefined
-}

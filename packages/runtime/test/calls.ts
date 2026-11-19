@@ -1,5 +1,5 @@
 // Every call a stage makes is reported by exactly one `call` event, landed or failed: a failed one carries the fault
-// (provider fault.ts `diagnose`) and the model's id, and comes before the stream fails. One turn on the self-check card
+// (provider fault.ts `readFault`) and the model's id, and comes before the stream fails. One turn on the self-check card
 // with a director and a lexicon (every stage but direct goes out: nothing is open), then the same turn failing at each stage in turn, and a demand.
 import assert from "node:assert/strict"
 import { fake } from "@effect-tavern/provider"
@@ -84,7 +84,7 @@ for (const [phase, demand] of [
   assert.equal(failed.length, 1, label)
   const [c] = failed
   assert.equal(c!.phase, phase, label)
-  assert.equal(c!.fault!.code, phase === "decide" ? "bad-answer" : "key-refused", label)
+  assert.equal(c!.fault!.code, phase === "decide" ? "internal" : "upstream", label)
   assert.equal(c!.model, "mock-model-id", label)
   // nothing of the failed stage runs after its call; record's settlement marks its node failed on the way out
   const after = events.slice(events.indexOf(c!) + 1)

@@ -1,37 +1,13 @@
-// The logbook: the running server's account of its turns and their calls, on the terminal and in `<data>/log/turns.jsonl`
-// (GLOSSARY `logbook (server)`). A caller learns `openLogbook`, `host` and `turn` and nothing else: what is drawn, in
-// which words and colours, at which level, and where it goes are decided here (logbook/).
-//
-// Unit: the turn. `turn(story, file)` wraps one action's event stream, unchanged (the same events in the same order,
-// the same failure or interruption; nothing here can fail or delay it), and files the action's calls under its node
-// (`file`) as they come: at each node that lands or is amended, and the rest at the end under the last node, or under
-// the node a `retryRecord` or `demand` names. Every action that starts ends as one entry, landed, stopped, withdrawn or
-// failed; an entry is kept (a line in the file, a line or a block on the terminal) when the action made a model call or
-// did not land: a checkout, a save or a field set is not a turn.
-//
-// Terminal, nothing before `host({url})` (so `tavern play` and the tests print nothing): the banner, then per level
-// `quiet` (failures only), `turn` (one permanent line per turn, and on a TTY one live row rewritten in place while a turn
-// runs), `detail` (one row per call and its request as an outline of roles and sizes). A failure is the step-1 block
-// (term `troubleOf` + `block`) under a head naming the stage. Not a TTY: the same permanent lines with the full date, no
-// live row, and a call that has waited a minute says so once. A guest on someone else's terminal (Vite's): finished
-// lines and failures only, no banner, speaking from the start. No story text without `inspect`.
+// Observe HTTP exchanges as they happen. File turn summaries and failed requests separately from Inspector calls.
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import type { Action, Event, Events, Phase } from "@effect-tavern/runtime/src/session.ts"
 import { Cause, Effect, Exit, Stream } from "effect"
+import { join } from "node:path"
 import { homedir } from "node:os"
-import {
-  callRows,
-  failedHead,
-  finished,
-  liveRow,
-  sum,
-  waitLine,
-  banner,
-  type Call,
-  type Entry,
-} from "./logbook/lines.ts"
+import { secs, finished, liveRow, sum, waitLine, banner, type Call, type Entry } from "./logbook/lines.ts"
 import { turnsFile } from "./logbook/file.ts"
 import { words } from "./logbook/words.ts"
+import { terminalText } from "./term/screen.ts"
 import {
   block,
   cells,
@@ -47,8 +23,8 @@ import {
 
 const isRejected = (e: unknown) => typeof e === "object" && e !== null && (e as { _tag?: unknown })._tag === "Rejected"
 
-export type Level = "quiet" | "turn" | "detail"
-export const levels: readonly Level[] = ["quiet", "turn", "detail"]
+export type Level = "full" | "turn" | "quiet"
+export const levels: readonly Level[] = ["full", "turn", "quiet"]
 
 export interface Logbook {
   /** The server is up (the banner; from here on the logbook speaks), or it could not start (the failure's block). */
@@ -80,13 +56,56 @@ interface Run {
   waited: boolean
 }
 
+interface FailedAttempt {
+  phase: Phase
+  model: string
+  attempt: number
+  url: string
+  requestBody?: string
+  status?: number
+  ms: number
+  requestId?: string
+  body?: string
+  error: string
+}
+
+/** A summary points to the failed exchange that owns its raw body. A failure without a matching
+ * exchange (including an internal fault after a recovered attempt) keeps its own facts. */
+const filedFault = (fault: Facts, phase: Phase | undefined, attempts: readonly FailedAttempt[]) => {
+  if (fault.code === "upstream") {
+    const match = attempts.findLast(
+      (a) =>
+        a.phase === phase &&
+        a.status === fault.status &&
+        a.error === (fault.body ?? fault.message) &&
+        (!fault.model || a.model === fault.model) &&
+        (!fault.requestId || a.requestId === fault.requestId),
+    )
+    if (match) return { code: fault.code, status: fault.status, attempt: match.attempt }
+  }
+  return fault
+}
+
+const formattedBody = (body: string, tty: boolean) => {
+  if (tty) {
+    try {
+      const pretty = JSON.stringify(JSON.parse(body), null, 2)
+      // Re-serializing can round integers or drop duplicate fields. Keep those requests verbatim.
+      const tokens = (s: string) => s.replace(/"(?:\\.|[^"\\])*"|\s+/g, (token) => (token.startsWith('"') ? token : ""))
+      return tokens(pretty) === tokens(body) ? pretty : body
+    } catch {
+      // A non-JSON request is shown verbatim.
+    }
+  }
+  return body
+}
+
 export const openLogbook = (
   o: {
     /** `<data>/log`; absent: no file. */
     dir?: string
-    /** TAVERN_LOG / tavern start --log; default "turn". */
+    /** TAVERN_LOG / tavern start --log; default "full". */
     level?: Level
-    inspect?: boolean
     /** Someone else owns the terminal (Vite's dev server): finished lines only. */
     guest?: boolean
     screen?: Screen
@@ -97,9 +116,8 @@ export const openLogbook = (
 ): Logbook => {
   const guest = o.guest ?? false
   const screen = o.screen ?? stderrScreen({ live: !guest })
-  const level = o.level ?? "turn"
+  const level = o.level ?? "full"
   const lang = o.lang ?? "zh"
-  const inspect = o.inspect ?? false
   const clock = o.clock ?? Date.now
   const w = words[lang]
   const live = screen.live && !guest && level !== "quiet"
@@ -138,7 +156,7 @@ export const openLogbook = (
     clear()
     safe(() => {
       const t = trouble()
-      write(`${head.join("\n")}\n`)
+      if (head.length) write(`${head.join("\n")}\n`)
       block(screen, "", t)
     })
     draw()
@@ -178,12 +196,13 @@ export const openLogbook = (
           else held.push(line)
         })
 
-  const faultOut = (f: Facts) => {
-    if (inspect) return f
-    const { body: _, ...rest } = f
-    return { ...rest, message: "" }
-  }
-  const keep = (e: Entry) => {
+  const record = o.dir && join(o.dir, "turns.jsonl")
+  const keep = (
+    e: Entry,
+    failedAttempts: readonly FailedAttempt[],
+    callFaults: Map<Call, ReturnType<typeof filedFault>>,
+  ) => {
+    const fault = e.fault && filedFault(e.fault, e.phase, failedAttempts)
     safe(() =>
       file?.add({
         at: new Date(e.at).toISOString(),
@@ -200,14 +219,19 @@ export const openLogbook = (
           ...(c.model && { model: c.model }),
           ms: c.ms,
           usage: c.usage,
-          ...(c.fault && { fault: faultOut(c.fault) }),
-          ...(inspect && { msgs: c.msgs, out: c.out }),
+          ...(c.fault && { fault: callFaults.get(c) }),
         })),
-        ...(e.fault && { fault: faultOut(e.fault) }),
+        ...(fault && { fault }),
+        ...(failedAttempts.length && { failedAttempts }),
       }),
     )
-    if (e.end === "failed") sayBlock(failedHead(e, cells(screen), paint()), () => troubleOf(faultOut(e.fault!), lang))
-    else if (level !== "quiet") say(finished(e, cells(screen), paint()))
+    if (fault && !("attempt" in fault)) {
+      const trouble = troubleOf(fault, lang)
+      if (fault.code === "upstream" && level !== "full") delete trouble.raw
+      sayBlock([], () => trouble)
+      if (record && level !== "full") say([record])
+    }
+    if (level !== "quiet" || e.end === "failed") say(finished(e, cells(screen), paint()))
   }
 
   return {
@@ -232,6 +256,32 @@ export const openLogbook = (
           waited: false,
         }
         const calls: Call[] = []
+        const callFaults = new Map<Call, ReturnType<typeof filedFault>>()
+        const requests = new Map<number, { url: string; requestBody?: string }>()
+        const failedAttempts: FailedAttempt[] = []
+        const exchange = ({ phase, model, attempt, exchange: x }: Extract<Event, { kind: "exchange" }>) => {
+          const label = `[${w.story(story)} · ${w.stage[phase]} · #${attempt}]`
+          if (x.kind === "request") {
+            requests.set(attempt, { url: x.url, ...(x.body !== undefined && { requestBody: x.body }) })
+            if (level === "full")
+              say([
+                terminalText(`${label} → ${model} · ${x.url}`),
+                terminalText(formattedBody(x.body ?? "", screen.tty ?? screen.live)),
+              ])
+            return
+          }
+          const request = requests.get(attempt)
+          requests.delete(attempt)
+          const status = x.status === undefined ? w.noResponse : `HTTP ${x.status}`
+          const head = terminalText(`${label} ← ${status} · ${secs(x.ms)}${x.requestId ? ` · ${x.requestId}` : ""}`)
+          if (x.error !== undefined && request) {
+            const { kind: _, ...response } = x
+            failedAttempts.push({ phase, model, attempt, ...request, ...response, error: x.error })
+          }
+          if (level === "full")
+            say([head, ...[x.body, x.error].filter((s): s is string => s !== undefined).map(terminalText)])
+          else if (x.error !== undefined) say([head, ...(record ? [record] : [])])
+        }
         let pending: Call[] = []
         let node: Id | undefined
         let stopped = false
@@ -247,7 +297,8 @@ export const openLogbook = (
           timing()
         })
         const see = (e: Event) => {
-          if (e.kind === "stage") {
+          if (e.kind === "exchange") exchange(e)
+          else if (e.kind === "stage") {
             run.phase = e.phase
             run.stageAt = clock()
             run.waited = false
@@ -256,10 +307,10 @@ export const openLogbook = (
             if (e.part.type === "text-delta") run.written += e.part.text.length
             if (clock() - painted >= 100) safe(draw)
           } else if (e.kind === "call") {
+            if (e.fault) callFaults.set(e, filedFault(e.fault, e.phase, failedAttempts))
             calls.push(e)
             pending.push(e)
             if (e.fault && !e.via) failedAt = e.phase
-            if (level === "detail") safe(() => say(callRows(e, cells(screen), paint(), inspect)))
           } else if (e.node) {
             node = e.node.id
             stopped = e.node.turn.end === "stopped"
@@ -298,7 +349,7 @@ export const openLogbook = (
           }
           // a refused action (session.ts `Rejected`) that called no model is the request's answer, not a turn to report
           const refused = failed && !calls.length && isRejected(Cause.squash(exit.cause))
-          if (!refused && (calls.length || entry.end !== "landed")) keep(entry)
+          if (!refused && (calls.length || entry.end !== "landed")) keep(entry, failedAttempts, callFaults)
           else safe(draw)
         }
         return events.pipe(

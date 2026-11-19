@@ -59,7 +59,7 @@ export const start = async (
     signal?: AbortSignal
   } = {},
 ) => {
-  const logbook = openLogbook({ dir: join(c.data, "log"), level: c.log, inspect: c.inspect, lang: c.lang, screen })
+  const logbook = openLogbook({ dir: join(c.data, "log"), level: c.log, lang: c.lang, screen })
   try {
     const root = staticRoot(dist)
     const { handler, data, lib } = await openHost({ ...c, page: !!root }, logbook)

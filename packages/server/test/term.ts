@@ -1,11 +1,6 @@
 // The terminal surface: display widths, the two screens, and failures in plain words. Golden blocks at a phone's 48
-// columns and at 100 in both languages; for every code, in both languages, at both widths: words exist, every line
-// fits `columns - 1` cells, only the allowed glyphs, no escape bytes without colour. And `explain` reads the server's
-// own failures by their codes and a model call's through the provider's `diagnose`.
+// columns and at 100 for local errors, plus whole raw bodies for upstream errors.
 import { ConnectionError } from "@effect-tavern/provider"
-import { faultCodes, type Fault } from "@effect-tavern/provider/src/fault.ts"
-import clientEn from "../../client/src/locales/en.ts"
-import clientZh from "../../client/src/locales/zh-CN.ts"
 import assert from "node:assert/strict"
 import { once } from "node:events"
 import { createServer } from "node:http"
@@ -61,134 +56,12 @@ const shown = (columns: number, t: ReturnType<typeof troubleOf>, lang: Lang, col
   return s.shown()
 }
 
-const keyRefused: Fault = {
-  code: "key-refused",
-  message: "invalid x-api-key",
-  status: 401,
-  type: "authentication_error",
-  host: "api.anthropic.com",
+const body = "unknown gateway policy\n" + "x".repeat(8192)
+for (const lang of ["zh", "en"] as const) {
+  const upstream = troubleOf({ code: "upstream", message: "Forbidden", status: 403, body }, lang)
+  assert.equal(upstream.next, undefined)
+  assert.ok(shown(48, upstream, lang).join("\n").endsWith(body))
 }
-const rateLimited: Fault = {
-  code: "rate-limited",
-  message: "This request would exceed your organization's rate limit",
-  status: 429,
-  type: "rate_limit_error",
-  host: "api.anthropic.com",
-  attempts: 3,
-  retryAfter: 20,
-}
-const unknown: Fault = {
-  code: "unknown",
-  message:
-    "request ends in an assistant message, and this connection does not take a prefill (capabilities.prefill is false): end the hat's tail in a user or system message",
-}
-const golden: [Fault, Lang, number, string[]][] = [
-  [
-    keyRefused,
-    "zh",
-    48,
-    [
-      "14:07 ✗ 故事3  叙事没有完成  3.1s",
-      "  服务商不认这把密钥",
-      "  密钥可能填错、过期，或已被停用。",
-      "  > 到「设置」的「模型服务」里重新填写这家的",
-      "    API 密钥，再发送一次。",
-      "  HTTP 401 authentication_error",
-      "  api.anthropic.com",
-    ],
-  ],
-  [
-    keyRefused,
-    "en",
-    48,
-    [
-      "14:07 ✗ story 3  narrate failed  3.1s",
-      "  The provider refused the key",
-      "  The key may be mistyped, expired or revoked.",
-      "  > In Settings, under Providers, enter this",
-      "    provider's API key again, then send again.",
-      "  HTTP 401 authentication_error",
-      "  api.anthropic.com",
-    ],
-  ],
-  [
-    keyRefused,
-    "zh",
-    100,
-    [
-      "14:07 ✗ 故事3  叙事没有完成  3.1s",
-      "  服务商不认这把密钥",
-      "  密钥可能填错、过期，或已被停用。",
-      "  > 到「设置」的「模型服务」里重新填写这家的 API 密钥，再发送一次。",
-      "  HTTP 401 authentication_error api.anthropic.com",
-    ],
-  ],
-  [
-    keyRefused,
-    "en",
-    100,
-    [
-      "14:07 ✗ story 3  narrate failed  3.1s",
-      "  The provider refused the key",
-      "  The key may be mistyped, expired or revoked.",
-      "  > In Settings, under Providers, enter this provider's API key again, then send again.",
-      "  HTTP 401 authentication_error api.anthropic.com",
-    ],
-  ],
-  [
-    rateLimited,
-    "zh",
-    48,
-    [
-      "14:07 ✗ 故事3  叙事没有完成  3.1s",
-      "  发得太快，服务商要你等一等",
-      "  短时间内请求太多，或账户的速率上限较低。",
-      "  > 等 20 秒左右，再发送一次。",
-      "  HTTP 429 rate_limit_error api.anthropic.com",
-      "  试了3次 retry-after=20s",
-    ],
-  ],
-  [
-    rateLimited,
-    "en",
-    100,
-    [
-      "14:07 ✗ story 3  narrate failed  3.1s",
-      "  Too fast: the provider asks you to wait",
-      "  Too many requests in a short time, or the account's rate limit is low.",
-      "  > Wait about 20 seconds, then send again.",
-      "  HTTP 429 rate_limit_error api.anthropic.com tries=3 retry-after=20s",
-    ],
-  ],
-  [
-    // an error never seen: the thrower's own sentence, two lines at most, and where to send it
-    unknown,
-    "zh",
-    48,
-    [
-      "14:07 ✗ 故事3  叙事没有完成  3.1s",
-      "  遇到一个没见过的错误",
-      "  request ends in an assistant message, and",
-      "  this connection does not take a prefill...",
-      "  > 再试一次；还不行，就把这几行发给帮你的人。",
-    ],
-  ],
-  [
-    unknown,
-    "en",
-    48,
-    [
-      "14:07 ✗ story 3  narrate failed  3.1s",
-      "  An error we have not seen before",
-      "  request ends in an assistant message, and",
-      "  this connection does not take a prefill...",
-      "  > Try again; if it keeps happening, send",
-      "    these lines to whoever helps you.",
-    ],
-  ],
-]
-for (const [f, lang, columns, want] of golden)
-  assert.deepEqual(shown(columns, troubleOf(f, lang), lang), want, `${f.code} ${lang} ${columns}`)
 
 // every code, worded in both languages, fits both widths with the allowed glyphs only, and the tables hold no more
 const ALLOWED = /^[\x20-\x7e　-〿一-鿿＀-￯✓✗]*$/u
@@ -196,11 +69,9 @@ const LONG: Omit<Facts, "code"> = {
   message:
     "A very long provider sentence that goes on and on, naming parameters like max_tokens and messages.0.content, well past two lines of a phone.",
   status: 400,
-  type: "invalid_request_error_with_a_rather_long_name",
   errno: "ECONNREFUSED",
   host: "very-long-gateway-name.example-provider.com:8443",
   model: "anthropic/claude-sonnet-5-5-20261101-thinking-extended",
-  retryAfter: 3600,
   attempts: 3,
   requestId: "req_011CSHoEeqs5C35K2UUqR7Fyxxxxxxxxxxxxxxxxxxxxxxx",
   pid: 48213,
@@ -219,7 +90,7 @@ for (const lang of ["zh", "en"] as Lang[]) {
       const w = words[lang][code](f)
       assert.ok(w.what && w.next, `${lang} ${code}: what and next`)
       for (const s of [w.what, w.why ?? "", w.next])
-        if (s !== f.message && !s.includes(f.model ?? "\0") && !(w.why === s && code === "bad-request"))
+        if (s !== f.message && !s.includes(f.model ?? "\0"))
           assert.match(s, ALLOWED, `${lang} ${code}: glyphs in ${JSON.stringify(s)}`)
       for (const columns of [48, 100]) {
         const t = troubleOf(f, lang)
@@ -245,24 +116,6 @@ for (const lang of ["zh", "en"] as Lang[])
       `${lang} ${code}`,
     )
   }
-
-// the terminal and the browser say the same thing about a failed turn: the client's `fault` words (its own locale
-// files, drawn by code) are these words
-{
-  const client = { zh: clientZh.fault, en: clientEn.fault } as Record<Lang, Record<string, string>>
-  const camel = (code: string) => code.replace(/-(\w)/g, (_, c: string) => c.toUpperCase())
-  for (const lang of ["zh", "en"] as Lang[])
-    for (const code of faultCodes) {
-      if (code === "unknown") continue
-      const w = words[lang][code]({ code, message: "" })
-      const k = camel(code)
-      assert.deepEqual(
-        [w.what, w.why, w.next],
-        [client[lang][k], client[lang][`${k}Why`], client[lang][`${k}Next`]],
-        `${lang} ${code}: the client's words`,
-      )
-    }
-}
 
 // explain: the server's own failures by code, a model call's by the provider's diagnosis
 const code = (e: unknown, lang: Lang = "zh") => explain(e, lang).code
@@ -297,25 +150,9 @@ assert.equal(code(Cause.fail(new NoModel())), "no-model") // a Cause is squashed
   const t = explain(e, "zh")
   assert.deepEqual([t.code, t.what], ["port-in-use", `端口 ${port} 已被占用`])
 }
-// a model call's failure: the ai-sdk chain under call.ts's ModelError (fields as the SDK sets them)
-{
-  const api = Object.assign(new Error("invalid x-api-key"), {
-    name: "AI_APICallError",
-    statusCode: 401,
-    url: "https://api.anthropic.com/v1/messages",
-    responseBody: JSON.stringify({
-      type: "error",
-      error: { type: "authentication_error", message: "invalid x-api-key" },
-    }),
-    requestBodyValues: { model: "claude-haiku-5-5" },
-  })
-  const t = explain(Object.assign(new Error("invalid x-api-key"), { name: "ModelError", cause: api }), "zh")
-  assert.deepEqual(
-    [t.code, t.what, t.facts],
-    ["key-refused", "服务商不认这把密钥", "HTTP 401 authentication_error api.anthropic.com claude-haiku-5-5"],
-  )
-}
-assert.equal(code("what"), "unknown")
-assert.equal(code(undefined), "unknown")
+assert.equal(code("what"), "internal")
+assert.equal(code(undefined), "internal")
+const defect = new Error("the invariant broke")
+assert.equal(explain(defect, "en").raw, defect.stack)
 
 console.log(`term ok: ${codes.length} codes in 2 languages`)

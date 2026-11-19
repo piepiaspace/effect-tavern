@@ -36,7 +36,9 @@ The player's commands, the same on a phone (Termux) and on a computer. Help (`ta
 | `tavern update [--yes] [--check]` | Reads the release's `release.txt`, shows the current and latest version and what changes, asks (on a terminal only), checks free space, downloads the binary's own build (the asset name stamped into it at compile) beside it, requires the new file's `--version` to answer the expected version, then renames it over the running binary. Any failure leaves the old binary in place. A tavern still serving keeps the old program until restarted. `TAVERN_MIRROR` names a mirror (an https URL or a directory). Refused from source. | `0`, `1`, `2` (no terminal and no `--yes`) |
 | `tavern doctor [--verbose]` | One line per check, marked `✓`, `!` or `✗`, each with one next step: device and platform, the command's location and version, the data directory, free space against an update, the running tavern and its port, the network to the release, the device's tools, leftovers of the old launcher, and the last failed turn from `<data>/log/turns.jsonl`. | `0`, `1` (any `✗`) |
 
-Every failure a person reads is worded in plain language: what happened, the likely cause, the one next step marked `>`, what was left as it was, and one line of raw facts. Under `--json` a failure is one line on stderr: `{"error":{"code","message","next"}}`.
+Local refusals have a plain-language explanation: what happened, the likely cause, the one next step marked `>`, what was left as it was, and one line of raw facts. Under `--json` a failure is one line on stderr: `{"error":{"code","message","next"}}`.
+
+The server prints each model request and reply to stderr by default. Choose `tavern start --log turn` for summaries or `--log quiet` for failures. Provider errors retain their HTTP status and original text. Failed requests are recorded in `<data>/log/turns.jsonl`.
 
 ## 1. Offline Card Toolchain (`card`)
 

@@ -116,13 +116,11 @@ const tree = (world: World, ending: Ending) => {
     ),
     inspect: Flag.Boolean("inspect").pipe(
       Flag.withDefault(false),
-      Flag.withDescription(
-        "keep request and response bodies in Inspector traces, and text in the log (TAVERN_INSPECT=1)",
-      ),
+      Flag.withDescription("show call bodies in the Inspector (TAVERN_INSPECT=1)"),
     ),
-    log: Flag.Literals("log", ["quiet", "turn", "detail"]).pipe(
+    log: Flag.Literals("log", ["full", "turn", "quiet"]).pipe(
       Flag.withDescription(
-        "what the terminal shows: quiet (failures only), turn (one line a turn, the default) or detail (every call; TAVERN_LOG)",
+        "what the terminal shows: full (requests and replies, the default), turn (one line a turn) or quiet (failures only; TAVERN_LOG)",
       ),
       Flag.optional,
     ),

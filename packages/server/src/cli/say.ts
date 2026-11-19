@@ -8,7 +8,6 @@ import {
   failure,
   stderrScreen,
   width,
-  words,
   wrap,
   type Lang,
   type Screen,
@@ -65,12 +64,9 @@ export const write = (screen: Screen, lines: readonly string[]) => {
 /** A failure as a person reads it, or under --json as one line: `{"error":{"code","message","next"}}`. */
 export const fail = (world: World, error: unknown, o: { lang: Lang; json: boolean }) => {
   // a bare string is an authoring command's own verdict, already a sentence (`x.yaml: 2 errors`), its lines above it
-  const t: Trouble =
-    typeof error === "string"
-      ? { code: "unknown", what: error, next: [words[o.lang].unknown({ code: "unknown", message: "" }).next] }
-      : explain(error, o.lang)
+  const t: Trouble = typeof error === "string" ? { code: "rejected", what: error } : explain(error, o.lang)
   if (o.json) {
-    const message = [t.what, ...(t.lines ?? []), t.why].filter(Boolean).join("\n")
+    const message = [t.what, ...(t.lines ?? []), t.why, t.raw].filter(Boolean).join("\n")
     world.err.write(`${JSON.stringify({ error: { code: t.code, message, next: (t.next ?? []).join(" ") } })}\n`)
     return
   }

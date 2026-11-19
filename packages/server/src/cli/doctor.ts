@@ -8,6 +8,7 @@ import { dirname, join } from "node:path"
 import { announced, holder } from "../announce.ts"
 import { cells, troubleOf, wrap, width, type Facts, type Lang } from "../term/index.ts"
 import { mb } from "../term/codes.ts"
+import { terminalText } from "../term/screen.ts"
 import { thisProgram, type Config, type Self, type World } from "./config.ts"
 import { noDevice, type Device } from "./device.ts"
 import { about } from "./lifecycle.ts"
@@ -22,6 +23,8 @@ export interface Finding {
   mark: Mark
   what: string
   next?: string
+  raw?: string
+  file?: string
   /** The raw facts (--verbose). */
   facts?: string
 }
@@ -67,7 +70,7 @@ const real = (p: string) => {
 /** The logbook's last failed turn and whether a turn came after it (`<data>/log/turns.jsonl`, then the rotated one). */
 export const lastFailure = async (
   data: string,
-): Promise<{ at: string; story: number; fault: Facts; later: boolean } | undefined> => {
+): Promise<{ at: string; story: number; fault: Facts; file: string; later: boolean } | undefined> => {
   let later = false
   for (const name of ["turns.jsonl", "turns.1.jsonl"]) {
     let text: string
@@ -79,9 +82,24 @@ export const lastFailure = async (
     const lines = text.split("\n").filter(Boolean)
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
-        const e = JSON.parse(lines[i]!) as { at?: string; story?: number; end?: string; fault?: Facts }
-        if (e.end === "failed" && e.fault?.code)
-          return { at: e.at ?? "", story: e.story ?? 0, fault: e.fault, later: later || i < lines.length - 1 }
+        const e = JSON.parse(lines[i]!) as {
+          at?: string
+          story?: number
+          end?: string
+          fault?: Facts & { attempt?: number }
+          failedAttempts?: { attempt: number; error: string }[]
+        }
+        if (e.end === "failed" && e.fault?.code) {
+          const attempt =
+            e.fault.attempt === undefined ? undefined : e.failedAttempts?.find((a) => a.attempt === e.fault!.attempt)
+          return {
+            at: e.at ?? "",
+            story: e.story ?? 0,
+            fault: attempt ? { ...e.fault, message: "", body: attempt.error } : e.fault,
+            file: join(data, "log", name),
+            later: later || i < lines.length - 1,
+          }
+        }
       } catch {}
     }
     later ||= lines.length > 0
@@ -304,17 +322,15 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
   if (!last) add({ check: "failure", mark: "ok", what: w.noFailure })
   else {
     const t = troubleOf({ ...last.fault, message: last.fault.message ?? "" }, c.lang as Lang)
-    add(
-      last.later
-        ? { check: "failure", mark: "ok", what: w.failedEarlier(when(last.at)), ...(t.facts && { facts: t.facts }) }
-        : {
-            check: "failure",
-            mark: "warn",
-            what: w.failedLast(when(last.at), w.story(last.story), t.what),
-            ...(t.next?.[0] && { next: t.next[0] }),
-            facts: [t.code, t.facts].filter(Boolean).join(" "),
-          },
-    )
+    add({
+      check: "failure",
+      mark: last.later ? "ok" : "warn",
+      what: last.later ? w.failedEarlier(when(last.at)) : w.failedLast(when(last.at), w.story(last.story), t.what),
+      ...(t.raw && { raw: t.raw }),
+      ...(!last.later && t.next?.[0] && { next: t.next[0] }),
+      file: show(last.file),
+      facts: [t.code, t.facts].filter(Boolean).join(" "),
+    })
   }
   return found
 }
@@ -332,6 +348,8 @@ export const report = (found: readonly Finding[], lang: Lang, n: number, verbose
       lines.push(i ? pad + l : `${GLYPH[f.mark]} ${label}${" ".repeat(span - width(label))}  ${l}`),
     )
     if (f.next) wrap(f.next, n - at - 2).forEach((l, i) => lines.push(`${pad}${i ? "  " : "> "}${l}`))
+    if (f.raw) lines.push(terminalText(f.raw))
+    if (f.file) lines.push(terminalText(f.file))
     if (verbose && f.facts) for (const l of wrap(f.facts, n - at, { spaces: true })) lines.push(pad + l)
   }
   const fail = found.filter((f) => f.mark === "fail").length

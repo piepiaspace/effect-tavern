@@ -2,7 +2,18 @@
 // completion validates that staging, but never commits it. Persistence belongs to the runtime.
 import { generateText, type FlexibleSchema, type ToolSet } from "ai"
 import { Effect, Schema } from "effect"
-import { settings, standard, usage, wire, type CallOptions, type Message, type Model, type Usage } from "./call.ts"
+import {
+  observedError,
+  replyText,
+  settings,
+  standard,
+  usage,
+  wire,
+  type CallOptions,
+  type Message,
+  type Model,
+  type Usage,
+} from "./call.ts"
 
 export interface StageBudget {
   maxSteps: number
@@ -178,6 +189,7 @@ export const runStageTools = (model: Model, initial: readonly Message[], options
               abortSignal: ac.signal,
             }),
           )
+          model.exchange?.finish(replyText(r.response.messages))
           ac.signal.throwIfAborted()
           const used = usage(r.usage)
           for (const k of Object.keys(total) as (keyof Usage)[]) total[k] += used[k]
@@ -272,7 +284,8 @@ export const runStageTools = (model: Model, initial: readonly Message[], options
       } catch (cause) {
         if (ac.signal.aborted && ac.signal.reason === timedOut) return exhausted("timeout")
         emit({ kind: "end", status: interruption.aborted ? "cancelled" : "failed", usage: total })
-        throw new StageError(cause instanceof Error ? cause.message : String(cause), trace, total, cause)
+        const failure = model.exchange && !ac.signal.aborted ? observedError(cause, model.exchange) : cause
+        throw new StageError(failure instanceof Error ? failure.message : String(failure), trace, total, failure)
       } finally {
         if (timer !== undefined) clearTimeout(timer)
         interruption.removeEventListener("abort", interrupt)

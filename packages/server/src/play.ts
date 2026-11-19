@@ -1,4 +1,5 @@
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
+import { terminalText } from "./term/screen.ts"
 import type { CliEvent, CliHost } from "./cli-host.ts"
 
 const idOf = (text: string) => {
@@ -50,23 +51,27 @@ export const play = async (
     else if (event.kind === "stage") console.error(`[${event.phase}]`)
     else if (event.kind === "delta" && event.part.type === "text-delta") process.stdout.write(event.part.text)
     else if (event.kind === "attach" && event.draft?.text) process.stdout.write(event.draft.text)
-    else if (event.kind === "error") console.error(event.message)
+  }
+  const failure = (e: Extract<CliEvent, { kind: "error" }>) => {
+    const context = `story ${story} · ${e.phase}`
+    const message = [context, e.status && `HTTP ${e.status}`, e.body || e.message || e.code].filter(Boolean).join("\n")
+    return Object.assign(new Error(terminalText(message)), { code: e.code, fault: { ...e, message } })
   }
   const attach = async () => {
-    let error: string | undefined
+    let error: Error | undefined
     await host.attach(story, (e) => {
       emit(e)
-      if (e.kind === "error") error = e.message
+      if (e.kind === "error") error = failure(e)
     })
     head = (await host.timeline(story)).head
-    if (error) throw new Error(error)
+    if (error) throw error
   }
   const send = async (action: Action) => {
-    let error: string | undefined
+    let error: Error | undefined
     let streamed = false // a narrated opening already wrote its prose
     await host.submit(story, action, (e) => {
       emit(e)
-      if (e.kind === "error") error = e.message
+      if (e.kind === "error") error = failure(e)
       if (e.kind === "delta") streamed = true
     })
     if (!options.jsonl) {
@@ -80,7 +85,7 @@ export const play = async (
           console.log((await host.timeline(story)).nodes.find((n) => n.id === head)?.prose ?? "")
       }
     }
-    if (error) throw new Error(error)
+    if (error) throw error
   }
   const node = (value?: string) => {
     if (value) return idOf(value)

@@ -7,7 +7,7 @@
   },
   "type": "module",
   "scripts": {
-    "verify": "bun check && bun test/data.ts && bun test/export.ts && bun test/term.ts && bun test/logbook.ts && bun test/tavern.ts && bun test/library.ts && bun test/shelf.ts && bun test/depot.ts && bun test/serve.ts && bun test/headless.ts && bun test/reach.ts && bun test/cli.ts && bun test/lifecycle.ts && bun test/update.ts && bun test/author.ts",
+    "verify": "bun check && bun test/data.ts && bun test/export.ts && bun test/term.ts && bun test/logbook.ts && bun test/exchanges.ts && bun test/tavern.ts && bun test/library.ts && bun test/shelf.ts && bun test/depot.ts && bun test/serve.ts && bun test/headless.ts && bun test/reach.ts && bun test/cli.ts && bun test/lifecycle.ts && bun test/update.ts && bun test/author.ts",
     "start": "bun bin/tavern.ts start",
     "names": "bun src/names.ts",
     "compile": "bun build --compile ${TARGET:+--target=$TARGET} --define TAVERN_VERSION=\\\"${VERSION:-dev}\\\" --define TAVERN_ASSET=\\\"${ASSET:-}\\\" bin/tavern.ts --asset ../client/dist --outfile dist/${ASSET:-tavern} && rm -f .*.bun-build",
