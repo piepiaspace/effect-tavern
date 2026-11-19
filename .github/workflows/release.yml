@@ -10,7 +10,7 @@ permissions:
   packages: write
 
 # One build, every channel. release/targets.ts is the table: every binary, the runner that builds it and its asset
-# name (stamped into it, so `tavern update` fetches its own build). All of them build at once, one job each; the
+# name (stamped into it, so `tavern update` fetches its own build). All of them build at once, one job each (the two macOS ones share a mac); the
 # release, the Homebrew formula and the image start when the last one lands. Script installs (install.sh, install.ps1)
 # and `tavern update` read the GitHub release; Homebrew and the image carry the same binaries. The formula goes to
 # piepiaspace/homebrew-tavern through a deploy key (secret HOMEBREW_TAP_KEY); the image to ghcr.io with the
@@ -40,7 +40,7 @@ jobs:
 
   build:
     needs: plan
-    name: build ${{ matrix.asset }}
+    name: build ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -57,22 +57,24 @@ jobs:
       - name: Compile
         run: |
           [ "$GITHUB_REF_TYPE" = tag ] && export VERSION="${GITHUB_REF_NAME#v}"
-          bun release/targets.ts compile "${{ matrix.asset }}"
+          bun release/targets.ts compile ${{ matrix.assets }}
       - name: Check the packaged version on its native runner
-        if: startsWith(matrix.asset, 'tavern-darwin-') || matrix.asset == 'tavern-linux-x64'
+        if: matrix.name == 'tavern-darwin' || matrix.name == 'tavern-linux-x64'
         run: |
           expected=dev
           if [ "$GITHUB_REF_TYPE" = tag ]; then expected=${GITHUB_REF_NAME#v}; fi
-          gzip -dc "packages/server/dist/${{ matrix.asset }}.gz" > "$RUNNER_TEMP/tavern"
-          chmod +x "$RUNNER_TEMP/tavern"
-          actual=$("$RUNNER_TEMP/tavern" --version)
-          echo "$actual"
-          test "$actual" = "tavern $expected"
+          for asset in ${{ matrix.assets }}; do
+            gzip -dc "packages/server/dist/$asset.gz" > "$RUNNER_TEMP/tavern"
+            chmod +x "$RUNNER_TEMP/tavern"
+            actual=$("$RUNNER_TEMP/tavern" --version)
+            echo "$asset: $actual"
+            test "$actual" = "tavern $expected"
+          done
       # the .gz alone; already compressed, so the artifact stores it as it is
       - uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.asset }}
-          path: packages/server/dist/${{ matrix.asset }}.gz
+          name: ${{ matrix.name }}
+          path: packages/server/dist/*.gz
           compression-level: 0
           retention-days: 7
 

@@ -1,5 +1,5 @@
 // The release's one table: every binary it publishes, the Bun target that compiles it, and the runner that builds
-// it. The release workflow reads it (`matrix`) and builds every row at once (`compile <asset>`), each binary stamped
+// it. The release workflow reads it (`matrix`) and builds every row at once (`compile <asset>...`), each binary stamped
 // with its own asset name so `tavern update` asks for the build it is; `brew` writes the formula. install.sh and
 // install.ps1 pick among the same names by what the machine can run; test/release.ts holds them together.
 import { join } from "node:path"
@@ -26,9 +26,23 @@ export const TARGETS: readonly Target[] = [
   { asset: "tavern-windows-x64.exe", bun: "bun-windows-x64-baseline", os: "win32" },
 ]
 
-/** Mach-O binaries build on macOS: Bun's appended program breaks their signature, and only codesign mends it.
- * Blacksmith's macs are all Apple Silicon: the x64 one is signed there and checked under Rosetta. */
-const runner = (t: Target) => (t.os === "darwin" ? "blacksmith-6vcpu-macos-latest" : "blacksmith-2vcpu-ubuntu-2604")
+/** The build jobs: one per target, except the Mach-O pair, which share one mac. Bun's appended program breaks their
+ * signature and only codesign mends it; Blacksmith's macs are all Apple Silicon (x64 is checked under Rosetta) and
+ * each mac job bills a whole minute at twenty times a Linux one. */
+const matrix = () => {
+  const job = (name: string, runner: string, ts: Target[]) => ({
+    name,
+    runner,
+    assets: ts.map((t) => t.asset).join(" "),
+  })
+  const mac = TARGETS.filter((t) => t.os === "darwin")
+  return {
+    include: [
+      ...TARGETS.filter((t) => t.os !== "darwin").map((t) => job(t.asset, "blacksmith-2vcpu-ubuntu-2604", [t])),
+      job("tavern-darwin", "blacksmith-6vcpu-macos-latest", mac),
+    ],
+  }
+}
 
 const root = join(import.meta.dir, "..")
 const dist = join(root, "packages/server/dist")
@@ -88,13 +102,13 @@ end
 
 if (import.meta.main) {
   const [command, a, b] = Bun.argv.slice(2)
-  const target = TARGETS.find((t) => t.asset === a)
-  if (command === "matrix")
-    process.stdout.write(JSON.stringify({ include: TARGETS.map((t) => ({ asset: t.asset, runner: runner(t) })) }))
-  else if (command === "compile" && target) await compile(target)
+  const targets = Bun.argv.slice(3).map((asset) => TARGETS.find((t) => t.asset === asset))
+  if (command === "matrix") process.stdout.write(JSON.stringify(matrix()))
+  else if (command === "compile" && targets.length && targets.every((t) => t !== undefined))
+    for (const t of targets) await compile(t)
   else if (command === "brew" && a && b) process.stdout.write(await brew(a, b))
   else {
-    console.error("usage: bun release/targets.ts matrix | compile <asset> | brew <tag> <dir of .gz>")
+    console.error("usage: bun release/targets.ts matrix | compile <asset>... | brew <tag> <dir of .gz>")
     process.exit(2)
   }
 }
