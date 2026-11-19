@@ -35,7 +35,7 @@ Linux 上看二进制要的加载器在不在（glibc 的 `ld-linux-*`、musl �
 
 ```
 tavern            显示命令帮助
-tavern start      --port/-p  --bind  --headless  --inspect  --log  --no-open
+tavern start      --port/-p  --bind  --headless  --log  --no-open
 tavern stop       停止在这个数据目录上运行的酒馆
 tavern status     在不在运行、地址、数据目录、版本（离线，立即返回）
 tavern update     --yes  --check
@@ -150,7 +150,7 @@ MODEL=fake bun run tavern start --headless --port 7777
 `.tavern`（根目录的 `bun run tavern` 脚本在两个环境变量都未设置时使用 `.dev`，即开发网页服务的库）。设置只由
 `packages/server/src/cli/config.ts` 读取，优先级是 命令行 > `TAVERN_*` > 旧名 > 默认：
 `TAVERN_DATA`（旧名 `DATA`）、`TAVERN_PORT`（`PORT`）、`TAVERN_BIND`（`HOST`）、`TAVERN_SERVER`、`TAVERN_LANG`、
-`TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_ASSET`、`TAVERN_INSPECT`、`TAVERN_LOG`、`MODEL=fake`。
+`TAVERN_MIRROR`（`TAVERN_URL`）、`TAVERN_ASSET`、`TAVERN_LOG`、`MODEL=fake`。
 `--json`、`--data`、`--server` 写在命令前后都可以。`tavern --version` 打印编译时写入的版本（取自发布标签），从源码运行是 `dev`。
 
 ### 命令怎样找到它的库
@@ -163,7 +163,7 @@ MODEL=fake bun run tavern start --headless --port 7777
    （`<数据目录>/tavern.db.address`，一行 JSON `{"pid":…,"url":"http://127.0.0.1:7777"}`，关闭时删除），
    命令读到地址后经由它执行，并在 stderr 说一句「经由正在运行的酒馆 <地址>」。写入的东西网页刷新后就能看到。
 3. 没有人占着：命令自己打开 `<数据目录>/tavern.db`，在本进程里调用和服务端同一个处理函数，用完即关、释放锁。
-   这时操作者就是终端前的人：可以把本地目录登记为卡库，`/inspect` 能看到调用正文。
+   这时操作者就是终端前的人：可以把本地目录登记为卡库。
 
 所以在开发时，`bun run tavern card install x.yaml` 不用加任何参数：开发服务在跑就写进它的库，没在跑就直接打开 `.dev`。
 
@@ -217,7 +217,7 @@ show 默认打印阅读文本。`story remove` 是正式命令；`story delete` 
 | `turn` | 回合摘要、上游错误原文与完整记录的位置 |
 | `quiet` | 启动信息、上游错误原文与完整记录的位置 |
 
-例如 `tavern start --log turn`，也可通过 `TAVERN_LOG` 设置。`--inspect` 控制 Inspector 的可见内容，默认终端即可查看完整请求。命令从正在运行的服务取结果时，服务日志留在启动它的终端。
+例如 `tavern start --log turn`，也可通过 `TAVERN_LOG` 设置。命令从正在运行的服务取结果时，服务日志留在启动它的终端。
 
 服务把回合摘要追加到 `<数据目录>/log/turns.jsonl`，包括故事、操作、结束方式、耗时、用量和各阶段调用。失败的请求另有完整请求体、上游响应或传输错误。文件约 2 MiB 时轮转到 `turns.1.jsonl`，单条较大的记录完整写入。`tavern doctor` 在这两个文件里查找最近一次整轮失败，给出错误和记录位置。成功调用的 HTTP 请求体只打印到终端；Inspector 仍读取节点上的调用记录。
 
@@ -298,6 +298,6 @@ HTTP 客户端调用 `POST /api/author/compile {card, select, intent}`、`/api/a
 
 二进制由 `packages/server` 的 `compile` 脚本编译 `bin/tavern.ts`，客户端构建（`packages/client/dist`）作为资源打进去；`VERSION=<版本>` 写入版本，`TARGET=<bun 目标>` 交叉编译，`ASSET=<附件名>` 写入附件名并作为文件名（不给是本机的 `dist/tavern`）。发布流程（`.github/workflows/release.yml`）按这张表同时编出每一个（`bun release/targets.ts compile <附件名>`，一个 job 一个；macOS 的两个在 macOS 上编，以便给 Mach-O 重新签名），再发到 GitHub Release、ghcr.io 镜像和 Homebrew tap `piepiaspace/homebrew-tavern`（用 deploy key `HOMEBREW_TAP_KEY` 推送）。
 
-Inspector 的完整调用正文默认不暴露；`tavern start --inspect` 或 `TAVERN_INSPECT=1` 显式开启。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
+Inspector 总能看到完整调用正文。普通启动在后台刷新模型名，离线时保留随包基线；`MODEL=fake` 不刷新网络数据。
 
 未带版本戳的 SQLite 库首次打开时执行既有升级，并在同一事务内写入 `user_version=1`；失败会回滚整批升级，再次打开可重试。已升级库跳过旧表探测和节点 JSON 扫描。新建库使用相同基线；版本高于当前支持范围的库拒绝打开。

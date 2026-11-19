@@ -105,7 +105,6 @@ const { handler: wire } = tavern({
   model,
   pinned: scripted, // MODEL=fake scripts every stage, whatever the routing says
   ...(key && { seed: { key } }), // a first start puts the local key in the vault (tavern.ts `seed`)
-  inspect: true,
   scripted,
   page: true, // Vite serves it
   // a guest on Vite's terminal: finished turns and failures only (logbook.ts), its file beside the library

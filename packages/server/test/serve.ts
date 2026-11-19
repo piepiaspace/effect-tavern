@@ -1,7 +1,7 @@
 import type { TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
 type Event = TimelineEvent | Extract<RuntimeEvent, { kind: "call" }>
 // The adapter on a scripted session over a real socket: an action goes in as JSON, its events come back as SSE in the
-// session's order, a bad body is a 400, a bad action is an `error` event, and `inspect` decides whether `call` events
+// session's order, a bad body is a 400, a bad action is an `error` event, and whether `call` events
 // carry the request. `greet` opens a new root, `checkout` moves head, DELETE /nodes/<id> drops a subtree and answers with the Change.
 // The turn is the story's (#116): closing the response stops nothing, GET /turn re-attaches, POST /stop stops, a busy
 // story answers 409; stories of one card and of two run side by side; a story route without its story is a 404.
@@ -64,7 +64,7 @@ const sse = (text: string) =>
     })
 
 {
-  const server = listen(handle(lib, { inspect: true }), "127.0.0.1", 0)
+  const server = listen(handle(lib), "127.0.0.1", 0)
   const base = `http://127.0.0.1:${server.port}`
   // the story this client is on, as the client's `stories.current`: the newest, a new one on the first run
   let story = lib.stories.list()[0]?.id ?? lib.stories.create(chat.id)
@@ -939,7 +939,7 @@ const sse = (text: string) =>
     assert.equal(failed.model, "m")
     assert.equal(failed.fault!["code"], "upstream")
     assert.equal(failed.fault!["status"], 401)
-    assert.equal(failed.fault!["body"], undefined)
+    assert.match(String(failed.fault!["body"]), /invalid x-api-key/) // the upstream's own words, in the trace too
     const shown = screen.shown().join("\n")
     assert.match(shown, /HTTP 401/)
     assert.match(shown, /invalid x-api-key/)

@@ -131,10 +131,8 @@ try {
   assert.equal(lib.attach(direct), undefined)
   assert.equal(lib.stop(direct), null)
   const trace = lib.trace(direct, node)
-  assert.ok(trace.length > 0)
-  assert.ok(trace.every((c) => c.msgs.length === 0 && c.out === undefined))
+  assert.ok(trace.some((c) => c.msgs.length > 0))
   assert.deepEqual(await (await http(direct, `/nodes/${node}/trace`)).json(), wired(trace))
-  assert.ok(lib.trace(direct, node, true).some((c) => c.msgs.length > 0))
 } finally {
   await server.stop(true)
   data.close()

@@ -114,10 +114,6 @@ const tree = (world: World, ending: Ending) => {
       Flag.withDefault(false),
       Flag.withDescription("serve the HTTP+SSE API only, without the page"),
     ),
-    inspect: Flag.Boolean("inspect").pipe(
-      Flag.withDefault(false),
-      Flag.withDescription("show call bodies in the Inspector (TAVERN_INSPECT=1)"),
-    ),
     log: Flag.Literals("log", ["full", "turn", "quiet"]).pipe(
       Flag.withDescription(
         "what the terminal shows: full (requests and replies, the default), turn (one line a turn) or quiet (failures only; TAVERN_LOG)",
@@ -470,7 +466,6 @@ const tree = (world: World, ending: Ending) => {
       {
         port: Option.getOrUndefined(f.port),
         bind: Option.getOrUndefined(f.bind),
-        inspect: f.inspect,
         log: Option.getOrUndefined(f.log),
         open: f.open,
       },

@@ -100,7 +100,6 @@ const zh: Words = {
     "tavern start --port": "端口（TAVERN_PORT；默认 7777）",
     "tavern start --bind": "监听的地址（TAVERN_BIND；默认 127.0.0.1）",
     "tavern start --headless": "只提供接口，不提供网页",
-    "tavern start --inspect": "在检查器里显示调用正文（TAVERN_INSPECT=1）",
     "tavern start --log": "终端显示多少：full 完整请求和回复（默认），turn 每轮一行，quiet 只有失败（TAVERN_LOG）",
     "tavern start --open": "不自动打开网页",
     "tavern update --yes": "不再询问，直接更新",

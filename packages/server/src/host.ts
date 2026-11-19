@@ -11,7 +11,7 @@ import type { Logbook } from "./logbook.ts"
 import { tavern } from "./tavern.ts"
 
 export const openHost = async (
-  { data: dir, fake: scripted, inspect, page }: Pick<Config, "data" | "fake" | "inspect"> & { page?: boolean },
+  { data: dir, fake: scripted, page }: Pick<Config, "data" | "fake"> & { page?: boolean },
   logbook?: Logbook, // the running server's (start.ts); a command's library keeps a silent one
 ) => {
   mkdirSync(dir, { recursive: true })
@@ -19,7 +19,6 @@ export const openHost = async (
   const model = scripted ? fake((call) => defaultAnswer(readStage(call), { notes: "", options: [] })) : undefined
   return tavern({
     data,
-    inspect,
     scripted,
     page,
     overlay: plain.harness,

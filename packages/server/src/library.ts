@@ -366,22 +366,9 @@ export const library = ({
     },
     stop: (id: Id) => open(id).turn.stop(),
     drop: (id: Id, node: Id) => open(id).turn.drop(node),
-    trace: (id: Id, node: Id, inspect = false) => {
+    trace: (id: Id, node: Id) => {
       if (!session(id).log.nodes.has(node)) throw new Error(`no node ${node}`)
-      return data
-        .calls(id)
-        .get(node)
-        .map((v) => {
-          const c = v as Call
-          if (inspect) return c
-          // a fast pass's verdict is no one's text: it stays, so the row reads pass / escalate without the bodies
-          const verdict = c.via === "decision" ? (c.out as { verdict?: unknown } | undefined)?.verdict : undefined
-          const fault =
-            c.fault?.code === "internal"
-              ? { code: c.fault.code, message: `story ${id} · node ${node}` }
-              : c.fault && { ...c.fault, body: undefined }
-          return { ...c, msgs: [], out: verdict === undefined ? undefined : { verdict }, ...(fault && { fault }) }
-        })
+      return data.calls(id).get(node) as Call[]
     },
     exists,
     /** The card a story is of. */

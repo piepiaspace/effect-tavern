@@ -237,7 +237,7 @@ try {
     let said = ""
     const port = await freePort()
     const serving = start(
-      { data, fake: true, inspect: false, port, bind: "127.0.0.1", lang: "zh", log: "turn", version: "dev" },
+      { data, fake: true, port, bind: "127.0.0.1", lang: "zh", log: "turn", version: "dev" },
       {
         dist,
         screen: { write: (s) => void (said += s), columns: 48, live: false, color: false },
@@ -410,7 +410,7 @@ try {
       const data = join(root, `still-${lang}`)
       const stopping = new AbortController()
       const serving = start(
-        { data, fake: true, inspect: false, port: 0, bind: "127.0.0.1", lang, log: "quiet", version: "0.9.1" },
+        { data, fake: true, port: 0, bind: "127.0.0.1", lang, log: "quiet", version: "0.9.1" },
         { screen: { write: () => {}, columns: 48, live: false, color: false }, signal: stopping.signal },
       )
       await until(() => existsSync(join(data, "tavern.db.address")), "the address")

@@ -590,9 +590,6 @@ tavern start
       监听的地址（TAVERN_BIND；默认 127.0.0.1）
   --headless
       只提供接口，不提供网页
-  --inspect
-      在检查器里显示调用正文
-      （TAVERN_INSPECT=1）
   --log <其一>
       终端显示多少：full 完整请求和回复（默
       认），turn 每轮一行，quiet 只有失败
@@ -705,9 +702,6 @@ flags
   --headless
       serve the HTTP+SSE API only, without the
       page
-  --inspect
-      show call bodies in the Inspector
-      (TAVERN_INSPECT=1)
   --log <choice>
       what the terminal shows: full (requests
       and replies, the default), turn (one line

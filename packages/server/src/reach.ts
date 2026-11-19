@@ -5,8 +5,8 @@
 // (an older binary) is exit 3 naming its pid. Under MODEL=fake a command never reaches a tavern that is not scripted:
 // that would spend tokens the person did not mean to.
 //
-// In-process, the caller is the person at the terminal: a local directory may be added as a card library and the
-// trace carries the call bodies. Over the network a command has what the wire gives anyone.
+// In-process, the caller is the person at the terminal: a local directory may be added as a card library. Over the
+// network a command has what the wire gives anyone.
 import { announced, holder, libraryFile } from "./announce.ts"
 import { host, type CliHost } from "./cli-host.ts"
 import type { Config } from "./cli/config.ts"
@@ -68,8 +68,8 @@ const remote = async (url: string, c: Pick<Config, "fake" | "data">, owner?: num
 
 /** The library opened here, its own requests answered by the same handler a listener mounts. */
 const inProcess = async (c: Pick<Config, "data" | "fake">): Promise<CliHost> => {
-  const { lib, data } = await openHost({ data: c.data, fake: c.fake, inspect: false })
-  return { ...host(handle(lib, { inspect: true, dirs: true, scripted: c.fake })), close: () => data.close() }
+  const { lib, data } = await openHost({ data: c.data, fake: c.fake })
+  return { ...host(handle(lib, { dirs: true, scripted: c.fake })), close: () => data.close() }
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))

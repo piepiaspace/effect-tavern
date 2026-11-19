@@ -30,20 +30,17 @@ export const seed = (data: Data, key: string) => {
 /** The tavern; its `handler` is the session's Wire (wire.ts), what a listener mounts through `node`. */
 export const tavern = ({
   seed: seeded,
-  inspect = false,
   scripted = false,
   page = false,
   ...o
 }: Parameters<typeof library>[0] & {
   /** Seed an empty install with this key (`seed`). */
   seed?: { key: string }
-  /** Keep the request messages on `call` events (serve.ts `handle`). */
-  inspect?: boolean
   /** Every stage on the scripted model, and the page beside the API: what GET /host says (serve.ts `handle`). */
   scripted?: boolean
   page?: boolean
 }) => {
   if (seeded) seed(o.data, seeded.key)
   const lib = library(o)
-  return { data: o.data, lib, handler: handle(lib, { inspect, scripted, page }) }
+  return { data: o.data, lib, handler: handle(lib, { scripted, page }) }
 }

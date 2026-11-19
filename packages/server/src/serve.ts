@@ -126,8 +126,7 @@
 //   POST /author/(compile|sort|review)  the workshop's three model operations (author.ts), each answering a candidate
 //                 or diagnostics; nothing is installed here.
 //   GET  /card    the same for the story's own card.
-// Calls never travel on SSE. `inspect` includes request and result bodies in the selected trace; otherwise only
-// phase and metrics leave this endpoint, since tool arguments and results can contain private card text.
+// Calls never travel on SSE; the selected trace carries them whole, request and result bodies included.
 //   GET  /host    who answers: {version, scripted, page, pid}, the program's version, whether every stage runs on the
 //                 scripted model (MODEL=fake), and whether the page is served beside the API. A command that found this
 //                 tavern by its address (reach.ts) reads it before anything else.
@@ -218,8 +217,6 @@ const json = (status: number, v: unknown) =>
   new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } })
 
 export interface HandleOptions {
-  /** Request and result bodies in the trace. */
-  inspect?: boolean
   /** A local directory may be added as a card library: only where the caller is the person at the terminal (a
    *  command that opened the library itself), never on a listener. */
   dirs?: boolean
@@ -229,10 +226,7 @@ export interface HandleOptions {
   page?: boolean
 }
 
-export const handle = (
-  lib: Library,
-  { inspect = false, dirs = false, scripted = false, page = false }: HandleOptions = {},
-): Wire => {
+export const handle = (lib: Library, { dirs = false, scripted = false, page = false }: HandleOptions = {}): Wire => {
   return async (request: Request): Promise<Response> => {
     const method = request.method
     const at = new URL(request.url)
@@ -476,7 +470,7 @@ export const handle = (
         const id = Number(detailAt[1])
         if (!s.log.nodes.has(id)) throw new Error(`no node ${id}`)
         if (detailAt[2] === "detail") return s.detail(id)
-        return lib.trace(story, id, inspect)
+        return lib.trace(story, id)
       }, 404)
     if (method === "POST" && url === "/stop") return json(200, { stopped: lib.stop(story) })
     if (method === "GET" && url === "/turn") {

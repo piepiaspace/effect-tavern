@@ -37,7 +37,7 @@ const model = fake((o) => {
     : { text: "done." }
 })
 const lib = library({ data: open(":memory:"), overlay: player.harness, model: () => model })
-const wire = handle(lib, { inspect: true, dirs: true, scripted: true })
+const wire = handle(lib, { dirs: true, scripted: true })
 const listener = createServer(node(app(wire))).listen(0, "127.0.0.1")
 await new Promise<void>((resolve) => listener.once("listening", resolve))
 const origin = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`
@@ -139,8 +139,7 @@ try {
     assert.ok(!(await h.list()).some((s) => s.id === story))
     await h.remove("two")
 
-    // A local directory is not a card library over a listener, and the trace carries no bodies there (that
-    // listener's handler is not inspecting): the network has only what the wire gives anyone.
+    // A local directory is not a card library over a listener; the trace carries its bodies there too.
     const remote = createServer(node(app(handle(lib)))).listen(0, "127.0.0.1")
     await new Promise<void>((resolve) => remote.once("listening", resolve))
     try {
@@ -150,7 +149,7 @@ try {
       const s = await plain.create("cli")
       await plain.submit(s, { kind: "act", input: { text: "hello" } }, () => {})
       const t = (await plain.trace(s, (await plain.timeline(s)).head!)) as { msgs: unknown[] }[]
-      assert.ok(t.length > 0 && t.every((c) => c.msgs.length === 0))
+      assert.ok(t.length > 0 && t.every((c) => c.msgs.length > 0))
       await plain.drop(s)
     } finally {
       remote.close()

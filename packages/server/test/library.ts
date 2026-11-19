@@ -735,13 +735,9 @@ for (const skip of [false, true]) {
   )
   assert.equal((on.calls[0]!.out as { verdict: string }).verdict, "escalate")
   assert.ok((on.calls[0]!.out as { error?: string }).error)
-  // outside inspect mode the bodies are withheld; the fast pass keeps its verdict and nothing else
-  const plain = lib.trace(id, on.node) as Call[]
-  assert.deepEqual(
-    plain.filter((c) => c.phase === "check").map((c) => [c.msgs.length, c.out]),
-    [
-      [0, { verdict: "escalate" }],
-      [0, undefined],
-    ],
-  )
+  // the trace is the calls whole: the fast pass's verdict and the LLM check's messages
+  const traced = lib.trace(id, on.node) as Call[]
+  const checked = traced.filter((c) => c.phase === "check")
+  assert.equal((checked[0]!.out as { verdict: string }).verdict, "escalate")
+  assert.ok(checked[1]!.msgs.length > 0)
 }

@@ -113,7 +113,6 @@ export interface Flags {
   readonly json?: boolean
   readonly port?: number
   readonly bind?: string
-  readonly inspect?: boolean
   readonly fake?: boolean
   readonly log?: Level
   /** `--no-open`: serve without opening the page. */
@@ -130,8 +129,6 @@ export interface Config {
   /** A mirror of the release's download directory. */
   readonly mirror?: string
   readonly json: boolean
-  /** Request and response bodies in the Inspector, and text in the running server's log. */
-  readonly inspect: boolean
   /** The scripted zero-token model (MODEL=fake). */
   readonly fake: boolean
   /** How much the running server's log says (`--log`, TAVERN_LOG): full (the default), turn or quiet. */
@@ -180,7 +177,6 @@ export const config = (
     lang: world.env["TAVERN_LANG"] === "en" ? "en" : "zh",
     ...(mirror && { mirror }),
     json: flags.json ?? false,
-    inspect: flags.inspect || world.env["TAVERN_INSPECT"] === "1",
     fake: flags.fake || world.env["MODEL"] === "fake",
     log: flags.log ?? level(env("TAVERN_LOG")?.value ?? "full"),
     open: flags.open ?? true,

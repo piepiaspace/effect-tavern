@@ -31,18 +31,15 @@ const bin = new URL("../bin/tavern.ts", import.meta.url).pathname
   assert.equal(config({}, world({ DATA: "/a", TAVERN_DATA: "/b" })).data, "/b")
   assert.equal(config({ data: "/c" }, world({ DATA: "/a", TAVERN_DATA: "/b" })).data, "/c")
   const bare = config({}, world({}))
-  assert.deepEqual(
-    [bare.port, bare.bind, bare.lang, bare.json, bare.inspect, bare.fake],
-    [7777, "127.0.0.1", "zh", false, false, false],
-  )
+  assert.deepEqual([bare.port, bare.bind, bare.lang, bare.json, bare.fake], [7777, "127.0.0.1", "zh", false, false])
   const phone = config({}, world({ PORT: "8080", HOST: "0.0.0.0", TAVERN_URL: "https://m" }))
   assert.deepEqual([phone.port, phone.bind, phone.mirror], [8080, "0.0.0.0", "https://m"])
   const named = world({ PORT: "1", TAVERN_PORT: "2", TAVERN_BIND: "::1", TAVERN_MIRROR: "https://n", TAVERN_URL: "x" })
   assert.deepEqual([config({}, named).port, config({}, named).bind, config({}, named).mirror], [2, "::1", "https://n"])
   assert.equal(config({ port: 3 }, named).port, 3)
   assert.throws(() => config({}, world({ PORT: "eighty" })), /PORT=eighty is not a port/)
-  const set = config({}, world({ TAVERN_LANG: "en", TAVERN_INSPECT: "1", MODEL: "fake", TAVERN_SERVER: "http://x" }))
-  assert.deepEqual([set.lang, set.inspect, set.fake, set.server], ["en", true, true, "http://x"])
+  const set = config({}, world({ TAVERN_LANG: "en", MODEL: "fake", TAVERN_SERVER: "http://x" }))
+  assert.deepEqual([set.lang, set.fake, set.server], ["en", true, "http://x"])
   assert.equal(config({ server: "http://y" }, world({ TAVERN_SERVER: "http://x" })).server, "http://y")
   assert.equal(set.version, "dev")
 }
@@ -280,11 +277,11 @@ try {
   assert.ok(!existsSync(join(dir, "tavern.db.lock")))
   const alone = await spawned("story", "list", "--json")
   assert.deepEqual([alone.code, alone.err, JSON.parse(alone.out).length], [0, "", 1])
-  // Starting with PORT and TAVERN_INSPECT honors both settings and shuts down cleanly.
-  for (const inspect of [false, true]) {
+  // Starting with PORT honors it, the trace carries the call bodies, and it shuts down cleanly.
+  {
     server = Bun.spawn(["bun", bin, "start"], {
       cwd: dir,
-      env: { ...env, PORT: "0", TAVERN_INSPECT: inspect ? "1" : "0" },
+      env: { ...env, PORT: "0" },
       stdout: "pipe",
       stderr: "pipe",
     })
@@ -294,8 +291,7 @@ try {
     const trace = await (await fetch(`${api}/nodes/0/trace`, { headers })).json()
     assert.ok(trace.length > 0)
     for (const call of trace) {
-      assert.equal(call.msgs.length > 0, inspect)
-      if (!inspect) assert.equal(call.out, undefined)
+      assert.ok(call.msgs.length > 0)
     }
     server.kill("SIGTERM")
     assert.equal(await server.exited, 0)
