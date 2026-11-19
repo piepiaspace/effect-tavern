@@ -28,7 +28,7 @@ export const TARGETS: readonly Target[] = [
 
 /** Mach-O binaries build on macOS: Bun's appended program breaks their signature, and only codesign mends it.
  * Blacksmith's macs are all Apple Silicon: the x64 one is signed there and checked under Rosetta. */
-const runner = (t: Target) => (t.os === "darwin" ? "blacksmith-6vcpu-macos-latest" : "blacksmith-4vcpu-ubuntu-2604")
+const runner = (t: Target) => (t.os === "darwin" ? "blacksmith-6vcpu-macos-latest" : "blacksmith-2vcpu-ubuntu-2604")
 
 const root = join(import.meta.dir, "..")
 const dist = join(root, "packages/server/dist")
