@@ -424,7 +424,6 @@ const en: Dict = {
     navigation: "Navigation",
     newStory: "New story",
     noCardMatch: "No card matches",
-    missingStoryCards: "To resume your stories, import the missing cards by ID: {ids}.",
     noCards: "No card on the shelf yet",
     noPersona: "No persona",
     noPersonaMatch: "No persona matches “{q}”",

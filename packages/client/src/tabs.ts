@@ -67,19 +67,7 @@ export const navigate = (work: (current: () => boolean) => Promise<void>): Promi
   return (last = last
     .catch(() => {})
     .then(async () => {
-      if (!current()) return
-      try {
-        await work(current)
-      } catch (e) {
-        if (!(e instanceof Error && "code" in e && e.code === "no-card")) throw e
-        const listing = registry.get(stories)
-        const story = listing?.stories.find((s) => s.id === listing.current)
-        if (!story || registry.get(cards).some((c) => c.id === story.card)) throw e
-        if (!current()) return
-        // Home names the missing card and opens the importer. Release the failed story's reading first.
-        await reading.activate(null)
-        if (current()) edit({ story: null, card: null, page: "home", under: [], scroll: undefined })
-      }
+      if (current()) await work(current)
     }))
 }
 /** `list` with `id` active: the tab left (when it is still on the strip) keeps its scroll; then the way in. */
