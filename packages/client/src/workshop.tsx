@@ -50,8 +50,9 @@ const standingOf = (e: unknown): Standing => {
  *  manuscript written into it, so what the page does not show cannot drift however many saves there are. `shelf` is
  *  the card as the shelf holds it by this page's last save and `rev` its revision, which the next save is written
  *  from. A write waits `DELAY` for the next one; saves go one after another, each of the manuscript as it is by then.
- *  A save that would change nothing is not sent, so a page nothing was typed on never saves. */
-const desk = (read: Card, at: string, say: (s: Standing) => void) => {
+ *  A save that would change nothing is not sent, so a page nothing was typed on never saves. `busy` hears whether a write
+ *  is waiting or under way. */
+const desk = (read: Card, at: string, say: (s: Standing) => void, busy: (on: boolean) => void) => {
   let manuscript = manuscriptOf(read)
   let shelf = read
   let rev = at
@@ -59,30 +60,39 @@ const desk = (read: Card, at: string, say: (s: Standing) => void) => {
   let queue: Promise<boolean> = Promise.resolve(true)
   let failed = false // the last save did not go through: the page says so until one does, or the text is the card again
   let letGone = false // the author gave this page's text up (the notice's way out): nothing more of it is written
+  let running = 0 // saves queued or under way
+  const told = () => busy(timer !== undefined || running > 0)
   /** Now, not after the delay; true when the shelf holds what the page shows. `last`: on the way out of the window. */
   const save = (last = false): Promise<boolean> => {
     clearTimeout(timer)
     timer = undefined
-    return (queue = queue.then(async () => {
-      if (letGone) return true
-      const next = cardOf(read, manuscript)
-      if (same(next, shelf)) {
-        if (failed) say({ is: "saved" }) // text put back as the shelf holds it takes the notice with it
-        failed = false
-        return true
-      }
-      say({ is: "saving" })
-      try {
-        rev = await saveCard(next, rev, last)
-        shelf = next
-        failed = false
-        say({ is: "saved" })
-      } catch (e) {
-        failed = true
-        say(standingOf(e))
-      }
-      return !failed
-    }))
+    running++
+    told()
+    return (queue = queue
+      .then(async () => {
+        if (letGone) return true
+        const next = cardOf(read, manuscript)
+        if (same(next, shelf)) {
+          if (failed) say({ is: "saved" }) // text put back as the shelf holds it takes the notice with it
+          failed = false
+          return true
+        }
+        say({ is: "saving" })
+        try {
+          rev = await saveCard(next, rev, last)
+          shelf = next
+          failed = false
+          say({ is: "saved" })
+        } catch (e) {
+          failed = true
+          say(standingOf(e))
+        }
+        return !failed
+      })
+      .finally(() => {
+        running--
+        told()
+      }))
   }
   return {
     read,
@@ -91,6 +101,7 @@ const desk = (read: Card, at: string, say: (s: Standing) => void) => {
       manuscript = next
       clearTimeout(timer)
       timer = setTimeout(() => void save(), DELAY)
+      told()
     },
     save,
     async flush() {
@@ -105,6 +116,8 @@ const desk = (read: Card, at: string, say: (s: Standing) => void) => {
     letGo: () => {
       letGone = true
       clearTimeout(timer)
+      timer = undefined
+      told()
     },
   }
 }
@@ -209,6 +222,7 @@ export const ManuscriptPage = () => {
   const [opened, setOpened] = createSignal<{ id: string; desk: Desk | null } | null>(null)
   const [manuscript, setManuscript] = createSignal<Manuscript>(EMPTY)
   const [standing, setStanding] = createSignal<Standing>({ is: "clean" })
+  const [busy, setBusy] = createSignal(false) // a write waiting or under way: aria-busy on the standing
   const [reads, setReads] = createSignal(0) // moved to read the card again (the notice's way out)
   // the page is on a card (the tab's): read it whole; leaving it, for another card or another page, saves what is left
   createEffect(
@@ -220,7 +234,12 @@ export const ManuscriptPage = () => {
       void wholeCard(id).then(
         ({ card, rev }) => {
           if (left) return
-          mine = desk(card, rev, (s) => left || setStanding(s))
+          mine = desk(
+            card,
+            rev,
+            (s) => left || setStanding(s),
+            (on) => left || setBusy(on),
+          )
           setManuscript(mine.manuscript())
           setStanding({ is: "clean" })
           setOpened({ id, desk: mine })
@@ -314,7 +333,7 @@ export const ManuscriptPage = () => {
         </button>
         <h1>{t("side.workshop")}</h1>
         <span class="workshop-end">
-          <span class="workshop-standing" role="status">
+          <span class="workshop-standing" role="status" aria-busy={busy() ? "true" : "false"}>
             {standing().is === "saving" ? t("workshop.saving") : standing().is === "saved" ? t("workshop.saved") : ""}
           </span>
           <button

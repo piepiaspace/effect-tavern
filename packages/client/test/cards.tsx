@@ -10,6 +10,7 @@ import { Confirm } from "../src/controls.tsx"
 import { flip, locale } from "../src/i18n.ts"
 import type { DepotRow, DepotView, ShelfCard } from "../src/store.ts"
 import "../src/app.css"
+import { quiet, tracked } from "./settle.ts"
 
 const bridge = installDiagnosticsBridge()
 bridge.begin()
@@ -36,63 +37,59 @@ const view = (): DepotView => ({
 const post = globalThis.fetch
 const requests: string[] = []
 const refuse = (status: number, code: string, error: string) => Response.json({ error, code }, { status })
-globalThis.fetch = Object.assign(
-  async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-    const method = init?.method ?? "GET"
-    const path = url.replace(/^.*\/api/, "")
-    requests.push(`${method} ${path}`)
-    const body = typeof init?.body === "string" ? init.body : ""
-    const put = (row: ShelfCard) => {
-      shelf = [...shelf.filter((c) => c.id !== row.id), row]
-      return Response.json({ card: row, cards: shelf })
-    }
-    if (method === "POST" && path === "/cards/link") {
-      const { url, replace } = JSON.parse(body) as { url: string; replace?: boolean }
-      const id = /\/cards\/(\w+)\.yaml$/.exec(url)?.[1]
-      if (!url.startsWith(LOCATION) || !id) return refuse(502, "link-unreadable", `${url}: HTTP 404`)
-      if (shelf.some((c) => c.id === id) && !replace)
-        return refuse(409, "card-exists", `card ${id} is already installed`)
-      return put({ id, title: id.toUpperCase(), origin: { via: "link", url } })
-    }
-    if (method === "POST" && path.startsWith("/cards")) {
-      const id = /^id: (\S+)/m.exec(body)?.[1]
-      if (!id) return refuse(400, "card-invalid", "error schema $: no id\nerror schema $: not a card")
-      if (shelf.some((c) => c.id === id) && !path.includes("replace=1"))
-        return refuse(409, "card-exists", `card ${id} is already installed`)
-      return put({ id, title: /^title: (.+)/m.exec(body)?.[1] ?? id, origin: { via: "file" } })
-    }
-    if (method === "DELETE" && path.startsWith("/cards/")) {
-      const id = decodeURIComponent(path.slice(7))
-      if (id === "busy") return refuse(409, "card-in-use", "card busy has 1 story")
-      shelf = shelf.filter((c) => c.id !== id)
-      return Response.json(shelf)
-    }
-    if (method === "POST" && path === "/depots") {
-      const { location } = JSON.parse(body) as { location: string }
-      if (location.endsWith(".yaml")) return refuse(400, "depot-is-card", `${location} is a card, not a card library`)
-      if (location !== LOCATION) return refuse(502, "depot-unreadable", `${location}: HTTP 404`)
-      libs = [{ id: "d1", name: "样例卡库", location }]
-      return Response.json(libs)
-    }
-    if (method === "DELETE" && path === "/depots/d1") return Response.json((libs = []))
-    if (method === "GET" && path === "/depots/d1")
-      return lib.down ? refuse(502, "depot-unreadable", `${LOCATION}: HTTP 503`) : Response.json(view())
-    if (method === "POST" && path === "/depots/d1/pull") {
-      const { entry, replace } = JSON.parse(body) as { entry: string; replace?: boolean }
-      const e = index().find((x) => x.id === entry)!
-      if (shelf.some((c) => c.id === entry) && !replace)
-        return refuse(409, "card-exists", `card ${entry} is already installed`)
-      return put({
-        id: e.id,
-        title: e.title,
-        origin: { via: "depot", depot: LOCATION, ...(e.version && { version: e.version }) },
-      })
-    }
-    return Response.json({})
-  },
-  { preconnect: () => {} },
-)
+globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  const method = init?.method ?? "GET"
+  const path = url.replace(/^.*\/api/, "")
+  requests.push(`${method} ${path}`)
+  const body = typeof init?.body === "string" ? init.body : ""
+  const put = (row: ShelfCard) => {
+    shelf = [...shelf.filter((c) => c.id !== row.id), row]
+    return Response.json({ card: row, cards: shelf })
+  }
+  if (method === "POST" && path === "/cards/link") {
+    const { url, replace } = JSON.parse(body) as { url: string; replace?: boolean }
+    const id = /\/cards\/(\w+)\.yaml$/.exec(url)?.[1]
+    if (!url.startsWith(LOCATION) || !id) return refuse(502, "link-unreadable", `${url}: HTTP 404`)
+    if (shelf.some((c) => c.id === id) && !replace) return refuse(409, "card-exists", `card ${id} is already installed`)
+    return put({ id, title: id.toUpperCase(), origin: { via: "link", url } })
+  }
+  if (method === "POST" && path.startsWith("/cards")) {
+    const id = /^id: (\S+)/m.exec(body)?.[1]
+    if (!id) return refuse(400, "card-invalid", "error schema $: no id\nerror schema $: not a card")
+    if (shelf.some((c) => c.id === id) && !path.includes("replace=1"))
+      return refuse(409, "card-exists", `card ${id} is already installed`)
+    return put({ id, title: /^title: (.+)/m.exec(body)?.[1] ?? id, origin: { via: "file" } })
+  }
+  if (method === "DELETE" && path.startsWith("/cards/")) {
+    const id = decodeURIComponent(path.slice(7))
+    if (id === "busy") return refuse(409, "card-in-use", "card busy has 1 story")
+    shelf = shelf.filter((c) => c.id !== id)
+    return Response.json(shelf)
+  }
+  if (method === "POST" && path === "/depots") {
+    const { location } = JSON.parse(body) as { location: string }
+    if (location.endsWith(".yaml")) return refuse(400, "depot-is-card", `${location} is a card, not a card library`)
+    if (location !== LOCATION) return refuse(502, "depot-unreadable", `${location}: HTTP 404`)
+    libs = [{ id: "d1", name: "样例卡库", location }]
+    return Response.json(libs)
+  }
+  if (method === "DELETE" && path === "/depots/d1") return Response.json((libs = []))
+  if (method === "GET" && path === "/depots/d1")
+    return lib.down ? refuse(502, "depot-unreadable", `${LOCATION}: HTTP 503`) : Response.json(view())
+  if (method === "POST" && path === "/depots/d1/pull") {
+    const { entry, replace } = JSON.parse(body) as { entry: string; replace?: boolean }
+    const e = index().find((x) => x.id === entry)!
+    if (shelf.some((c) => c.id === entry) && !replace)
+      return refuse(409, "card-exists", `card ${entry} is already installed`)
+    return put({
+      id: e.id,
+      title: e.title,
+      origin: { via: "depot", depot: LOCATION, ...(e.version && { version: e.version }) },
+    })
+  }
+  return Response.json({})
+})
 
 // the page's own wiring (settings.tsx): the pick, and on a phone which of the two panes shows
 const [picked, setPicked] = createSignal<string | undefined>(undefined)
@@ -111,7 +108,6 @@ render(
 
 const failures: string[] = []
 const check = (ok: unknown, what: string) => ok || failures.push(what)
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const flat = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, "") // the words, whatever the layout breaks
 const text = (sel: string) => [...document.querySelectorAll<HTMLElement>(sel)].map((e) => flat(e.innerText))
 const detail = () => document.querySelector<HTMLElement>(".cards-detail")!
@@ -124,7 +120,7 @@ const press = async (name: string, within?: ParentNode) => {
   const b = key(name, within)
   check(b, `no key "${name}" showing: ${text("button").join(" | ")}`)
   b?.click()
-  await wait(350) // the confirm's enter and exit, and the answer's read
+  await quiet() // the confirm's enter and exit, and the answer's read
 }
 /** The open confirm's answer: its own key, whatever else on the page carries the same word. */
 const answer = (name: string) => press(name, document.querySelector(".confirm") ?? undefined)
@@ -147,7 +143,7 @@ const give = async (name: string, body: string) => {
   const input = (await dialog()).querySelector<HTMLInputElement>('input[type="file"]')!
   input.files = holding(name, body).files
   input.dispatchEvent(new Event("change", { bubbles: true }))
-  await wait(450)
+  await quiet()
 }
 /** A file dragged from outside and let go over the dialog's zone. */
 const drop = async (name: string, body: string) => {
@@ -155,7 +151,7 @@ const drop = async (name: string, body: string) => {
   const dataTransfer = holding(name, body)
   for (const type of ["dragenter", "dragover", "drop"])
     zone.dispatchEvent(new DragEvent(type, { dataTransfer, bubbles: true, cancelable: true }))
-  await wait(450)
+  await quiet()
 }
 const shut = async () => {
   if (document.querySelector(".import-card")) await press("关闭", document.querySelector(".modal")!)
@@ -164,7 +160,7 @@ const typeInto = async (sel: string, v: string) => {
   const input = document.querySelector<HTMLInputElement>(sel)!
   input.value = v
   input.dispatchEvent(new InputEvent("input", { bubbles: true }))
-  await wait(50)
+  await quiet()
 }
 const rows = () => [...detail().querySelectorAll<HTMLElement>(".card-row")].map((r) => flat(r.innerText))
 const row = (title: string) =>
@@ -173,7 +169,7 @@ const row = (title: string) =>
   )!
 
 const run = async () => {
-  await wait(100)
+  await quiet()
   // a new install: the list is the shelf alone, with nothing on it, and its page says so
   check(text(".master-list .p-row").join("|") === "已安装0", `the list: ${text(".master-list .p-row").join(" | ")}`)
   await press("已安装0")

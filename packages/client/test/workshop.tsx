@@ -12,6 +12,7 @@ import { flip, locale } from "../src/i18n.ts"
 import { open } from "../src/pages.ts"
 import { page, type ShelfCard } from "../src/store.ts"
 import { ManuscriptPage, Workshop } from "../src/workshop.tsx"
+import { quiet, tracked, until } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -59,55 +60,49 @@ const post = globalThis.fetch
 const requests: string[] = []
 const saves: Card[] = []
 let pendingSave: Promise<void> | undefined
-globalThis.fetch = Object.assign(
-  async (input: RequestInfo | URL, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-    const method = init?.method ?? "GET"
-    const path = url.replace(/^.*\/api/, "")
-    requests.push(`${method} ${path}`)
-    const body = typeof init?.body === "string" ? init.body : ""
-    if (method === "GET" && path === "/cards") return Response.json(shelf())
-    if (method === "POST" && path === "/cards/new") {
-      const card = blank("card-0001", (JSON.parse(body) as { title?: string }).title)
-      put(card)
-      origins.set(card.id, { via: "workshop" })
-      return Response.json({ card: shelf().find((c) => c.id === card.id), cards: shelf() })
-    }
-    const whole = /^\/cards\/([^/]+)\/whole$/.exec(path)
-    if (whole) {
-      const id = decodeURIComponent(whole[1]!)
-      if (!held.has(id)) return Response.json({ error: `no card ${id}` }, { status: 404 })
-      if (method === "GET") return Response.json({ card: held.get(id), rev: revOf(id) })
-      const { card, rev } = JSON.parse(body) as { card: Card; rev: string }
-      if (rev !== revOf(id))
-        return Response.json(
-          { error: `card ${id} has changed since it was read`, code: "card-changed" },
-          { status: 409 },
-        )
-      // the gate, as far as this page can trip it: a legacy macro in an author's text
-      const macro = card.fiction.find((f) => f.text?.includes("{{setvar"))
-      if (macro)
-        return Response.json(
-          {
-            error: `error unsupported-macro fiction.${macro.id}.text: {{setvar}} is not supported`,
-            code: "card-invalid",
-          },
-          { status: 400 },
-        )
-      saves.push(card)
-      put(card)
-      if (origins.get(id)!.via !== "workshop") origins.set(id, { ...origins.get(id)!, edited: true })
-      const response = Response.json({ card: shelf().find((c) => c.id === id), cards: shelf(), rev: revOf(id) })
-      await pendingSave
-      return response
-    }
-    // a card's view, the listing and the rest: nothing these pages draw
-    const view = /^\/cards\/([^/]+)$/.exec(path)
-    if (view) return Response.json({ id: decodeURIComponent(view[1]!), title: "", greetings: [], local: {} })
-    return Response.json(path === "/stories" ? { current: null, stories: [] } : [])
-  },
-  { preconnect: () => {} },
-)
+globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  const method = init?.method ?? "GET"
+  const path = url.replace(/^.*\/api/, "")
+  requests.push(`${method} ${path}`)
+  const body = typeof init?.body === "string" ? init.body : ""
+  if (method === "GET" && path === "/cards") return Response.json(shelf())
+  if (method === "POST" && path === "/cards/new") {
+    const card = blank("card-0001", (JSON.parse(body) as { title?: string }).title)
+    put(card)
+    origins.set(card.id, { via: "workshop" })
+    return Response.json({ card: shelf().find((c) => c.id === card.id), cards: shelf() })
+  }
+  const whole = /^\/cards\/([^/]+)\/whole$/.exec(path)
+  if (whole) {
+    const id = decodeURIComponent(whole[1]!)
+    if (!held.has(id)) return Response.json({ error: `no card ${id}` }, { status: 404 })
+    if (method === "GET") return Response.json({ card: held.get(id), rev: revOf(id) })
+    const { card, rev } = JSON.parse(body) as { card: Card; rev: string }
+    if (rev !== revOf(id))
+      return Response.json({ error: `card ${id} has changed since it was read`, code: "card-changed" }, { status: 409 })
+    // the gate, as far as this page can trip it: a legacy macro in an author's text
+    const macro = card.fiction.find((f) => f.text?.includes("{{setvar"))
+    if (macro)
+      return Response.json(
+        {
+          error: `error unsupported-macro fiction.${macro.id}.text: {{setvar}} is not supported`,
+          code: "card-invalid",
+        },
+        { status: 400 },
+      )
+    saves.push(card)
+    put(card)
+    if (origins.get(id)!.via !== "workshop") origins.set(id, { ...origins.get(id)!, edited: true })
+    const response = Response.json({ card: shelf().find((c) => c.id === id), cards: shelf(), rev: revOf(id) })
+    await pendingSave
+    return response
+  }
+  // a card's view, the listing and the rest: nothing these pages draw
+  const view = /^\/cards\/([^/]+)$/.exec(path)
+  if (view) return Response.json({ id: decodeURIComponent(view[1]!), title: "", greetings: [], local: {} })
+  return Response.json(path === "/stories" ? { current: null, stories: [] } : [])
+})
 
 const pg = read(page)
 render(
@@ -126,7 +121,6 @@ render(
 
 const failures: string[] = []
 const check = (ok: unknown, what: string) => ok || failures.push(what)
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const flat = (s: string | null | undefined) => (s ?? "").replace(/\s+/g, "")
 const words = () => flat(document.querySelector<HTMLElement>(".workshop-page")?.innerText)
 /** The one button showing with this label or these words. */
@@ -141,7 +135,7 @@ const press = async (name: string, within?: ParentNode) => {
     `no key "${name}" showing: ${[...document.querySelectorAll("button")].map((x) => flat(x.innerText) || x.getAttribute("aria-label")).join(" | ")}`,
   )
   b?.click()
-  await wait(350)
+  await quiet()
 }
 /** The showing fields of this name, in page order. */
 const fields = (name: string) =>
@@ -155,7 +149,7 @@ const type = async (name: string, value: string, nth = 0) => {
   f.focus()
   f.value = value
   f.dispatchEvent(new InputEvent("input", { bubbles: true }))
-  await wait(30)
+  await quiet()
 }
 /** The blocks on the page, in page order; those of one part. */
 const blocks = (part?: string) => [
@@ -164,15 +158,18 @@ const blocks = (part?: string) => [
 /** A block open in the editor, by its place on the page. */
 const edit = async (nth: number) => {
   blocks()[nth]?.querySelector<HTMLElement>(".workshop-open")?.click()
-  await wait(350)
+  await quiet()
 }
-/** Past the save's delay and its answer. */
-const settled = () => wait(1300)
+/** No write waiting or under way (the standing's aria-busy), and its answer drawn. */
+const settled = async () => {
+  await until(() => document.querySelector(".workshop-standing")?.getAttribute("aria-busy") !== "true")
+  await quiet()
+}
 const last = () => saves.at(-1)!
 
 const run = async () => {
   open("workshop")
-  await wait(200)
+  await quiet()
   // the list is the shelf: the one card there, and New at its head
   check(words().includes("盐道") && key("新建卡片"), `the list shows the shelf and New: ${words()}`)
 
@@ -279,7 +276,6 @@ const run = async () => {
 
   // a card made elsewhere: the page shows its plain text, and an edit keeps the rest where it was
   await press("盐道")
-  await wait(200)
   check(
     blocks("chapters").length === 1 && blocks("entries").length === 0,
     "the banded fragment and the layered entry are not on the page",
@@ -309,34 +305,41 @@ const run = async () => {
     `a card changed elsewhere is not written over: ${stale}`,
   )
   await press("重新读取")
-  await wait(300)
   check(
-    fields("卡片名")[0]?.value === "终端装的" &&
-      fields("一句话简介")[0]?.value === "" &&
-      !document.querySelector(".workshop-notice"),
+    await until(
+      () =>
+        fields("卡片名")[0]?.value === "终端装的" &&
+        fields("一句话简介")[0]?.value === "" &&
+        !document.querySelector(".workshop-notice"),
+    ),
     `read again, the page is the shelf's card: ${fields("卡片名")[0]?.value}`,
   )
   // Play waits for edits made during the first PUT. A conflicting second PUT keeps the newer text on screen.
   const first = Promise.withResolvers<void>()
   pendingSave = first.promise
   await type("一句话简介", "先写的一行")
-  await press("去游玩")
-  await type("一句话简介", "后来的一行")
+  const sent = requests.length
+  key("去游玩")?.click()
+  await until(() => requests.length > sent) // its save is out, held until `first` resolves
+  const summary = fields("一句话简介")[0]!
+  summary.value = "后来的一行"
+  summary.dispatchEvent(new InputEvent("input", { bubbles: true }))
   // The first write succeeds; another editor changes the revision before the follow-up write.
   put({ ...held.get("made")!, title: "书架上的新名字" })
   first.resolve()
   pendingSave = undefined
-  await wait(350)
   check(
-    fields("一句话简介")[0]?.value === "后来的一行" && words().includes("在别处被改过了"),
+    await until(() => fields("一句话简介")[0]?.value === "后来的一行" && words().includes("在别处被改过了")),
     "Play stays when the edit made during its save is refused",
   )
   await press("重新读取")
   // leaving with a keystroke not yet saved writes it on the way out
   await type("一句话简介", "一条盐道")
   await press("返回")
-  await wait(300)
-  check(last().summary === "一条盐道", `leaving saves what was left: ${JSON.stringify(last().summary)}`)
+  check(
+    await until(() => last().summary === "一条盐道"),
+    `leaving saves what was left: ${JSON.stringify(last().summary)}`,
+  )
 
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)

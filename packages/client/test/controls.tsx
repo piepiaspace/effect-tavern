@@ -14,6 +14,7 @@ import { Demand, Sheet } from "../src/readings.tsx"
 import { card, registry, type CardView } from "../src/store.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { timelineNode } from "./fixtures.ts"
+import { quiet, tracked, until } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -21,38 +22,35 @@ bridge.begin()
 if (locale() !== "zh-CN") flip()
 const post = globalThis.fetch
 const requests: string[] = [] // the bodies the client posts
-globalThis.fetch = Object.assign(
-  async (input: RequestInfo | URL, init?: RequestInit) => {
-    if (typeof init?.body === "string") requests.push(init.body)
-    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-    // the composer's menu reads the player's catalog: one entry filed under a pack, one of the card's
-    if (url.includes("/context?"))
-      return Response.json({
-        worldState: { fields: {}, world: {}, lore: {} },
-        products: {},
-        playerCatalog: [
-          {
-            resourceId: "pack:p/guide",
-            title: "细腻描写",
-            summary: "让动作与景物自然相连",
-            source: "pack",
-            category: "p",
-            available: true,
-          },
-          {
-            resourceId: "card:clue",
-            title: "查看线索",
-            summary: "已经解锁的卡片功能",
-            source: "card",
-            category: "card",
-            available: true,
-          },
-        ],
-      })
-    return new Response("", { headers: { "content-type": "text/event-stream" } })
-  },
-  { preconnect: () => {} },
-)
+globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
+  if (typeof init?.body === "string") requests.push(init.body)
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  // the composer's menu reads the player's catalog: one entry filed under a pack, one of the card's
+  if (url.includes("/context?"))
+    return Response.json({
+      worldState: { fields: {}, world: {}, lore: {} },
+      products: {},
+      playerCatalog: [
+        {
+          resourceId: "pack:p/guide",
+          title: "细腻描写",
+          summary: "让动作与景物自然相连",
+          source: "pack",
+          category: "p",
+          available: true,
+        },
+        {
+          resourceId: "card:clue",
+          title: "查看线索",
+          summary: "已经解锁的卡片功能",
+          source: "card",
+          category: "card",
+          available: true,
+        },
+      ],
+    })
+  return new Response("", { headers: { "content-type": "text/event-stream" } })
+})
 registry.set(card, {
   id: "fixture",
   input: "act",
@@ -105,6 +103,7 @@ const pull = async (xs: number[], gap: number) => {
 let held = false // the sheet refuses Escape while this is set, as the manager does with stories checked
 const escape = () =>
   document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+/** The time between two moves of a hand: the input itself, which a gesture's speed is read from. */
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** Whether the one element of this class shows with its centre on the window's vertical axis, inside the window. */
 const shows = (cls: string) => {
@@ -196,7 +195,7 @@ const run = async () => {
   )
 
   ask("删除密钥?", () => deleted++)
-  await wait(50)
+  await quiet()
   const box = document.querySelector(".confirm")?.getBoundingClientRect()
   check(
     box &&
@@ -211,7 +210,7 @@ const run = async () => {
   // the same question is still up (it was asked by the app, not opened by the refused press)
   approve = true
   const allowed = await agent.act(press)
-  await wait(400)
+  await quiet()
   check(allowed.ok && deleted === 1, `an approved delete runs once: ${allowed.error?.message} (${deleted})`)
   check(!document.querySelector(".confirm"), "an answered confirm leaves the page")
 
@@ -231,13 +230,13 @@ const run = async () => {
     field()!.dispatchEvent(new InputEvent("input", { bubbles: true }))
   }
   line.focus()
-  await wait(100)
+  await quiet()
   key(line, "/")
-  await wait(500)
+  await quiet()
   check(document.activeElement === field(), "the slash key opens the menu with the hand in its field")
   check(rows().join(" ") === "继续 场外 写作包 卡片", `the first page, no row lit yet: ${rows().join(" ")}`)
   key(field()!, "ArrowDown")
-  await wait(100)
+  await quiet()
   check(rows()[0] === "继续*", `an arrow lights the first row: ${rows().join(" ")}`)
   const rowBox = document.querySelector('#snippets [data-slot="command-item"]')!.getBoundingClientRect()
   const fieldBox = field()!.getBoundingClientRect()
@@ -253,10 +252,10 @@ const run = async () => {
     `the menu sits over the box, left edges aligned: ${[menuBox.left, menuBox.bottom, lineBox.left, lineBox.top].map(Math.round).join(" ")}`,
   )
   type("细腻")
-  await wait(300)
+  await quiet()
   check(rows().join(" ") === "细腻描写*", `a search from the first page reaches a filed entry: ${rows().join(" ")}`)
   key(field()!, "Enter")
-  await wait(500)
+  await quiet()
   check(
     registry.get(composition).invocations.some((i) => i.resourceId === "pack:p/guide"),
     "Enter attaches the entry to the turn",
@@ -264,22 +263,22 @@ const run = async () => {
   check(!document.querySelector("#snippets") && document.activeElement === line, "and the hand is back in the line")
   // into the card's page and back; a note snippet opens the note box and leaves the hand in it
   key(line, "/")
-  await wait(500)
+  await quiet()
   type("卡片")
-  await wait(300)
+  await quiet()
   key(field()!, "Enter")
-  await wait(300)
+  await quiet()
   check(rows().join(" ") === "查看线索", `Enter on a tools row opens its page, nothing lit: ${rows().join(" ")}`)
   key(field()!, "Backspace")
-  await wait(300)
+  await quiet()
   check(
     !document.querySelector("#snippets .menu-heading") && field()!.value === "卡片",
     `Backspace on the empty field goes back to the first page and its search: ${rows().join(" ")}`,
   )
   type("场外")
-  await wait(300)
+  await quiet()
   key(field()!, "Enter")
-  await wait(500)
+  await quiet()
   check(
     registry.get(composition).note === "写细一点。",
     `a note snippet writes into the note: ${registry.get(composition).note}`,
@@ -300,20 +299,22 @@ const run = async () => {
   }
   line.focus()
   tap(plus)
-  await wait(500)
+  await quiet()
   check(
     !!document.querySelector("#snippets") && document.activeElement === line,
     "a press opens the menu and leaves the hand in the line",
   )
   tap(plus)
-  await wait(160)
-  check(!document.querySelector("#snippets"), "a second press on the button closes the menu, quickly")
-  await wait(340)
+  check(
+    await until(() => !document.querySelector("#snippets"), 160),
+    "a second press on the button closes the menu, quickly",
+  )
+  await quiet()
   check(!document.querySelector("#snippets"), "and it stays closed")
   tap(plus)
-  await wait(500)
+  await quiet()
   ;[...document.querySelectorAll<HTMLElement>('#snippets [data-slot="command-item"]')][0]!.click()
-  await wait(500)
+  await quiet()
   check(
     registry.get(composition).text === "继续" && !document.querySelector("#snippets"),
     `a press on a snippet fills the line: ${registry.get(composition).text}`,
@@ -321,18 +322,17 @@ const run = async () => {
 
   // the stage's edge. An agent sets a width inside the band; a key steps it
   const widen = await agent.act({ steps: [{ ref: "侧栏宽度", action: "setWidth", args: [900] }] })
-  await wait(50)
+  await quiet()
   check(
     widen.ok && side.width === SIDE.max,
     `an agent's width stays in the band: ${widen.error?.message} (${side.width})`,
   )
   document.querySelector(".resizer")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }))
-  await wait(50)
-  check(side.width === SIDE.max - 16, `an arrow key steps the width (${side.width})`)
+  check(await until(() => side.width === SIDE.max - 16), `an arrow key steps the width (${side.width})`)
   // a slow pull past the ceiling gives a little, and the release springs back to the ceiling through real frames
   side.track = []
   await pull([340, 400, 460], 60)
-  await wait(700)
+  await until(() => side.track.at(-1) === null) // the spring lets go
   const peak = Math.max(...side.track.filter((w) => w !== null))
   const after = side.track.slice(side.track.lastIndexOf(peak) + 1)
   check(peak > SIDE.max && peak < SIDE.max + 24, `past the ceiling the track gives, under its limit (${peak})`)
@@ -348,31 +348,30 @@ const run = async () => {
   hand("pointermove", 150)
   await wait(40)
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
-  await wait(100)
-  check(side.track.at(-1) === null && side.width === SIDE.max, `Escape puts the track back (${side.track.join(" ")})`)
+  check(
+    await until(() => side.track.at(-1) === null && side.width === SIDE.max),
+    `Escape puts the track back (${side.track.join(" ")})`,
+  )
   hand("pointerup", 150)
   // a quick flick toward the edge, released well inside the band's reach, folds
   await pull([300, 270, 235, 195], 8)
-  await wait(100)
-  check(side.folded, "a flick toward the edge folds")
+  check(await until(() => side.folded), "a flick toward the edge folds")
   // docked again (the shell's fold key), a press without a move folds, and so does an agent
   const dock = () => (setSideFolded(false), (side.folded = false))
   dock()
-  await wait(50)
+  await quiet()
   hand("pointerdown", side.width)
   hand("pointerup", side.width)
-  await wait(50)
-  check(side.folded, "a click on the edge folds")
+  check(await until(() => side.folded), "a click on the edge folds")
   dock()
-  await wait(50)
+  await quiet()
   const folds = await agent.act({ steps: [{ ref: "侧栏宽度", action: "fold" }] })
-  await wait(50)
-  check(folds.ok && side.folded, `an agent folds it: ${folds.error?.message}`)
+  check(folds.ok && (await until(() => side.folded)), `an agent folds it: ${folds.error?.message}`)
 
   // the dialogs: a sheet named by its heading with the focus where it asked, a prompt over it that closes alone,
   // each gone from the page once closed; a modal whose onClose runs once it has left
   void sheet.open()
-  await wait(400)
+  await quiet()
   check(shows(".sheet"), "the sheet shows in the window")
   check(document.activeElement?.getAttribute("aria-label") === "搜索故事", "the sheet's focus lands on its search")
   check(
@@ -380,10 +379,10 @@ const run = async () => {
     "the open sheet is named by its heading",
   )
   void prompt.open()
-  await wait(400)
+  await quiet()
   check(shows(".confirm"), "the prompt shows over the sheet")
   const dismiss = await agent.act({ steps: [{ ref: "重命名故事", action: "setOpen", args: [false] }] })
-  await wait(400)
+  await quiet()
   check(dismiss.ok, `closing the prompt: ${dismiss.error?.message}`)
   check(
     !document.querySelector(".confirm") && shows(".sheet"),
@@ -391,17 +390,17 @@ const run = async () => {
   )
   held = true
   escape()
-  await wait(400)
+  await quiet()
   check(shows(".sheet"), "a sheet that refuses Escape stays")
   held = false
   escape()
-  await wait(600)
+  await quiet()
   check(!document.querySelector(".sheet"), "Escape closes the sheet, and a closed sheet leaves the page")
   void modal.open()
-  await wait(400)
+  await quiet()
   check(shows(".modal") && left === 0, "the modal shows")
   modal.close()
-  await wait(600)
+  await quiet()
   check(!document.querySelector(".modal") && left === 1, `the modal's onClose runs once it has left (${left})`)
 
   const diagnostics = bridge.end().diagnostics

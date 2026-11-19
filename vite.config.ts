@@ -26,17 +26,8 @@ export default defineConfig({
       {
         files: ["packages/*/test/**"],
         rules: {
-          // a test awaits what it waits for; the browser fixtures still time their animations (ratchet down)
-          "tavern/no-fixed-sleep": [
-            "error",
-            {
-              allow: {
-                "packages/client/test/controls.tsx": 38,
-                "packages/client/test/cards.tsx": 5,
-                "packages/client/test/workshop.tsx": 19,
-              },
-            },
-          ],
+          // a test awaits what it waits for; the edge's pulls pace their moves, the time between them being the input
+          "tavern/no-fixed-sleep": ["error", { allow: { "packages/client/test/controls.tsx": 4 } }],
         },
       },
     ],
