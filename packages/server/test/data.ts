@@ -129,7 +129,8 @@ assert.deepEqual(
   ],
 )
 // Let the next commit have a later millisecond than the second story’s creation.
-await Bun.sleep(2)
+const created = Date.now()
+while (Date.now() <= created) await Bun.sleep(1)
 // The search: the head's line only (node 6, the swipe off the line, never hits), the earliest hit node first with the
 // field that hit (the line, then the note, then the prose) cut to a window, numbered by the turns up to it (the
 // greeting is turn 0), and the count of hit nodes; ASCII case folds; blank hits nothing.

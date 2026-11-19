@@ -13,6 +13,7 @@ export default defineConfig({
       { name: "vite-plus", specifier: "vite-plus/oxlint-plugin" },
       { name: "solid", specifier: "eslint-plugin-solid" }, // the 2.0 rules: removed-api, no-single-arg-create-effect, no-accessor-as-prop …
       { name: "anti-slop-effect", specifier: "./tools/oxlint/anti-slop-effect/index.ts" }, // two rules, UPSTREAM.md
+      { name: "tavern", specifier: "./tools/oxlint/tavern/index.ts" }, // our own
     ],
     settings: solidV2.settings,
     rules: {
@@ -21,6 +22,24 @@ export default defineConfig({
       "anti-slop-effect/throw-in-effect-gen": "error", // a throw in an Effect generator is a defect; fail with a tagged error
       "anti-slop-effect/no-unbounded-retry": "error", // every retry policy stops
     },
+    overrides: [
+      {
+        files: ["packages/*/test/**"],
+        rules: {
+          // a test awaits what it waits for; the browser fixtures still time their animations (ratchet down)
+          "tavern/no-fixed-sleep": [
+            "error",
+            {
+              allow: {
+                "packages/client/test/controls.tsx": 38,
+                "packages/client/test/cards.tsx": 5,
+                "packages/client/test/workshop.tsx": 19,
+              },
+            },
+          ],
+        },
+      },
+    ],
     options: { typeAware: true, typeCheck: true },
   },
 })
