@@ -1,11 +1,16 @@
 // `tavern doctor`: a short list of checks a person can read at a glance, each one line marked ✓, ! or ✗ and, when not
 // ✓, the one next step. The device, the command itself, the data directory, free space against an update, the tavern
 // running and its port, the network to the release, the device's tools, what an older launcher left behind, and the
-// last failed turn in the logbook's file (worded as the terminal words any failure). `--verbose` adds each check's raw
+// last failed turn in the logbook's file (worded as the terminal words any failure, the turn named as the logbook names
+// it: the file keeps only the story's id, so its card and title are read from the library, and a story since deleted is
+// named by its number). `--verbose` adds each check's raw
 // facts. The report is the command's result: stdout (one JSON value under --json); exit 1 when any check is ✗.
+import { Database } from "bun:sqlite"
 import { accessSync, constants, existsSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { announced, holder } from "../announce.ts"
+import { STORY_ROW } from "../data.ts"
+import { titled } from "../logbook/lines.ts"
 import { cells, troubleOf, wrap, width, type Facts, type Lang } from "../term/index.ts"
 import { mb } from "../term/codes.ts"
 import { terminalText } from "../term/screen.ts"
@@ -105,6 +110,30 @@ export const lastFailure = async (
     later ||= lines.length > 0
   }
   return undefined
+}
+
+/** A story as the logbook names its turns (`伴星 · 初遇`, `伴星 #3`), read from the library without writing to it, by
+ *  the row data.ts `stories.get` reads (`STORY_ROW`, shared so a schema change updates both); a story no longer there
+ *  (or no library) by its number alone. */
+export const storyName = (data: string, story: number, lang: Lang): string => {
+  const file = join(data, "tavern.db")
+  if (existsSync(file))
+    try {
+      const db = new Database(file, { readonly: true })
+      try {
+        const r = db.query(STORY_ROW).get(story) as {
+          title: string | null
+          card: string
+          cardTitle: string | null
+        } | null
+        if (r) return terminalText(titled({ card: r.cardTitle ?? r.card, story: r.title }, story))
+      } finally {
+        db.close()
+      }
+    } catch {
+      // an unreadable library names the story by its number
+    }
+  return words[lang].doctor.story(story)
 }
 
 /** `11-18 14:07`, in this machine's time. */
@@ -325,7 +354,9 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
     add({
       check: "failure",
       mark: last.later ? "ok" : "warn",
-      what: last.later ? w.failedEarlier(when(last.at)) : w.failedLast(when(last.at), w.story(last.story), t.what),
+      what: last.later
+        ? w.failedEarlier(when(last.at))
+        : w.failedLast(when(last.at), storyName(c.data, last.story, c.lang as Lang), t.what),
       ...(t.raw && { raw: t.raw }),
       ...(!last.later && t.next?.[0] && { next: t.next[0] }),
       file: show(last.file),

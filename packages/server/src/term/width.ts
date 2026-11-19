@@ -1,6 +1,7 @@
 // Display width, the unit every line a person reads is measured in: a CJK ideograph or full-width mark is two cells,
 // ASCII one, escape sequences none (`Bun.stringWidth`). A line fits `columns - 1` cells, so a terminal never wraps it
-// on its own.
+// on its own. Two wraps: `wrap` for the program's own sentences and facts (its spaces folded), `wrapKept` for text
+// shown as it was written (a prompt, a reply), which keeps every character.
 
 export const width = (s: string): number => Bun.stringWidth(s)
 
@@ -101,4 +102,54 @@ export const wrap = (s: string, cells: number, o: { spaces?: boolean } = {}): st
   }
   if (line) lines.push(line)
   return lines
+}
+
+/** `s` as rows of at most `cells` cells with every character kept: its own newlines, blank lines, indents and runs of
+ *  spaces stand, and the rows joined (with the breaks this added taken out) are `s` again. A row breaks only where it
+ *  would overflow: after spaces or beside a wide character (`wrap`'s rules for marks), else inside a word; never so that
+ *  a row holds only spaces. A row holds no more spaces than fit (a real terminal would wrap the rest onto a row of its
+ *  own): the spaces past the edge start the next row. */
+export const wrapKept = (s: string, cells: number): string[] => {
+  const n = Math.max(1, cells)
+  // ponytail: a tab counts as 8 cells wherever it stands; exact tab stops if indented tabbed code matters
+  const cellsOf = (c: string) => (c === "\t" ? 8 : width(c))
+  return s.split("\n").flatMap((row) => {
+    const out: string[] = []
+    let line = ""
+    let used = 0 // line's cells
+    let cut = -1 // line may break before this index (UTF-16), with `usedAtCut` cells before it
+    let usedAtCut = 0
+    let prev = ""
+    for (const c of chars(row)) {
+      const w = cellsOf(c)
+      const breaks = prev === " " || ((wide(c) || wide(prev)) && !CLOSING.has(c) && !OPENING.has(prev))
+      if (c !== " " && prev && breaks && line.trim()) {
+        cut = line.length
+        usedAtCut = used
+      }
+      if (c === " " && used + w > n) {
+        out.push(line)
+        line = ""
+        used = 0
+        cut = -1
+      } else if (used + w > n) {
+        if (cut > 0) {
+          out.push(line.slice(0, cut))
+          line = line.slice(cut)
+          used -= usedAtCut
+        }
+        if (used + w > n && line) {
+          out.push(line)
+          line = ""
+          used = 0
+        }
+        cut = -1
+      }
+      line += c
+      used += w
+      prev = c
+    }
+    out.push(line)
+    return out
+  })
 }

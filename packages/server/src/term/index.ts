@@ -3,5 +3,5 @@
 export { block, cells, failure } from "./block.ts"
 export { codes, isServerCode, type Code, type Facts, type ServerCode, type Table, type Words } from "./codes.ts"
 export { explain, factsOf, troubleOf, words, type Lang, type Trouble } from "./explain.ts"
-export { memoryScreen, stderrScreen, type Screen } from "./screen.ts"
-export { clip, width, wrap } from "./width.ts"
+export { memoryScreen, screenOn, stderrScreen, type Screen } from "./screen.ts"
+export { clip, width, wrap, wrapKept } from "./width.ts"

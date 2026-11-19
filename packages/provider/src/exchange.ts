@@ -46,7 +46,9 @@ export function observe(onExchange: OnExchange, model: string, credential: strin
       const origin = Array.from(causes(e)).at(-1)
       const errno = typeof origin?.code === "string" && raw === undefined ? clean(origin.code) : undefined
       const message = clean(typeof origin?.message === "string" ? origin.message : f.message)
-      const error = clean(raw === undefined ? (f.body ?? (errno ? `${errno} ${message}` : message)) : rawError(raw))
+      // the errno once: a message that already opens with it (Bun's `ECONNRESET: The socket …`) stands alone
+      const coded = errno && !message.startsWith(errno) ? `${errno} ${message}` : message
+      const error = clean(raw === undefined ? (f.body ?? coded) : rawError(raw))
       fault = { code: "upstream", message, body: error, status, requestId, model, ...(errno && { errno }) }
       finish(partial, error)
     }

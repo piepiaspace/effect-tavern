@@ -1,101 +1,80 @@
-// The logbook's fixed words, Chinese by default and English under TAVERN_LANG=en. A stage and an action are named by the
-// client's own words (client src/locales: `settings.stage*`, `common.swipe` / `reword` / `edit` / `retry` / `stopped`,
-// `readings.aside` / `skipRecord`, `card.begin`, `inspector.precheck`); test/logbook.ts holds them equal. Glyphs: ASCII,
-// CJK, and nothing else (the marks ✓ ✗ are the caller's).
-import type { Action, Phase } from "@effect-tavern/runtime/src/session.ts"
+// The logbook's words, Chinese by default and English under TAVERN_LANG=en. Full mode is the Inspector's terminal twin, so
+// its words are the client's own, read from the client's locales (pure data: no DOM, a type import only) rather than
+// copied: an action by `common.swipe` / `reword` / `edit` / `retry`, `readings.aside` / `skipRecord`, `card.begin`; a
+// call's state by the Inspector's pills (`inspector.precheck` / `escalate` / `exhausted` / `failed`, `common.stopped`);
+// the breakpoint hairline and the raw request's label by the prompt view and tab (`inspector.breakpoint`,
+// `inspector.json`); the live row's `common.chars`, the wait notice's `app.waiting`, a call with no answer
+// `app.noResponse`. A stage is named by its phase id, as the Inspector's row names it; numbers are the Inspector's
+// glyphs (↑ ↓ ↻ +), never words. The banner, a host that did not start and a log file that cannot be written are the
+// host's own lines, not the Inspector's (`host`).
+import type { Action } from "@effect-tavern/runtime/src/session.ts"
+import en from "../../../client/src/locales/en.ts"
+import zh from "../../../client/src/locales/zh-CN.ts"
 import type { Lang } from "../term/index.ts"
 
 export interface Words {
-  stage: Record<Phase, string>
   /** An action that is not an ordinary new turn, by the client's word for it. */
   action: Partial<Record<Action["kind"], string>>
   precheck: string
-  story: (id: number) => string
+  escalate: string
+  exhausted: string
+  failed: string
   stopped: string
-  withdrawn: string
-  /** A failed turn's head: the stage it failed in. */
-  failed: (stage: string | undefined) => string
-  calls: (n: number) => string
-  usage: (input: string, output: string) => string
-  cache: (percent: number) => string
-  written: (n: number) => string
-  total: (s: string) => string
-  waiting: (stage: string, s: string) => string
+  breakpoint: string
+  json: string
+  chars: (n: number) => string
+  waiting: string
   noResponse: string
-  banner: { address: string; data: string; model: string; stop: string }
-  didNotStart: string
-  fileBroken: (dir: string, why: string) => string
+  host: {
+    banner: { address: string; data: string; model: string; stop: string }
+    didNotStart: string
+    fileBroken: (dir: string, why: string) => string
+  }
 }
+
+/** A counted hole as the client's `t` fills it (client i18n.ts): `{n}`, or `{n|one|other}` by `Intl.PluralRules`. */
+const counted = (template: string, locale: string) => (n: number) =>
+  template.replace(/\{n(?:\|([^|{}]*)\|([^|{}]*))?\}/g, (_, one?: string, other?: string) =>
+    one === undefined ? String(n) : `${n} ${new Intl.PluralRules(locale).select(n) === "one" ? one : other}`,
+  )
+
+const client = (c: typeof zh, locale: string) => ({
+  action: {
+    swipe: c.common.swipe,
+    reword: c.common.reword,
+    edit: c.common.edit,
+    retryRecord: c.common.retry,
+    demand: c.readings.aside,
+    greet: c.card.begin,
+    skipRecord: c.readings.skipRecord,
+  },
+  precheck: c.inspector.precheck,
+  escalate: c.inspector.escalate,
+  exhausted: c.inspector.exhausted,
+  failed: c.inspector.failed,
+  stopped: c.common.stopped,
+  breakpoint: c.inspector.breakpoint,
+  json: c.inspector.json,
+  chars: counted(c.common.chars, locale),
+  waiting: c.app.waiting,
+  noResponse: c.app.noResponse,
+})
 
 export const words: Record<Lang, Words> = {
   zh: {
-    stage: {
-      lookup: "检索",
-      decide: "判定",
-      direct: "导演",
-      narrate: "叙事",
-      check: "校验",
-      polish: "润色",
-      record: "结算",
+    ...client(zh, "zh-CN"),
+    host: {
+      banner: { address: "地址", data: "数据", model: "模型", stop: "停止" },
+      didNotStart: "Effect Tavern 没有启动",
+      fileBroken: (dir, why) => `日志文件写不进 ${dir} (${why})，故事照常进行`,
     },
-    action: {
-      swipe: "换一版",
-      reword: "重写",
-      edit: "编辑",
-      retryRecord: "重试",
-      demand: "小剧场",
-      greet: "开始",
-      skipRecord: "跳过结算",
-    },
-    precheck: "预检",
-    story: (id) => `故事${id}`,
-    stopped: "已停止",
-    withdrawn: "已撤回",
-    failed: (stage) => (stage ? `${stage}没有完成` : "这一轮没有完成"),
-    calls: (n) => `${n} 次调用`,
-    usage: (i, o) => `入${i} 出${o}`,
-    cache: (p) => `缓存${p}%`,
-    written: (n) => `已写 ${n} 字`,
-    total: (s) => `共 ${s}`,
-    waiting: (stage, s) => `${stage}已等 ${s}，还在等服务商回答`,
-    noResponse: "未收到响应",
-    banner: { address: "地址", data: "数据", model: "模型", stop: "停止" },
-    didNotStart: "Effect Tavern 没有启动",
-    fileBroken: (dir, why) => `日志文件写不进 ${dir} (${why})，故事照常进行`,
   },
   en: {
-    stage: {
-      lookup: "Lookup",
-      decide: "Decide",
-      direct: "Direct",
-      narrate: "Narrate",
-      check: "Check",
-      polish: "Polish",
-      record: "Settle",
+    ...client(en as typeof zh, "en"),
+    host: {
+      banner: { address: "address", data: "data", model: "model", stop: "stop" },
+      didNotStart: "Effect Tavern did not start",
+      fileBroken: (dir, why) => `cannot write the log file in ${dir} (${why}); stories go on`,
     },
-    action: {
-      swipe: "Swipe",
-      reword: "Reword",
-      edit: "Edit",
-      retryRecord: "Retry",
-      demand: "Theater",
-      greet: "Begin",
-      skipRecord: "Skip settlement",
-    },
-    precheck: "pre-check",
-    story: (id) => `story ${id}`,
-    stopped: "stopped",
-    withdrawn: "withdrawn",
-    failed: (stage) => (stage ? `${stage} failed` : "the turn failed"),
-    calls: (n) => `${n} ${n === 1 ? "call" : "calls"}`,
-    usage: (i, o) => `in ${i} out ${o}`,
-    cache: (p) => `cache ${p}%`,
-    written: (n) => `${n} chars`,
-    total: (s) => `total ${s}`,
-    waiting: (stage, s) => `${stage}: waiting ${s} for the provider`,
-    noResponse: "no response",
-    banner: { address: "address", data: "data", model: "model", stop: "stop" },
-    didNotStart: "Effect Tavern did not start",
-    fileBroken: (dir, why) => `cannot write the log file in ${dir} (${why}); stories go on`,
   },
 }

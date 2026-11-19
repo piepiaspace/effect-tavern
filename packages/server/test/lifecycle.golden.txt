@@ -336,7 +336,7 @@ What 0.9.2 changes
             > 已不需要，可以删除：rm
               $PREFIX/bin/effect-tavern && rm
               -r ~/.tavern/bin
-! 上次失败  11-18 14:07 故事3：HTTP 403
+! 上次失败  11-18 14:07 故事 #3：HTTP 403
 {"error":"group_model_denied"}
 ~/doctored/log/turns.jsonl
 
@@ -365,7 +365,7 @@ What 0.9.2 changes
              > No longer needed; remove it: rm
                $PREFIX/bin/effect-tavern && rm
                -r ~/.tavern/bin
-! last fail  11-18 14:07 story 3: HTTP 403
+! last fail  11-18 14:07 story #3: HTTP 403
 {"error":"group_model_denied"}
 ~/doctored/log/turns.jsonl
 
@@ -387,7 +387,7 @@ Technical details: tavern doctor --verbose
 ! 旧文件    旧的 ~/.tavern/bin 还在
             > 已不需要，可以删除：rm -r
               ~/.tavern/bin
-! 上次失败  11-18 14:07 故事3：HTTP 403
+! 上次失败  11-18 14:07 故事 #3：HTTP 403
 {"error":"group_model_denied"}
 ~/doctored/log/turns.jsonl
 

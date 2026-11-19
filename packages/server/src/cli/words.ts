@@ -77,6 +77,7 @@ export interface Words {
     noFailure: string
     failedLast: (when: string, story: string, what: string) => string
     failedEarlier: (when: string) => string
+    /** A failed turn's story the library no longer has (or no library): by its number. */
     story: (id: number) => string
     allGood: string
     summary: (fail: number, warn: number) => string
@@ -170,7 +171,7 @@ export const words: Record<Lang, Words> = {
       noFailure: "日志里没有失败的回合",
       failedLast: (when, story, what) => `${when} ${story}：${what}`,
       failedEarlier: (when) => `最近一轮正常；上次失败在 ${when}`,
-      story: (id) => `故事${id}`,
+      story: (id) => `故事 #${id}`,
       allGood: "全部正常。",
       summary: (fail, warn) =>
         [fail ? `${fail} 处有问题` : "", warn ? `${warn} 处要留意` : ""].filter(Boolean).join("，") + "。",
@@ -269,7 +270,7 @@ export const words: Record<Lang, Words> = {
       noFailure: "no failed turn in the log",
       failedLast: (when, story, what) => `${when} ${story}: ${what}`,
       failedEarlier: (when) => `the latest turn went fine; the last failure was ${when}`,
-      story: (id) => `story ${id}`,
+      story: (id) => `story #${id}`,
       allGood: "All good.",
       summary: (fail, warn) =>
         [fail ? `${fail} ${fail === 1 ? "problem" : "problems"}` : "", warn ? `${warn} to look at` : ""]

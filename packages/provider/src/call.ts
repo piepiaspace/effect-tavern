@@ -138,12 +138,23 @@ export const observedError = (wrapped: unknown, observer?: Observer, partial?: s
   return fault ? new ModelError({ message: fault.message, cause: error.cause, fault }) : error
 }
 
+/** A reply as the exchange observer reports it: the SDK's decoded parts, not wire text. Text and reasoning as written,
+ *  a tool call as its name and arguments (`finish_record {"notes":""}`, the SDK's call id and provider options left
+ *  out), any other part as its JSON. The tool messages the SDK appends are this program's own results, not the
+ *  model's reply: the next request carries them, and the turn's outcome holds the last. */
 export const replyText = (messages: readonly ModelMessage[]) =>
   messages
+    .filter((m) => m.role !== "tool")
     .flatMap((m) =>
       typeof m.content === "string"
         ? [m.content]
-        : m.content.map((p) => (p.type === "text" || p.type === "reasoning" ? p.text : JSON.stringify(p, null, 2))),
+        : m.content.map((p) =>
+            p.type === "text" || p.type === "reasoning"
+              ? p.text
+              : p.type === "tool-call"
+                ? `${p.toolName} ${JSON.stringify(p.input)}`
+                : JSON.stringify(p, null, 2),
+          ),
     )
     .join("\n")
 

@@ -301,7 +301,11 @@ export const library = ({
       policy,
     })
     const filed = (node: Id, calls: readonly Call[]) => data.calls(id).add(node, calls)
-    const opened = { session, turn: makeTurn(session, logbook.turn(id, filed)) }
+    const title = () => {
+      const r = row(id)
+      return { card: r?.cardTitle ?? card.title ?? card.id, story: r?.title ?? null }
+    }
+    const opened = { session, turn: makeTurn(session, logbook.turn(id, title, filed)) }
     sessions.set(id, opened)
     return opened
   }

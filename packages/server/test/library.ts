@@ -629,7 +629,11 @@ for (const skip of [false, true]) {
   const filed: unknown[] = []
   const T = makeTurn(
     S,
-    openLogbook().turn(1, (_, calls) => filed.push(...calls)),
+    openLogbook().turn(
+      1,
+      () => ({ card: "chat" }),
+      (_, calls) => filed.push(...calls),
+    ),
   )
   const done = Effect.runPromise(
     Stream.runCollect(
