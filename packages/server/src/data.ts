@@ -596,15 +596,24 @@ export const open = (asked: string, { isolateOnBusy = false } = {}) => {
      *  `last` is its input: what the manager previews, since every story of a card opens on the same greeting. Every
      *  line is walked once, each node read by its key and only its input extracted. */
     stories: {
-      /** The row's own columns that a request needs (identity, card, persona): never a walk of the story's line. */
-      get: (id: Id): { id: Id; card: string; persona: string | null; yields: boolean } | undefined => {
-        const r = q("select id, card, persona, yields from story where id = ?").get(id) as Row | null
+      /** The row's own columns that a request needs (identity, card, persona) and what names its turns (its title and
+       *  its card's): never a walk of the story's line. */
+      get: (
+        id: Id,
+      ):
+        | { id: Id; card: string; persona: string | null; yields: boolean; title: string | null; cardTitle: string }
+        | undefined => {
+        const r = q(
+          "select s.id, s.card, s.persona, s.yields, s.title, c.title as cardTitle from story s left join card c on c.id = s.card where s.id = ?",
+        ).get(id) as Row | null
         if (!r) return undefined
         return {
           id: r["id"] as Id,
           card: r["card"] as string,
           persona: r["persona"] as string | null,
           yields: r["yields"] === 1,
+          title: (r["title"] as string | null) ?? null,
+          cardTitle: (r["cardTitle"] as string | null) ?? (r["card"] as string),
         }
       },
       /** The card's rows (every card's when `card` is absent), or the one of them `only` names (none when that is

@@ -1,17 +1,34 @@
-// Terminal layout for the banner, live progress, wait notices and completed turns. Summaries aggregate
-// usage across stage calls and fit labels to the available cells. logbook.ts writes exchange bodies
-// separately so terminal width never clips a prompt, reply or upstream error.
+// Terminal layout for the banner, live progress, wait notices, model calls and completed turns. A turn is named by its
+// card's title and the story's (`伴星 · 初遇`), or the card's and the story's number (`伴星 #3`, the number dim). A call
+// shows a head (→ sent, ← back, red when it failed; name, stage and attempt bold; model, target or timing dim), then
+// its content: each speaker's label on its own row (reversed with colour, `[system]` without), the texts under it two
+// cells in, kept exactly as written and wrapped only at the width (`wrapKept`), then the envelope as one dim row of
+// facts. A turn ends on a rule carrying its summary (`── 14:02 ✓ 伴星 #3 ─ 9.2s · 2 次调用 ──`), drawn to the width.
+// Usage is summed across stage calls; heads and facts fit the cells, a prompt, a reply or an upstream error is never
+// clipped. Meaning never rests on colour: without it the same rows, the same glyphs, no escapes.
 import type { Usage } from "@effect-tavern/provider"
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import type { Action, Event, Phase } from "@effect-tavern/runtime/src/session.ts"
-import { clip, width, wrap, type Facts, type Lang } from "../term/index.ts"
+import { clip, width, wrap, wrapKept, type Facts, type Lang } from "../term/index.ts"
+import { terminalText } from "../term/screen.ts"
+import type { Reading, Said } from "./body.ts"
 import { words } from "./words.ts"
 
 export type Call = Extract<Event, { kind: "call" }>
 export type End = "landed" | "stopped" | "withdrawn" | "failed"
+/** What a turn is called: its card's title and its story's (the player's, when given). */
+export interface Title {
+  card: string
+  story?: string | null
+}
+/** `伴星 · 初遇`, or `伴星 #3` (the number through `dim`) when the story has no title. */
+export const titled = (t: Title, story: Id, dim: (s: string) => string = (s) => s): string =>
+  t.story ? `${t.card} · ${t.story}` : `${t.card} ${dim(`#${story}`)}`
+
 /** One action, from start to exit: what the screen's line and the file's line are made of. */
 export interface Entry {
   story: Id
+  title: Title
   action: Action["kind"]
   /** When it started, epoch ms. */
   at: number
@@ -53,21 +70,6 @@ export const sum = (calls: readonly Call[]): Usage =>
     { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
   )
 
-/** A head and its fields, two spaces apart, broken between fields; a continuation is indented `indent`. */
-export const fields = (head: string, parts: readonly string[], cells: number, indent = 2): string[] => {
-  const lines: string[] = []
-  let line = clip(head, cells)
-  for (const p of parts) {
-    if (width(line) + 2 + width(p) <= cells) line += `  ${p}`
-    else {
-      lines.push(line)
-      line = " ".repeat(indent) + clip(p, cells - indent)
-    }
-  }
-  lines.push(line)
-  return lines
-}
-
 export interface Paint {
   lang: Lang
   color: boolean
@@ -76,15 +78,47 @@ export interface Paint {
 }
 const tint = (p: Paint, code: number, s: string) => (p.color ? `\x1b[${code}m${s}\x1b[39m` : s)
 const dim = (p: Paint, s: string) => (p.color ? `\x1b[2m${s}\x1b[22m` : s)
+// a dim part inside stays dim: SGR 22 ends bold and dim alike, so bold is set again after it
+const bold = (p: Paint, s: string) => (p.color ? `\x1b[1m${s.replaceAll("\x1b[22m", "\x1b[22m\x1b[1m")}\x1b[22m` : s)
+/** A speaker's label: reversed with colour, bracketed without. */
+const tag = (p: Paint, who: string) => (p.color ? `\x1b[7m ${who} \x1b[27m` : `[${who}]`)
 
-/** The story and, when it is not an ordinary new turn, the action's word: 故事3, 故事3 换一版. */
-export const named = (lang: Lang, story: Id, action: Action["kind"]): string => {
-  const w = words[lang]
-  const a = w.action[action]
-  return a ? `${w.story(story)} ${a}` : w.story(story)
+/** The turn's name and, when it is not an ordinary new turn, the action's word: 伴星 #3, 伴星 · 初遇 换一版. */
+export const named = (
+  lang: Lang,
+  title: Title,
+  story: Id,
+  action: Action["kind"],
+  dimmed: (s: string) => string = (s) => s,
+): string => {
+  const a = words[lang].action[action]
+  const name = titled(title, story, dimmed)
+  return a ? `${name} ${a}` : name
 }
 
-/** A turn's final summary. Only the header and metrics are fitted to the terminal width. */
+/** A rule across the width carrying `head ─ fact · fact`: `── ` before, dashes after to the last cell. When it does not
+ *  fit on one row the facts go on under it, three cells in, the last row closed by ` ──`. */
+const rule = (head: string, facts: readonly string[], cells: number, p: Paint): string[] => {
+  const room = cells - 6
+  const rows: string[] = []
+  let row = clip(head, room)
+  facts.forEach((f, i) => {
+    const sep = i ? " · " : dim(p, " ─ ")
+    if (width(row + sep + f) <= room) row += sep + f
+    else {
+      rows.push(row)
+      row = clip(f, room)
+    }
+  })
+  rows.push(row)
+  const last = rows.length - 1
+  return rows.map(
+    (r, i) =>
+      `${i ? "   " : `${dim(p, "──")} `}${r}${i === last ? ` ${dim(p, "─".repeat(last ? 2 : Math.max(2, cells - 4 - width(r))))}` : ""}`,
+  )
+}
+
+/** A turn's final summary, a rule that parts it from the next turn. */
 export const finished = (e: Entry, cells: number, p: Paint): string[] => {
   const w = words[p.lang]
   const mark = e.end === "withdrawn" ? "-" : e.end === "failed" ? tint(p, 31, "✗") : tint(p, 32, "✓")
@@ -97,8 +131,8 @@ export const finished = (e: Entry, cells: number, p: Paint): string[] => {
         : e.end === "withdrawn"
           ? w.withdrawn
           : undefined
-  return fields(
-    `${dim(p, stamp(e.at + e.ms, p.full))} ${mark} ${named(p.lang, e.story, e.action)}`,
+  return rule(
+    `${dim(p, stamp(e.at + e.ms, p.full))} ${mark} ${named(p.lang, e.title, e.story, e.action, (s) => dim(p, s))}`,
     [
       ...(result ? [result] : []),
       secs(e.ms),
@@ -106,14 +140,16 @@ export const finished = (e: Entry, cells: number, p: Paint): string[] => {
       ...(u.cacheRead && u.input ? [w.cache(Math.round((100 * u.cacheRead) / u.input))] : []),
     ],
     cells,
+    p,
   )
 }
 
-/** The one live row while a turn runs: 故事3  叙事 6.4s  已写 312 字  共 8.8s. No glyph: the ticking tenths say it is
+/** The one live row while a turn runs: 伴星 #3  叙事 6.4s  已写 312 字  共 8.8s. No glyph: the ticking tenths say it is
  *  alive. */
 export const liveRow = (
   o: {
     story: Id
+    title: Title
     action: Action["kind"]
     phase?: Phase
     stageMs: number
@@ -125,7 +161,7 @@ export const liveRow = (
 ): string => {
   const w = words[lang]
   const parts = [
-    named(lang, o.story, o.action),
+    named(lang, o.title, o.story, o.action),
     ...(o.phase ? [`${w.stage[o.phase]} ${secs(o.stageMs)}`] : []),
     ...(o.written ? [w.written(o.written)] : []),
     w.total(secs(o.ms)),
@@ -136,6 +172,7 @@ export const liveRow = (
 /** A call that has waited a minute, on a terminal with no live row: one line, once. */
 export const waitLine = (
   t: number,
+  title: Title,
   story: Id,
   action: Action["kind"],
   phase: Phase,
@@ -144,9 +181,62 @@ export const waitLine = (
   cells: number,
 ) =>
   clip(
-    `${stamp(t, p.full)}   ${named(p.lang, story, action)}  ${words[p.lang].waiting(words[p.lang].stage[phase], secs(ms))}`,
+    `${stamp(t, p.full)}   ${named(p.lang, title, story, action)}  ${words[p.lang].waiting(words[p.lang].stage[phase], secs(ms))}`,
     cells,
   )
+
+/** A call's head: the arrow (→ sent, ← back; red when the call failed), the turn's name, stage and attempt bold, the
+ *  status, then the facts dim: on the same row when they fit, else under it two cells in. */
+export const callHead = (
+  o: {
+    arrow: "→" | "←"
+    failed?: boolean
+    title: Title
+    story: Id
+    stage: string
+    attempt: number
+    status?: string
+    facts: readonly string[]
+  },
+  cells: number,
+  p: Paint,
+): string[] => {
+  const arrow = tint(p, o.failed ? 31 : o.arrow === "→" ? 36 : 32, o.arrow)
+  const name = bold(p, `${titled(o.title, o.story, (s) => dim(p, s))} · ${o.stage} · #${o.attempt}`)
+  const status = o.status ? `  ${o.failed ? tint(p, 31, o.status) : o.status}` : ""
+  const head = clip(`${arrow} ${name}${status}`, cells)
+  const tail = terminalText(o.facts.join(" · "))
+  if (width(head) + 2 + width(tail) <= cells) return [`${head}  ${dim(p, tail)}`]
+  return [head, ...wrap(tail, cells - 2, { spaces: true }).map((l) => `  ${dim(p, l)}`)]
+}
+
+/** What a body says, speaker by speaker: a blank row, the label on its own row, then each text under it two cells in,
+ *  kept as written, a blank row between texts. */
+export const spoken = (said: readonly Said[], cells: number, p: Paint): string[] =>
+  said.flatMap((s) => [
+    "",
+    tag(p, terminalText(s.who)),
+    ...s.texts.flatMap((t, i) => [
+      ...(i ? [""] : []),
+      ...wrapKept(terminalText(t), cells - 2).map((l) => (l ? `  ${l}` : "")),
+    ]),
+  ])
+
+/** The envelope, after the content: one dim row of facts (more when they do not fit), the cache marks before the tools. */
+export const envelope = (r: Reading, cells: number, p: Paint): string[] => {
+  const facts = [...r.facts]
+  if (r.cache) {
+    const at = facts.findIndex((f) => f.startsWith("tools: "))
+    facts.splice(at < 0 ? facts.length : at, 0, words[p.lang].marks(r.cache))
+  }
+  return facts.length
+    ? ["", ...wrap(terminalText(facts.join(" · ")), cells, { spaces: true }).map((l) => dim(p, l))]
+    : []
+}
+
+/** A raw text under its label: an upstream error, or the request as it was sent beside a failed call. Verbatim, never
+ *  wrapped, so it can be copied whole. */
+export const raw = (label: string, text: string, p: Paint): string[] => ["", tag(p, label), terminalText(text)]
 
 /** The banner: name and version, then address, data, model and how to stop, each label padded to the longest. No model:
  *  the warning and its next step into Settings, in the words a failure would use (term `no-model`). */

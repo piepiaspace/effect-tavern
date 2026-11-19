@@ -16,9 +16,14 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, 
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Cause, Effect, Exit, Stream } from "effect"
+import { play, shaped, unknownBlock } from "../bin/log-preview.ts"
+import { storyName } from "../src/cli/doctor.ts"
+import { readRequest } from "../src/logbook/body.ts"
+import { open } from "../src/data.ts"
+import { library } from "../src/library.ts"
 import { openLogbook } from "../src/logbook.ts"
 import { words } from "../src/logbook/words.ts"
-import { memoryScreen, width, type Lang, type Screen } from "../src/term/index.ts"
+import { memoryScreen, width, wrapKept, type Lang, type Screen } from "../src/term/index.ts"
 
 // ───────── the words: the client's own ─────────
 for (const [lang, client] of [
@@ -213,6 +218,7 @@ const recording = (o: { columns: number; live?: boolean; color?: boolean }) => {
   return s
 }
 const dir = mkdtempSync(join(tmpdir(), "tavern-logbook-"))
+const card = () => ({ card: "伴星" })
 const playAll = async (
   o: Parameters<typeof openLogbook>[0] & { columns?: number },
   names = Object.keys(scripts),
@@ -232,7 +238,7 @@ const playAll = async (
     now = T0
     const s = scripts[name]!
     const wrapped = await run(
-      logbook.turn(3, (node, calls) => void filed.push([node, calls.length]))(s.action, streamOf(s)),
+      logbook.turn(3, card, (node, calls) => void filed.push([node, calls.length]))(s.action, streamOf(s)),
     )
     now = T0
     const bare = await run(streamOf(s))
@@ -303,7 +309,7 @@ const playAll = async (
   for (const s of Object.values(scripts)) {
     now = T0
     const wrapped = await run(
-      logbook.turn(1, () => {
+      logbook.turn(1, card, () => {
         throw new Error("disk full")
       })(s.action, streamOf(s)),
     )
@@ -360,7 +366,7 @@ for (const columns of [48, 100]) {
     const screen = recording({ columns: 48, live: true })
     const book = openLogbook({ screen, dir: d, level, guest: true })
     await run(
-      book.turn(3, () => {})(
+      book.turn(3, card, () => {})(
         { kind: "act", input: { text: "" } },
         Stream.fromIterable([request, response, call("check", 100, u(0, 0), { via: "decision" }).e, change(8).e]),
       ),
@@ -392,7 +398,7 @@ for (const columns of [48, 100]) {
   now = T0
   const s = scripts["landed"]!
   await run(
-    logbook.turn(3, () => {})(
+    logbook.turn(3, card, () => {})(
       s.action,
       streamOf(s).pipe(
         Stream.tap((e) =>
@@ -404,12 +410,16 @@ for (const columns of [48, 100]) {
     ),
   )
   // mid-turn the last row is the live one: the stage, its seconds, what has been written, the total
-  assert.equal(mid, "故事3  叙事 0.3s  已写 29 字  共 1.5s")
+  assert.equal(mid, "伴星 #3  叙事 0.3s  已写 29 字  共 1.5s")
   const rows = screen.shown()
-  // the permanent line replaces it, the time of day dim and the mark green (on a TTY: no date); no live row stays
-  assert.equal(rows.at(-2), "\x1b[2m14:02\x1b[22m \x1b[32m✓\x1b[39m 故事3  10.9s  4 次调用  入10k 出1.0k")
+  // the permanent rule replaces it, its dashes, the time of day and the story's number dim, the mark green (on a TTY: no
+  // date); at 48 columns the facts run on under it; no live row stays
+  assert.equal(
+    rows.at(-2),
+    "\x1b[2m──\x1b[22m \x1b[2m14:02\x1b[22m \x1b[32m✓\x1b[39m 伴星 \x1b[2m#3\x1b[22m\x1b[2m ─ \x1b[22m10.9s · 4 次调用",
+  )
   assert.ok(screen.raw().includes("\r\x1b[K"))
-  assert.equal(rows.at(-1), "  缓存82%")
+  assert.equal(rows.at(-1), "   入10k 出1.0k · 缓存82% \x1b[2m──\x1b[22m")
   assert.equal(rows.at(-3), "")
 }
 
@@ -467,12 +477,153 @@ rmSync(dir, { recursive: true, force: true })
     logbook.host({ url: "http://127.0.0.1:7777", data: dir, version: "0.0.0" })
     const said = screen.shown().length
     const refused: Events = Stream.fail(new Rejected({ message: "empty input" }))
-    const { exit } = await run(logbook.turn(1, () => {})({ kind: "act", input: { text: "" } }, refused))
+    const { exit } = await run(logbook.turn(1, card, () => {})({ kind: "act", input: { text: "" } }, refused))
     assert.ok(Exit.isFailure(exit) && Cause.squash(exit.cause) instanceof Rejected)
     assert.equal(screen.shown().length, said)
     assert.equal(existsSync(join(dir, "turns.jsonl")), false)
   } finally {
     rmSync(dir, { recursive: true, force: true })
+  }
+}
+// ───────── a request body read as content and envelope ─────────
+{
+  const system = "规则：\n\n    缩进  与  连续空格\n"
+  const anthropic = {
+    model: "m",
+    max_tokens: 16384,
+    system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "你好" },
+          { type: "mystery", x: 1 },
+          { type: "text", text: "再见" },
+        ],
+      },
+      { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "finish_record", input: { notes: "" } }] },
+      { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] },
+    ],
+    tools: [
+      { name: "discard_error", input_schema: {} },
+      { name: "finish_record", input_schema: {} },
+    ],
+    tool_choice: { type: "any" },
+    stream: true,
+  }
+  const a = readRequest(JSON.stringify(anthropic))!
+  assert.deepEqual(a.said, [
+    { who: "system", texts: [system] },
+    { who: "user", texts: ["你好", JSON.stringify({ type: "mystery", x: 1 }), "再见"] },
+    { who: "assistant", texts: ['finish_record {"notes":""}'] },
+    { who: "finish_record", texts: ["ok"] },
+  ])
+  assert.deepEqual(a.facts, [
+    "max_tokens 16384",
+    "tools: discard_error, finish_record",
+    'tool_choice {"type":"any"}',
+    "stream",
+  ])
+  assert.equal(a.cache, 1)
+  const openai = {
+    model: "m",
+    messages: [
+      { role: "system", content: system },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "一" },
+          { type: "input_audio", input_audio: {} },
+          { type: "text", text: "二" },
+        ],
+      },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [{ id: "c", type: "function", function: { name: "look", arguments: '{"q": 1}' } }],
+      },
+      { role: "tool", tool_call_id: "c", content: "found" },
+      { role: "assistant", content: "done", reasoning_content: "hm" },
+    ],
+    max_completion_tokens: 10,
+    stream: true,
+  }
+  assert.deepEqual(readRequest(JSON.stringify(openai))!.said, [
+    { who: "system", texts: [system] },
+    { who: "user", texts: ["一", JSON.stringify({ type: "input_audio", input_audio: {} }), "二"] },
+    { who: "assistant", texts: ['look {"q": 1}'] },
+    { who: "look", texts: ["found"] },
+    { who: "assistant", texts: ["done", JSON.stringify({ reasoning_content: "hm" })] },
+  ])
+  const gemini = {
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [
+      { role: "user", parts: [{ text: "上岸" }, { inlineData: { mimeType: "image/png", data: "x" } }, { text: "看" }] },
+      { role: "model", parts: [{ functionCall: { name: "look", args: { q: 1 } } }] },
+      { role: "user", parts: [{ functionResponse: { name: "look", response: { r: 2 } } }] },
+    ],
+    generationConfig: { maxOutputTokens: 8192 },
+    tools: [{ functionDeclarations: [{ name: "look" }] }],
+  }
+  const g = readRequest(JSON.stringify(gemini))!
+  assert.deepEqual(g.said, [
+    { who: "system", texts: [system] },
+    { who: "user", texts: ["上岸", JSON.stringify({ inlineData: { mimeType: "image/png", data: "x" } }), "看"] },
+    { who: "model", texts: ['look {"q":1}'] },
+    { who: "look", texts: ['{"r":2}'] },
+  ])
+  assert.deepEqual(g.facts, ["maxOutputTokens 8192", "tools: look"])
+  // a body no reading knows is the caller's to print as it came
+  for (const body of ["not json", "[1]", '{"prompt":"x"}']) assert.equal(readRequest(body), undefined)
+}
+
+// ───────── the preview's turns, as a pipe gets them and on a terminal ─────────
+for (const columns of [48, 100]) {
+  const plain = memoryScreen({ columns })
+  await play(plain)
+  const rows = plain.shown()
+  // the raw texts are verbatim, unwrapped: an upstream error, the request as sent beside a failed call
+  const raws = new Set(rows.filter((r, i) => rows[i - 1] === "[发出的请求原文]" || r.startsWith('{"error"')))
+  assert.equal(raws.size, 3)
+  assert.ok(rows.includes("ECONNRESET socket hang up"))
+  for (const r of rows) if (!raws.has(r)) assert.ok(width(r.trimEnd()) <= columns - 1, r)
+  assert.ok(!rows.some((r) => r.includes("\x1b")))
+  assert.ok(rows.includes("[system]") && rows.includes("[assistant]") && rows.includes("[lookup_entry]"))
+  // the system prompt's blank rows, indents and runs of spaces come back exactly
+  const kept = shaped.split("\n").map((l) => (l ? `  ${l}` : ""))
+  assert.ok(rows.some((_, i) => kept.every((k, j) => rows[i + j] === k)))
+  // the block no reading knows, in its place between the two texts
+  const at = rows.indexOf("  我在竹林边停下。")
+  const block = wrapKept(JSON.stringify(unknownBlock), columns - 3).map((l) => `  ${l}`)
+  assert.deepEqual(rows.slice(at + 2, at + 2 + block.length), block)
+  assert.equal(rows[at + 3 + block.length], "  （远处有箫声）")
+  // the turn's name: card and story titles, or the card and the story's number
+  assert.ok(rows.some((r) => r.startsWith("→ 理 · 竹林夜谈 · 结算 · #1")))
+  assert.ok(rows.some((r) => r.startsWith("── ") && r.includes("✓ 伴星 #3 ─ ")))
+  const tty = memoryScreen({ columns, color: true, live: true })
+  await play(tty)
+  assert.ok(tty.shown().includes("\x1b[7m system \x1b[27m"))
+}
+
+// doctor names the last failed turn as the logbook did: the file keeps the story's id, the library its card and title;
+// a story since deleted (or no library at all) by its number
+{
+  const d = mkdtempSync(join(tmpdir(), "tavern-logbook-names-"))
+  try {
+    const data = open(join(d, "tavern.db"))
+    const lib = library({ data, logbook: openLogbook({ screen: memoryScreen({ columns: 48 }) }) })
+    const { id } = lib.cards.create()
+    lib.cards.save(id, { ...lib.cards.get(id), title: "伴星" })
+    const titledStory = lib.stories.create(id)
+    data.stories.title(titledStory, "初遇")
+    const plain = lib.stories.create(id)
+    data.close()
+    assert.equal(storyName(d, titledStory, "zh"), "伴星 · 初遇")
+    assert.equal(storyName(d, plain, "zh"), `伴星 #${plain}`)
+    assert.equal(storyName(d, 99, "zh"), "故事 #99")
+    assert.equal(storyName(join(d, "none"), 3, "en"), "story #3")
+  } finally {
+    rmSync(d, { recursive: true, force: true })
   }
 }
 console.log("logbook ok")

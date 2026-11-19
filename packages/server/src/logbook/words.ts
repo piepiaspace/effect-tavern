@@ -10,7 +10,10 @@ export interface Words {
   /** An action that is not an ordinary new turn, by the client's word for it. */
   action: Partial<Record<Action["kind"], string>>
   precheck: string
-  story: (id: number) => string
+  /** A request body's cache marks, in its envelope row. */
+  marks: (n: number) => string
+  /** The label over a failed call's request as it was sent. */
+  sent: string
   stopped: string
   withdrawn: string
   /** A failed turn's head: the stage it failed in. */
@@ -48,7 +51,8 @@ export const words: Record<Lang, Words> = {
       skipRecord: "跳过结算",
     },
     precheck: "预检",
-    story: (id) => `故事${id}`,
+    marks: (n) => `cache ${n} 处`,
+    sent: "发出的请求原文",
     stopped: "已停止",
     withdrawn: "已撤回",
     failed: (stage) => (stage ? `${stage}没有完成` : "这一轮没有完成"),
@@ -83,7 +87,8 @@ export const words: Record<Lang, Words> = {
       skipRecord: "Skip settlement",
     },
     precheck: "pre-check",
-    story: (id) => `story ${id}`,
+    marks: (n) => `cache ×${n}`,
+    sent: "request as sent",
     stopped: "stopped",
     withdrawn: "withdrawn",
     failed: (stage) => (stage ? `${stage} failed` : "the turn failed"),
