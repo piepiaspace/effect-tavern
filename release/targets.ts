@@ -26,11 +26,9 @@ export const TARGETS: readonly Target[] = [
   { asset: "tavern-windows-x64.exe", bun: "bun-windows-x64-baseline", os: "win32" },
 ]
 
-/** Mach-O binaries build on macOS: Bun's appended program breaks their signature, and only codesign mends it. */
-const runner = (t: Target) => {
-  if (t.os !== "darwin") return "ubuntu-latest"
-  return t.bun === "bun-darwin-x64" ? "macos-15-intel" : "macos-latest"
-}
+/** Mach-O binaries build on macOS: Bun's appended program breaks their signature, and only codesign mends it.
+ * Blacksmith's macs are all Apple Silicon: the x64 one is signed there and checked under Rosetta. */
+const runner = (t: Target) => (t.os === "darwin" ? "blacksmith-6vcpu-macos-latest" : "blacksmith-4vcpu-ubuntu-2604")
 
 const root = join(import.meta.dir, "..")
 const dist = join(root, "packages/server/dist")
