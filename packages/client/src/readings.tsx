@@ -30,6 +30,7 @@ import {
   working,
 } from "./store.ts"
 import { turn } from "./turn.ts"
+import { TurnStatus } from "./turn-status.tsx"
 import { fetchContext, fetchDetail } from "./wire.ts"
 import { t } from "./i18n.ts"
 import { connectionCodes } from "@effect-tavern/provider/src/fault.ts"
@@ -621,14 +622,7 @@ export const RecordSheet = (props: { node: Node; n: number }) => {
   return (
     <Switch>
       <Match when={settling()}>
-        <span class="record-pill" role="status" aria-label={t("app.phaseRecord")}>
-          <Record aria-hidden="true" />
-          <span class="dots">
-            <span />
-            <span />
-            <span />
-          </span>
-        </span>
+        <TurnStatus kind="record" variant="pill" />
         <button type="button" class="btn ghost sm" onClick={() => turn.skipRecord(props.node.id)}>
           {t("readings.skipRecord")}
         </button>

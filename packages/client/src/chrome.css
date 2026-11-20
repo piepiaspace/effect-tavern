@@ -14,7 +14,7 @@
   font-size: var(--text-footnote);
   color: var(--ink-2);
 }
-.record-pill:hover {
+button.record-pill:hover {
   background: var(--ghost-active);
 }
 .record-pill svg {

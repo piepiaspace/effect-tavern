@@ -102,9 +102,10 @@ export const makeTurn = (s: Session, observe: (action: Action, events: Events) =
       r.node = e.node.id
     }
     if (e.kind === "stage") {
+      const prev = r.phase
       r.phase = e.phase
-      // each draft starts over: a narrate after check is the rewrite, the first one kept as `prev`
-      if (e.phase === "narrate" && (r.draft?.text || r.draft?.products)) {
+      // a narrate after check is a rewrite (first draft kept as `prev`); narrate after narrate is a prefill resume
+      if (e.phase === "narrate" && prev === "check" && (r.draft?.text || r.draft?.products)) {
         const { products: _, ...d } = r.draft // the rewrite writes its own blocks
         r.draft = { ...d, text: "", prev: r.draft.text || r.draft.prev }
       }

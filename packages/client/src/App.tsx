@@ -21,7 +21,7 @@ import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
 import { Home } from "./home.tsx"
 import { imeController } from "./ime.ts"
-import { Check, Close, Copy, DieFill, Down, Edit, Insert, Next, Prev, Record, Warning } from "./icons.tsx"
+import { Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
 import { Inspect } from "./inspector.tsx"
 import { blocks } from "./markdown.ts"
 import { plain, Prose } from "./prose.tsx"
@@ -50,25 +50,16 @@ import {
   settling,
   stage,
   stageNames,
-  type Draft,
+  type Draft as DraftState,
   type Failure,
   type Id,
   working,
 } from "./store.ts"
 import { turn } from "./turn.ts"
+import { leadKind, settleKind, TurnStatus } from "./turn-status.tsx"
 import { onKey } from "./pages.ts"
 import { scroll } from "./tabs.ts"
-import { type Key, t } from "./i18n.ts"
-
-const waiting: Record<string, Key> = {
-  lookup: "app.phaseLookup",
-  decide: "app.phaseDecide",
-  direct: "app.phaseDirect",
-  narrate: "app.phaseNarrate",
-  check: "app.phaseCheck",
-  polish: "app.phasePolish",
-  record: "app.phaseRecord",
-}
+import { t } from "./i18n.ts"
 
 const paragraphs = blocks // the reader's own cut, so the editor opens on the paragraphs the reader drew
 
@@ -303,58 +294,57 @@ const Latest = () => {
   )
 }
 
-/** The node being written: anchored at the top of the screen when it starts, a blinking cursor where the next
- *  character lands, the die while the beat is judged. A rewrite (check failed) blows the first draft away as dust
- *  (Telegram's) and writes the second from the top; the dead draft keeps its place, so the column holds still. Once the
- *  prose is done (check, polish, record) the cursor goes and the Record slot waits with three dots. A failed turn stays as a
- *  grey ghost with the error under it; its line is back in the box. No model to run it on: the error opens Settings on
- *  默认模型. */
-const Draft = (props: { d: Draft; phase: Phase | null; error: Failure | null }) => {
+/** The node being written: anchored at the top of the screen when it starts, a quiet status line before the first
+ *  character lands (lookup / decide / direct / narrate / thinking / rewriting), then a gentle cursor at the live edge
+ *  while prose streams. A rewrite (check failed) blows the first draft away as dust (Telegram's) while explaining the
+ *  rewrite in place — and keeps the rewriting pill in the footer while the replacement streams so queued rewrites never
+ *  flash dust without explanation. Once the prose is done (check, polish, record) the cursor goes and the footer names
+ *  the settling stage. A failed turn stays as a grey ghost with the error under it; its line is back in the box. No
+ *  model to run it on: the error opens Settings on 默认模型. */
+export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failure | null }) => {
   onSettled(anchor)
   const done = () => settling(props.phase)
   const writing = () => !done() && !props.error
+  const hasProse = () => props.d.text.length > 0
+  const rewriting = () => writing() && hasProse() && Boolean(props.d.prev)
   return (
     <section class={{ draft: true, dead: props.error !== null }}>
       <Said input={props.d.input} invocations={props.d.composition?.invocations ?? props.d.invocations} />
       <div class="drafts">
-        <Show when={props.d.prev}>
+        <Show when={props.d.prev} keyed>
           {(p) => (
             <div class="prev" aria-hidden="true" ref={(el: HTMLElement) => void dust(el)}>
-              <Prose text={p()} />
+              <Prose text={p} />
             </div>
           )}
         </Show>
         <div class="now">
-          <Prose
-            text={props.d.text}
-            open={writing()}
-            tail={
-              <Show when={writing()}>
-                <span
-                  class="cursor"
-                  role="status"
-                  aria-label={props.phase ? t(waiting[props.phase]) : t("app.waiting")}
-                >
-                  <Show when={props.phase === "decide"}>
-                    <DieFill />
-                  </Show>
-                </span>
-              </Show>
+          <Show
+            when={hasProse() || !writing()}
+            fallback={
+              <TurnStatus
+                kind={leadKind(props.phase, props.d)}
+                variant="lead"
+                immediate={Boolean(props.d.prev) || (props.phase !== null && props.phase !== "narrate")}
+              />
             }
-          />
+          >
+            <Prose
+              text={props.d.text}
+              open={writing()}
+              tail={
+                <Show when={writing() && hasProse()}>
+                  <span class="cursor" aria-hidden="true" />
+                </Show>
+              }
+            />
+          </Show>
         </div>
       </div>
       <Theater products={props.d.products ?? {}} />
-      <Show when={done()}>
+      <Show when={done() || rewriting()}>
         <footer class="actions">
-          <span class="record-pill" role="status" aria-label={t(waiting[props.phase!])}>
-            <Record aria-hidden="true" />
-            <span class="dots">
-              <span />
-              <span />
-              <span />
-            </span>
-          </span>
+          <TurnStatus kind={done() ? settleKind(props.phase) : "rewriting"} variant="pill" />
         </footer>
       </Show>
       <Show when={props.error}>

@@ -44,7 +44,7 @@ export const stageNames: Record<Phase, Key> = {
 }
 
 export type Id = number
-export type Draft = SharedDraft & { composition?: DraftModel }
+export type Draft = SharedDraft & { composition?: DraftModel; thinking?: boolean }
 export type { Attach, Failure } from "@effect-tavern/runtime/src/projection.ts"
 export type Wire = Event | ({ kind: "error" } & Failure) | Attach | { kind: "streamEnd" }
 
@@ -287,7 +287,7 @@ const tick = () => {
   count = Math.min(count, q.length)
   if (count > 0) {
     const out = q.splice(0, count).join("")
-    registry.update(draft, (d) => (d ? { ...d, text: d.text + out } : d))
+    registry.update(draft, (d) => (d ? { ...d, text: d.text + out, thinking: undefined } : d))
   }
   play.frame ??= requestAnimationFrame(tick)
 }
@@ -329,18 +329,31 @@ const applyNow = (e: Wire): void => {
       running(e.phase)
       if (e.phase === "narrate") play.ended = false
       return
-    case "stage":
+    case "stage": {
+      const prev = registry.get(stage)
       registry.set(stage, e.phase)
       running(e.phase)
-      // Each draft starts over: a narrate after check is the rewrite, the first one greys under it.
+      // A narrate after check is a rewrite (first draft greys under it); a second narrate after narrate is a
+      // truncation continuation (session.ts prefill resume) and appends to the prose already written.
       if (e.phase === "narrate") {
-        resetPlay()
+        if (prev === "check") {
+          resetPlay()
+          registry.update(draft, (d) =>
+            d ? { ...d, text: "", prev: d.text || d.prev, products: undefined, thinking: undefined } : d,
+          )
+        } else if (prev !== "narrate") {
+          resetPlay()
+        }
         play.ended = false
-        registry.update(draft, (d) => (d ? { ...d, text: "", prev: d.text || d.prev, products: undefined } : d))
       }
       if (settling(e.phase)) play.ended = true // the prose is complete: the queue plays out
       return
+    }
     case "delta":
+      if (e.part.type === "reasoning-delta") {
+        const d = registry.get(draft)
+        if (d && !d.thinking && !d.text) registry.update(draft, (cur) => (cur ? { ...cur, thinking: true } : cur))
+      }
       if (e.part.type === "text-delta") enqueue(e.part.text)
       if (e.part.type === "product-delta") {
         play.ended = true // a block comes after the prose: nothing more joins the queue, it plays out at the rate

@@ -31,6 +31,8 @@ assert.deepEqual(
 
 registry.set(draft, { parent: 1, input: { text: "x" }, text: "" })
 apply({ kind: "stage", phase: "narrate" })
+apply({ kind: "delta", part: { type: "reasoning-delta", id: "r0", text: "hmm" } })
+assert.equal(registry.get(draft)!.thinking, true) // reasoning distinguishes thinking from waiting before prose arrives
 apply({ kind: "change", head: 2 }) // a checkout while the turn streams: head moves, the draft stays
 assert.deepEqual([registry.get(log).head, registry.get(draft)?.parent], [2, 1])
 apply({ kind: "change", head: 1 })
@@ -39,13 +41,19 @@ apply({ kind: "delta", part: { type: "text-delta", id: "0", text: "llo" } })
 assert.equal(registry.get(draft)!.text, "") // nothing until the frame
 tick()
 assert.equal(registry.get(draft)!.text, "h") // the first frame reveals one grapheme, however much piled up
+assert.equal(registry.get(draft)!.thinking, undefined) // prose started: thinking clears
 let n = 0
 while (registry.get(draft)!.text !== "hello" && n++ < 120) tick()
 assert.equal(registry.get(draft)!.text, "hello") // the rest plays out at the stream's rate, well within two seconds
+// a second narrate directly after narrate is a truncation continuation (prefill resume), not a rewrite
+apply({ kind: "stage", phase: "narrate" })
+apply({ kind: "delta", part: { type: "text-delta", id: "0", text: "!" } })
+while (registry.get(draft)!.text !== "hello!" && n++ < 200) tick()
+assert.deepEqual([registry.get(draft)!.text, registry.get(draft)!.prev], ["hello!", undefined])
 // a narrate block grows under its id, never in the prose
 apply({ kind: "delta", part: { type: "product-delta", id: "inner", text: "想" } })
 apply({ kind: "delta", part: { type: "product-delta", id: "inner", text: "说" } })
-assert.deepEqual([registry.get(draft)!.text, registry.get(draft)!.products], ["hello", { inner: "想说" }])
+assert.deepEqual([registry.get(draft)!.text, registry.get(draft)!.products], ["hello!", { inner: "想说" }])
 apply({ kind: "stage", phase: "check" })
 apply({ kind: "stage", phase: "narrate" }) // the rewrite
 assert.deepEqual([registry.get(draft)!.text, registry.get(draft)!.products], ["", undefined])

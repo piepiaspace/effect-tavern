@@ -54,6 +54,7 @@ export default {
       "workshop.failed",
       "workshop.changed",
       "app.phase*",
+      "app.waiting",
       "card.spec*",
       "card.facet*",
       "writing.dropped*",

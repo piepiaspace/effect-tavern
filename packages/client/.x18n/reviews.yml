@@ -4,7 +4,17 @@ sources:
   app.goProviders:
     en: 157484f15f95b6
   app.phaseCheck:
-    en: 16a823d18e0da0
+    en: 1d4ab2ee39bf45
+  app.phaseDecide:
+    en: 7fe179447c15e
+  app.phaseDirect:
+    en: 10487a6560477
+  app.phaseLookup:
+    en: f833f78d8130f
+  app.phasePolish:
+    en: b9e1ef14e1a2c
+  app.phaseRecord:
+    en: 17d3df2e515a97
   card.modeAuthor:
     en: 796d5317f7d8c
   card.modeParticipant:
