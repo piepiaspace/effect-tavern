@@ -347,6 +347,7 @@ const zh = {
     slotHead: "前置引导",
     slotReview: "审阅引导",
     slotTail: "尾部预填",
+    stageAuthor: "制卡",
     stageCheck: "校验",
     stageDecide: "判定",
     stageDirect: "导演",

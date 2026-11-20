@@ -8,7 +8,6 @@
 // which record each section has picked, and the phone's pane; every edit is one write the server answers with the list
 // it changed (wire.ts), text committing on change (blur or Enter). The shared controls and shells are controls.tsx.
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
-import type { Phase } from "@effect-tavern/runtime/src/session.ts"
 import { Dynamic, type JSX } from "@solidjs/web"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
@@ -34,7 +33,18 @@ import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close, open } from "./pages.ts"
 import * as Atom from "./atom.ts"
-import { cards, decision, hats, locals, personas, providers, registry, routing, type Pair } from "./store.ts"
+import {
+  cards,
+  decision,
+  hats,
+  locals,
+  personas,
+  providers,
+  registry,
+  routing,
+  type Pair,
+  type Routing as RoutingConfig,
+} from "./store.ts"
 import { type Key, t } from "./i18n.ts"
 import { deleteHat, deletePersona, putDecision, putHat, putPersona, putRouting, refreshActiveCard } from "./wire.ts"
 
@@ -139,7 +149,8 @@ export const Settings = () => {
 }
 
 // ───────── 默认模型 ─────────
-const STAGES: [Phase, Key][] = [
+type Stage = keyof NonNullable<RoutingConfig["stages"]>
+const STAGES: [Stage, Key][] = [
   ["narrate", "settings.stageNarrate"],
   ["record", "settings.stageRecord"],
   ["decide", "settings.stageDecide"],
@@ -147,6 +158,7 @@ const STAGES: [Phase, Key][] = [
   ["lookup", "settings.stageLookup"],
   ["check", "settings.stageCheck"],
   ["polish", "settings.stagePolish"],
+  ["author", "settings.stageAuthor"],
 ]
 
 /** 预检: whether lookup and check ask the decision model first (DecisionConfig.enabled). The arrow opens the Decision row on 模型服务;
@@ -200,7 +212,7 @@ const Routing = (props: { onDecision: () => void }) => {
       }
     )
   }
-  const setStage = (s: Phase, k: string) => {
+  const setStage = (s: Stage, k: string) => {
     const { [s]: _, ...rest } = route().stages ?? {}
     void putRouting({ ...route(), stages: k ? { ...rest, [s]: pairOf(k) } : rest })
   }

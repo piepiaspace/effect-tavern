@@ -10,6 +10,7 @@ const chrome = process.env["CHROME"] ?? "/Applications/Google Chrome.app/Content
 assert.ok(existsSync(chrome), `no Chrome at ${chrome}; set CHROME`)
 const fixtures: [file: string, passed: (snapshot: unknown[]) => string][] = [
   ["test/controls.tsx", (s) => `the controls and dialogs answer the agent bridge, ${s.length} still on the page`],
+  ["test/routing.tsx", (s) => `per-stage routing includes author, in ${s.length} writes`],
   ["test/cards.tsx", (s) => `the shelf and a card library work through the page, in ${s.length} requests`],
   ["test/timeline.tsx", () => "the selected node title and actions clear its details"],
   [

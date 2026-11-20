@@ -348,6 +348,7 @@ const en: Dict = {
     slotHead: "Leading messages",
     slotReview: "Review lead",
     slotTail: "Trailing prefill",
+    stageAuthor: "Author",
     stageCheck: "Check",
     stageDecide: "Decide",
     stageDirect: "Direct",
