@@ -12,14 +12,23 @@ export const readTurnEvents = async <E = TurnStreamEvent>(
   signal?: AbortSignal,
 ): Promise<void> => {
   if (signal?.aborted) {
-    await body.cancel().catch(() => {})
+    try {
+      await Promise.resolve(body.cancel()).catch(() => {})
+    } catch {}
     return
   }
   const reader = body.getReader()
   let reading = false
+  let eof = false
   let cancelling: Promise<void> | undefined
   const cancel = () => {
-    cancelling ??= reader.cancel().catch(() => {})
+    if (!cancelling) {
+      try {
+        cancelling = Promise.resolve(reader.cancel()).catch(() => {})
+      } catch {
+        cancelling = Promise.resolve()
+      }
+    }
     return cancelling
   }
   const onAbort = () => {
@@ -59,7 +68,10 @@ export const readTurnEvents = async <E = TurnStreamEvent>(
       const { value, done } = await reader.read()
       reading = false
       if (signal?.aborted) return
-      if (done) break
+      if (done) {
+        eof = true
+        break
+      }
       buffer += decoder.decode(value, { stream: true })
       flushLines()
       if (signal?.aborted) return
@@ -71,7 +83,7 @@ export const readTurnEvents = async <E = TurnStreamEvent>(
   } finally {
     reading = false
     signal?.removeEventListener("abort", onAbort)
-    if (signal?.aborted) await cancel()
+    if (!eof) await cancel()
     reader.releaseLock()
   }
 }

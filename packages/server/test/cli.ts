@@ -389,4 +389,40 @@ for (const partial of [
     readEvents(new Response(partial), () => {}),
     /incomplete event stream/,
   )
+// Mid-stream invalid JSON or emit failure on an open SSE response cancels the upstream stream.
+{
+  let cancelCalls = 0
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(new TextEncoder().encode("data: {bad-json\n\n"))
+    },
+    cancel() {
+      cancelCalls++
+    },
+  })
+  await assert.rejects(
+    readEvents(new Response(body), () => {}),
+    (err) => err instanceof SyntaxError,
+  )
+  assert.equal(cancelCalls, 1)
+}
+{
+  let cancelCalls = 0
+  const boom = new Error("cli emit failed")
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(bytes)
+    },
+    cancel() {
+      cancelCalls++
+    },
+  })
+  await assert.rejects(
+    readEvents(new Response(body), () => {
+      throw boom
+    }),
+    (err) => err === boom,
+  )
+  assert.equal(cancelCalls, 1)
+}
 console.log("cli ok")

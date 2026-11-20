@@ -100,4 +100,77 @@ for (const bytes of truncatedCases) {
   assert.deepEqual(events, [{ kind: "attach", phase: null, draft: null }])
 }
 
+// Normal EOF does not cancel the upstream stream.
+{
+  let cancelCalls = 0
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(encoder.encode(sample))
+      c.close()
+    },
+    cancel() {
+      cancelCalls++
+    },
+  })
+  const events: TurnStreamEvent[] = []
+  await readTurnEvents(body, (e) => events.push(e))
+  assert.equal(cancelCalls, 0)
+  assert.equal(events.length, 3)
+}
+
+// Invalid JSON mid-stream cancels an open upstream stream and preserves the parse error even if cancel rejects.
+{
+  let cancelCalls = 0
+  let cancelSettled = false
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(
+        encoder.encode(
+          'event: attach\r\ndata: {"phase":null,"draft":null}\r\n\r\ndata: {bad-json\n\ndata: {"kind":"stage","phase":"narrate"}\n\n',
+        ),
+      )
+    },
+    async cancel() {
+      cancelCalls++
+      await Promise.resolve()
+      cancelSettled = true
+      throw new Error("cancel failed")
+    },
+  })
+  const events: TurnStreamEvent[] = []
+  await assert.rejects(
+    readTurnEvents(body, (e) => events.push(e)),
+    (err) => err instanceof SyntaxError,
+  )
+  assert.equal(cancelCalls, 1)
+  assert.equal(cancelSettled, true)
+  assert.deepEqual(events, [{ kind: "attach", phase: null, draft: null }])
+}
+
+// An error thrown by emit cancels an open upstream stream and preserves the original error even if cancel throws.
+{
+  let cancelCalls = 0
+  let cancelSettled = false
+  const boom = new Error("emit exploded")
+  const body = new ReadableStream<Uint8Array>({
+    start(c) {
+      c.enqueue(encoder.encode(sample))
+    },
+    async cancel() {
+      cancelCalls++
+      await Promise.resolve()
+      cancelSettled = true
+      throw new Error("cancel failed")
+    },
+  })
+  await assert.rejects(
+    readTurnEvents(body, () => {
+      throw boom
+    }),
+    (err) => err === boom,
+  )
+  assert.equal(cancelCalls, 1)
+  assert.equal(cancelSettled, true)
+}
+
 console.log("sse ok")

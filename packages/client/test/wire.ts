@@ -226,4 +226,39 @@ const sample =
   assert.equal(storyFetches, fetchesBefore)
 }
 
+// Mid-stream invalid JSON on an open stream cancels the upstream body and reports the parse error.
+{
+  const got: Wire[] = []
+  let cancelCalls = 0
+  let ended!: () => void
+  const done = new Promise<void>((resolve) => {
+    ended = resolve
+  })
+  const fetchesBefore = storyFetches
+  listen(
+    async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(c) {
+            c.enqueue(encoder.encode('event: attach\r\ndata: {"phase":null,"draft":null}\r\n\r\ndata: {bad-json\n\n'))
+          },
+          cancel() {
+            cancelCalls++
+          },
+        }),
+      ),
+    (event) => {
+      got.push(event)
+      if (event.kind === "streamEnd") ended()
+    },
+  )
+  await done
+  assert.equal(cancelCalls, 1)
+  assert.equal(got[0]?.kind, "attach")
+  assert.equal(got[1]?.kind, "error")
+  assert.equal(got[2]?.kind, "streamEnd")
+  assert.equal(registry.get(openStreams), 0)
+  assert.equal(storyFetches, fetchesBefore)
+}
+
 console.log("wire ok")
