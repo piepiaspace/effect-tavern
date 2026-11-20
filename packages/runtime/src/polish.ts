@@ -5,7 +5,12 @@
 // with exact coordinates into the prose, so replay and the Inspector reproduce it.
 import { Schema } from "effect"
 
-export const Entry = Schema.Struct({ pattern: Schema.String, hint: Schema.optionalKey(Schema.String) })
+export const Entry = Schema.Struct({
+  pattern: Schema.String,
+  hint: Schema.optionalKey(Schema.String),
+  max: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+  enabled: Schema.optionalKey(Schema.Boolean),
+})
 export type Entry = typeof Entry.Type
 /** A sentence to polish: `text.slice(start, end)` is the sentence, `hits` the matched runs, `hints` their entries' hints. */
 export interface Target {
@@ -86,23 +91,36 @@ const compile = (pattern: string) =>
   )
 
 /** The sentences of `text` that hit `lexicon` outside dialogue, as targets `hit-1`, `hit-2`, … in document order. None
- *  when the prose is under the floor or the lexicon is empty; lint scans card text with floor 0. */
+ *  when the prose is under the floor or the lexicon is empty; lint scans card text with floor 0. Entries with
+ *  `enabled: false` are skipped; an entry with `max` counts its matches across the masked prose and marks sentences only
+ *  when `count / (text.length / 1000) > max`. */
 export const scan = (text: string, lexicon: readonly Entry[], floor = FLOOR): Target[] => {
   if (text.length < floor || !lexicon.length) return []
   const masked = mask(text)
-  const res = lexicon.filter((e) => e.pattern.replace(/\*/g, "")).map((e) => ({ e, re: compile(e.pattern) }))
-  const out: Target[] = []
-  for (const [start, end] of sentences(text)) {
+  const res = lexicon
+    .filter((e) => e.enabled !== false && e.pattern.replace(/\*/g, ""))
+    .map((e) => ({ e, re: compile(e.pattern) }))
+  if (!res.length) return []
+  const spans = sentences(text)
+  const per = spans.map(([start, end]) => {
     const s = masked.slice(start, end)
+    return res.map(({ re }) => Array.from(s.matchAll(re), (m) => m[0]))
+  })
+  const active = res.map(
+    ({ e }, i) => e.max === undefined || per.reduce((n, row) => n + row[i].length, 0) * 1000 > e.max * text.length,
+  )
+  const out: Target[] = []
+  spans.forEach(([start, end], j) => {
     const hits: string[] = []
     const hints: string[] = []
-    for (const { e, re } of res)
-      for (const m of s.matchAll(re)) {
-        hits.push(m[0])
-        if (e.hint && !hints.includes(e.hint)) hints.push(e.hint)
-      }
+    per[j].forEach((ms, i) => {
+      if (!active[i] || !ms.length) return
+      hits.push(...ms)
+      const hint = res[i].e.hint
+      if (hint && !hints.includes(hint)) hints.push(hint)
+    })
     if (hits.length) out.push({ id: `hit-${out.length + 1}`, start, end, hits, hints })
-  }
+  })
   return out
 }
 

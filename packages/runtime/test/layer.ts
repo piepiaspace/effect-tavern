@@ -185,11 +185,70 @@ const packs = [packB, packA]
     R.format.slice(0, 1).map((f) => [f.text, f.from]),
     [["L", "local"]],
   )
-  // a lexicon entry has no id: every rank's stands, the highest first, so the polish hints read in that order
+  // lexicon is keyed by pattern like snippets by name: higher rank wins whole, carrying hint/max/enabled
   assert.deepEqual(
-    R.lexicon.map((e) => e.hint),
-    ["A", "CARD", "OVER"],
+    R.lexicon.map((e) => [e.pattern, e.hint, e.from]),
+    [["p", "A", "A"]],
   )
+  // distinct patterns across ranks stand highest first; same pattern overrides hint, max, and enabled whole
+  const lexMerged = resolve(
+    {
+      ...card,
+      lexicon: [
+        { pattern: "p", hint: "CARD", max: 2 },
+        { pattern: "card-only", hint: "C" },
+        { pattern: "off-me", hint: "BAN" },
+      ],
+    },
+    {
+      harness: row("harness", {
+        lexicon: [
+          { pattern: "p", hint: "OVER", max: 5 },
+          { pattern: "over-only", hint: "O", max: 4 },
+        ],
+      }),
+      packs: [
+        row("A", {
+          lexicon: [
+            { pattern: "p", hint: "A", max: 3 },
+            { pattern: "off-by-pack", hint: "A-OFF", enabled: false },
+          ],
+        }),
+        row("B", {
+          lexicon: [
+            { pattern: "p", hint: "B" }, // replaces A's max: 3 with zero tolerance
+            { pattern: "off-by-pack", hint: "RE-ON" }, // re-enables A's disabled pattern
+          ],
+        }),
+      ],
+      local: here({
+        mounts: ["A", "B"],
+        lexicon: [{ pattern: "off-me", enabled: false }],
+      }),
+    },
+  )
+  assert.deepEqual(lexMerged.lexicon, [
+    { pattern: "off-me", enabled: false, from: "local" },
+    { pattern: "p", hint: "B", from: "B" },
+    { pattern: "off-by-pack", hint: "RE-ON", from: "B" },
+    { pattern: "card-only", hint: "C", from: "card" },
+    { pattern: "over-only", hint: "O", max: 4, from: "harness" },
+  ])
+  // card beats harness overlay on shared pattern; decodeLayer/decodeLocal validate max & enabled
+  const cardOverOverlay = resolve(
+    { ...card, lexicon: [{ pattern: "p", hint: "CARD" }] },
+    { harness: row("harness", { lexicon: [{ pattern: "p", hint: "OVER", max: 5, enabled: false }] }) },
+  )
+  assert.deepEqual(cardOverOverlay.lexicon, [{ pattern: "p", hint: "CARD", from: "card" }])
+  assert.deepEqual(
+    decodeLayer({ id: "d", name: "D", lexicon: [{ pattern: "像", hint: "h", max: 3, enabled: false }] }).lexicon,
+    [{ pattern: "像", hint: "h", max: 3, enabled: false }],
+  )
+  assert.deepEqual(
+    decodeLocal({ id: "l", name: "L", card: "c", lexicon: [{ pattern: "指节*白", enabled: false }] }).lexicon,
+    [{ pattern: "指节*白", enabled: false }],
+  )
+  assert.throws(() => decodeLayer({ id: "d", name: "D", lexicon: [{ pattern: "像", max: -1 }] }))
   // the note channel takes the channel switch and the thought mark out of the menu, a row's as well
   const note = new Set(
     resolve(
@@ -823,6 +882,7 @@ const packs = [packB, packA]
     products: h.products!.map((p) => (p.id === "notes" ? { ...p, text: "N" } : p)),
     snippets: [...h.snippets!.filter((s) => s.name !== "继续"), { name: "new", text: "x" }],
     fragments: [{ id: "f", text: "F" }],
+    lexicon: [{ pattern: "像", hint: "h", max: 3, enabled: true }],
   }
   const stored = overlayOf("act", edited)
   assert.deepEqual(stored, {
@@ -832,9 +892,11 @@ const packs = [packB, packA]
     products: [{ id: "notes", text: "N" }],
     snippets: [{ name: "new", text: "x" }],
     fragments: [{ id: "f", text: "F" }],
+    lexicon: [{ pattern: "像", hint: "h", max: 3, enabled: true }],
   })
   // the merge shows it, and what was left out is the default again
   const back = overlaid("act", stored)
+  assert.deepEqual(back.lexicon, [{ pattern: "像", hint: "h", max: 3, enabled: true }])
   assert.equal(back.asks!.find((a) => a.id === "lookup")!.text, "MINE")
   assert.deepEqual(
     back.products!.find((p) => p.id === "notes"),
@@ -866,9 +928,14 @@ const packs = [packB, packA]
     ],
     asks: [{ id: "lookup", text: "ASK-SECRET" }],
     products: [{ role: "world" as const, id: "scene", text: "PRODUCT-SECRET", shape: { kind: "text" } }],
-    lexicon: [{ pattern: "LEXICON-SHOWN" }], // a ban is a prompt, to a player too: it goes whole
+    lexicon: [{ pattern: "LEXICON-SHOWN", max: 3 }], // a ban is a prompt, to a player too: it goes whole
   }
-  const R = shown(resolve(c, { harness: row("harness", { fragments: [{ id: "mine", text: "MINE" }] }) }))
+  const R = shown(
+    resolve(c, {
+      harness: row("harness", { fragments: [{ id: "mine", text: "MINE" }] }),
+      local: here({ lexicon: [{ pattern: "LOCAL-OFF", enabled: false }] }),
+    }),
+  )
   const wire = JSON.stringify(R)
   assert.ok(!/SECRET/.test(wire), wire)
   assert.deepEqual(
@@ -881,7 +948,10 @@ const packs = [packB, packA]
   assert.equal(R.products.find((p) => p.id === "scene")!.from, "card")
   assert.ok("text" in R.products.find((p) => p.id === "notes")!) // the harness's question is the player's to read
   assert.ok(wire.includes("MINE"))
-  assert.deepEqual(R.lexicon, [{ pattern: "LEXICON-SHOWN", from: "card" }])
+  assert.deepEqual(R.lexicon, [
+    { pattern: "LOCAL-OFF", enabled: false, from: "local" },
+    { pattern: "LEXICON-SHOWN", max: 3, from: "card" },
+  ])
   // cardView carries it, with the card's own projection beside it
   const v = cardView(c, {})
   assert.deepEqual(Object.keys(v).sort(), ["catalogs", "fiction", "greetings", "layer", "meta", "rules"])
@@ -991,12 +1061,18 @@ const mount = (...mounts: string[]) => here({ mounts })
   assert.equal(reads, 2)
 }
 
-// The lexicon: a row's hit is a polish call; `polish: false` from any rank turns the stage off.
+// The lexicon: merged by pattern (highest rank wins; enabled: false switches off a lower rank's); `polish: false` turns the stage off.
 {
   prose.text = "hello world ".repeat(20) // over the polish floor
-  const slop = row("slop", { lexicon: [{ pattern: "hello", hint: "PACK-HINT" }] })
+  const slop = row("slop", {
+    lexicon: [
+      { pattern: "hello", hint: "PACK-HINT" },
+      { pattern: "world", hint: "WORLD-HINT" },
+    ],
+  })
   const session = (r: Rows) =>
     makeSession({ card: { ...chat, lexicon: [{ pattern: "hello", hint: "CARD-HINT" }] }, rows: () => r, model })
+  // local overrides "hello" over pack and card; distinct pattern "world" from pack still stands after it
   const es = await collect(
     session({
       packs: [slop],
@@ -1004,7 +1080,25 @@ const mount = (...mounts: string[]) => here({ mounts })
     }).act(null, { text: "x" }),
   )
   const polish = texts(asked(es, "polish")).join("\n")
-  assert.ok(/MINE-HINT; PACK-HINT; CARD-HINT/.test(polish), polish)
+  assert.ok(polish.includes("MINE-HINT; WORLD-HINT"), polish)
+  assert.ok(!polish.includes("PACK-HINT") && !polish.includes("CARD-HINT"), polish)
+  // local enabled: false switches off the mounted pack's and card's pattern: no polish call
+  const muted = await collect(
+    session({
+      packs: [row("slop", { lexicon: [{ pattern: "hello", hint: "PACK-HINT" }] })],
+      local: here({ mounts: ["slop"], lexicon: [{ pattern: "hello", enabled: false }] }),
+    }).act(null, { text: "x" }),
+  )
+  assert.equal(asked(muted, "polish"), undefined)
+  // density ceiling in session: prose has 20 "hello" in 240 chars (~83/1000) -> max: 100 skips polish, max: 50 triggers it
+  const underCap = await collect(
+    session({ local: here({ lexicon: [{ pattern: "hello", hint: "CAP-HINT", max: 100 }] }) }).act(null, { text: "x" }),
+  )
+  assert.equal(asked(underCap, "polish"), undefined)
+  const overCap = await collect(
+    session({ local: here({ lexicon: [{ pattern: "hello", hint: "CAP-HINT", max: 50 }] }) }).act(null, { text: "x" }),
+  )
+  assert.ok(texts(asked(overCap, "polish")).join("\n").includes("CAP-HINT"))
   const off = await collect(
     session({ harness: row("harness", { switches: { polish: false } }) }).act(null, { text: "x" }),
   )

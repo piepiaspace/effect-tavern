@@ -352,7 +352,7 @@ export interface Resolved {
   asks: Record<string, Item<{ text: string }>> // every id: the highest on the chain that goes out
   products: Item<Product>[] // `on` decided; the question filled, or a player's `unasked` with its raw text when it does not fill
   entries: Item<PackEntry>[] // the lookup index's player-layer entries
-  lexicon: Item<LexiconEntry>[] // no id, so no merge: every rank's stands, the highest first
+  lexicon: Item<LexiconEntry>[] // keyed by pattern, the highest rank's copy standing (enabled: false switches off a lower rank's)
   snippets: Item<Snippet>[]
   format: Item<Format>[]
   names: Names
@@ -611,7 +611,10 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
     asks: Object.fromEntries(asks),
     products: asked,
     entries,
-    lexicon: down.flatMap(({ from, row }) => (row.lexicon ?? []).map((e) => ({ ...e, from }))),
+    lexicon: menu(
+      (r) => r.lexicon,
+      (e) => e.pattern,
+    ),
     snippets: quick,
     format: menu(
       (r) => r.format,
