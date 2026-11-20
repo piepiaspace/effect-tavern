@@ -76,7 +76,7 @@ import { Effect_, makeCard, shownGreeting, type Beat, type Card, type Greeting, 
 import { holds, expandState, type State as Paths } from "./cond.ts"
 import { gateOf, makeDerived, type Node } from "./derived.ts"
 import { head as headOf, type Hat } from "./fragment.ts"
-import { narratorHistory, policyFor, type Policy } from "./history.ts"
+import { policyFor, type Policy } from "./history.ts"
 import { split, splitter, textOf as proseOf, type Brief, type Input, type Turn as TurnOf } from "./journal.ts"
 import * as Log from "./log.ts"
 import { resolve, shown, worldOf, type Resolved, type Rows } from "./layer.ts"
@@ -86,7 +86,7 @@ import { marked, scan, splice } from "./polish.ts"
 import { request, worldBlock, type Ask, type Told } from "./request.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
 import { cap, withCatalogs, askedAt, productAsks, type Product } from "./product.ts"
-import { recordTransaction, worldValue, type RecordResult } from "./world.ts"
+import { recordTransaction, worldValue, type RecordResult, type WorldState } from "./world.ts"
 
 export type Turn = TurnOf<Beat>
 export const phases = ["lookup", "decide", "direct", "narrate", "check", "polish", "record"] as const
@@ -340,6 +340,8 @@ export const makeSession = ({
         world: headOf(worldOf(card, frame), { state }),
         role: wording("stage.role"),
         narrator: wording("narrate.role"),
+        persona: wording("narrate.persona"),
+        contextLead: wording("narrate.context"),
         directions: wording("narrate.turn"),
         tail: headOf(tail, { state }),
         input,
@@ -485,7 +487,8 @@ export const makeSession = ({
 
   const record = (
     emit: Emit,
-    asked: readonly Product[],
+    picks: readonly Product[],
+    context: WorldState & Paths,
     path: readonly Turn[],
     state: State,
     scene: Pick<Turn, "input" | "reply" | "deliveries">,
@@ -493,8 +496,6 @@ export const makeSession = ({
     interval = false,
   ) =>
     Effect.gen(function* () {
-      const context = derived.at(path).context(state)
-      const picks = withCatalogs(asked, card.catalogs ?? [], context) // a catalog with no survivor drops what reads it
       if (!picks.length && !qs) return { changes: [], products: {}, answers: {} } satisfies RecordResult
       const fed = derived.at(path).known(true)
       const tx = recordTransaction(
@@ -517,7 +518,7 @@ export const makeSession = ({
         readout: wording("record.readout"),
         questions: qs?.lines,
         prose: interval ? "" : proseOf(scene.reply),
-        ...(interval && { history: narratorHistory(path, derived.at(path).summary()) }),
+        ...(interval && { history: derived.at(path).history() }),
       })
       const result = yield* native(emit, "record", msgs, {
         tools: tx.tools,
@@ -546,7 +547,7 @@ export const makeSession = ({
         {
           stage: "narrate",
           fiction: fictionAt(here.context(state)),
-          history: narratorHistory(path, sum),
+          history: here.history(),
           summarized: sum !== undefined,
           told: here.resident(),
           outcome: [],
@@ -602,6 +603,21 @@ export const makeSession = ({
   ]
 
   // ───────── The turn ─────────
+  const recordWork = (path: readonly Turn[], node: Turn) => {
+    const view = node.passage ? passageView(path, node) : path
+    const pre = derived.at(path).settle(node).pre
+    const context = derived.at(view).context(pre)
+    const picks = withCatalogs(askedAt(products(), "record", context), card.catalogs ?? [], context)
+    const names = layer().names
+    const schema = rpg.readoutSchema(pre, names, context)
+    return {
+      view,
+      pre,
+      context,
+      picks,
+      questions: schema ? { schema, lines: rpg.questions(pre, names, context) } : undefined,
+    }
+  }
   /** `from` is where a sibling starts: lookup (a swipe), narrate (a reword: lookup, beats and brief kept from `base`),
    *  check (an edit: the player's prose stands in for the narrator's, check and record run over it). */
   const SIBLING = { lookup: "swipe", narrate: "reword", check: "edit" } as const
@@ -816,7 +832,8 @@ export const makeSession = ({
       }
       // narrate, streamed, with truncation recovery and at most one correction rewrite
       const fed = here.known()
-      const sum = here.summary()
+      const transcript = transition ? derived.at(path) : here
+      const sum = transcript.summary()
       // the narrate products on this turn: one ask line each in narrate's tail, each block cut off the reply
       const penned = askedAt(products(), "narrate", here.context(s1))
 
@@ -885,11 +902,12 @@ export const makeSession = ({
           const msgs = ask(here.context(s1), input, {
             stage: "narrate",
             fiction: fictionAt(here.context(s1)),
-            history: transition?.boundary ? [] : narratorHistory(path, sum),
+            history: transition?.boundary ? [] : transcript.history(),
             summarized: sum !== undefined,
             told: latest([...resident, ...deliveries]),
             outcome: events,
-            current: fed.current, // feed products other than notes: where the scene stands, as data
+            known: transition?.boundary ? fed.known : undefined,
+            current: fed.current,
             must: told(open.filter((d) => brief.must.includes(d.id))),
             may: told(open.filter((d) => brief.may.includes(d.id))),
             tone: brief.tone,
@@ -991,31 +1009,58 @@ export const makeSession = ({
             p.type !== "text" ? [p] : first ? ((first = false), [{ ...p, text: polished }]) : [],
           )
       }
-      const c = held.commit(
-        Log.add(held.log, {
-          parent,
-          input,
-          read: disclosures,
-          deliveries,
-          opportunities: open,
-          beats,
-          answers: {},
-          end: cut ? "stopped" : end,
-          brief,
-          reply,
-          fired,
-          violated,
-          ...(opening && { opening }),
-          ...(base && { sibling: SIBLING[from] }),
-          changes: [],
-          settlementStatus: "pending",
-          settlementVersion: 0,
-          ...(base?.passage && { passage: true as const }),
-          ...(base?.boundary && { boundary: true as const }),
-          ...transition,
-          products: { ...capped(written), ...transition?.products },
-        }),
-      )
+      const node: Turn = {
+        id: held.log.next,
+        parent,
+        input,
+        read: disclosures,
+        deliveries,
+        opportunities: open,
+        beats,
+        answers: {},
+        end: cut ? "stopped" : end,
+        brief,
+        reply,
+        fired,
+        violated,
+        ...(opening && { opening }),
+        ...(base && { sibling: SIBLING[from] }),
+        changes: [],
+        settlementStatus: "pending",
+        settlementVersion: 0,
+        ...(base?.passage && { passage: true as const }),
+        ...(base?.boundary && { boundary: true as const }),
+        ...transition,
+        products: { ...capped(written), ...transition?.products },
+      }
+      fresh()
+      const parents = chain(parent)
+      let work: ReturnType<typeof recordWork> | undefined
+      let failure: Rejected | undefined
+      try {
+        work = recordWork(parents, node)
+        if (!work.picks.length && !work.questions) {
+          node.settlementStatus = "committed"
+          if (card.rules.over || card.passages?.length) {
+            const settled = derived.at([...parents, node])
+            const context = settled.context()
+            if (rpg.over(settled.state, context)) node.end = "over"
+            if (
+              !node.passage &&
+              node.end !== "over" &&
+              (parent !== null || input.text) &&
+              card.passages?.some((p) => holds(p.when, context))
+            )
+              node.passageStatus = "pending"
+          }
+        }
+      } catch (cause) {
+        // Keep the generated reply recoverable even if the card's settlement context cannot be evaluated.
+        failure = new Rejected({ message: cause instanceof Error ? cause.message : String(cause) })
+        node.settlementStatus = "failed"
+        node.settlementError = failure.message
+      }
+      const c = held.commit(Log.add(held.log, node))
       // Once the passage exists, its own settlement owns recovery. The parent is no longer blocked.
       if (transition && parent !== null) {
         const completed = held.commit(
@@ -1024,12 +1069,19 @@ export const makeSession = ({
         yield* emit({ kind: "change", ...change(completed) })
       }
       yield* emit({ kind: "change", ...change(c) })
-      yield* settleRecord(emit, c.node!.id)
+      if (failure) return yield* failure
+      if (work && node.settlementStatus === "pending")
+        yield* settleRecord(emit, node.id, { work, parents, node: c.node! })
+      else if (node.passageStatus === "pending") yield* pass(emit, node.id)
     })
   const attempts = new Map<number, Deferred.Deferred<void>>()
-  const settleRecord = (emit: Emit, nodeId: number): Effect.Effect<void, TurnError> =>
+  const settleRecord = (
+    emit: Emit,
+    nodeId: number,
+    prepared?: { work: ReturnType<typeof recordWork>; parents: readonly Turn[]; node: Turn },
+  ): Effect.Effect<void, TurnError> =>
     Effect.gen(function* () {
-      fresh()
+      if (!prepared) fresh()
       const original = turnOf(nodeId)
       if (
         original.settlementStatus === "committed" &&
@@ -1042,12 +1094,10 @@ export const makeSession = ({
         return yield* new Rejected({ message: "settlement is already closed; create a revision branch" })
       if (attempts.has(nodeId)) return yield* new Rejected({ message: "settlement is already running" })
       const path = chain(original.parent)
-      const pre = derived.at(path).settle(original).pre
-      const viewPath = original.passage ? passageView(path, original) : path
-      const context = derived.at(viewPath).context(pre)
-      const asked = askedAt(products(), "record", context)
-      const N = layer().names
-      const qs = rpg.readoutSchema(pre, N, context)
+      const work =
+        prepared?.node === original && prepared.parents.every((p, i) => path[i] === p)
+          ? prepared.work
+          : recordWork(path, original)
       const attempt = crypto.randomUUID()
       const version = original.settlementVersion + 1
       const parentObjects = [...path]
@@ -1072,14 +1122,9 @@ export const makeSession = ({
       attempts.set(nodeId, cancel)
       yield* Effect.gen(function* () {
         yield* emit({ kind: "change", ...change(started) })
-        const rec = yield* record(
-          emit,
-          asked,
-          viewPath,
-          pre,
-          original,
-          qs ? { schema: qs, lines: rpg.questions(pre, N, context) } : undefined,
-        ).pipe(Effect.raceFirst(Deferred.await(cancel).pipe(Effect.andThen(Effect.interrupt))))
+        const rec = yield* record(emit, work.picks, work.context, work.view, work.pre, original, work.questions).pipe(
+          Effect.raceFirst(Deferred.await(cancel).pipe(Effect.andThen(Effect.interrupt))),
+        )
         if (!live()) return yield* new Rejected({ message: "stale settlement attempt" })
         const c = held.commit(
           Log.amend(held.log, nodeId, {
@@ -1171,10 +1216,12 @@ export const makeSession = ({
         const here = derived.at(path)
         const p = card.passages?.find((p) => holds(p.when, here.context()))
         if (!p) return
-        const pending = held.commit(
-          Log.amend(held.log, nodeId, { passageStatus: "pending", settlementError: undefined }),
-        )
-        yield* emit({ kind: "change", ...change(pending) })
+        if (turnOf(nodeId).passageStatus !== "pending") {
+          const pending = held.commit(
+            Log.amend(held.log, nodeId, { passageStatus: "pending", settlementError: undefined }),
+          )
+          yield* emit({ kind: "change", ...change(pending) })
+        }
         const child = [...held.log.nodes.values()].find((t) => t.parent === nodeId && t.passage)
         if (child) {
           if (child.settlementStatus === "pending" || child.settlementStatus === "failed")
@@ -1184,7 +1231,8 @@ export const makeSession = ({
           const asked = products().filter((q) => p.digest?.includes(q.id) && (q.stage ?? "record") === "record")
           const digest = yield* record(
             emit,
-            asked,
+            withCatalogs(asked, card.catalogs ?? [], here.context()),
+            here.context(),
             path,
             here.state,
             { input: { text: "" }, reply: [], deliveries: [] },
@@ -1454,10 +1502,11 @@ export const makeSession = ({
         Effect.gen(function* () {
           const up = chain(t.parent)
           const pre = derived.at(up).settle(t).pre
+          const context = derived.at(up).context(pre)
           const got =
             p.stage === "narrate"
               ? yield* block(emit, p, chain(nodeId), pre)
-              : (yield* record(emit, [p], up, pre, t)).products
+              : (yield* record(emit, withCatalogs([p], card.catalogs ?? [], context), context, up, pre, t)).products
           const amended = Log.amend(held.log, nodeId, { products: { ...t.products, ...got } })
           yield* emit({ kind: "change", ...change(held.commit(amended)) })
         }),

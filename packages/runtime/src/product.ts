@@ -83,6 +83,7 @@ export const Product = Schema.Struct({
   recall: Schema.optionalKey(Schema.Union([Schema.Literal(true), Schema.String])), // list: true; table: the hook column
 })
 export type Product = typeof Product.Type
+export const feedsChronicle = (p: Product) => p.role === "chronicle" && !!p.on && !!p.feed
 /** A card's entry: a patch over the harness default of the same id, or a whole new product. */
 export const ProductPatch = Schema.Struct({
   ...Product.fields,

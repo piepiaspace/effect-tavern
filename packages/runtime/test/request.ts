@@ -149,6 +149,12 @@ for (const s of stages.filter((s) => s !== "narrate")) {
 }
 assert.ok(!doc(line.narrate).includes(role) && !doc(line.narrate).includes("<world>"))
 for (const s of stages.filter((s) => s !== "narrate")) assert.ok(!doc(line[s]).includes(narrator), s)
+// Narrator-specific wording joins its own lead and never reaches an off-stage request.
+const framed = { ...c({ text: "x" }), persona: "Narrator-only reference." }
+assert.deepEqual(request(framed, asks.narrate).slice(0, 2).map(text), [narrator + " " + framed.persona, narrateHead[1]])
+for (const stage of stages.filter((s) => s !== "narrate")) {
+  assert.deepEqual(request(framed, asks[stage]), request({ ...framed, persona: "" }, asks[stage]))
+}
 // no persona or setting in the frame: no empty tag; the other slots stay plain lines
 const plain = request({ ...c({ text: "x" }), frame: [frame[0]!, frame[3]!] }, asks.narrate)
 assert.equal(text(plain[1]!), "Write in Chinese.\n\n用第二人称写玩家。")

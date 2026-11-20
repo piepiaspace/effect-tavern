@@ -8,7 +8,7 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { policyFor } from "@effect-tavern/runtime/src/history.ts"
 import { makeSession } from "@effect-tavern/runtime/src/session.ts"
 import { harness } from "@effect-tavern/runtime/src/layer.ts"
-import { chat, plain as player } from "@effect-tavern/runtime/test/cards/index.ts"
+import { chat, recordingPlayer as player } from "@effect-tavern/runtime/test/cards/index.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { Effect, Fiber, Stream } from "effect"
 import assert from "node:assert/strict"
@@ -80,9 +80,7 @@ const over = (data: Data, m: () => Model = model) =>
   assert.equal(data.stories.list("other")[0]?.id, theirs) // another card's id is left alone
 }
 
-// A card from the workshop (shelf.ts `create`): blank, it plays as the harness alone, the prose and then record's
-// notes, from the player's first line. An entry saved into it brings lookup with it on the next turn; no stage is
-// declared anywhere.
+// A blank workshop card calls narrate alone. Adding a lore entry brings lookup into its next turn.
 {
   const phases: string[] = []
   const scripted = fake((o) => {
@@ -90,7 +88,7 @@ const over = (data: Data, m: () => Model = model) =>
     phases.push(doc.phase)
     return doc.phase === "narrate" ? { text: "雨停了。" } : defaultAnswer(doc, canned)
   })
-  const lib = library({ data: open(":memory:"), overlay: player.harness, model: () => scripted })
+  const lib = library({ data: open(":memory:"), model: () => scripted })
   const made = lib.cards.create()
   const story = lib.stories.create(made.id)
   const say = (text: string) =>
@@ -98,14 +96,14 @@ const over = (data: Data, m: () => Model = model) =>
       Stream.runDrain(lib.turn(story).start({ kind: "act", parent: lib.session(story).log.head, input: { text } })),
     )
   await say("你好")
-  assert.deepEqual([phases, lib.session(story).log.nodes.size], [["narrate", "record"], 1])
+  assert.deepEqual([phases, lib.session(story).log.nodes.size], [["narrate"], 1])
   lib.cards.save(made.id, {
     ...lib.cards.get(made.id),
     lore: [{ id: "盐帮", layers: ["盐帮是城里最大的帮会。"], unlock: { all: [] }, offer: { any: [] } }],
   })
   phases.length = 0
   await say("盐帮是什么")
-  assert.deepEqual([...new Set(phases)], ["lookup", "narrate", "record"])
+  assert.deepEqual([...new Set(phases)], ["lookup", "narrate"])
 }
 
 // The turn in flight is the story's (src/turn.ts), crossed in process as the wire crosses it. Three stories, two on one

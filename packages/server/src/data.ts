@@ -418,7 +418,7 @@ const rebase = (db: Database) => {
         for (const [k, v] of Object.entries((n["products"] as Record<string, unknown> | undefined) ?? {})) {
           if (v && typeof v === "object" && !Array.isArray(v)) {
             changes.push({ kind: "replace", product: k, value: v })
-          } else if (Array.isArray(v) && k !== "notes" && k !== "options") {
+          } else if (Array.isArray(v) && v.some((item) => item && typeof item === "object")) {
             v.forEach((item, idx) => {
               if (item && typeof item === "object" && !("$delete" in item))
                 changes.push({

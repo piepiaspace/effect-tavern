@@ -39,6 +39,31 @@ const scene: Product = {
   },
   initial: { place: "inn", present: [] },
 }
+// Inactive record products, readouts and passages have the same persistence cost as plain chat.
+{
+  const writes: Log.Change<Turn>[] = []
+  const never = { any: [] }
+  const T = makeSession({
+    card: {
+      ...chat,
+      products: [{ ...scene, when: never }],
+      rules: { fields: [], actions: [], readouts: [{ id: "time", text: "Time?", when: never, options: [] }] },
+      passages: [{ when: never, text: "Next" }],
+      frame: [],
+      fiction: [],
+    },
+    rows: () => ({}),
+    model: () => fake(() => ({ text: "OK" })),
+    store: { read: () => undefined, write: (change) => writes.push(change) },
+  })
+  for (const text of ["first", "second"]) {
+    const node = await Effect.runPromise(outcome(T.act(T.log.head, { text })))
+    assert.deepEqual(
+      writes.splice(0).map((c) => [c.node?.id, c.node?.settlementStatus, c.node?.settlementVersion]),
+      [[node.id, "committed", 0]],
+    )
+  }
+}
 const tool = (name: string, input: unknown) => ({ name, input })
 const finish = () => tool("finish_record", { notes: "" })
 let replies: FakeReply[] = []
@@ -55,7 +80,7 @@ const model = fake((o) => {
 })
 let saved: Log.Snapshot<Turn> | undefined
 const S = makeSession({
-  card: { ...chat, products: [scene, people] },
+  card: { ...chat, products: [scene, people, { id: "notes", on: true }] },
   rows: () => ({}),
   model: () => model,
   store: {
@@ -375,9 +400,10 @@ console.log("record transactions ok")
     rows: () => ({}),
     model: () => M,
   })
+  const callsBefore = asked.length
   const none = await Effect.runPromise(outcome(N.act(null, { text: "go" })))
   assert.equal(none.settlementStatus, "committed")
-  assert.ok(!asked.at(-1)!.includes("bgm"))
+  assert.equal(asked.length, callsBefore)
   assert.ok(!("bgm" in none.products))
 }
 console.log("catalog picks ok")

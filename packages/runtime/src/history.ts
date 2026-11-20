@@ -1,16 +1,19 @@
-// §17.2–17.3: history is a per-stage view over the path, never stored. Only the narrator sees the transcript;
-// the director sees a ledger of facts. Compression is a derived view too: a prefix range is replaced by the CODE
-// fold of its notes, cached by range (ids are unique, so a range names a prefix)
-// and served only while the turns it covers are the ones it was folded from (an amend refolds it).
-// A fold is a function of the turns INSIDE its range and nothing else: a later turn (one that will some day retract
-// an earlier note) cannot reach back into a fold that does not contain it. That is what keeps the summary's cache
-// breakpoint byte-stable between boundary moves; a retraction lands in the summary when the boundary passes its turn,
-// and until then in the tail's Known line, which is rewritten every turn anyway. The boundary (`folded`) is a token
-// budget stepped in blocks; a path only grows, so along it the boundary never moves back and moves a block at a time.
-// One boundary drives three views: the narrator's summary + transcript, the ledger's summary + tail lines, and which
-// context deliveries retained by window residency; prose never establishes resource residency.
+// One token-budget boundary drives the narrator transcript, fact ledger and window-resident deliveries.
+// The prefix may also have a summary, built from active chronicle products in resolved order.
 import type { Msg } from "./fragment.ts"
-import { notesOf, prose, type Turn } from "./journal.ts"
+import { prose, type Turn } from "./journal.ts"
+import { render, type Product } from "./product.ts"
+
+/** Values in resolved product order. Older text products stored a list of sentences per turn. */
+export const factsOf = <B>(t: Turn<B>, sources: readonly Product[]) =>
+  sources.flatMap((p) => {
+    const value = t.products[p.id]
+    if (value == null) return []
+    if (Array.isArray(value) && (p.shape.kind === "text" || p.shape.kind === "list"))
+      return value.filter((s): s is string => typeof s === "string" && !!s)
+    const line = render(p.shape, value)
+    return line ? [line] : []
+  })
 
 export const boundaryIndex = <B>(path: readonly Turn<B>[]) =>
   Math.max(
@@ -30,19 +33,22 @@ export const makeSummaries = <B>() => {
   // covers is still that same object; an amended one refolds the range and replaces the entry. Checking identity rather
   // than keying on notes covers everything a fold reads off a node (notes, and recall items stored on it) for a pointer
   // compare per turn, and an unchanged log still hits.
-  const table = new Map<string, { sum: Summary; over: readonly Turn<B>[] }>()
+  const table = new Map<string, { sum: Summary; over: readonly Turn<B>[]; sources: string }>()
   const current = (over: readonly Turn<B>[], path: readonly Turn<B>[]) =>
     over.length <= path.length && over.every((t, i) => t === path[i])
   return {
-    compress: (path: readonly Turn<B>[], keepLast: number): Summary | undefined => {
+    compress: (path: readonly Turn<B>[], keepLast: number, sources: readonly Product[]): Summary | undefined => {
+      if (!sources.length) return undefined
       const range = path.slice(0, Math.max(0, path.length - keepLast))
-      if (range.length < 2) return undefined
+      if (!range.length) return undefined
       const k = `${range[0].id}-${range[range.length - 1].id}`
       const hit = table.get(k)
-      if (hit && current(hit.over, range)) return hit.sum
-      const facts = range.flatMap(notesOf)
+      const selection = JSON.stringify(sources.map((p) => [p.id, p.shape]))
+      if (hit?.sources === selection && current(hit.over, range)) return hit.sum
+      const facts = range.flatMap((t) => factsOf(t, sources))
+      if (!facts.length) return undefined
       const s: Summary = { from: range[0].id, to: range[range.length - 1].id, text: `Summary: ${facts.join(" ")}` }
-      table.set(k, { sum: s, over: range })
+      table.set(k, { sum: s, over: range, sources: selection })
       return s
     },
   }
@@ -75,19 +81,20 @@ export const folded = <B>(path: readonly Turn<B>[], cost: (t: Turn<B>) => number
   for (let sum = 0; j > 0 && (sum += cost(path[j - 1]!)) <= p.budget; j--);
   return Math.min(cap, Math.ceil(j / p.block) * p.block)
 }
-/** The turns after the summary: the whole path when there is none. */
-const tailOf = <B>(path: readonly Turn<B>[], sum?: Summary) =>
-  sum ? path.slice(path.findIndex((t) => t.id === sum.to) + 1) : path
-
 /** Narrator transcript: past input and prose, never brief/notes/note.
  * Context is injected separately from residentOn(), shared with lookup; history never resolves live resources.
  *  `sum` is the summary the POLICY chose for this path (what `compress` returned); the side table is a cache and a cache
  *  never decides what a view contains, so the view is a function of (path, policy) and identical across branches. */
-export const narratorHistory = <B>(path: readonly Turn<B>[], sum?: Summary): Msg[] => {
-  path = epoch(path)
+export const narratorHistory = <B>(path: readonly Turn<B>[], sum?: Summary, start = 0): Msg[] => {
+  path = epoch(path).slice(start)
+  // A clipped transcript starts at a player turn, even when a bridge has no input.
+  if (start > 0) {
+    const first = path.findIndex((t) => t.input.text || t.input.note || t.input.invoke?.length)
+    path = first < 0 ? [] : path.slice(first)
+  }
   return [
     ...(sum ? [{ role: "system", text: sum.text } as Msg] : []),
-    ...tailOf(path, sum).flatMap((t): Msg[] => [
+    ...path.flatMap((t): Msg[] => [
       ...(t.input.text || t.input.note || t.input.invoke?.length
         ? [{ role: "user", text: t.input.text || "Continue the story." } as Msg]
         : []),
@@ -101,16 +108,28 @@ export const narratorHistory = <B>(path: readonly Turn<B>[], sum?: Summary): Msg
 export const ledger = <B>(
   path: readonly Turn<B>[],
   eventsOf: (t: Turn<B>) => readonly string[],
-  sum?: Summary,
+  sum: Summary | undefined,
+  start: number,
+  sources: readonly Product[],
 ): Msg[] => {
-  const tail = tailOf(epoch(path), sum)
+  const tail = epoch(path).slice(start)
   return [
     ...(sum ? [{ role: "system", text: sum.text } as Msg] : []),
     ...(tail.length
       ? [
           {
             role: "system",
-            text: `Ledger:\n${tail.map((t) => `${t.input.text} → ${eventsOf(t).join(",") || "-"}; read ${[...new Set(t.read.map((d) => d.id))].join(",") || "-"}; fired ${t.fired.map((d) => d.id).join(",") || "-"}; ${notesOf(t).join("; ")}`).join("\n")}`,
+            text: `Ledger:\n${tail
+              .map(
+                (t) =>
+                  `${t.input.text} → ${eventsOf(t).join(",") || "-"}; read ${[...new Set(t.read.map((d) => d.id))].join(",") || "-"}; fired ${t.fired.map((d) => d.id).join(",") || "-"}${factsOf(
+                    t,
+                    sources,
+                  )
+                    .map((f) => `; ${f}`)
+                    .join("")}`,
+              )
+              .join("\n")}`,
           } as Msg,
         ]
       : []),

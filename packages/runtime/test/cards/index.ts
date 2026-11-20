@@ -3,6 +3,21 @@
 import type { Card } from "../../src/card.ts"
 import { readCard } from "../../support/author.ts"
 export * from "../../support/rows.ts"
+import { player } from "../../support/rows.ts"
+import type { Rows } from "../../src/layer.ts"
+
+/** Explicit opt-ins for fixtures that exercise per-turn settlement and compressed history. */
+export const recordingPlayer: Rows = {
+  harness: {
+    id: "harness",
+    name: "内置",
+    fragments: player.harness!.fragments,
+    products: [
+      { id: "notes", on: true },
+      { id: "options", on: true },
+    ],
+  },
+}
 
 export const cardNames = ["wuxia", "yandao", "banxing", "ri"]
 export const cardFile = (name: string) => new URL(`${name}.yaml`, import.meta.url)

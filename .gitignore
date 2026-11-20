@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .dev/
+/.tavern/
 
 # coding agents: dotfiles, linked skills, skill locks
 .agents/

@@ -7,7 +7,7 @@ type Event = TimelineEvent | Extract<RuntimeEvent, { kind: "call" }>
 // story answers 409; stories of one card and of two run side by side; a story route without its story is a 404.
 import { fake, fakeText } from "@effect-tavern/provider"
 import { facets, type Event as RuntimeEvent } from "@effect-tavern/runtime/src/session.ts"
-import { chat, plain as player } from "@effect-tavern/runtime/test/cards/index.ts"
+import { chat, recordingPlayer as player } from "@effect-tavern/runtime/test/cards/index.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import assert from "node:assert/strict"
 import { once } from "node:events"
@@ -505,7 +505,7 @@ const sse = (text: string) =>
     await pack(layerRows[0], "harness")
     assert.deepEqual(
       shared.packs.list().find((p) => p.id === "harness"),
-      { ...given, products: [{ id: "options", on: true }] },
+      given,
     )
     assert.equal((await pack(undefined, "harness")).status, 400)
     assert.equal((await pack({ name: "x" }, "base")).status, 400)

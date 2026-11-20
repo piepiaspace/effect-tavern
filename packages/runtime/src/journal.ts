@@ -44,13 +44,6 @@ export interface Turn<B> {
   settlementError?: string
   products: Readonly<Record<string, unknown>> // per-turn chronicle/theater outputs only; world writes live in changes
 }
-/** The notes product, the compression source: this turn's sentence, as the one-item list every fold joins. A library
- *  written before #82 holds a list per turn; it reads the same. */
-export const notesOf = <B>(t: Turn<B>): readonly string[] => {
-  const n = t.products.notes as string | readonly string[] | undefined
-  return typeof n === "string" ? (n ? [n] : []) : (n ?? [])
-}
-
 export const textOf = (parts: readonly Part[]): string =>
   parts
     .filter((p) => p.type === "text")

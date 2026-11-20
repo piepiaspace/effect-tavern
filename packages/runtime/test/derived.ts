@@ -247,3 +247,55 @@ const none = { events: [], before: [] }
 }
 
 console.log("derived ok")
+
+// Re-read the same immutable branch after changing the active chronicle selection.
+{
+  const defs = ["timeline", "diary"].map((id) => ({
+    id,
+    role: "chronicle" as const,
+    text: id,
+    shape: { kind: "text" as const },
+    on: true,
+    feed: true,
+  }))
+  let active = defs
+  const d = makeDerived({
+    rpg: makeCard(full.rules),
+    L: () => makeLore([]),
+    lore: [],
+    products: () => active,
+    policy: () => ({ budget: 0, keep: 2, block: 2 }),
+  })
+  let path: Turn[] = []
+  for (let i = 0; i < 4; i++) {
+    path = add(path, {
+      input: { text: i === 2 ? "" : String(i) },
+      products: { diary: "D" + i, timeline: "T" + i },
+      deliveries: [
+        { resourceId: String(i), revision: "1", title: "Title", text: String(i), source: "card", residency: "window" },
+      ],
+    })
+  }
+  const view = () => d.at(path)
+  assert.equal(view().summary()?.text, "Summary: T0 D0 T1 D1")
+  assert.deepEqual(view().known(), { known: "Known: T0; D0; T1; D1; T2; D2; T3; D3", current: undefined })
+  active = defs.slice(1)
+  assert.equal(view().summary()?.text, "Summary: D0 D1")
+  active = []
+  assert.equal(view().summary(), undefined)
+  assert.equal(view().known().known, "")
+  assert.deepEqual(
+    view()
+      .history()
+      .map((m) => m.role),
+    ["user", "assistant"],
+  )
+  assert.equal(view().history()[0]?.text, "3")
+  assert.deepEqual(
+    view()
+      .resident()
+      .map((d) => d.resourceId),
+    ["2", "3"],
+  )
+  assert.equal(view().ledger()[0]?.text, "Ledger:\n → -; read -; fired -\n3 → -; read -; fired -")
+}

@@ -17,7 +17,7 @@ import { catalogBlock, contextLookup, deliveryText, freeze, latest, resourcesAt,
 import { floorAt, currentAt } from "./derived.ts"
 
 import { initialWorld } from "./world.ts"
-import { withCatalogs, askedAt, productAsks } from "./product.ts"
+import { feedsChronicle, withCatalogs, askedAt, productAsks } from "./product.ts"
 import { tokens } from "./tokens.ts"
 
 export const stages = ["narrate", "direct", "record", "lookup"] as const
@@ -206,7 +206,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
         : stage === "record"
           ? {
               stage,
-              known: "Known: ",
+              known: R.products.some(feedsChronicle) ? "Known: " : "",
               current: currentAt(R.products, world, {}, true),
               invoked: pinned ? [deliveryText(freeze(pinned))] : [],
               asks,
@@ -233,6 +233,8 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
       world: head(worldOf(card, R.frame), { state: context }),
       role: R.asks["stage.role"]!.text,
       narrator: R.asks["narrate.role"]!.text,
+      persona: R.asks["narrate.persona"]!.text,
+      contextLead: R.asks["narrate.context"]!.text,
       directions: R.asks["narrate.turn"]!.text,
       tail: head(R.tail, { state: context }),
       input: { text: "" },

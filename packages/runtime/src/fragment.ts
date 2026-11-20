@@ -10,7 +10,7 @@ export const Fragment = Schema.Struct({
   role: Schema.optionalKey(Schema.Literals(["system", "user", "assistant"])),
   enabled: Schema.optionalKey(Schema.Boolean),
   when: Schema.optionalKey(Cond),
-  mode: Schema.optionalKey(Schema.Literals(["override", "yield", "both"])), // a player row's: vs the lower ranks' same slot (layer.ts)
+  mode: Schema.optionalKey(Schema.Literals(["override", "yield", "both", "mute"])), // a player row's: vs the lower ranks' same slot (layer.ts)
   // GLOSSARY Head / Tail: no depth, only head or tail. head (absent) = the frame slot; tail = the end of the narrate request,
   // after this turn's directives and before the hat's tail (request.ts); no other stage reads a tail fragment
   at: Schema.optionalKey(Schema.Literals(["head", "tail"])),
@@ -99,5 +99,5 @@ export const head = (
   { state = {} as State, options = {} as Record<string, boolean> } = {},
 ): Slotted[] =>
   layers
-    .filter((f) => (options[f.id] ?? f.enabled ?? true) && (!f.when || holds(f.when, state)))
+    .filter((f) => f.mode !== "mute" && (options[f.id] ?? f.enabled ?? true) && (!f.when || holds(f.when, state)))
     .flatMap((f) => (f.text ? [{ id: f.id, role: f.role ?? "system", text: expandState(f.text, state) }] : []))

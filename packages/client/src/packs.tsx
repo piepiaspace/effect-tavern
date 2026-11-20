@@ -2,7 +2,7 @@
 // 6-tab full-height workbench (文风与要求, 线索词条, 润色禁词, 记录与小剧场, 快捷输入, 问法). `harness` is marked 内置 and
 // cannot be deleted. Every edit is one `PUT /packs/<id>` and a re-read of the active card.
 import { SLOTS, type Format, type Fragment, type Snippet } from "@effect-tavern/runtime/src/fragment.ts"
-import { harness, type Ask, type Layer, type PackEntry } from "@effect-tavern/runtime/src/layer.ts"
+import { harness, type Layer, type PackEntry } from "@effect-tavern/runtime/src/layer.ts"
 import { hook } from "@effect-tavern/runtime/src/lore.ts"
 import type { Entry } from "@effect-tavern/runtime/src/polish.ts"
 import { createMemo, createSignal, For, Show } from "solid-js"
@@ -19,7 +19,7 @@ import {
   withPackName,
   withProductPatch,
 } from "./pack.ts"
-import { addFragment, atOf, removeFragment, setFragmentAt, setFragmentText } from "./requirements.ts"
+import { EXTRA, addFragment, atOf, removeFragment, setFragmentAt, setFragmentText } from "./requirements.ts"
 import { cards, locals, packs } from "./store.ts"
 import { SWITCHES } from "./switches.ts"
 import { type Key, t } from "./i18n.ts"
@@ -63,9 +63,14 @@ const stageAskLabels = (): [string, string][] => [
   ["decide.first", t("packs.askDecideFirst")],
   ["decide.again", t("packs.askDecideAgain")],
   ["check", t("settings.stageCheck")],
+  ["check.decision.rule", t("packs.askCheckRule")],
+  ["check.decision.open", t("packs.askCheckOpen")],
   ["polish", t("settings.stagePolish")],
   ["record.tools", t("packs.askRecordTools")],
   ["record.readout", t("packs.askRecordReadout")],
+  ["narrate.persona", t("packs.askPersona")],
+  ["narrate.context", t("packs.askContext")],
+  ["lookup.decision", t("packs.askDecision")],
   ["narrate.role", t("packs.askNarrateRole")],
   ["narrate.turn", t("packs.askNarrateTurn")],
   ["narrate.correction", t("packs.askNarrateCorrection")],
@@ -304,8 +309,9 @@ export const Packs = (props: Pane) => {
 }
 
 // ───────── 1. 文风与要求 (`Layer.fragments`) ─────────
-const ProseTab = (props: { pack: Layer; onSave: Save }) => {
+export const ProseTab = (props: { pack: Layer; onSave: Save; inherited?: readonly Fragment[] }) => {
   const frags = () => props.pack.fragments ?? []
+  const visible = (f: Fragment) => !props.inherited || f.id !== EXTRA
   const noMode = () => (props.pack.id === "harness" ? "yield" : "override") // what a fragment with no `mode` does (layer.ts)
   const [draft, setDraft] = createSignal<string | null>(null)
   const commitDraft = () => {
@@ -327,7 +333,7 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
       <div class="prose-card grow">
         <div class="block-title">
           <h3>{t("writing.tabProse")}</h3>
-          <span class="tag mono">{frags().length}</span>
+          <span class="tag mono">{frags().filter(visible).length}</span>
           <div class="right">
             <button type="button" class="btn sm" disabled={draft() !== null} onClick={() => setDraft("")}>
               <Plus /> <span>{t("writing.addRequirement")}</span>
@@ -368,80 +374,138 @@ const ProseTab = (props: { pack: Layer; onSave: Save }) => {
               </Well>
             </div>
           </Show>
-          <For each={frags()} keyed={false}>
-            {(f, i) => (
-              <div class="frag-row" data-off={f().enabled === false ? "true" : "false"}>
-                <div class="frag-bar">
-                  <div class="at-toggle" role="group" aria-label={t("writing.position")}>
-                    <button
-                      type="button"
-                      aria-pressed={atOf(f()) === "tail" ? "true" : "false"}
-                      onClick={() => void props.onSave((p) => setFragmentAt(p, i, "tail"))}
-                    >
-                      {t("writing.atTail")}
-                    </button>
-                    <button
-                      type="button"
-                      aria-pressed={atOf(f()) === "head" ? "true" : "false"}
-                      onClick={() => void props.onSave((p) => setFragmentAt(p, i, "head"))}
-                    >
-                      {t("writing.atHead")}
-                    </button>
-                  </div>
-                  <Show when={atOf(f()) === "head"}>
-                    <Menu
-                      small
-                      label={t("packs.slot")}
-                      value={SLOTS.includes(f().id) ? f().id : "custom"}
-                      options={[
-                        { value: "custom", label: t("packs.slotCustom") },
-                        ...SLOTS.map((s) => ({ value: s, label: slotName(s) })),
-                      ]}
-                      onPick={(v) => updateFrag(i, { id: v === "custom" ? newId("req") : v })}
-                    />
-                    <Menu
-                      small
-                      label={t("packs.mode")}
-                      value={f().mode ?? noMode()}
-                      options={[
-                        { value: "override", label: t("packs.modeOverride") },
-                        { value: "yield", label: t("packs.modeYield") },
-                        { value: "both", label: t("packs.modeBoth") },
-                      ]}
-                      onPick={(v) => updateFrag(i, { mode: v === noMode() ? undefined : v })}
-                    />
-                  </Show>
-                  <span class="spacer" />
-                  <Switch
-                    on={f().enabled !== false}
-                    label={f().id}
-                    onFlip={() => updateFrag(i, { enabled: f().enabled === false ? undefined : false })}
-                  />
-                  <button
-                    type="button"
-                    class="icon sm"
-                    aria-label={t("writing.removeRequirement")}
-                    onClick={() => void props.onSave((p) => removeFragment(p, i))}
-                  >
-                    <Close />
-                  </button>
-                </div>
-                <Well label={t("writing.requirement")}>
-                  <textarea
-                    aria-label={t("writing.requirement")}
-                    value={f().text ?? ""}
-                    onChange={(e) => {
-                      const text = e.currentTarget.value
-                      void props.onSave((p) => setFragmentText(p, i, text))
-                    }}
-                    onKeyDown={leaveArea}
-                  />
-                </Well>
-                <span class="frag-count">{t("common.chars", { n: (f().text ?? "").length })}</span>
+          <For each={props.inherited ?? []} keyed={(f) => atOf(f) + ":" + f.id}>
+            {(f) => (
+              <div class="frag-bar">
+                <span class="d-name">{slotName(f().id)}</span>
+                <span class="tag">{atOf(f()) === "tail" ? t("writing.atTail") : t("writing.atHead")}</span>
+                <span class="tag">{t("packs.inherited")}</span>
+                <button
+                  type="button"
+                  class="btn xs ghost"
+                  onClick={() => {
+                    const { id, at } = f()
+                    void props.onSave((p) => ({
+                      ...p,
+                      fragments: [
+                        ...(p.fragments ?? []).filter(
+                          (row) => !(row.id === id && atOf(row) === (at ?? "head") && row.mode === "mute"),
+                        ),
+                        { id, at, mode: "mute" },
+                      ],
+                    }))
+                  }}
+                >
+                  {t("packs.muteSlot")}
+                </button>
               </div>
             )}
           </For>
-          <Show when={!frags().length && draft() === null}>
+          <For each={frags()} keyed={false}>
+            {(f, i) => (
+              <Show when={visible(f())}>
+                <Show
+                  when={f().mode !== "mute"}
+                  fallback={
+                    <div class="frag-row">
+                      <div class="frag-bar">
+                        <span class="d-name">{slotName(f().id)}</span>
+                        <span class="tag">{atOf(f()) === "tail" ? t("writing.atTail") : t("writing.atHead")}</span>
+                        <span class="tag">{t("packs.disabled")}</span>
+                        <span class="spacer" />
+                        <button
+                          type="button"
+                          class="btn xs ghost"
+                          onClick={() => void props.onSave((p) => removeFragment(p, i))}
+                        >
+                          {t("packs.restoreInheritance")}
+                        </button>
+                      </div>
+                    </div>
+                  }
+                >
+                  <div class="frag-row" data-off={f().enabled === false ? "true" : "false"}>
+                    <div class="frag-bar">
+                      <div class="at-toggle" role="group" aria-label={t("writing.position")}>
+                        <button
+                          type="button"
+                          aria-pressed={atOf(f()) === "tail" ? "true" : "false"}
+                          onClick={() => void props.onSave((p) => setFragmentAt(p, i, "tail"))}
+                        >
+                          {t("writing.atTail")}
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={atOf(f()) === "head" ? "true" : "false"}
+                          onClick={() => void props.onSave((p) => setFragmentAt(p, i, "head"))}
+                        >
+                          {t("writing.atHead")}
+                        </button>
+                      </div>
+                      <Show when={atOf(f()) === "head"}>
+                        <Menu
+                          small
+                          label={t("packs.slot")}
+                          value={SLOTS.includes(f().id) ? f().id : "custom"}
+                          options={[
+                            { value: "custom", label: t("packs.slotCustom") },
+                            ...SLOTS.map((s) => ({ value: s, label: slotName(s) })),
+                          ]}
+                          onPick={(v) => updateFrag(i, { id: v === "custom" ? newId("req") : v })}
+                        />
+                      </Show>
+                      <Menu
+                        small
+                        label={t("packs.mode")}
+                        value={f().mode ?? noMode()}
+                        options={[
+                          { value: "override", label: t("packs.modeOverride") },
+                          { value: "yield", label: t("packs.modeYield") },
+                          { value: "both", label: t("packs.modeBoth") },
+                          ...(SLOTS.includes(f().id) ? [{ value: "mute" as const, label: t("packs.muteSlot") }] : []),
+                        ]}
+                        onPick={(v) =>
+                          updateFrag(
+                            i,
+                            v === "mute"
+                              ? { mode: v, text: undefined, enabled: undefined }
+                              : { mode: v === noMode() ? undefined : v },
+                          )
+                        }
+                      />
+                      <span class="spacer" />
+                      <Switch
+                        on={f().enabled !== false}
+                        label={f().id}
+                        onFlip={() => updateFrag(i, { enabled: f().enabled === false ? undefined : false })}
+                      />
+                      <button
+                        type="button"
+                        class="icon sm"
+                        aria-label={t("writing.removeRequirement")}
+                        onClick={() => void props.onSave((p) => removeFragment(p, i))}
+                      >
+                        <Close />
+                      </button>
+                    </div>
+                    <Well label={t("writing.requirement")}>
+                      <textarea
+                        aria-label={t("writing.requirement")}
+                        value={f().text ?? ""}
+                        onChange={(e) => {
+                          const text = e.currentTarget.value
+                          void props.onSave((p) => setFragmentText(p, i, text))
+                        }}
+                        onKeyDown={leaveArea}
+                      />
+                    </Well>
+                    <span class="frag-count">{t("common.chars", { n: (f().text ?? "").length })}</span>
+                  </div>
+                </Show>
+              </Show>
+            )}
+          </For>
+          <Show when={!frags().some(visible) && !props.inherited?.length && draft() === null}>
             <p class="none">{t("writing.noRequirement")}</p>
           </Show>
         </div>
@@ -877,6 +941,9 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
   const [editing, setEditing] = createSignal<ProductDraft | null>(null)
   const dlg = dialogHandle()
 
+  const canTrigger = (id: string) =>
+    id !== "options" &&
+    (products().find((p) => p.id === id)?.role ?? DEFAULT_PRODUCTS.get(id)?.role ?? "theater") === "theater"
   const openNew = () => {
     setEditing({ id: newId("th"), isNew: true, label: "", on: false, trigger: "demand", text: "" })
     void dlg.open()
@@ -902,8 +969,8 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
       id: d.id,
       label: d.label.trim(),
       text: d.text.trim(),
-      ...(d.id !== "notes" ? { on: d.on } : {}),
-      ...(d.id !== "notes" && d.id !== "options"
+      on: d.on,
+      ...(canTrigger(d.id)
         ? { trigger: props.pack.id === "harness" && d.trigger === "turn" ? undefined : d.trigger }
         : {}),
     }
@@ -953,22 +1020,21 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
               <div class="pack-row" onClick={() => openEdit(p())}>
                 <span class="d-name">{p().label ?? p().id}</span>
                 <span class="tag mono">{p().id}</span>
-                <Show when={p().id !== "notes" && p().id !== "options"}>
+                <Show when={canTrigger(p().id)}>
                   <span class="tag">{p().trigger === "demand" ? t("packs.onDemand") : t("packs.everyTurn")}</span>
                 </Show>
                 <span class="row-text">{p().text ?? ""}</span>
-                <Show when={p().id !== "notes"} fallback={<span class="tag">{t("packs.everyTurn")}</span>}>
-                  <span onClick={(e) => e.stopPropagation()}>
-                    <Switch
-                      on={!!p().on}
-                      label={p().label ?? p().id}
-                      onFlip={() => {
-                        const flip = { id: p().id, on: !p().on }
-                        void props.onSave((x) => ({ ...x, products: withProductPatch(x.products, flip) }))
-                      }}
-                    />
-                  </span>
-                </Show>
+
+                <span onClick={(e) => e.stopPropagation()}>
+                  <Switch
+                    on={!!p().on}
+                    label={p().label ?? p().id}
+                    onFlip={() => {
+                      const flip = { id: p().id, on: !p().on }
+                      void props.onSave((x) => ({ ...x, products: withProductPatch(x.products, flip) }))
+                    }}
+                  />
+                </span>
               </div>
             )}
           </For>
@@ -995,7 +1061,7 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
                     onInput={(e) => setEditing({ ...d(), label: e.currentTarget.value })}
                   />
                 </label>
-                <Show when={d().id !== "notes" && d().id !== "options"}>
+                <Show when={canTrigger(d().id)}>
                   <div class="mfield">
                     <span>{t("packs.trigger")}</span>
                     <div class="at-toggle" role="group" aria-label={t("packs.trigger")}>
@@ -1289,32 +1355,39 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
 }
 
 // ───────── 6. 问法 (`Layer.asks`: stage instructions & switch sentences) ─────────
-const AsksTab = (props: { pack: Layer; onSave: Save }) => {
+export const AsksTab = (props: {
+  pack: Layer
+  onSave: Save
+  inherited?: Record<string, { text?: string; from: string }>
+}) => {
   const ownMap = () => new Map((props.pack.asks ?? []).map((a) => [a.id, a.text]))
   const isHarness = () => props.pack.id === "harness"
 
-  const setAsk = (id: string, raw: string) => {
-    const text = raw.trim()
-    const def = DEFAULT_ASKS.get(id) ?? ""
-    const builtin = isHarness()
+  const setAsk = (id: string, raw?: string) => {
     void props.onSave((p) => {
       const cur = (p.asks ?? []).filter((a) => a.id !== id)
-      let next: Ask[]
-      if (builtin) {
-        next = [...cur, { id, text: text || def }]
-      } else {
-        next = text && text !== def ? [...cur, { id, text }] : cur
-      }
+      const next = raw === undefined ? cur : [...cur, { id, text: raw.trim() }]
       const { asks: _, ...rest } = p
       return next.length ? { ...rest, asks: next } : rest
     })
   }
-
-  const isModified = (id: string) => {
-    const own = ownMap().get(id)
-    const def = DEFAULT_ASKS.get(id) ?? ""
-    return own !== undefined && own !== def
-  }
+  const modified = (id: string) => ownMap().has(id) && (!isHarness() || ownMap().get(id) !== DEFAULT_ASKS.get(id))
+  const disabled = (id: string) => ownMap().get(id) === ""
+  const actions = (id: string) => (
+    <>
+      <span class="tag">
+        {modified(id) ? (disabled(id) ? t("packs.disabled") : t("packs.overridden")) : t("packs.inherited")}
+      </span>
+      <button type="button" class="btn xs ghost" disabled={disabled(id)} onClick={() => setAsk(id, "")}>
+        {t("packs.disable")}
+      </button>
+      <Show when={modified(id)}>
+        <button type="button" class="btn xs ghost" onClick={() => setAsk(id)}>
+          {isHarness() ? t("packs.restoreDefault") : t("packs.restoreInheritance")}
+        </button>
+      </Show>
+    </>
+  )
 
   const switchAsks = () =>
     SWITCHES.flatMap((s) =>
@@ -1342,16 +1415,22 @@ const AsksTab = (props: { pack: Layer; onSave: Save }) => {
                     <span class="d-name">{row()[1]}</span>
                     <span class="tag mono">{id()}</span>
                     <span class="spacer" />
-                    <Show when={isModified(id())}>
-                      <button type="button" class="btn xs ghost" onClick={() => setAsk(id(), "")}>
-                        {t("packs.restoreDefault")}
-                      </button>
-                    </Show>
+                    {actions(id())}
                   </div>
                   <Well label={row()[1]}>
                     <textarea
                       aria-label={row()[1]}
-                      placeholder={def()}
+                      placeholder={
+                        id() === "narrate.role" &&
+                        !props.inherited?.[id()]?.text &&
+                        props.inherited?.[id()]?.from !== "card" &&
+                        !modified(id())
+                          ? t("packs.narratorExample")
+                          : disabled(id())
+                            ? ""
+                            : (props.inherited?.[id()]?.text ??
+                              (props.inherited?.[id()]?.from === "card" ? t("writing.cardPrompt") : def()))
+                      }
                       value={val()}
                       onChange={(e) => setAsk(id(), e.currentTarget.value)}
                       onKeyDown={leaveArea}
@@ -1376,16 +1455,17 @@ const AsksTab = (props: { pack: Layer; onSave: Save }) => {
                     <span class="d-name">{row().label}</span>
                     <span class="tag mono">{id()}</span>
                     <span class="spacer" />
-                    <Show when={isModified(id())}>
-                      <button type="button" class="btn xs ghost" onClick={() => setAsk(id(), "")}>
-                        {t("packs.restoreDefault")}
-                      </button>
-                    </Show>
+                    {actions(id())}
                   </div>
                   <Well label={row().label}>
                     <textarea
                       aria-label={row().label}
-                      placeholder={def()}
+                      placeholder={
+                        disabled(id())
+                          ? ""
+                          : (props.inherited?.[id()]?.text ??
+                            (props.inherited?.[id()]?.from === "card" ? t("writing.cardPrompt") : def()))
+                      }
                       value={val()}
                       onChange={(e) => setAsk(id(), e.currentTarget.value)}
                       onKeyDown={leaveArea}

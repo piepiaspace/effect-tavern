@@ -64,13 +64,13 @@ function here(r: Partial<Local> = {}): Local {
     if (process.env["CAPTURE"]) fixture[name] = calls
     assert.equal(JSON.stringify(calls), JSON.stringify(fixture[name]), name)
   }
-  if (process.env["CAPTURE"]) writeFileSync(file, `${JSON.stringify(fixture, null, 1)}\n`)
+  if (process.env["CAPTURE"]) writeFileSync(file, `${JSON.stringify(fixture, null, 2)}\n`)
   if (process.env["CAPTURE"]) {
     const act = harness("act")
     fixture.harness.asks = act.asks!.filter((a) => !a.id.startsWith("switch."))
     fixture.harness.act = act.products
     fixture.harness.note = harness("note").products
-    writeFileSync(file, `${JSON.stringify(fixture, null, 1)}\n`)
+    writeFileSync(file, `${JSON.stringify(fixture, null, 2)}\n`)
   }
   // All default asks remain covered by the fixture.
   const h = fixture.harness
@@ -411,6 +411,14 @@ const packs = [packB, packA]
     ],
   )
   assert.equal(R.names.user, "阿青")
+  for (const yields of [true, false]) {
+    const muted = resolve(card, {
+      persona: { ...persona, yields },
+      local: here({ fragments: [{ id: "persona", mode: "mute" }] }),
+    })
+    assert.equal(muted.frame.find((f) => f.id === "persona")?.mode, "mute")
+    assert.equal(muted.names.user, yields ? card.names!.user : persona.name)
+  }
   // no local row is no obstacle
   assert.equal(resolve(chat, { persona }).frame[0]!.text, "P 阿青")
   // the lock holds on it too: `user` stays what it was, in the ledger
@@ -1035,7 +1043,7 @@ const mount = (...mounts: string[]) => here({ mounts })
   rows.local = here({ mounts: ["t"], products: [{ id: "town", on: true }] })
   assert.ok(narrateAsks(await collect(S.act(n2.id, { text: "c" })), "town: "))
   // a patch on a record product rewords its question where record asks it
-  rows.local = here({ products: [{ id: "notes", text: "MY-NOTES" }] })
+  rows.local = here({ products: [{ id: "notes", text: "MY-NOTES", on: true }] })
   assert.ok(
     texts(asked(await collect(S.act(n2.id, { text: "d" })), "record"))
       .join("\n")

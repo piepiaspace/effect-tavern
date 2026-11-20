@@ -777,6 +777,10 @@
 .wpage .modal-body {
   overflow-y: auto;
 }
+.wpage .modal-body > .wtabs {
+  flex: none;
+  order: 0;
+}
 .wpage .modal-foot .spacer {
   flex: 1;
 }

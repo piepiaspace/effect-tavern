@@ -44,6 +44,8 @@ export interface Common {
   world: readonly Slotted[] // the frame without its writing lines: what every other stage reads inside <world>
   role: string // `stage.role`: off-stage framing before <world> on every non-narrate stage
   narrator: string // `narrate.role`: what the narrate call is, before its frame
+  persona?: string
+  contextLead?: string
   directions: string // `narrate.turn`: the lead line of <turn>
   input: Input
   thought: string
@@ -85,6 +87,7 @@ export type Ask =
       history: readonly Msg[]
       summarized: boolean // history[0] is the fold
       told: readonly { title: string; text: string }[] // what lookup delivered: title and text, no id or revision
+      known?: string // digest at the opening of a new passage
       outcome: readonly string[]
       current?: string
       must: readonly Told[]
@@ -141,7 +144,7 @@ const framed = (ms: readonly Slotted[]) =>
 export const worldBlock = (world: readonly Slotted[]) => (world.length ? tag("world", framed(world)) : "")
 /** An off-stage pass's static head: `stage.role` first, then `<world>` when the card or player supplied one. */
 const worldHead = (c: Common): Msg[] => [
-  { role: "system", text: c.role },
+  ...(c.role ? [{ role: "system" as const, text: c.role }] : []),
   ...(c.world.length ? [{ role: "system" as const, text: worldBlock(c.world) }] : []),
 ]
 /** Narrate's head before the hat: `narrate.role`, the frame's system lines as one message (a user/assistant frame
@@ -149,8 +152,9 @@ const worldHead = (c: Common): Msg[] => [
  *  fragment kept as its own message in place. */
 const narrateHead = (c: Common, fiction: readonly Msg[]): Msg[] => {
   const sysFrame = c.frame.filter((m) => m.role === "system")
+  const lead = [c.narrator, sysFrame.some((m) => m.id === "persona") && c.persona].filter(Boolean).join(" ")
   const out: Msg[] = [
-    { role: "system", text: c.narrator },
+    ...(lead ? [{ role: "system" as const, text: lead }] : []),
     ...(sysFrame.length ? [{ role: "system" as const, text: framed(sysFrame) }] : []),
     ...c.frame.filter((m) => m.role !== "system"),
   ]
@@ -187,7 +191,7 @@ const tagged = (name: "input" | "draft" | "scene", body: string, ...tasks: reado
 const noteLine = (i: Input) => (i.text && i.note ? [`Player note: ${i.note}`] : [])
 const noteOf = (i: Input) => noteLine(i).map(sys)
 /** A thought (⦅ ⦆) in the line is a perception scope inside the fiction; every stage that reads the line hears what it is. */
-const thoughtOf = (c: Common) => (/⦅/.test(c.input.text) ? [sys(c.thought)] : [])
+const thoughtOf = (c: Common) => (c.thought && /⦅/.test(c.input.text) ? [sys(c.thought)] : [])
 /** The scene record reads: the player's line, marked as theirs, then the prose; an opening or a note-only turn is prose alone. */
 const sceneBody = (i: Input, prose: string) => (i.text ? `Player's line: ${i.text}\n\n${prose}` : prose)
 
@@ -232,6 +236,7 @@ export const request = (c: Common, a: Ask, w: Wire = {}): Message[] => {
       ]
     case "narrate": {
       const directions = [
+        ...(a.known ? [a.known] : []),
         ...(a.outcome.length ? [`Outcome: ${a.outcome.join(", ")}`] : []),
         ...(a.current ? [a.current] : []),
         ...a.must.map((d) => `MUST reveal: ${d.text}`),
@@ -240,8 +245,8 @@ export const request = (c: Common, a: Ask, w: Wire = {}): Message[] => {
         ...noteLine(c.input),
       ]
       const now = [
-        ...(a.told.length ? [tag("context", a.told.map(entry).join("\n\n"))] : []),
-        ...(directions.length ? [tag("turn", [c.directions, ...directions].join("\n"))] : []),
+        ...(a.told.length ? [c.contextLead, tag("context", a.told.map(entry).join("\n\n"))].filter(Boolean) : []),
+        ...(directions.length ? [tag("turn", [c.directions, ...directions].filter(Boolean).join("\n"))] : []),
       ]
       return [
         ...zone(
@@ -281,7 +286,7 @@ export const request = (c: Common, a: Ask, w: Wire = {}): Message[] => {
         ...(a.invoked?.length
           ? [sys(`Invoked context (reference only; extract world facts from <scene> only):\n${a.invoked.join("\n\n")}`)]
           : []),
-        sys([a.known, ...(a.current ? [a.current] : [])].join("\n")),
+        ...(a.known || a.current ? [sys([a.known, a.current].filter(Boolean).join("\n"))] : []),
         ...thoughtOf(c),
         ...(a.history ?? []).map(toP(w)),
         tagged(

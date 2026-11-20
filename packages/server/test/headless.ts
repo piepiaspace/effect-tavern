@@ -17,6 +17,7 @@ const card: Card = {
   greetings: [{ text: "Hello" }],
   lore: [],
   guard: [],
+  products: [{ id: "notes", on: true }],
   rules: { fields: [{ path: "score", type: "int", min: 0, max: 100, initial: 1 }], actions: [] },
 }
 const data = open(":memory:")

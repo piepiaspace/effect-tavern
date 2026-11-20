@@ -101,7 +101,15 @@ const words: readonly Ask[] = [
   },
   {
     id: "narrate.role",
-    text: 'You are the narrator of an interactive story, writing its next scene. In <persona>, "you" / "你" / "我" describes the player character, not you. <context> holds background lore and recalled facts for reference when relevant.',
+    text: "",
+  },
+  {
+    id: "narrate.persona",
+    text: 'In <persona>, "you" / "你" / "我" describes the player character, not you.',
+  },
+  {
+    id: "narrate.context",
+    text: "<context> holds background lore and recalled facts for reference when relevant.",
   },
   {
     id: "narrate.turn",
@@ -209,7 +217,7 @@ const format: readonly Format[] = [
   { label: "（）", text: "（", after: "）" },
   { label: "《》", text: "《", after: "》" },
 ]
-// The default products (src/product.ts). `notes` is the compression source and the only one on by default. The options
+// The default products (src/product.ts). Each is opt-in. The options
 // question follows the card's input channel, because an option goes into the box as the player's next input: on an act
 // card it is their own line (the first Haiku run wrote "玩家……" in the third person, which put that sentence in the
 // player's mouth), on a note card a direction.
@@ -217,6 +225,7 @@ const products = (input: "act" | "note"): readonly Product[] =>
   decodeProducts([
     {
       id: "notes",
+      on: false,
       role: "chronicle",
       label: "事件摘要",
       // One text, not a list: a list reads as "fill it", and on a pure-chat card (伴星, Opus) it came back as six or
@@ -336,7 +345,7 @@ export interface Rows {
   persona?: { name: string; text: string; yields?: boolean } | undefined
 }
 export type From = string // "harness" | "card" | "local" | a pack's id
-export type Item<T> = T & { from: From; compiled?: true; unasked?: true }
+export type Item<T> = T & { from: From; compiled?: true; persona?: true; unasked?: true }
 export interface Resolved {
   frame: Item<Fragment>[] // the head, names filled (names.ts: a player's entry with a hole nothing fills is not here)
   tail: Item<Fragment>[]
@@ -391,29 +400,13 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
   const code = harness(input)
   // The player's rows in author order, each locked again: a row is only as good as what wrote it.
   const overlay = rows.harness && locked(rows.harness)
-  const local = rows.local ?? (rows.persona ? { id: "local", name: "local", card: card.id } : undefined)
+  const local = rows.local
   const mine: { from: From; row: Layer }[] = [
     ...[...new Set(local?.mounts)].flatMap((id) => {
       const p = rows.packs?.find((x) => x.id === id)
       return p ? [{ from: p.id, row: locked(p) }] : []
     }),
-    ...(local
-      ? [
-          {
-            from: "local",
-            row: locked({
-              ...local,
-              // a persona with no text only names `user`: an empty fragment would blank the card's own persona slot
-              ...(rows.persona?.text.trim() && {
-                fragments: [
-                  ...(local.fragments ?? []),
-                  { id: "persona", text: rows.persona.text, ...(rows.persona.yields && { mode: "yield" as const }) },
-                ],
-              }),
-            }) as Layer,
-          },
-        ]
-      : []),
+    ...(local ? [{ from: "local", row: locked(local) }] : []),
   ]
   // The card as a row: its frame and products are merged below, its fiction, lore and rules are not the layer's.
   const cardRow: Partial<Layer> = {
@@ -485,16 +478,28 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
       slots.set(keyOf(f), { ...f, from })
     }
   }
+  // A worn persona supplies the head slot. An inherited persona yields to existing text;
+  // a local mute also suppresses an explicitly selected persona, while its name remains available.
+  const worn = rows.persona
+  const heldPersona = slots.get("persona")
+  if (
+    worn?.text.trim() &&
+    !(heldPersona?.from === "local" && heldPersona.mode === "mute") &&
+    !(worn.yields && (theirs.has("persona") || heldPersona))
+  ) {
+    slots.set("persona", { id: "persona", text: worn.text, from: "local", persona: true })
+  }
   const zone: Item<Fragment>[] = [
     ...slots.values(),
     ...card.frame
-      .filter((f) => !slots.has(f.id) || (slots.get(f.id)!.mode ?? "override") !== "override")
+      .filter((f) => !slots.has(f.id) || !["override", "mute"].includes(slots.get(f.id)!.mode ?? "override"))
       .map((f) => ({ ...f, from: "card" })),
   ]
   const filled = fill(zone, names)
   // who holds a head slot: a tail directive is not a slot; an empty or disabled entry, or a player's with an unfilled hole, holds nothing
   const holder = (id: string) =>
-    filled.find((f) => f.id === id && f.at !== "tail" && f.text && f.enabled !== false)?.from ?? null
+    filled.find((f) => f.id === id && f.at !== "tail" && f.mode !== "mute" && f.text && f.enabled !== false)?.from ??
+    null
 
   // ───────── products: whole in the code's defaults and on the card, on a player's row by rank ─────────
   const stock = new Map<string, Partial<Product> & { id: string; from: From }>(

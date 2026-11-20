@@ -26,17 +26,18 @@ function turn(id: number, parent: number | null, note: string): Turn<never> {
 
 // An amendment keeps the turn id. Both branches must see the notes from the prefix they pass in.
 const summaries = makeSummaries<never>()
+const sources = [{ id: "notes", role: "chronicle", shape: { kind: "text" }, text: "", on: true, feed: true }] as const
 const root = turn(0, null, "The door is shut.")
 const child = turn(1, 0, "Li finds a key.")
 const tail = turn(2, 1, "Li waits.")
 const amended = { ...root, products: { notes: "The door is open." } }
-assert.deepEqual(summaries.compress([root, child, tail], 1), {
+assert.deepEqual(summaries.compress([root, child, tail], 1, sources), {
   from: 0,
   to: 1,
   text: "Summary: The door is shut. Li finds a key.",
 })
-assert.equal(summaries.compress([amended, child, tail], 1)?.text, "Summary: The door is open. Li finds a key.")
-assert.equal(summaries.compress([root, child, tail], 1)?.text, "Summary: The door is shut. Li finds a key.")
+assert.equal(summaries.compress([amended, child, tail], 1, sources)?.text, "Summary: The door is open. Li finds a key.")
+assert.equal(summaries.compress([root, child, tail], 1, sources)?.text, "Summary: The door is shut. Li finds a key.")
 
 // The fold boundary (§18.4): the fewest leading turns, in blocks, that leave the tail within the token budget, never
 // fewer than `keep` turns in the tail. Growing a path never moves it back, so the summary is stable between moves.

@@ -80,6 +80,7 @@ export const play = async (screen: Screen, lang: Lang = "zh"): Promise<void> => 
       lib.cards.save(id, {
         ...lib.cards.get(id),
         title,
+        products: [{ id: "notes", on: true }],
         ...(o.setting && { frame: [{ id: "setting", text: o.setting }] }),
       })
       const s = lib.stories.create(id)

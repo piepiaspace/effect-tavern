@@ -58,7 +58,7 @@ const head = on.map((f) =>
 )
 assert.equal(head.length, 8) // language, pov, style; town, sides, now, tense (局势 ≥ 6), blood (起点 血案)
 // after narrate.role: the frame as one message (no persona or setting here to tag), the fiction as one <fiction>
-assert.deepEqual(sent("narrate").slice(1, 3), [
+assert.deepEqual(sent("narrate").slice(0, 2), [
   head.slice(0, 3).join("\n\n"),
   `<fiction>\n${head.slice(3).join("\n\n")}\n</fiction>`,
 ])

@@ -2,11 +2,9 @@
 // under a player, and these are the two the project uses. They are the harness's own words, never a card's.
 import type { Rows } from "../src/layer.ts"
 
-// The minimal player: language only, options on (the card declares nothing about options).
+// The minimal player contributes no instructions or products.
 const language = { id: "language", text: "使用自然、舒展的现代中文写作。", mode: "yield" as const }
-export const plain: Rows = {
-  harness: { id: "harness", name: "内置", fragments: [language], products: [{ id: "options", on: true }] },
-}
+export const plain: Rows = {}
 
 // The player's rows: language, and the writing switches every player sets once (fragment.ts `Writing`): the player is 你,
 // the narrator restates their line before the reaction and writes nothing they did not give. Without the last, Haiku
@@ -29,5 +27,12 @@ export const lexicon = [
   { pattern: "不是*而是", hint: "先否定再肯定的八股句式" },
 ]
 export const player: Rows = {
-  harness: { ...plain.harness!, switches: { pov: "second", echo: true, agency: "strict" }, lexicon },
+  harness: {
+    id: "harness",
+    name: "内置",
+    fragments: [language],
+    products: [{ id: "options", on: true }],
+    switches: { pov: "second", echo: true, agency: "strict" },
+    lexicon,
+  },
 }

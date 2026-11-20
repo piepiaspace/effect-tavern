@@ -5,7 +5,7 @@
 // narration switches (`local.switches` + compiled `layer.switches.sentences` + `taken` grey-out) and the per-turn
 // record products (`layer.products` with `from`, `on`, `text`, and modal prompt override in `local.products`).
 import type { Writing } from "@effect-tavern/runtime/src/fragment.ts"
-import type { Local, Resolved } from "@effect-tavern/runtime/src/layer.ts"
+import type { Layer, Local, Resolved } from "@effect-tavern/runtime/src/layer.ts"
 import { unfilled } from "@effect-tavern/runtime/src/names.ts"
 import { createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
@@ -21,7 +21,8 @@ import {
   withPackName,
   withProductPatch,
 } from "./pack.ts"
-import { extraOf, withExtra } from "./requirements.ts"
+import { AsksTab, ProseTab } from "./packs.tsx"
+import { EXTRA, atOf, extraOf, withExtra } from "./requirements.ts"
 import { openSettings } from "./settings.tsx"
 import { close, open } from "./pages.ts"
 import { card, packs, page, personas, stories } from "./store.ts"
@@ -118,8 +119,17 @@ export const WritingPage = () => {
     return allPacks().find((p) => p.id === from)?.name ?? from
   }
 
+  const overrides = dialogHandle()
+  const [editor, setEditor] = createSignal<"prose" | "asks">("prose")
+  const saveLayer = (edit: (row: Layer) => Layer) => putLocalAndRefresh(cardId(), (l) => ({ ...edit(l), card: l.card }))
   const mountedIds = () => loc()?.mounts ?? []
   const chips = () => orderedPacks(allPacks(), mountedIds())
+  const inheritedSlots = () => {
+    const slots = [...(layer()?.frame ?? []), ...(layer()?.tail ?? [])].filter(
+      (f) => f.id !== EXTRA && f.enabled !== false && f.mode !== "mute" && (f.from !== "local" || f.persona),
+    )
+    return [...new Map(slots.map((f) => [atOf(f) + ":" + f.id, f])).values()]
+  }
   const nameKeys = () => cardNameKeys(layer()?.holes, layer()?.names)
   const extra = () => extraOf(loc())
   const dropped = () => layer()?.dropped ?? []
@@ -219,6 +229,9 @@ export const WritingPage = () => {
             <div class="block-title">
               <h3>{t("switches.cardExtra")}</h3>
               <div class="right">
+                <button type="button" class="btn sm" disabled={!loc()} onClick={() => void overrides.open()}>
+                  {t("writing.overrides")}
+                </button>
                 <span class="tag mono">{t("common.chars", { n: extra().length })}</span>
               </div>
             </div>
@@ -237,6 +250,38 @@ export const WritingPage = () => {
               />
             </div>
           </div>
+          <Modal title={t("writing.overrides")} controller={overrides}>
+            <div class="modal-body">
+              <div class="wtabs" role="tablist" aria-label={t("writing.overrides")}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={editor() === "prose" ? "true" : "false"}
+                  onClick={() => setEditor("prose")}
+                >
+                  {t("writing.tabProse")}
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={editor() === "asks" ? "true" : "false"}
+                  onClick={() => setEditor("asks")}
+                >
+                  {t("packs.tabAsks")}
+                </button>
+              </div>
+              <Show when={loc()}>
+                {(local) => (
+                  <Show
+                    when={editor() === "asks"}
+                    fallback={<ProseTab pack={local()} onSave={saveLayer} inherited={inheritedSlots()} />}
+                  >
+                    <AsksTab pack={local()} onSave={saveLayer} inherited={layer()?.asks} />
+                  </Show>
+                )}
+              </Show>
+            </div>
+          </Modal>
         </section>
 
         {/* Right column: narration switches and per-turn record products */}
@@ -410,15 +455,14 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
           <Show when={p().role === "theater" && p().id !== "options"}>
             <span class="tag">{p().trigger === "demand" ? t("packs.onDemand") : t("packs.everyTurn")}</span>
           </Show>
-          <Show when={p().id !== "notes"} fallback={<span class="tag">{t("packs.everyTurn")}</span>}>
-            <span onClick={(e) => e.stopPropagation()}>
-              <Switch
-                on={!!p().on}
-                label={p().label ?? p().id}
-                onFlip={() => flipProduct({ id: p().id, on: !!p().on })}
-              />
-            </span>
-          </Show>
+
+          <span onClick={(e) => e.stopPropagation()}>
+            <Switch
+              on={!!p().on}
+              label={p().label ?? p().id}
+              onFlip={() => flipProduct({ id: p().id, on: !!p().on })}
+            />
+          </span>
         </div>
         <span class="prod-preview">{textOf() ?? t("writing.cardPrompt")}</span>
       </div>

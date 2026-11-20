@@ -13,6 +13,7 @@ import { chat } from "./cards/index.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 const card: Card = {
   ...chat,
+  products: [...(chat.products ?? []), { id: "notes", on: true }],
   fiction: [],
   greetings: [{ text: "old dawn" }],
   rules: {
@@ -36,6 +37,19 @@ const create = (c = card) =>
     model: () => fake((o) => defaultAnswer(readStage(o), { notes: "day note" })),
   })
 const S = create()
+// A passage can fire after plain narration even when no record call is due.
+{
+  const T = create({
+    ...card,
+    products: [],
+    rules: { fields: [], actions: [] },
+    passages: [{ when: { all: [] }, text: "Ending", end: true }],
+  })
+  const ending = await Effect.runPromise(outcome(T.act(null, { text: "end" })))
+  assert.equal(ending.end, "over")
+  assert.equal(ending.passage, true)
+  assert.equal(T.log.nodes.get(ending.parent!)!.passageStatus, "committed")
+}
 const root = S.greet(card.greetings[0]!)
 const p = await Effect.runPromise(outcome(S.act(root.head, { text: "old day" })))
 assert.equal(p.passage, true)
@@ -137,8 +151,7 @@ const rd = makeDerived({
   products: () => resolve(dc, {}).products,
   policy: () => ({ budget: 0, keep: 2, block: 2 }),
 })
-assert.match(rd.at([...R.log.nodes.values()]).known().current!, /remembered day/)
-assert.equal(rd.at([...R.log.nodes.values()]).known().known, "Known: ")
+assert.deepEqual(rd.at([...R.log.nodes.values()]).known(), { known: "Known: remembered day", current: undefined })
 
 // A hard boundary retires window deliveries, but permanent context and unlock floors survive reset.
 const entry = {

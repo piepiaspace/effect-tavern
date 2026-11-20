@@ -4,7 +4,7 @@ import type { State as Paths } from "./cond.ts"
 import { holds } from "./cond.ts"
 import type { Lore } from "./lore.ts"
 import type { PackEntry } from "./layer.ts"
-import { itemText, type Product } from "./product.ts"
+import { feedsChronicle, itemText, type Product } from "./product.ts"
 import { worldValue, type WorldState } from "./world.ts"
 import type { PlayerCatalogItem } from "./projection.ts"
 import { sha256 } from "@noble/hashes/sha2.js"
@@ -383,4 +383,4 @@ export const resourcesAt = ({
 
 /** Feed rows are already held through Current, so lookup does not ask for them again. */
 export const fedResources = (resources: readonly Resource[], products: readonly Product[]) =>
-  resources.filter((r) => r.product && products.some((p) => p.id === r.product && p.id !== "notes" && p.on && p.feed))
+  resources.filter((r) => r.product && products.some((p) => p.id === r.product && !feedsChronicle(p) && p.on && p.feed))

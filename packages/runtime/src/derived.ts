@@ -17,10 +17,19 @@ import {
 import type { PackEntry } from "./layer.ts"
 import { holds, type Cond, type State as Paths } from "./cond.ts"
 import type { Beat, Check, Rpg, State, LoreEntry } from "./card.ts"
-import { epoch, boundaryIndex, folded, ledger, makeSummaries, type Policy } from "./history.ts"
-import { deliveredIn, deliveredOn, notesOf, textOf as proseOf, type Turn as TurnOf } from "./journal.ts"
+import {
+  epoch,
+  boundaryIndex,
+  folded,
+  factsOf,
+  narratorHistory,
+  ledger,
+  makeSummaries,
+  type Policy,
+} from "./history.ts"
+import { deliveredIn, deliveredOn, textOf as proseOf, type Turn as TurnOf } from "./journal.ts"
 import { key, type Disclosure, type Lore } from "./lore.ts"
-import { fold, render, type Product } from "./product.ts"
+import { feedsChronicle, fold, render, type Product } from "./product.ts"
 import { applyChanges, initialWorld, worldValue, type World, type WorldState } from "./world.ts"
 import { tokens } from "./tokens.ts"
 
@@ -101,18 +110,22 @@ export const makeDerived = ({
       costs.set(t, (c = tokens([t.input.text, proseOf(t.reply), ...t.deliveries.map((d) => d.text)].join("\n"))))
     return c
   }
-  const foldOf = (path: readonly Turn[]) => folded(epoch(path), costIn, policy())
-  /** The one summary every view of this path folds to (narrator, ledger), the same cached object. */
-  const summaryOf = (path: readonly Turn[]) => summaries.compress(epoch(path), epoch(path).length - foldOf(path))
-  /** Feed products folded over the path, as the two lines the model reads back: Known (notes) and Current (the rest). */
+  const sources = () => products().filter(feedsChronicle)
   const known = (path: readonly Turn[], recall = false) => {
+    const chronicles = sources()
     return {
-      known: `Known: ${epoch(path).flatMap(notesOf).join("; ")}`,
+      known: chronicles.length
+        ? `Known: ${epoch(path)
+            .flatMap((t) => factsOf(t, chronicles))
+            .join("; ")}`
+        : "",
       current: currentAt(
         products(),
         worldAt(path),
         fold(
-          products().filter((p) => p.role !== "world" && p.on && (p.feed || (recall && p.recall))),
+          products().filter(
+            (p) => p.role !== "world" && !feedsChronicle(p) && p.on && (p.feed || (recall && p.recall)),
+          ),
           path.map((t) => t.products),
         ),
         recall,
@@ -214,11 +227,9 @@ export const makeDerived = ({
     })
   }
 
-  // The summary actually selected for this request, not a guessed creation/write watermark.
-  const resident = (path: readonly Turn[]) => {
-    const sum = summaryOf(path)
+  const resident = (path: readonly Turn[], start: number) => {
     const resources = resourcesOn(path)
-    return residentOn(path, Math.max(boundaryIndex(path), sum ? path.findIndex((t) => t.id === sum.to) + 1 : 0)).filter(
+    return residentOn(path, start).filter(
       (s) =>
         // Removed entities no longer provide current context; their frozen evidence remains on the original turn.
         s.source !== "memory" || resources.some((r) => r.resourceId === s.resourceId),
@@ -234,6 +245,20 @@ export const makeDerived = ({
 
   /** The facts at the end of `path`, each computed when read. */
   const at = (path: readonly Turn[]) => {
+    const readWindow = () => {
+      const boundary = boundaryIndex(path)
+      const turns = path.slice(boundary)
+      const start = folded(turns, costIn, policy())
+      const chronicles = sources()
+      return {
+        start,
+        absolute: boundary + start,
+        chronicles,
+        summary: summaries.compress(turns, turns.length - start, chronicles),
+      }
+    }
+    let window: ReturnType<typeof readWindow> | undefined
+    const retained = () => (window ??= readWindow())
     let all: ReturnType<typeof settledAlong> | undefined // walked once per handle: a node() reads four facts off it
     const along = () => (all ??= settledAlong(path))
     const last = () => along().at(-1) ?? { s: rpg.initial, events: [], checks: [], post: [], pre: rpg.initial }
@@ -258,16 +283,25 @@ export const makeDerived = ({
       context: (fields: State = last().s) => gated(path, [], fields),
       gated: (extra?: readonly Disclosure[], s?: State) => gated(path, extra, s),
       resources: () => resourcesOn(path),
-      resident: () => resident(path),
+      resident: () => resident(path, retained().absolute),
       currentResources: () => currentResources(path).map((r) => freeze(r)),
       playerCatalog: () => playerCatalog(path),
       /** What a lookup under this path reads from (context.ts `contextLookup`), outside a turn. */
-      lookup: () => contextLookup(resourcesOn(path), [...resident(path), ...currentResources(path)]),
+      lookup: () =>
+        contextLookup(resourcesOn(path), [...resident(path, retained().absolute), ...currentResources(path)]),
       /** How many leading turns the fold covers. */
-      fold: () => foldOf(path),
-      summary: () => summaryOf(path),
+      fold: () => retained().start,
+      summary: () => retained().summary,
+      history: () => narratorHistory(path, retained().summary, retained().start),
       known: (recall = false) => known(path, recall),
-      ledger: () => ledger(path, (t) => along()[path.indexOf(t)]!.events, summaryOf(path)),
+      ledger: () =>
+        ledger(
+          path,
+          (t) => along()[path.indexOf(t)]!.events,
+          retained().summary,
+          retained().start,
+          retained().chronicles,
+        ),
       text,
       /** A candidate turn settled on top of the path (setField's adjusted node, demand's `pre`). */
       settle: (t: Turn) => settleTurn(last().s, t, worldAt(path)),
@@ -329,7 +363,7 @@ export const currentAt = (
     ...Object.fromEntries(feed.filter((p) => p.role === "world").map((p) => [p.id, worldValue(p, world[p.id])])),
   }
   const rest = feed.filter(
-    (p) => p.id !== "notes" && values[p.id] !== undefined && render(p.shape, values[p.id]) !== "",
+    (p) => !feedsChronicle(p) && values[p.id] !== undefined && render(p.shape, values[p.id]) !== "",
   )
   return rest.length ? `Current: ${rest.map((p) => `${p.id}=${render(p.shape, values[p.id])}`).join(" | ")}` : undefined
 }

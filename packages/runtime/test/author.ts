@@ -36,15 +36,24 @@ try {
   assert.equal((await run("init", "chat")).exitCode, 1)
   assert.equal(readFileSync(join(dir, "chat.yaml"), "utf8"), original)
   assert.equal((await run("test", "chat.yaml")).exitCode, 0)
-  await runScenario(decodeCard(Bun.YAML.parse(original)), {
-    steps: [
-      {
-        text: "continue",
-        replies: { record: [{ notes: "arrived", options: ["A", "B"] }] },
-        expect: { products: { notes: "arrived", options: ["A", "B"] } },
-      },
-    ],
-  })
+  await runScenario(
+    {
+      ...decodeCard(Bun.YAML.parse(original)),
+      products: [
+        { id: "notes", on: true },
+        { id: "options", on: true },
+      ],
+    },
+    {
+      steps: [
+        {
+          text: "continue",
+          replies: { record: [{ notes: "arrived", options: ["A", "B"] }] },
+          expect: { products: { notes: "arrived", options: ["A", "B"] } },
+        },
+      ],
+    },
+  )
   for (const source of [
     "foo: [",
     "id: only",
