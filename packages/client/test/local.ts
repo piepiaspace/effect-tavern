@@ -28,12 +28,12 @@ await sent
 assert.equal(requests.length, 1)
 assert.equal(registry.get(locals).wuxia, initial)
 sent = requested()
-requests[0]!.reply(Response.json(requests[0]!.body))
+requests[0].reply(Response.json(requests[0].body))
 await text
 await sent
-assert.equal(requests[1]!.body.fragments![0]!.text, "new")
-assert.equal(requests[1]!.body.fragments![0]!.at, "tail")
-requests[1]!.reply(Response.json(requests[1]!.body))
+assert.equal(requests[1].body.fragments![0].text, "new")
+assert.equal(requests[1].body.fragments![0].at, "tail")
+requests[1].reply(Response.json(requests[1].body))
 await position
 
 // A rejected write stays rejected, but does not block the next edit or enter its unacknowledged fields.
@@ -46,13 +46,13 @@ const failed = assert.rejects(
 const following = putLocal("wuxia", (l) => ({ ...l, persona: "me" }))
 await sent
 sent = requested()
-requests[2]!.reply(Response.json({ error: "offline" }, { status: 500 }))
+requests[2].reply(Response.json({ error: "offline" }, { status: 500 }))
 await failed
 await sent
 assert.equal(registry.get(locals).wuxia, saved)
-assert.equal(requests[3]!.body.switches, undefined)
-assert.equal(requests[3]!.body.fragments![0]!.text, "new")
-requests[3]!.reply(Response.json(requests[3]!.body))
+assert.equal(requests[3].body.switches, undefined)
+assert.equal(requests[3].body.fragments![0].text, "new")
+requests[3].reply(Response.json(requests[3].body))
 await following
 assert.equal(registry.get(locals).wuxia?.persona, "me")
 
@@ -64,14 +64,14 @@ const packText = putPack("p1", (p) => setFragmentText(p, 0, "new"))
 const packAt = putPack("p1", (p) => setFragmentAt(p, 0, "tail"))
 await sent
 assert.equal(requests.length, 5)
-assert.equal(requests[4]!.body.id, undefined)
+assert.equal(requests[4].body.id, undefined)
 sent = requested()
-requests[4]!.reply(Response.json([{ ...requests[4]!.body, id: "p1" }]))
+requests[4].reply(Response.json([{ ...requests[4].body, id: "p1" }]))
 await packText
 await sent
-assert.equal(requests[5]!.body.fragments![0]!.text, "new")
-assert.equal(requests[5]!.body.fragments![0]!.at, "tail")
-requests[5]!.reply(Response.json([{ ...requests[5]!.body, id: "p1" }]))
+assert.equal(requests[5].body.fragments![0].text, "new")
+assert.equal(requests[5].body.fragments![0].at, "tail")
+requests[5].reply(Response.json([{ ...requests[5].body, id: "p1" }]))
 await packAt
-assert.equal(registry.get(packs)[0]!.fragments![0]!.at, "tail")
+assert.equal(registry.get(packs)[0].fragments![0].at, "tail")
 console.log("local ok")

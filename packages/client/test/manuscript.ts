@@ -44,7 +44,7 @@ for (const name of cardNames) {
   const tidied = cardOf(loose, {
     ...m,
     title: "雨夜  ",
-    chapters: [{ ...m.chapters[0]!, label: " 甲 " }, m.chapters[1]!],
+    chapters: [{ ...m.chapters[0], label: " 甲 " }, m.chapters[1]],
   })
   assert.deepEqual([tidied.title, tidied.summary, tidied.fiction.map((f) => f.label)], ["雨夜", "", ["甲", " 乙 "]])
 }
@@ -55,13 +55,13 @@ for (const name of cardNames) {
   let m = manuscriptOf(blank)
   assert.deepEqual(m, { title: "", summary: "", chapters: [], openings: [], entries: [] })
   m = added.entry(blank, added.opening(added.chapter(blank, m)))
-  assert.deepEqual([m.chapters[0]!.id, m.entries[0]!.id, cardOf(blank, m)], ["chapter-1", "entry-1", blank])
+  assert.deepEqual([m.chapters[0].id, m.entries[0].id, cardOf(blank, m)], ["chapter-1", "entry-1", blank])
   const typed: Manuscript = {
     title: " 雨夜 ",
     summary: "",
-    chapters: [{ ...m.chapters[0]!, label: "镇子", text: "雨停了。\n" }],
-    openings: [{ ...m.openings[0]!, text: "门开了。" }],
-    entries: [{ ...m.entries[0]!, name: "盐 帮", text: "盐帮是城里最大的帮会。" }],
+    chapters: [{ ...m.chapters[0], label: "镇子", text: "雨停了。\n" }],
+    openings: [{ ...m.openings[0], text: "门开了。" }],
+    entries: [{ ...m.entries[0], name: "盐 帮", text: "盐帮是城里最大的帮会。" }],
   }
   const card = cardOf(blank, typed)
   assert.deepEqual(card, {
@@ -82,10 +82,10 @@ for (const name of cardNames) {
   )
   assert.ok(same(cardOf(card, again), card))
   // a title or a block emptied leaves the card: no empty key, no empty text
-  const emptied = cardOf(card, { ...again, title: " ", chapters: [{ ...again.chapters[0]!, text: " \n" }] })
+  const emptied = cardOf(card, { ...again, title: " ", chapters: [{ ...again.chapters[0], text: " \n" }] })
   assert.deepEqual([emptied.title, "title" in emptied, emptied.fiction, errors(emptied)], [undefined, false, [], []])
   // a label goes when it is cleared; the fragment stays
-  assert.deepEqual(cardOf(card, { ...again, chapters: [{ ...again.chapters[0]!, label: "" }] }).fiction, [
+  assert.deepEqual(cardOf(card, { ...again, chapters: [{ ...again.chapters[0], label: "" }] }).fiction, [
     { id: "chapter-1", text: "雨停了。\n" },
   ])
 }
@@ -101,9 +101,9 @@ for (const name of cardNames) {
   m = {
     ...m,
     entries: [
-      { ...m.entries[0]!, text: "无名。" },
-      { ...m.entries[1]!, name: "盐帮", text: "一。" },
-      { ...m.entries[2]!, name: "盐帮", text: "二。" },
+      { ...m.entries[0], text: "无名。" },
+      { ...m.entries[1], name: "盐帮", text: "一。" },
+      { ...m.entries[2], name: "盐帮", text: "二。" },
     ],
   }
   const card = cardOf(blank, m)
@@ -122,7 +122,7 @@ for (const name of cardNames) {
   // a rename onto a name another entry holds gives way to it: the entry that was not touched keeps its id
   const renamed = cardOf(card, {
     ...read,
-    entries: [read.entries[0]!, read.entries[1]!, { ...read.entries[2]!, name: "盐帮" }],
+    entries: [read.entries[0], read.entries[1], { ...read.entries[2], name: "盐帮" }],
   })
   assert.deepEqual(
     renamed.lore.map((e) => e.id),
@@ -130,7 +130,7 @@ for (const name of cardNames) {
   )
   const taken = cardOf(card, {
     ...read,
-    entries: [{ ...read.entries[0]!, name: "盐帮" }, read.entries[1]!, read.entries[2]!],
+    entries: [{ ...read.entries[0], name: "盐帮" }, read.entries[1], read.entries[2]],
   })
   assert.deepEqual(
     taken.lore.map((e) => [e.id, e.layers[0]]),
@@ -183,26 +183,22 @@ for (const name of cardNames) {
     made,
     added.chapter(made, {
       ...m,
-      chapters: [m.chapters[1]!], // the first one deleted
-      openings: [{ ...m.openings[0]!, text: "门开了，风进来。" }],
-      entries: [{ ...m.entries[0]!, text: "盐帮，城里最大。" }],
+      chapters: [m.chapters[1]], // the first one deleted
+      openings: [{ ...m.openings[0], text: "门开了，风进来。" }],
+      entries: [{ ...m.entries[0], text: "盐帮，城里最大。" }],
     }),
   )
   assert.deepEqual(edited, {
     ...made,
-    fiction: [made.fiction[1]!, made.fiction[2]!], // the band where it was, the chapter after it still after it
-    greetings: [made.greetings[0]!, { text: "门开了，风进来。", do: [{ path: "warmth", set: 3 }] }],
-    lore: [made.lore[0]!, { ...made.lore[1]!, layers: ["盐帮，城里最大。"] }], // its id as written, its lock kept
+    fiction: [made.fiction[1], made.fiction[2]], // the band where it was, the chapter after it still after it
+    greetings: [made.greetings[0], { text: "门开了，风进来。", do: [{ path: "warmth", set: 3 }] }],
+    lore: [made.lore[0], { ...made.lore[1], layers: ["盐帮，城里最大。"] }], // its id as written, its lock kept
   })
   // a chapter emptied and written again is back in its own place; one made here goes to the end
   const grown = added.chapter(made, m)
   const back = cardOf(made, {
     ...grown,
-    chapters: [
-      { ...grown.chapters[0]!, text: "甲，改过。" },
-      grown.chapters[1]!,
-      { ...grown.chapters[2]!, text: "丙。" },
-    ],
+    chapters: [{ ...grown.chapters[0], text: "甲，改过。" }, grown.chapters[1], { ...grown.chapters[2], text: "丙。" }],
   })
   assert.deepEqual(
     back.fiction.map((f) => f.id),
@@ -220,7 +216,7 @@ for (const name of cardNames) {
   assert.ok(same(cardOf(noted, cleared), cardOf(noted, cleared)))
   // and typed again, the caption is back on the same greeting
   assert.deepEqual(
-    cardOf(noted, { ...cleared, openings: [{ ...cleared.openings[0]!, text: "又下雨了。" }, cleared.openings[1]!] })
+    cardOf(noted, { ...cleared, openings: [{ ...cleared.openings[0], text: "又下雨了。" }, cleared.openings[1]] })
       .greetings,
     [{ text: "又下雨了。", note: "从雨里写起。" }],
   )

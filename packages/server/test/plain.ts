@@ -75,7 +75,7 @@ try {
       assert.equal(requests.length, 1, format + " " + events)
       assert.equal(events.match(/^event: change$/gm)?.length, 1, events)
       assert.match(events, /"settlementStatus":"committed"/)
-      const body = requests[0]!
+      const body = requests[0]
       transcript.push({ who: "user", texts: [input] })
       if (input !== "继续") {
         assert.ok(!Object.hasOwn(JSON.parse(body), "system"), body)
@@ -104,7 +104,7 @@ try {
     requests.length = 0
     await api("/", "POST", { kind: "act", input: { text: "你好" } })
     assert.equal(requests.length, 1)
-    return readRequest(requests[0]!)!
+    return readRequest(requests[0])!
       .said.filter((m) => m.who === "system")
       .flatMap((m) => m.texts)
   }

@@ -53,7 +53,7 @@ back.commit(
     ],
   }),
 )
-assert.deepEqual(data.store<N>(story).read()!.nodes[0]!.reply, [{ type: "text", text: "p" }])
+assert.deepEqual(data.store<N>(story).read()!.nodes[0].reply, [{ type: "text", text: "p" }])
 back.commit(L.amend(back.log, 0, { reply: undefined }))
 
 // Calls: filed under a node in order, read back by node; gone with the node, and with the story.
@@ -97,11 +97,11 @@ assert.deepEqual(Object.keys(trace.list()), ["0"])
 back.commit(L.add(back.log, { parent: 0, text: "said", input: { text: "hello" } }))
 back.commit(L.add(back.log, { parent: 3, text: "noted", input: { text: "", note: "slower" } }))
 back.commit(L.add(back.log, { parent: 4, text: "blank", input: { text: "" } }))
-assert.equal(data.stories.list("wuxia")[0]!.turns, 2) // the root "r" has no input, "blank" an empty one
+assert.equal(data.stories.list("wuxia")[0].turns, 2) // the root "r" has no input, "blank" an empty one
 back.commit(L.add(back.log, { parent: 0, text: "said again", input: { text: "hello" } })) // a swipe of node 3: head 6
-assert.equal(data.stories.list("wuxia")[0]!.turns, 1) // the line is 6 → 0: one turn, the other line's not counted
+assert.equal(data.stories.list("wuxia")[0].turns, 1) // the line is 6 → 0: one turn, the other line's not counted
 back.commit(L.checkout(back.log, 3)) // back on the first line, at its newest leaf
-assert.equal(data.stories.list("wuxia")[0]!.turns, 2)
+assert.equal(data.stories.list("wuxia")[0].turns, 2)
 const second = data.stories.create("wuxia") // made after the commits above: newest, so first
 assert.deepEqual(
   data.stories.list("wuxia").map((s) => [s.id, s.turns]),
@@ -154,7 +154,7 @@ assert.deepEqual(hits("Ärger"), []) // only ASCII folds, on both sides: Ä stay
 back.commit(L.add(back.log, { parent: 7, text: "umlaut", input: { text: "Ärger im İstanbul" } }))
 assert.deepEqual(hits("Ärger"), [{ id: story, turn: 4, kind: "input", text: "Ärger im İstanbul", count: 1 }])
 assert.deepEqual(hits("ärger"), [])
-assert.equal(hits("stan")[0]!.text, "Ärger im İstanbul") // the fold keeps the length: the window is cut where it was found
+assert.equal(hits("stan")[0].text, "Ärger im İstanbul") // the fold keeps the length: the window is cut where it was found
 back.commit(L.drop(back.log, 8))
 assert.deepEqual(hits("bamboo"), [
   { id: story, turn: 3, kind: "reply", text: "A rainy night on Bamboo Ridge.", count: 1 },
@@ -167,7 +167,7 @@ assert.deepEqual(data.stories.search("other", "hello"), [])
 {
   const long = `${"x".repeat(50)}needle${"y".repeat(200)}`
   back.commit(L.add(back.log, { parent: 7, text: "long", input: { text: long } }))
-  assert.equal(hits("needle")[0]!.text, `…${"x".repeat(30)}needle${"y".repeat(90)}…`)
+  assert.equal(hits("needle")[0].text, `…${"x".repeat(30)}needle${"y".repeat(90)}…`)
   back.commit(L.drop(back.log, 9))
 }
 // A batch delete takes the card's own among the ids given in one go, answering them; another card's and a stranger's
@@ -215,9 +215,9 @@ assert.deepEqual(data.stories.search("other", "hello"), [])
       reply: [{ type: "text", text: "CHIP ONLY RESPONSE" }],
     }),
   ).node!
-  assert.equal(data.stories.list("chips", id)[0]!.turns, 1)
-  assert.equal(data.stories.search("chips", "CHIP ONLY RESPONSE")[0]!.turn, 1)
-  assert.deepEqual(data.stories.list("chips", id)[0]!.last, n.input)
+  assert.equal(data.stories.list("chips", id)[0].turns, 1)
+  assert.equal(data.stories.search("chips", "CHIP ONLY RESPONSE")[0].turn, 1)
+  assert.deepEqual(data.stories.list("chips", id)[0].last, n.input)
   data.stories.del(id)
 }
 data.stories.del(story)
@@ -253,7 +253,7 @@ assert.deepEqual(trace.list(), {})
     ],
   )
   opened.stories.star(1, true)
-  assert.equal(opened.stories.list("wuxia")[0]!.starred, true)
+  assert.equal(opened.stories.list("wuxia")[0].starred, true)
   opened.close()
   rmSync(dir, { recursive: true, force: true })
 }
@@ -582,7 +582,7 @@ data.close()
   old.close()
   const opened = open(file)
   const snap = opened.store<Record<string, unknown> & L.Noded>(1).read()!
-  const migrated = snap.nodes[0]!
+  const migrated = snap.nodes[0]
   assert.equal(migrated["settlementStatus"], "committed")
   assert.equal(migrated["settlementVersion"], 0)
   assert.deepEqual(migrated["deliveries"], [])
@@ -631,7 +631,7 @@ data.close()
   failed.close()
   const retried = open(file)
   assert.equal(retried.stories.get(7)!.persona, "friend")
-  assert.equal(retried.packs.list().find((p) => p.id === "harness")!.fragments![0]!.text, "Keep me")
+  assert.equal(retried.packs.list().find((p) => p.id === "harness")!.fragments![0].text, "Keep me")
   retried.close()
   const upgraded = new DatabaseSync(file)
   assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 7)

@@ -8,7 +8,7 @@ import { makeSession, outcome, type Event } from "../src/session.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 import { full, plain as player } from "./cards/index.ts"
 
-const rule = full.guard[0]!
+const rule = full.guard[0]
 function b(probability: number) {
   return { type: "boolean" as const, probability }
 }
@@ -39,7 +39,7 @@ function b(probability: number) {
   assert.equal(q.state, "<world>\nW\n</world>\n\n<draft>\nD\n</draft>")
   assert.deepEqual(Object.keys(q.questions), ["g0", "o0"])
   assert.deepEqual(
-    [q.questions["g0"]!.instructions, q.questions["o0"]!.instructions],
+    [q.questions["g0"].instructions, q.questions["o0"].instructions],
     ["check.decision.rule:R", "check.decision.open:A1\nA2"],
   )
 }
@@ -98,7 +98,7 @@ const turn = (decision?: () => DecisionModel | undefined) =>
   assert.deepEqual(c.msgs, [{ role: "user", content: sent.at(-1)!.state }])
   assert.ok(sent.at(-1)!.state.startsWith("<world>") && sent.at(-1)!.state.endsWith("hello world\n</draft>"))
   assert.ok(sent.at(-1)!.questions.some((q) => q.includes(rule)))
-  assert.ok(sent.at(-1)!.questions.some((q) => q.includes(full.lore[0]!.layers[2]!)))
+  assert.ok(sent.at(-1)!.questions.some((q) => q.includes(full.lore[0].layers[2])))
 }
 // one answer in the middle: the LLM check runs and its verdict stands whole
 {

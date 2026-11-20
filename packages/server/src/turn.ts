@@ -203,7 +203,7 @@ export const makeTurn = (s: Session, observe: (action: Action, events: Events) =
       return {
         phase: null,
         draft: f.draft,
-        events: Stream.make({ kind: "error", phase: f.phase, at: f.at, cause: f.cause } as Out),
+        events: Stream.make({ kind: "error", phase: f.phase, at: f.at, cause: f.cause }),
       }
     },
   }

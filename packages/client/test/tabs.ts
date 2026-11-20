@@ -31,18 +31,17 @@ import {
 } from "../src/store.ts"
 import { add, CAP, home, remove, restore, scroll, select, shed, unread } from "../src/tabs.ts"
 
-const row = (id: number, cardId: string, updated = id): StoryRow =>
-  ({
-    id,
-    card: cardId,
-    busy: null,
-    title: null,
-    starred: false,
-    persona: null,
-    updated,
-    turns: 1,
-    last: null,
-  }) as StoryRow
+const row = (id: number, cardId: string, updated = id): StoryRow => ({
+  id,
+  card: cardId,
+  busy: null,
+  title: null,
+  starred: false,
+  persona: null,
+  updated,
+  turns: 1,
+  last: null,
+})
 let rows = [row(1, "a"), row(2, "b"), row(3, "a")]
 const cardOf = (id: number | null | undefined) => rows.find((s) => s.id === id)?.card
 const opened: number[] = [] // the stories the Reading read afresh: one per real switch
@@ -222,7 +221,7 @@ assert.deepEqual(
     [null, "b", "card", ["home"]],
   ],
 )
-assert.equal(back.active, back.list[1]!.id)
+assert.equal(back.active, back.list[1].id)
 // a restored tab keeps its page and return stack (workshop, inspect over timeline, writing over a card tab)
 const stacked = restore(
   JSON.stringify({
@@ -282,11 +281,11 @@ assert.deepEqual(
 await home(homed)
 assert.deepEqual(
   [ids(), tab().id, registry.get(page), registry.get(layer), registry.get(stories)?.current],
-  [homed.list.map((t) => t.id), homed.list[1]!.id, "home", "shelf", null],
+  [homed.list.map((t) => t.id), homed.list[1].id, "home", "shelf", null],
 )
 const full = restore(JSON.stringify({ tabs: Array.from({ length: CAP }, () => ({ story: 1, card: "a" })) }), lib, [])!
 await home(full)
-assert.deepEqual([ids().length, ids().includes(full.list[0]!.id), registry.get(page)], [CAP, false, "home"])
+assert.deepEqual([ids().length, ids().includes(full.list[0].id), registry.get(page)], [CAP, false, "home"])
 // a card entered from a home tab pushes its card page over home: Back returns to home and puts the sidebar back on the
 // shelf; settings opened from home or a card page returns there on close without adding a tab
 const H = tab().id

@@ -107,7 +107,7 @@ export const StoryDialogs = () => {
   const commitDelete = () => {
     const rows = doomed()
     confirm.close()
-    if (rows.length === 1) void deleteStory(rows[0]!.id)
+    if (rows.length === 1) void deleteStory(rows[0].id)
     else if (rows.length) void deleteStories(rows.map((s) => s.id))
   }
   // the export: the two formats of #75 as links the browser downloads, the server naming the file by the title

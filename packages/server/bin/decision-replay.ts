@@ -110,7 +110,7 @@ const asked = (
   layer: Resolved | undefined,
   open: readonly { id: string; text: string }[] = [],
 ): { state: string; questions: Record<string, Question> } => {
-  const q = checkQuestions({ world, draft: prose, rules: guard, open, wording: (id) => layer!.asks[id]!.text })
+  const q = checkQuestions({ world, draft: prose, rules: guard, open, wording: (id) => layer!.asks[id].text })
   return guard.length || open.length
     ? q
     : { state: q.state, questions: { generic: { type: "boolean", instructions: GENERIC } } }

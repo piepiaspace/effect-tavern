@@ -44,7 +44,7 @@ export const checkValue = (value: unknown, rows: Rows = {}) => {
         ...f,
         drawn: drawn(
           f,
-          card!.fiction.map((f) => f.when),
+          card.fiction.map((f) => f.when),
         ),
       })) ?? [],
     fieldLines: card ? fields(card) : [],

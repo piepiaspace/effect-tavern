@@ -56,7 +56,7 @@ const questionsFor = (draft: string) => {
     world,
     draft,
     rules: [],
-    open: layers.map((text, i) => ({ id: ids[i]!, text })),
+    open: layers.map((text, i) => ({ id: ids[i], text })),
     wording: (id) => harness("act").asks!.find((a) => a.id === id)!.text,
   })
   const questions: Record<string, Question> = {

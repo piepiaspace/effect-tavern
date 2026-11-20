@@ -105,7 +105,7 @@ const a = await go()
 assert.equal(a.settlementStatus, "committed")
 assert.deepEqual(a.products, { notes: "" })
 assert.equal(a.changes.length, 2)
-const entity = a.changes[0]!
+const entity = a.changes[0]
 assert.equal(entity.kind, "insert_entity")
 if (entity.kind !== "insert_entity") throw new Error("expected insertion")
 const id = entity.entityId
@@ -216,10 +216,10 @@ for (const mode of ["skip", "cancel", "adjust", "ancestor"]) {
 {
   const tx = recordTransaction([scene, people], initialWorld([scene, people]))
   const ctx = { toolCallId: "x", signal: new AbortController().signal }
-  assert.equal((await tx.tools.patch_people!.execute({ entityId: "absent", patch: { stance: "x" } }, ctx)).ok, false)
-  assert.equal((await tx.tools.finish_record!.execute({}, ctx)).ok, false)
-  assert.equal((await tx.tools.discard_error!.execute({ target: "people:absent" }, ctx)).ok, true)
-  assert.equal((await tx.tools.finish_record!.execute({}, ctx)).ok, true)
+  assert.equal((await tx.tools.patch_people.execute({ entityId: "absent", patch: { stance: "x" } }, ctx)).ok, false)
+  assert.equal((await tx.tools.finish_record.execute({}, ctx)).ok, false)
+  assert.equal((await tx.tools.discard_error.execute({ target: "people:absent" }, ctx)).ok, true)
+  assert.equal((await tx.tools.finish_record.execute({}, ctx)).ok, true)
   assert.deepEqual(tx.current(), initialWorld([scene, people]))
 }
 // Persist failures do not publish an in-memory commit.
@@ -269,16 +269,16 @@ console.log("record transactions ok")
   })
   const T = makeSession({ card, rows: () => ({}), model: () => M })
   const one = await Effect.runPromise(outcome(T.act(null, { text: "enter" })))
-  assert.ok(prompts[0]!.includes("PLACE=inn SCORE=0"))
-  assert.ok(!prompts[0]!.includes("FOREST-ONLY"))
-  assert.ok(!toolsets[0]!.includes("insert_people"))
+  assert.ok(prompts[0].includes("PLACE=inn SCORE=0"))
+  assert.ok(!prompts[0].includes("FOREST-ONLY"))
+  assert.ok(!toolsets[0].includes("insert_people"))
   assert.deepEqual(one.answers, {})
   assert.equal(T.node(one.id).heading, "woods")
   assert.deepEqual(T.node(one.id).playerCatalog, []) // unlocked model lore is not a player command
   const two = await Effect.runPromise(outcome(T.act(one.id, { text: "explore" })))
-  assert.ok(prompts[1]!.includes("PLACE=woods SCORE=0"))
-  assert.ok(prompts[1]!.includes("FOREST-ONLY"))
-  assert.ok(toolsets[1]!.includes("insert_people"))
+  assert.ok(prompts[1].includes("PLACE=woods SCORE=0"))
+  assert.ok(prompts[1].includes("FOREST-ONLY"))
+  assert.ok(toolsets[1].includes("insert_people"))
   assert.deepEqual(two.answers, { reward: "yes" })
   assert.equal(T.context(two.id).fields.score, 1)
   assert.equal(T.context(one.id).fields.score, 0)
@@ -351,10 +351,10 @@ console.log("record transactions ok")
   }
   const tx = recordTransaction([nested], initialWorld([nested]))
   const ctx = { toolCallId: "x", signal: new AbortController().signal }
-  assert.equal((await tx.tools.patch_nested!.execute({ patch: { details: { a: "" }, list: [] } }, ctx)).ok, true)
+  assert.equal((await tx.tools.patch_nested.execute({ patch: { details: { a: "" }, list: [] } }, ctx)).ok, true)
   assert.deepEqual(tx.current().nested, { details: { a: "", b: "b" }, list: [] })
   assert.equal(
-    (await tx.tools.replace_nested!.execute({ value: { details: { a: "new", b: "" }, list: ["x", "y"] } }, ctx)).ok,
+    (await tx.tools.replace_nested.execute({ value: { details: { a: "new", b: "" }, list: ["x", "y"] } }, ctx)).ok,
     false,
   )
   assert.deepEqual(tx.current().nested, { details: { a: "", b: "b" }, list: [] })
@@ -389,7 +389,7 @@ console.log("record transactions ok")
   const one = await turn(null)
   assert.deepEqual(one.products.bgm, [{ id: "calm" }])
   assert.equal(picks.length, 0) // the battle call was refused and answered again
-  assert.ok(asked[0]!.includes("bgm"))
+  assert.ok(asked[0].includes("bgm"))
   picks.push([]) // no pick
   const two = await turn(one.id)
   assert.equal(two.settlementStatus, "committed")

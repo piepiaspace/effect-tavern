@@ -92,7 +92,7 @@ export const BRAND_OPTIONS: readonly {
 const [activeBrand, setActiveBrand] = createSignal<BrandId>("rosette-04")
 
 export const BrandGlyph = () => {
-  const cur = () => BRAND_OPTIONS.find((o) => o.id === activeBrand()) ?? BRAND_OPTIONS[0]!
+  const cur = () => BRAND_OPTIONS.find((o) => o.id === activeBrand()) ?? BRAND_OPTIONS[0]
   return (
     <img
       class="brand-glyph"
@@ -106,7 +106,7 @@ export const BrandGlyph = () => {
 
 export const Home = () => {
   const shelf = read(cards)
-  const cur = () => BRAND_OPTIONS.find((o) => o.id === activeBrand()) ?? BRAND_OPTIONS[0]!
+  const cur = () => BRAND_OPTIONS.find((o) => o.id === activeBrand()) ?? BRAND_OPTIONS[0]
   return (
     <div class="home-page" data-dark={theme() === "dark" ? "true" : "false"}>
       <div class="home-mark" data-kind={cur().kind}>

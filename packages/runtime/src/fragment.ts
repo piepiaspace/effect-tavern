@@ -96,7 +96,7 @@ export interface Slotted extends Msg {
  * `when` flip costs one cache miss on a rare event, not a reordering of the document. */
 export const head = (
   layers: readonly Fragment[],
-  { state = {} as State, options = {} as Record<string, boolean> } = {},
+  { state = {}, options = {} }: { state?: State; options?: Record<string, boolean> } = {},
 ): Slotted[] =>
   layers
     .filter((f) => f.mode !== "mute" && (options[f.id] ?? f.enabled ?? true) && (!f.when || holds(f.when, state)))

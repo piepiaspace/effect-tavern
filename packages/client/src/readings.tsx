@@ -2,7 +2,7 @@ import { AsyncView } from "./async-view.tsx"
 // The Record's pieces: one renderer per reading element (src/record.ts projects them; this file only draws), the
 // full-page sheet they sit in on the phone, the sibling actions a turn's row holds, the Status
 // table, and the 读数 page they make up. The reader (App.tsx) and the inspector (inspector.tsx) draw with these.
-import { type Shape, type TableShape } from "@effect-tavern/runtime/src/product.ts"
+import type { Shape } from "@effect-tavern/runtime/src/product.ts"
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import { type JSX } from "@solidjs/web"
 import { type ComponentProps, createMemo, For, Match, Show, Switch } from "solid-js"
@@ -87,14 +87,9 @@ export const KeyValues = (props: { of: Record<string, unknown> }) => (
 /** A product's value by its declared shape (src/product.ts): a list as items, a table as rows, a record as key →
  *  value with its nested shapes, text as a line. The Record and the Inspector draw with it. */
 export const Shaped = (props: { shape: Shape; value: unknown }) => {
-  const table = () => (props.shape.kind === "table" ? (props.shape as TableShape) : undefined)
-  const rec = () => (props.shape.kind === "record" ? (props.shape as Extract<Shape, { kind: "record" }>) : undefined)
-  const cell = (v: unknown) =>
-    v === undefined || v === null
-      ? ""
-      : typeof v === "object"
-        ? JSON.stringify(v)
-        : String(v as string | number | boolean)
+  const table = () => (props.shape.kind === "table" ? props.shape : undefined)
+  const rec = () => (props.shape.kind === "record" ? props.shape : undefined)
+  const cell = (v: unknown) => (typeof v === "string" ? v : v === undefined || v === null ? "" : JSON.stringify(v))
   return (
     <Switch fallback={<p class="val">{cell(props.value)}</p>}>
       <Match when={props.shape.kind === "list"}>
@@ -275,7 +270,7 @@ export const Reading = (props: { el: Element }) => (
         const cells = () =>
           edges()
             .slice(0, -1)
-            .map((a, i): [number, number] => [a, edges()[i + 1]!])
+            .map((a, i): [number, number] => [a, edges()[i + 1]])
         // the cell holding x: lower edge in, upper edge out, but the last cell takes max
         const cellOf = (x: number) =>
           Math.max(

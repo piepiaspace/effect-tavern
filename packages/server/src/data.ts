@@ -136,7 +136,7 @@ const fromPlayer = (p: OldPlayer): { overlay: Layer; locals: Local[] } => {
     ...set("lexicon", lexicon),
     ...set("snippets", p.snippets),
     ...set("format", p.format),
-  } as Layer)
+  })
   const cards = new Set([p.forCard, p.persona, p.packs, p.names, p.tags].flatMap((m) => Object.keys(m ?? {})))
   const locals = [...cards].map((card) =>
     locked({
@@ -149,7 +149,7 @@ const fromPlayer = (p: OldPlayer): { overlay: Layer; locals: Local[] } => {
       ...set("mounts", p.packs?.[card]),
       ...set("persona", p.persona?.[card]),
       ...set("tags", p.tags?.[card]),
-    } as Local),
+    }),
   )
   return { overlay, locals }
 }
@@ -340,7 +340,7 @@ const upgrade = (db: Database) => {
   if (version > latest) throw new LibraryNewer(version, latest)
   if (version < baseline) rebase(db)
   for (let v = Math.max(version, baseline); v < latest; v++)
-    db.exec(`begin immediate; ${steps[v - baseline]!}; pragma user_version = ${v + 1}; commit;`)
+    db.exec(`begin immediate; ${steps[v - baseline]}; pragma user_version = ${v + 1}; commit;`)
 }
 const rebase = (db: Database) => {
   // FK mode must change before BEGIN so rebuilding story cannot cascade-delete its nodes.

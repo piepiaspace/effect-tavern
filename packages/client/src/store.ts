@@ -303,7 +303,7 @@ export const apply = (e: Wire): void => {
   else applyNow(e)
 }
 const drain = () => {
-  while (held.length && (play.queue.length === 0 || flows(held[0]!))) applyNow(held.shift()!)
+  while (held.length && (play.queue.length === 0 || flows(held[0]))) applyNow(held.shift()!)
 }
 /** The open story's row in the listing as its stream says (a stage, or the turn over): the server writes `busy` too,
  *  but the client reads it again only at a stream's end or the sidebar's poll, and a tab's dot must not wait. A story

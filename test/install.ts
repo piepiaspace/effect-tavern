@@ -56,7 +56,7 @@ const fits = (lines: readonly string[], what: string) => {
 const like = (actual: readonly string[], expected: readonly (string | RegExp)[], what: string) => {
   assert.equal(actual.length, expected.length, `${what}:\n${actual.join("\n")}`)
   expected.forEach((e, i) =>
-    typeof e === "string" ? assert.equal(actual[i], e, what) : assert.match(actual[i]!, e, what),
+    typeof e === "string" ? assert.equal(actual[i], e, what) : assert.match(actual[i], e, what),
   )
 }
 
@@ -134,7 +134,7 @@ const run = (
   const env = { HOME: b.home, PATH: `${b.bin}:/usr/bin:/bin`, TAVERN_SYSROOT: b.sys, ...o.env }
   const as = o.nobody && root ? [setpriv!, "--reuid=65534", "--regid=65534", "--clear-groups", "--"] : []
   const cmd = [...(setsid ? [setsid, "-w"] : []), ...as, ...argv]
-  const r = spawnSync(cmd[0]!, cmd.slice(1), { env, input: o.stdin ?? "", encoding: "utf8", timeout: 60_000 })
+  const r = spawnSync(cmd[0], cmd.slice(1), { env, input: o.stdin ?? "", encoding: "utf8", timeout: 60_000 })
   const err = r.stderr
     .replaceAll(b.root, "<root>")
     .split("\n")

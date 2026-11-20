@@ -24,7 +24,7 @@ const pending: Pending[] = []
 const answer = (model: string | undefined, r: Probe[]) => {
   const i = pending.findIndex((x) => x.model === model)
   assert.ok(i >= 0, `${model ?? "reach"} asked`)
-  pending.splice(i, 1)[0]!.resolve(r)
+  pending.splice(i, 1)[0].resolve(r)
 }
 const keySaved = Promise.withResolvers<void>()
 const st = createRoot(() => {

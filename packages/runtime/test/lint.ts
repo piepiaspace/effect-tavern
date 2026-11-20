@@ -339,7 +339,7 @@ assert.deepEqual(
 assert.deepEqual(of({ ...base, frame: [{ id: "style", text: "每次回复末尾附上状态栏，并给出三个选项。" }] }), [
   "error inline-product frame.style.text",
 ])
-assert.match(lint({ ...base, frame: [{ id: "style", text: "在回复的末尾列出选项。" }] })[0]!.hint!, /product/)
+assert.match(lint({ ...base, frame: [{ id: "style", text: "在回复的末尾列出选项。" }] })[0].hint!, /product/)
 
 // empty-greeting: a greeting is text, a note, or both; with neither there is no node 0
 assert.deepEqual(of({ ...base, greetings: [{ text: "开场。" }, { note: "由叙事者开场。" }, { do: [] }] }), [

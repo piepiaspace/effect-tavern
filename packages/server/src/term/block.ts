@@ -27,7 +27,7 @@ const render = (screen: Screen, head: string, t: Trouble, mark: string): void =>
   if (t.why) {
     const w = wrap(t.why, n - 2)
     // two lines at most: a provider's own sentence can run long
-    if (w.length > 2) w.splice(1, w.length, width(w[1]!) + 3 <= n - 2 ? `${w[1]}...` : clip(`${w[1]} ${w[2]}`, n - 2))
+    if (w.length > 2) w.splice(1, w.length, width(w[1]) + 3 <= n - 2 ? `${w[1]}...` : clip(`${w[1]} ${w[2]}`, n - 2))
     for (const l of w) lines.push(`  ${l}`)
   }
   for (const step of t.next ?? []) wrap(step, n - 4).forEach((l, i) => lines.push(`${i ? "    " : "  > "}${l}`))

@@ -50,14 +50,14 @@ const S = create()
   assert.equal(ending.passage, true)
   assert.equal(T.log.nodes.get(ending.parent!)!.passageStatus, "committed")
 }
-const root = S.greet(card.greetings[0]!)
+const root = S.greet(card.greetings[0])
 const p = await Effect.runPromise(outcome(S.act(root.head, { text: "old day" })))
 assert.equal(p.passage, true)
 assert.equal(p.boundary, true)
 assert.equal(S.context(p.id).fields.clock, 0)
 const path = [...S.log.nodes.values()]
 assert.equal(path.length, 3)
-assert.equal(p.parent, path[1]!.id)
+assert.equal(p.parent, path[1].id)
 const D = makeDerived({
   rpg: makeCard(card.rules),
   L: () => makeLore([]),
@@ -73,24 +73,24 @@ assert.deepEqual(
 )
 assert.ok(!JSON.stringify(D.at(path).ledger()).includes("old day"))
 const E = create({ ...card, passages: [{ when: { all: [] }, text: "ending", end: true }, ...card.passages!] })
-const e0 = E.greet(card.greetings[0]!)
+const e0 = E.greet(card.greetings[0])
 const e = await Effect.runPromise(outcome(E.act(e0.head, { text: "end" })))
 assert.equal(e.end, "over")
 await assert.rejects(Effect.runPromise(outcome(E.act(e.id, { text: "again" }))), /terminal node/)
 await Effect.runPromise(outcome(E.swipe(e.parent!)))
 // a passage's text with a hole nothing fills commits with the literal (#170: names.ts)
 const U = create({ ...card, passages: [{ when: { all: [] }, text: "ending {{user}}", end: true }] })
-const u = await Effect.runPromise(outcome(U.act(U.greet(card.greetings[0]!).head, { text: "end" })))
+const u = await Effect.runPromise(outcome(U.act(U.greet(card.greetings[0]).head, { text: "end" })))
 assert.deepEqual(u.reply, [{ type: "text", text: "ending {{user}}" }])
 const O = create({
   ...card,
   passages: undefined,
   rules: { ...card.rules, over: { path: "fields.clock", op: "gte", value: 1 } },
 })
-const o0 = O.greet(card.greetings[0]!)
+const o0 = O.greet(card.greetings[0])
 assert.equal((await Effect.runPromise(outcome(O.act(o0.head, { text: "end" })))).end, "over")
 const N = create({ ...card, passages: [{ when: { all: [] }, note: "new dawn", digest: [], end: true }] })
-const n0 = N.greet(card.greetings[0]!)
+const n0 = N.greet(card.greetings[0])
 const n = await Effect.runPromise(outcome(N.act(n0.head, { text: "day" })))
 assert.equal(n.end, "over")
 assert.equal(n.boundary, true)
@@ -119,7 +119,7 @@ const dc: Card = {
       when: { any: [] },
     },
   ],
-  passages: [{ ...card.passages![0]!, digest: ["memory"] }],
+  passages: [{ ...card.passages![0], digest: ["memory"] }],
 }
 const R = makeSession({
   card: dc,
@@ -135,7 +135,7 @@ const R = makeSession({
       return defaultAnswer(doc, { notes: "old day note" })
     }),
 })
-const r0 = R.greet(dc.greetings[0]!)
+const r0 = R.greet(dc.greetings[0])
 await assert.rejects(Effect.runPromise(outcome(R.act(r0.head, { text: "old day" }))), /digest unavailable/)
 const pending = R.log.head!
 assert.equal(R.log.nodes.get(pending)?.passageStatus, "failed")
@@ -189,7 +189,7 @@ assert.deepEqual(
     .map((d) => d.resourceId),
   ["permanent"],
 )
-assert.equal((ld.at(lp).context().lore as Record<string, { floor: number }>).secret!.floor, 1)
+assert.equal((ld.at(lp).context().lore as Record<string, { floor: number }>).secret.floor, 1)
 const longer = [
   ...lp,
   ...[3, 4, 5].map((id) => ({ ...p, id, parent: id - 1, boundary: undefined, products: { notes: "new epoch" } })),
@@ -282,7 +282,7 @@ const V = makeSession({
       return defaultAnswer(doc, { notes: digested ? "new note" : "old note evidence" })
     }),
 })
-const v0 = V.greet(dynamicCard.greetings[0]!)
+const v0 = V.greet(dynamicCard.greetings[0])
 await assert.rejects(Effect.runPromise(outcome(V.act(v0.head, { text: "old input evidence" }))), /opening unavailable/)
 const failedOpening = V.log.head!
 assert.equal(V.timelineNode(failedOpening).settlementStatus, "failed")
@@ -330,7 +330,7 @@ const slow = {
   }),
 }
 const Q = makeSession({ card: dc, rows: () => ({}), model: () => slow })
-const q0 = Q.greet(dc.greetings[0]!)
+const q0 = Q.greet(dc.greetings[0])
 const fiber = Effect.runFork(Stream.runCollect(Q.act(q0.head, { text: "day" })))
 await ready
 const q = Q.log.head!
@@ -358,7 +358,7 @@ const C = makeSession({
       return defaultAnswer(doc, { notes: "day" })
     }),
 })
-const c0 = C.greet(dynamicCard.greetings[0]!)
+const c0 = C.greet(dynamicCard.greetings[0])
 await assert.rejects(Effect.runPromise(outcome(C.act(c0.head, { text: "day" }))), /opening record unavailable/)
 const child = C.log.nodes.get(C.log.head!)!
 assert.equal(child.passage, true)

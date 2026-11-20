@@ -58,7 +58,7 @@ const DELIM = "<<aside>>"
 /** The block id a whole line opens, or undefined when it is not a delimiter; a bare `<<aside>>` opens `aside`. */
 const opens = (line: string): string | undefined => {
   const m = /^[ \t]*<<aside>>(.*)$/.exec(line.replace(/\r?\n$/, ""))
-  return m ? m[1]!.trim().split(/\s+/)[0] || "aside" : undefined
+  return m ? m[1].trim().split(/\s+/)[0] || "aside" : undefined
 }
 export type Piece = { id?: string; text: string }
 /** Text in, pieces out: prose (no id) or a block's text (its id). The delimiter line never comes out; a line start that

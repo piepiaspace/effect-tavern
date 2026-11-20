@@ -42,7 +42,7 @@ export const stageTool = <S extends Schema.Top & Schema.Constraint & Schema.Cons
 ): StageTool => ({
   description,
   inputSchema: standard(schema),
-  execute: (input, context) => execute(input as S["Type"], context), // SDK has decoded input through inputSchema
+  execute: (input, context) => execute(input, context), // SDK has decoded input through inputSchema
 })
 
 export interface ToolTrace {
@@ -247,7 +247,7 @@ export const runStageTools = (model: Model, initial: readonly Message[], options
             } else {
               // Unexpected exceptions are fatal; only explicit validation results are recoverable.
               result = await wait(
-                options.tools[call.toolName]!.execute(call.input, { toolCallId: call.toolCallId, signal: ac.signal }),
+                options.tools[call.toolName].execute(call.input, { toolCallId: call.toolCallId, signal: ac.signal }),
               )
               ac.signal.throwIfAborted()
             }

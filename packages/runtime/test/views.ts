@@ -50,7 +50,7 @@ assert.equal(summaries.compress([root, child, tail], 1, sources)?.text, "Summary
   assert.deepEqual(along(() => 100).slice(0, 6), [0, 0, 0, 2, 2, 4]) // over budget: the tail is `keep`, in blocks
   const costs = line.map((_, i) => (i * 7919) % 13) // uneven turns
   for (const block of [1, 2, 3]) {
-    const ns = along((t) => costs[t.id]!, { budget: 20, keep: 2, block })
+    const ns = along((t) => costs[t.id], { budget: 20, keep: 2, block })
     ns.forEach((n, i) => assert.ok(n % block === 0 && i + 1 - n >= Math.min(2, i + 1) && n >= (ns[i - 1] ?? 0)))
   }
 }

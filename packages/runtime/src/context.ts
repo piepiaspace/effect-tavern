@@ -60,7 +60,7 @@ export const loreResource = (
   return {
     resourceId: `${source}:${entry.id}`,
     revision: revision({ text, depth }),
-    title: hook(entry.layers[0]!),
+    title: hook(entry.layers[0]),
     text,
     source,
     ...policy(source, entry),
@@ -108,7 +108,7 @@ export const catalogEntry = (r: Resource): PlayerCatalogItem => ({
   resourceId: r.resourceId,
   title: r.title.slice(0, 160),
   summary: (r.text.slice(r.title.length).trim() || r.title).replace(/\s+/g, " ").slice(0, 240),
-  category: r.source === "pack" ? r.resourceId.slice(5).split("/")[0]! : "card",
+  category: r.source === "pack" ? r.resourceId.slice(5).split("/")[0] : "card",
   source: r.source,
   available: true,
 })
@@ -141,7 +141,7 @@ const termsOf = (q: string, haystacks: readonly string[]) => [
       .flatMap((c) => {
         const cs = Array.from(c)
         const unmatched = /\p{Script=Han}/u.test(c) && cs.length > 2 && !haystacks.some((h) => h.includes(c))
-        return unmatched ? cs.slice(1).map((ch, i) => cs[i]! + ch) : [c]
+        return unmatched ? cs.slice(1).map((ch, i) => cs[i] + ch) : [c]
       }),
   ),
 ]
@@ -224,8 +224,8 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
     const hit = (x: Resource) => terms.some((t) => x.text.toLowerCase().includes(t))
     return pool
       .map((x) => ({ ...x, s: score(x) }))
-      .filter(({ s }) => s[0]! + s[2]! > 0)
-      .sort((a, b) => b.s.reduce((d, n, i) => d || n - a.s[i]!, 0))
+      .filter(({ s }) => s[0] + s[2] > 0)
+      .sort((a, b) => b.s.reduce((d, n, i) => d || n - a.s[i], 0))
       .slice(0, 8)
       .map(({ r, sections }) => ({
         title: r.title.slice(0, 160),

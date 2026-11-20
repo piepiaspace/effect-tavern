@@ -3,7 +3,7 @@ import assert from "node:assert/strict"
 import { fake, type FakeReply } from "@effect-tavern/provider"
 import { Effect, Schema, Stream } from "effect"
 import { makeCard, type Card } from "../src/card.ts"
-import { makeSession, type Phase } from "../src/session.ts"
+import { makeSession } from "../src/session.ts"
 import { plain } from "./rows.ts"
 import { defaultAnswer, readStage } from "./script.ts"
 
@@ -39,7 +39,7 @@ export const runScenario = async (card: Card, value: unknown = { steps: [{ text:
     const queue = replies[doc.phase]
     if (queue) {
       if (doc.phase === "record") {
-        const key = doc.tools.includes("finish_record") ? "finish_record" : doc.asked[0]!
+        const key = doc.tools.includes("finish_record") ? "finish_record" : doc.asked[0]
         const group = records.get(doc.subject)
         if (group && !group.used.has(key)) {
           group.used.add(key)
@@ -73,7 +73,7 @@ export const runScenario = async (card: Card, value: unknown = { steps: [{ text:
       records.clear()
       replies = Object.fromEntries(Object.entries(step.replies ?? {}).map(([phase, queue]) => [phase, [...queue]]))
       for (const phase of Object.keys(replies))
-        if (!["lookup", "decide", "direct", "narrate", "check", "polish", "record"].includes(phase as Phase))
+        if (!["lookup", "decide", "direct", "narrate", "check", "polish", "record"].includes(phase))
           throw new Error(`unknown phase ${phase}`)
       await Effect.runPromise(
         Stream.runDrain(session.act(session.log.head, { text: step.text ?? "", note: step.note, invoke: step.invoke })),
@@ -100,7 +100,7 @@ export const runScenario = async (card: Card, value: unknown = { steps: [{ text:
       }
       results.push(actual)
     } catch (e) {
-      throw new Error(`step ${i + 1}: ${e instanceof Error ? e.message : String(e)}`)
+      throw new Error(`step ${i + 1}: ${e instanceof Error ? e.message : String(e)}`, { cause: e })
     }
   }
   return results

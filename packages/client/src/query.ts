@@ -63,11 +63,11 @@ export const admits = (
   picked: readonly string[] = [],
 ): boolean => {
   if (!terms.length && !picked.length) return true
-  const tags = labels(c, words).map(fold)
-  if (!picked.every((w) => tags.includes(fold(w)))) return false
+  const tags = new Set(labels(c, words).map(fold))
+  if (!picked.every((w) => tags.has(fold(w)))) return false
   if (!terms.length) return true
   const text = [c.title, c.summary ?? "", ...words].map(fold)
-  return terms.every((x) => (x.tag ? tags.includes(x.word) : text.some((s) => s.includes(x.word))) !== x.not)
+  return terms.every((x) => (x.tag ? tags.has(x.word) : text.some((s) => s.includes(x.word))) !== x.not)
 }
 
 /** Whether the shelf's facet panel belongs open over `q`: nothing in it but `#` terms, or a `#…` being typed last. A

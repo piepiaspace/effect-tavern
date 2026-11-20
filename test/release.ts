@@ -16,7 +16,7 @@ for (const t of TARGETS) {
 const named = [
   "tavern-android",
   ...["arm64", "x64"].flatMap((cpu) => [`tavern-linux-${cpu}`, `tavern-linux-${cpu}-musl`, `tavern-darwin-${cpu}`]),
-  ...[...asked.matchAll(/"(tavern-windows-[a-z0-9]+\.exe)"/g)].map((m) => m[1]!),
+  ...[...asked.matchAll(/"(tavern-windows-[a-z0-9]+\.exe)"/g)].map((m) => m[1]),
 ]
 assert.deepEqual([...assets].sort(), [...new Set(named)].sort())
 assert.match(asked, /tavern-linux-\$cpu-musl/)

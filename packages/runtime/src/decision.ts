@@ -67,12 +67,12 @@ export const lookupSelect = (
   if (lines.some((l) => l.p === null)) return { lines }
   const picked = asked
     .map((_, i) => i)
-    .filter((i) => lines[i]!.p! > LOOKUP)
-    .sort((a, b) => lines[b]!.p! - lines[a]!.p!)
+    .filter((i) => lines[i].p! > LOOKUP)
+    .sort((a, b) => lines[b].p! - lines[a].p!)
     .slice(0, TOP)
   return {
     lines: lines.map((l, i) => (picked.includes(i) ? { ...l, read: true as const } : l)),
-    ids: picked.map((i) => asked[i]!.resourceId),
+    ids: picked.map((i) => asked[i].resourceId),
   }
 }
 

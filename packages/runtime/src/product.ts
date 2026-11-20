@@ -147,7 +147,7 @@ const resolveShape = (s: Shape, catalogs: readonly Catalog[], state: State): Sha
   }
   if (s.kind === "table") {
     const columns = s.columns.map(col)
-    return columns.every((c) => c !== undefined) ? { ...s, columns: columns as Col[] } : undefined
+    return columns.every((c) => c !== undefined) ? { ...s, columns: columns } : undefined
   }
   if (s.kind !== "record") return s
   const keys = s.keys.flatMap((k): RecordShape["keys"][number][] => {

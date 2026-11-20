@@ -42,7 +42,7 @@ const tick = () => {
 const playOut = () => {
   for (let n = 0; frames.length && n < 400; n++) tick()
 }
-const delta = (text: string): Wire => ({ kind: "delta", part: { type: "text-delta", id: "0", text } }) as Wire
+const delta = (text: string): Wire => ({ kind: "delta", part: { type: "text-delta", id: "0", text } })
 
 // the scripted wire: each send or attach is a stream the test feeds; an aborted one applies nothing more. A stop
 // answers what the server would decide (`stopping`).
@@ -71,7 +71,7 @@ turn.act()
 assert.deepEqual(last().action, { kind: "act", input: { text: "hi" } })
 assert.equal(registry.get(draft)?.parent, 0)
 last().emit({ kind: "stage", phase: "lookup" }, { kind: "stage", phase: "narrate" }, delta("hel"), delta("lo"))
-last().emit({ kind: "change", node: node(1, 0, "hello", "hi"), head: 1 } as Wire)
+last().emit({ kind: "change", node: node(1, 0, "hello", "hi"), head: 1 })
 playOut()
 assert.deepEqual(
   [registry.get(draft), registry.get(revising), registry.get(error), registry.get(stage)],
@@ -106,7 +106,7 @@ const was = registry.get(log).nodes.size
 stopping = "halted"
 await turn.stop()
 assert.deepEqual([registry.get(stage), last().aborted], ["record", false])
-last().emit({ kind: "change", node: node(was, 1, "abc", "go"), head: was } as Wire)
+last().emit({ kind: "change", node: node(was, 1, "abc", "go"), head: was })
 assert.equal(registry.get(log).nodes.size, was + 1)
 assert.deepEqual([registry.get(draft), registry.get(stage), registry.get(error)], [null, null, null])
 
@@ -147,7 +147,7 @@ s.emit({ kind: "stage", phase: "narrate" }, delta("part"))
 turn.abandon()
 assert.ok(s.aborted)
 assert.deepEqual([registry.get(draft), registry.get(stage), registry.get(composition).text], [null, null, ""])
-s.emit(delta("more"), { kind: "change", node: node(size, 1, "partmore", "bye"), head: size } as Wire)
+s.emit(delta("more"), { kind: "change", node: node(size, 1, "partmore", "bye"), head: size })
 playOut()
 assert.deepEqual([registry.get(draft), registry.get(log).nodes.size], [null, size])
 
@@ -157,17 +157,17 @@ const revision = registry.get(revising)
 turn.demand(1, "aside")
 last().emit({ kind: "stage", phase: "record" })
 assert.deepEqual([registry.get(draft), registry.get(working)], [null, true])
-last().emit({ kind: "change", node: node(1, 0, "hello", "hi"), head: registry.get(log).head } as Wire)
+last().emit({ kind: "change", node: node(1, 0, "hello", "hi"), head: registry.get(log).head })
 assert.equal(registry.get(working), false)
 assert.equal(registry.get(revising), revision)
 turn.setField(1, [{ path: "hp", set: 5 }])
-last().emit({ kind: "change", node: node(1, 0, "hello", "hi"), head: registry.get(log).head } as Wire)
+last().emit({ kind: "change", node: node(1, 0, "hello", "hi"), head: registry.get(log).head })
 assert.equal(registry.get(revising), revision)
 updateComposition({ text: "revised", note: "", noteOpen: false })
 turn.act()
 updateComposition({ text: "", note: "", noteOpen: false })
 assert.deepEqual(last().action, { kind: "act", parent: 0, input: { text: "revised" } })
-last().emit({ kind: "change", node: node(10, 0, "new", "revised"), head: 10 } as Wire)
+last().emit({ kind: "change", node: node(10, 0, "new", "revised"), head: 10 })
 assert.equal(registry.get(revising), null)
 
 // (h) back on a story whose turn runs on: the attach draws it as it stands (the prose so far at once), the live deltas
@@ -180,7 +180,7 @@ last().emit(delta("and more"))
 playOut()
 assert.equal(registry.get(draft)?.text, "so far and more")
 const at = registry.get(log).nodes.size
-last().emit({ kind: "change", node: node(at, 1, "so far and more", "back"), head: at } as Wire)
+last().emit({ kind: "change", node: node(at, 1, "so far and more", "back"), head: at })
 playOut()
 assert.deepEqual([registry.get(draft), registry.get(working), registry.get(log).head], [null, false, at])
 turn.attach()
@@ -241,7 +241,7 @@ assert.deepEqual(
   registry.get(composition).invocations.map((i) => i.resourceId),
   [],
 )
-last().emit({ kind: "error", message: "unavailable" } as Wire)
+last().emit({ kind: "error", message: "unavailable" })
 assert.deepEqual(
   registry.get(composition).invocations.map((i) => i.resourceId),
   ["guide", "pack/style"],

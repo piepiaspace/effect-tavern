@@ -155,7 +155,7 @@ const file = { via: "file" } as const
     assert.deepEqual(await call("GET", "/cards"), [200, [] as never])
     const yaml = readFileSync(cardFile("yandao"), "utf8")
     const [status, made] = await call("POST", "/cards", yaml)
-    const row = { ...t.lib.cards.list()[0]!, facets: JSON.parse(JSON.stringify(t.lib.cards.list()[0]!.facets)) }
+    const row = { ...t.lib.cards.list()[0], facets: JSON.parse(JSON.stringify(t.lib.cards.list()[0].facets)) }
     assert.deepEqual([status, made], [200, { card: row, cards: [row] }])
     assert.deepEqual(row.origin, { via: "file" })
     assert.deepEqual(
@@ -194,14 +194,14 @@ const file = { via: "file" } as const
     const id = (fresh["card"] as { id: string }).id
     assert.deepEqual(
       [fresh["card"], (fresh["cards"] as unknown[]).length],
-      [{ id, title: "未命名卡片", facets: t.lib.cards.list()[0]!.facets, origin: { via: "workshop" } }, 1],
+      [{ id, title: "未命名卡片", facets: t.lib.cards.list()[0].facets, origin: { via: "workshop" } }, 1],
     )
     assert.equal((await call("POST", "/cards/new"))[0], 200) // no body: a card named by its id
     t.lib.cards.remove(t.lib.cards.list().find((c) => c.id !== id)!.id)
     const whole = `/cards/${id}/whole`
     const [, read] = await call("GET", whole)
     assert.deepEqual(read, { ...t.lib.cards.whole(id) })
-    const next = { ...(read["card"] as Card), title: "雨夜", fiction: [{ id: "s1", text: "雨停了。" }] }
+    const next = { ...read["card"], title: "雨夜", fiction: [{ id: "s1", text: "雨停了。" }] }
     const put = (card: unknown, rev?: unknown) => call("PUT", whole, JSON.stringify({ card, rev }))
     const [saved, answer] = await put(next, read["rev"])
     assert.deepEqual([saved, (answer["card"] as { title: string }).title, t.lib.cards.get(id)], [200, "雨夜", next])
@@ -232,7 +232,7 @@ const file = { via: "file" } as const
     assert.deepEqual([sent[0], (sent[1]["card"] as { id: string }).id], [200, "heavy"])
     const back = await (await fetch(`${base}/cards/heavy/export.yaml`)).text()
     assert.equal((await call("POST", "/cards?replace=1", back))[0], 200)
-    assert.equal(t.lib.cards.get("heavy").fiction[0]!.text, heavy.fiction[0]!.text)
+    assert.equal(t.lib.cards.get("heavy").fiction[0].text, heavy.fiction[0].text)
     // past the ceiling it is refused in words, not by a dropped connection
     const huge = await call("POST", "/cards", "x".repeat(CARD_BYTES + 1))
     assert.deepEqual(huge, [413, { error: "body over 32 MB", code: "too-large" }])

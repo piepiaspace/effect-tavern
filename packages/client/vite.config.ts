@@ -19,8 +19,7 @@ const api = (): Plugin => ({
   name: "tavern-api",
   configureServer(server) {
     const entry = resolve(import.meta.dirname, "../server/src/dev.ts")
-    const session = () =>
-      (server.environments["ssr"] as RunnableDevEnvironment).runner.import(entry) as Promise<Session>
+    const session = () => (server.environments["ssr"] as RunnableDevEnvironment).runner.import<Session>(entry)
     const http = server.httpServer
     let withdraw: (() => void) | undefined
     let closed = false

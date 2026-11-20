@@ -147,7 +147,7 @@ export const makeCard = (r: Rules) => {
   const available = (s: State, context: Paths = s) =>
     r.actions.filter((a) => !a.when || holds(a.when, { ...context, fields: s }))
   const apply = (s: State, effects: readonly (typeof Effect_.Type)[]) => {
-    let out = { ...s }
+    const out = { ...s }
     const events: string[] = []
     for (const e of effects) {
       if ("path" in e && !fields.has(e.path)) throw new Error(`${e.path}: not a field`) // state is a closed vocabulary
@@ -158,7 +158,7 @@ export const makeCard = (r: Rules) => {
         out[e.path] = Math.min(f?.max ?? Infinity, Math.max(f?.min ?? -Infinity, v)) // bounds clamp (§4.2)
       } else events.push(e.event.replace(/\{([^}]+)\}/g, (_, p) => String(out[p])))
     }
-    return { s: validate(out) as State, events }
+    return { s: validate(out), events }
   }
   const chanceOf = (s: State, a: Action, b: Beat) => {
     if (a.roll === undefined) return undefined

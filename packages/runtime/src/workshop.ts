@@ -171,7 +171,7 @@ const place = (card: Card, to: string, text: string): Card => {
   const f = /^(fiction|frame)\.(.+)$/.exec(to)
   if (f) {
     const kind = f[1] as "fiction" | "frame",
-      id = f[2]!
+      id = f[2]
     if (!identifier.test(id)) throw new Error(`invalid identifier ${id}`)
     const old = card[kind].find((x) => x.id === id)
     if (kind === "frame" && !old) throw new Error(`undeclared frame slot ${to}`)
@@ -185,7 +185,7 @@ const place = (card: Card, to: string, text: string): Card => {
   if (g && Number(g[1]) === card.greetings.length) return { ...card, greetings: [...card.greetings, { text }] }
   const l = /^lore\.(.+)\.layers\[(\d+)\]$/.exec(to)
   if (l) {
-    const id = l[1]!,
+    const id = l[1],
       index = Number(l[2])
     if (!identifier.test(id)) throw new Error(`invalid identifier ${id}`)
     const old = card.lore.find((e) => e.id === id)
@@ -210,7 +210,7 @@ export const applySort = (card: Card, source: readonly string[], placements: Sor
       p.to,
       [...p.paragraphs]
         .sort((a, b) => a - b)
-        .map((i) => source[i]!)
+        .map((i) => source[i])
         .join("\n\n"),
     )
   }

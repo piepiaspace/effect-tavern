@@ -9,7 +9,7 @@ import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
 
 /** Fills every `{{key}}` that `names` has a value for, leaving any unfilled hole as written. */
 export const fillKnown = (text: string, names?: Readonly<Record<string, string>>): string =>
-  !names ? text : text.replace(HOLE, (raw, k: string) => (Object.hasOwn(names, k) ? names[k]! : raw))
+  !names ? text : text.replace(HOLE, (raw, k: string) => (Object.hasOwn(names, k) ? names[k] : raw))
 
 /** `harness` is a fixed rank in `GET /packs`, not a user-deletable or card-mounted pack. */
 export const isReservedPack = (id: string): boolean => id === "harness"

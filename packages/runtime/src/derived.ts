@@ -61,7 +61,7 @@ export interface Node {
 export const floorAt = (unlock: Cond | readonly Cond[], s: Paths) => {
   const cs = Array.isArray(unlock) ? unlock : [unlock]
   let n = 0
-  while (n < cs.length && holds(cs[n]!, s)) n++
+  while (n < cs.length && holds(cs[n], s)) n++
   return n
 }
 // The lock reads its floor off the gate state (`gated` below), never the instant; the window reads the instant.
@@ -188,7 +188,7 @@ export const makeDerived = ({
       for (const e of lore) floors.set(e.id, Math.max(floors.get(e.id)!, floorAt(e.unlock, { fields, world })))
     }
     for (const [i, o] of along.entries()) {
-      world = worldAfter(world, path[i]!)
+      world = worldAfter(world, path[i])
       observe(o.s)
     }
     observe(at)
@@ -297,7 +297,7 @@ export const makeDerived = ({
       ledger: () =>
         ledger(
           path,
-          (t) => along()[path.indexOf(t)]!.events,
+          (t) => along()[path.indexOf(t)].events,
           retained().summary,
           retained().start,
           retained().chronicles,

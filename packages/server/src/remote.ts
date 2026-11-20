@@ -16,7 +16,7 @@ export const readHttps = async (
   address: string | URL,
   {
     fetch: io = fetch,
-    code = "depot-unreadable" as Refused["code"],
+    code = "depot-unreadable",
     patience = { answer: ANSWER, whole: WHOLE },
   }: { fetch?: typeof fetch; code?: Refused["code"]; patience?: { answer: number; whole: number } } = {},
 ): Promise<string> => {

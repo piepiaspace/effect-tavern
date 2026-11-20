@@ -31,7 +31,7 @@ const scripted = fake((o) =>
 )
 const model = () => scripted
 const S = makeSession({ card: yandao, rows: () => player, model })
-const root = S.greet(yandao.greetings[1]!).node!.id
+const root = S.greet(yandao.greetings[1]).node!.id
 S.setField(root, [{ path: "局势", set: 8 }])
 const calls = new Map<string, readonly Message[]>()
 await Effect.runPromise(
@@ -48,7 +48,7 @@ const at = (stage: "narrate" | "lookup" | "record") =>
 // narrate: the fragments view prints as on, in order, are the first messages the narrator got
 const n = at("narrate")
 assert.deepEqual(n.state, { 局势: 8, 起点: "血案" })
-const on = n.sections[0]!.text.split(/\n(?=\[)/).filter((f) => !/\((off|slot, empty)\)$/.test(f.split("\n")[0]!))
+const on = n.sections[0].text.split(/\n(?=\[)/).filter((f) => !/\((off|slot, empty)\)$/.test(f.split("\n")[0]))
 const head = on.map((f) =>
   f
     .split("\n")
@@ -72,7 +72,7 @@ assert.deepEqual(
 // the catalog view, the same block in the preview and the turn (#168)
 assert.match(sent("lookup").join("\n"), /\nAvailable \(1, complete\):\ncard:yandao /)
 const r = at("record")
-assert.equal(r.sections[0]!.text, "") // yandao declares only pov and style: head (record) shows worldOf, never writing lines
+assert.equal(r.sections[0].text, "") // yandao declares only pov and style: head (record) shows worldOf, never writing lines
 assert.deepEqual(sent("record").slice(0, -1), r.doc.map(text).slice(0, -1))
 for (const line of r.sections.find((x) => x.name === "record")!.text.split("\n"))
   assert.ok(sent("record").join("\n").includes(line), line)
@@ -88,7 +88,7 @@ const gated: Card = {
 const G = makeSession({ card: gated, rows: () => player, model })
 calls.clear()
 await Effect.runPromise(
-  Stream.runForEach(G.act(G.greet(gated.greetings[0]!).node!.id, { text: "", note: "继续" }), (e) =>
+  Stream.runForEach(G.act(G.greet(gated.greetings[0]).node!.id, { text: "", note: "继续" }), (e) =>
     Effect.sync(() => void (e.kind === "call" && !e.product && calls.set(e.phase, e.msgs))),
   ),
 )
@@ -97,7 +97,7 @@ assert.ok(!quiet.join("\n").includes("Questions:"))
 assert.equal(calls.has("record"), false) // only the independent options request remains
 
 // the band ↔ readout section puts the band on 局势 directly above the readout that moves it
-assert.match(n.sections[3]!.text, /^tension moves 局势\n {2}band tense [^]*\n {2}readout: [^]*\n {4}worse: /)
+assert.match(n.sections[3].text, /^tension moves 局势\n {2}band tense [^]*\n {2}readout: [^]*\n {4}worse: /)
 // openings: one line per greeting with what its `do` puts in play. ri's third opening sits on the confession threshold:
 // the window is open and the readout is asked on turn 1, before the player has said a word (#83, read here, not live).
 assert.deepEqual(openings(await loadCard("ri"), player), [
@@ -235,7 +235,7 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
   calls.clear()
   await Effect.runPromise(
     Stream.runForEach(
-      runtime.act(runtime.greet(card.greetings[0]!).node!.id, { text: "", note: "继续", invoke: ["card:manual"] }),
+      runtime.act(runtime.greet(card.greetings[0]).node!.id, { text: "", note: "继续", invoke: ["card:manual"] }),
       (e) => Effect.sync(() => void (e.kind === "call" && !e.product && calls.set(e.phase, e.msgs))),
     ),
   )

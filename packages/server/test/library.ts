@@ -191,7 +191,7 @@ const over = (data: Data, m: () => Model = model) =>
   const failedNode = lib.session(p).log.head!
   assert.equal(lib.session(p).log.nodes.get(failedNode)!.settlementStatus, "failed")
   lib.session(p).skipRecord(failedNode)
-  const told = await Effect.runPromise(Stream.runCollect(failed!.events))
+  const told = await Effect.runPromise(Stream.runCollect(failed.events))
   assert.deepEqual(
     told.map((e) => e.kind),
     ["error"],
@@ -341,11 +341,11 @@ const over = (data: Data, m: () => Model = model) =>
   assert.throws(() => lib.packs.put({ id: "base", name: "x" }), /reserved/)
   assert.throws(() => lib.packs.put({ id: "a/b", name: "x" }), /no \//) // it would alias another pack's entries
   // the overlay given stands until one is stored; a stored one wins, and takes the session with it
-  assert.deepEqual(rest[0]!.fragments, player.harness!.fragments)
-  assert.ok(lib.session(a).layer.frame.some((f) => f.text === player.harness!.fragments![0]!.text))
+  assert.deepEqual(rest[0].fragments, player.harness!.fragments)
+  assert.ok(lib.session(a).layer.frame.some((f) => f.text === player.harness!.fragments![0].text))
   // the harness row: the whole row back stores nothing, one change stores that, and it is in the session
   const bare = library({ data: open(":memory:") })
-  const code = bare.packs.list()[0]!
+  const code = bare.packs.list()[0]
   assert.deepEqual(code.fragments, undefined)
   bare.packs.put(code)
   assert.deepEqual(bare.packs.list(), [code])
@@ -356,9 +356,9 @@ const over = (data: Data, m: () => Model = model) =>
     asks: harness("act").asks!.map((x) => (x.id === "lookup" ? { ...x, text: "MINE" } : x)),
   })
   assert.deepEqual(stored(), { id: "harness", name: "内置", asks: [{ id: "lookup", text: "MINE" }] })
-  assert.equal(lib.session(a).layer.asks["lookup"]!.text, "MINE")
-  assert.equal(lib.packs.list()[0]!.asks!.find((x) => x.id === "lookup")!.text, "MINE")
-  assert.equal(lib.packs.list()[0]!.fragments, undefined) // the stored one stands alone: the given is gone from it
+  assert.equal(lib.session(a).layer.asks["lookup"].text, "MINE")
+  assert.equal(lib.packs.list()[0].asks!.find((x) => x.id === "lookup")!.text, "MINE")
+  assert.equal(lib.packs.list()[0].fragments, undefined) // the stored one stands alone: the given is gone from it
   lib.packs.put(harness("act"))
   assert.equal(stored(), undefined)
 }
@@ -376,7 +376,7 @@ const over = (data: Data, m: () => Model = model) =>
   const NEXT = "sk-next-9876543210fedcba"
   lib.secrets.set(made.id, { name: "Relay key", type: "auth_token", value: NEXT })
   assert.deepEqual(lib.secrets.list(), [{ id: made.id, name: "Relay key", type: "auth_token", hint: "sk-nex****dcba" }])
-  const typeOf = () => lib.secrets.list()[0]!.type
+  const typeOf = () => lib.secrets.list()[0].type
   lib.secrets.set(made.id, { name: "Relay key", value: "sk-ant-oat01-abcdefghij" })
   assert.equal(typeOf(), "auth_token")
   lib.secrets.set(made.id, { name: "Renamed" })
@@ -526,12 +526,12 @@ const over = (data: Data, m: () => Model = model) =>
     assert.ok(seen.at(-1)!.endsWith(`Bearer ${VALUE}`))
     const listed = await lib.providers.test("relay")
     assert.deepEqual(
-      [listed.length, listed[0]!.formats, listed[0]!.url, listed[0]!.status, listed[0]!.ok, typeof listed[0]!.ms],
+      [listed.length, listed[0].formats, listed[0].url, listed[0].status, listed[0].ok, typeof listed[0].ms],
       [1, ["openai-compatible"], `${up}/v1/models`, 200, true, "number"],
     )
     const asked = await lib.providers.test("relay", "m")
     assert.deepEqual(
-      [asked.length, asked[0]!.formats, asked[0]!.url, asked[0]!.method, asked[0]!.status, asked[0]!.ok],
+      [asked.length, asked[0].formats, asked[0].url, asked[0].method, asked[0].status, asked[0].ok],
       [1, ["openai-compatible"], `${up}/v1/chat/completions`, "POST", 200, true],
     )
     // three endpoints, two on one address: one listing request per distinct URL, the default's first; the dead one is
@@ -547,10 +547,10 @@ const over = (data: Data, m: () => Model = model) =>
       ],
     )
     assert.equal(seen.filter((s) => s.startsWith("GET /v1/models")).length, 4) // one request for the shared address
-    assert.match(probes[1]!.error!, /ECONNREFUSED/)
+    assert.match(probes[1].error!, /ECONNREFUSED/)
     put({ endpoints: { "openai-compatible": { url: `${up}/x` } } })
     const [page] = await lib.providers.test("relay")
-    assert.deepEqual([page!.status, page!.ok, page!.error], [200, false, "model listing failed: not JSON"])
+    assert.deepEqual([page.status, page.ok, page.error], [200, false, "model listing failed: not JSON"])
     // two hosts: a model only the other host lists, with no word of its own on formats, goes under that host's format;
     // one both list is on the default and gets none
     put({ endpoints: { "openai-compatible": { url: up }, anthropic: { url: hostUrl } } })
@@ -592,18 +592,15 @@ const over = (data: Data, m: () => Model = model) =>
     assert.deepEqual(await lib.providers.models("a"), [{ id: "claude-haiku-5-5" }])
     const [listed] = await lib.providers.test("a")
     assert.deepEqual(
-      [listed!.url, listed!.method, listed!.status, listed!.ok, typeof listed!.ms],
+      [listed.url, listed.method, listed.status, listed.ok, typeof listed.ms],
       [`${mock.url}/v1/models`, "GET", 200, true, "number"],
     )
     const [asked] = await lib.providers.test("a", "claude-haiku-5-5")
-    assert.deepEqual(
-      [asked!.url, asked!.method, asked!.status, asked!.ok],
-      [`${mock.url}/v1/messages`, "POST", 200, true],
-    )
+    assert.deepEqual([asked.url, asked.method, asked.status, asked.ok], [`${mock.url}/v1/messages`, "POST", 200, true])
     // a model the mock does not know: the request went (the trace's URL and status), the answer was no
     const [refused] = await lib.providers.test("a", "claude-none")
-    assert.deepEqual([refused!.url, refused!.method, refused!.ok], [`${mock.url}/v1/messages`, "POST", false])
-    assert.ok(refused!.status >= 400 && typeof refused!.error === "string" && refused!.error.length > 0)
+    assert.deepEqual([refused.url, refused.method, refused.ok], [`${mock.url}/v1/messages`, "POST", false])
+    assert.ok(refused.status >= 400 && typeof refused.error === "string" && refused.error.length > 0)
   } finally {
     await mock.stop()
   }
@@ -731,11 +728,11 @@ for (const skip of [false, true]) {
     on.calls.map((c) => c.via),
     ["decision", undefined],
   )
-  assert.equal((on.calls[0]!.out as { verdict: string }).verdict, "escalate")
-  assert.ok((on.calls[0]!.out as { error?: string }).error)
+  assert.equal((on.calls[0].out as { verdict: string }).verdict, "escalate")
+  assert.ok((on.calls[0].out as { error?: string }).error)
   // the trace is the calls whole: the fast pass's verdict and the LLM check's messages
-  const traced = lib.trace(id, on.node) as Call[]
+  const traced = lib.trace(id, on.node)
   const checked = traced.filter((c) => c.phase === "check")
-  assert.equal((checked[0]!.out as { verdict: string }).verdict, "escalate")
-  assert.ok(checked[1]!.msgs.length > 0)
+  assert.equal((checked[0].out as { verdict: string }).verdict, "escalate")
+  assert.ok(checked[1].msgs.length > 0)
 }

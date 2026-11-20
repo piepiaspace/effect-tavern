@@ -85,8 +85,8 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
     const name = `[${zone}] ${f.id}${f.label ? ` ${f.label}` : ""}${f.when ? ` when ${cond(f.when, labels(card.rules))}` : ""}${"from" in f ? ` (from ${String(f.from)})` : ""}`
     if (!f.text) return { tokens: 0, text: `${name}  (slot, empty)` }
     if (!on.length) return { tokens: 0, text: `${name}  (off)` }
-    const t = tokens(on[0]!.text)
-    return { tokens: t, text: `${name}  ~${t}\n${indent(on[0]!.text)}` }
+    const t = tokens(on[0].text)
+    return { tokens: t, text: `${name}  ~${t}\n${indent(on[0].text)}` }
   }
   const frags = [
     ...(stage === "narrate" ? layers : worldOf(card, R.frame)).map((f) => frag(f.at === "tail" ? "tail" : "frame", f)),
@@ -138,7 +138,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
     return {
       // an always-on entry spends request tokens every turn: it is never part of the quiet remainder
       settled: at === e.layers.length && !w && e.activation !== "always",
-      text: `${e.id}  layer ${at}/${e.layers.length}${e.sections?.length ? `  ${e.sections.length} sections` : ""}${readable.has(`card:${e.id}`) ? "  in the index" : ""}${w ? `  window opens layer ${w} next turn` : ""}\n    ${hook(e.layers[0]!)}${(e.sections ?? []).map((x) => `\n    #${x.id} ${hook(x.text)}`).join("")}`,
+      text: `${e.id}  layer ${at}/${e.layers.length}${e.sections?.length ? `  ${e.sections.length} sections` : ""}${readable.has(`card:${e.id}`) ? "  in the index" : ""}${w ? `  window opens layer ${w} next turn` : ""}\n    ${hook(e.layers[0])}${(e.sections ?? []).map((x) => `\n    #${x.id} ${hook(x.text)}`).join("")}`,
     }
   })
   const settled = o.lore ? 0 : listed.filter((r) => r.settled).length
@@ -192,16 +192,16 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
     stage === "direct"
       ? {
           stage,
-          question: R.asks["direct"]!.text,
+          question: R.asks["direct"].text,
           ledger: [],
           rules: lines(card.guard, R.names, "card"),
-          open: offered.map((d) => ({ id: d.id, text: d.text! })),
+          open: offered.map((d) => ({ id: d.id, text: d.text })),
           events,
         }
       : stage === "lookup"
         ? {
             stage,
-            question: R.asks["lookup"]!.text,
+            question: R.asks["lookup"].text,
             context: frozen.map(lookupContext.told),
             current: currentAt(R.products, world), // session.ts: sections listed for lookup only
             catalog: catalogBlock(lookupContext.catalog("")), // the view the session builds; no input to match
@@ -214,8 +214,8 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
               current: currentAt(R.products, world, {}, true),
               invoked: pinned ? [deliveryText(freeze(pinned))] : [],
               asks,
-              tools: R.asks["record.tools"]!.text,
-              readout: R.asks["record.readout"]!.text,
+              tools: R.asks["record.tools"].text,
+              readout: R.asks["record.readout"].text,
               questions,
               prose: "",
             }
@@ -228,21 +228,21 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
               current: currentAt(R.products, world),
               outcome: events,
               must: [],
-              may: offered.map((d) => ({ id: d.id, text: d.text! })),
-              blocks: { question: R.asks["narrate.blocks"]!.text, asks: penned },
+              may: offered.map((d) => ({ id: d.id, text: d.text })),
+              blocks: { question: R.asks["narrate.blocks"].text, asks: penned },
             }
   const doc = request(
     {
       frame: head(R.frame, { state: context }),
       world: head(worldOf(card, R.frame), { state: context }),
-      role: R.asks["stage.role"]!.text,
-      narrator: R.asks["narrate.role"]!.text,
-      persona: R.asks["narrate.persona"]!.text,
-      contextLead: R.asks["narrate.context"]!.text,
-      directions: R.asks["narrate.turn"]!.text,
+      role: R.asks["stage.role"].text,
+      narrator: R.asks["narrate.role"].text,
+      persona: R.asks["narrate.persona"].text,
+      contextLead: R.asks["narrate.context"].text,
+      directions: R.asks["narrate.turn"].text,
       tail: head(R.tail, { state: context }),
       input: { text: "" },
-      thought: R.asks["input.thought"]!.text,
+      thought: R.asks["input.thought"].text,
     },
     ask,
   )

@@ -67,7 +67,7 @@ const run = (m: Model, o: StageOptions) => Effect.runPromise(runStageTools(m, in
   const out = await run(model, o)
   assert.equal(out.status, "completed")
   if (out.status === "completed") assert.deepEqual(out.value, [1, 2])
-  assert.deepEqual(out.trace[0]!.calls[0]!.result, { ok: true, value: [1] })
+  assert.deepEqual(out.trace[0].calls[0].result, { ok: true, value: [1] })
   assert.equal(requests.length, 1)
   assert.deepEqual(out.usage, { input: 3, output: 2, cacheRead: 1, cacheWrite: 1 })
 }
@@ -83,7 +83,7 @@ const run = (m: Model, o: StageOptions) => Effect.runPromise(runStageTools(m, in
   o.tools = { ...o.tools, add: stageTool(empty, "Add", async () => ({ ok: true, value: ++count })) }
   const effect = runStageTools(model, input, o)
   const first = await Effect.runPromise(effect)
-  assert.equal(first.trace[1]!.calls[0]!.replayed, true)
+  assert.equal(first.trace[1].calls[0].replayed, true)
   assert.equal(count, 1)
   await Effect.runPromise(effect)
   assert.equal(count, 2)
@@ -107,9 +107,9 @@ const run = (m: Model, o: StageOptions) => Effect.runPromise(runStageTools(m, in
   const out = await run(model, o)
   assert.equal(out.status, "completed")
   assert.equal(count, 2) // invalid schema never reached the handler
-  assert.equal(out.trace[0]!.calls[1]!.result.ok, false)
-  assert.match(JSON.stringify(requests[1]!.prompt), /invalid_tool_call/)
-  assert.match(JSON.stringify(requests[2]!.prompt), /negative/)
+  assert.equal(out.trace[0].calls[1].result.ok, false)
+  assert.match(JSON.stringify(requests[1].prompt), /invalid_tool_call/)
+  assert.match(JSON.stringify(requests[2].prompt), /negative/)
 }
 // Completion must be last; wrong ordering never invokes its validator.
 {
@@ -142,7 +142,7 @@ const run = (m: Model, o: StageOptions) => Effect.runPromise(runStageTools(m, in
   const err = await Effect.runPromise(Effect.flip(runStageTools(model, input, o)))
   assert.ok(err instanceof StageError)
   assert.match(err.message, /storage unavailable/)
-  assert.deepEqual(err.trace[0]!.calls[0]!.result, { ok: true, value: "evidence" })
+  assert.deepEqual(err.trace[0].calls[0].result, { ok: true, value: "evidence" })
   assert.equal(finished, false)
 }
 // A repeated ID with changed arguments is a protocol failure, never a second mutation.
@@ -278,8 +278,8 @@ for (const slowTool of [false, true]) {
   ])
   const out = await run(model, options())
   assert.equal(out.status, "completed")
-  assert.match(JSON.stringify(requests[1]!.prompt), /invalid_tool_call/)
-  assert.match(JSON.stringify(requests[2]!.prompt), /invalid_tool_call/)
+  assert.match(JSON.stringify(requests[1].prompt), /invalid_tool_call/)
+  assert.match(JSON.stringify(requests[2].prompt), /invalid_tool_call/)
 }
 // Preserve signed reasoning metadata across tool steps even when historical reasoningBack is disabled.
 {
@@ -293,7 +293,7 @@ for (const slowTool of [false, true]) {
   const o = options()
   o.tools = { ...o.tools, read: stageTool(empty, "Read", async () => ({ ok: true, value: "evidence" })) }
   await run({ ...model, reasoningBack: false }, o)
-  const assistant = requests[1]!.prompt.find((m) => m.role === "assistant")
+  const assistant = requests[1].prompt.find((m) => m.role === "assistant")
   assert.ok(assistant && assistant.role === "assistant")
   assert.ok(
     assistant.content.some((p) => p.type === "reasoning" && p.providerOptions?.anthropic?.signature === "signed"),

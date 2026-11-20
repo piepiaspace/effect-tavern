@@ -5,7 +5,7 @@ import { flush } from "solid-js"
 import config from "../x18n.config.ts"
 import { flip, locale, t } from "../src/i18n.ts"
 
-const find = config.plugins[0]!.placeholders[0]!.find
+const find = config.plugins[0].placeholders[0].find
 assert.deepEqual(
   find("Delete #{id} and the {n|node|nodes} after it?").map((p) => p.name),
   ["id", "n"],

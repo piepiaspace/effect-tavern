@@ -38,7 +38,7 @@ const run = async (fail?: Phase, demand = false) => {
   const model = scripted(demand ? undefined : fail)
   let current = model
   const S = makeSession({ card, rows: () => ({}), model: () => current })
-  const root = S.greet(card.greetings[0]!).node!
+  const root = S.greet(card.greetings[0]).node!
   const events: Event[] = []
   const collect = (s: Stream.Stream<Event, unknown>) =>
     Effect.runPromiseExit(Stream.runForEach(s, (e) => Effect.sync(() => void events.push(e))))
@@ -58,8 +58,8 @@ const stages = (es: readonly Event[]) => es.filter((e) => e.kind === "stage")
 // a landed turn: one call per stage begun, none with a fault, each naming the model
 const ok = await run()
 assert.ok(Exit.isSuccess(ok.exit))
-const ran = stages(ok.events).map((e) => e.phase)
-for (const p of ["lookup", "decide", "narrate", "check", "polish", "record"] as const) assert.ok(ran.includes(p), p)
+const ran = new Set(stages(ok.events).map((e) => e.phase))
+for (const p of ["lookup", "decide", "narrate", "check", "polish", "record"] as const) assert.ok(ran.has(p), p)
 assert.equal(calls(ok.events).length, stages(ok.events).length)
 for (const c of calls(ok.events)) {
   assert.equal(c.fault, undefined)
@@ -83,11 +83,11 @@ for (const [phase, demand] of [
   const failed = calls(events).filter((c) => c.fault)
   assert.equal(failed.length, 1, label)
   const [c] = failed
-  assert.equal(c!.phase, phase, label)
-  assert.equal(c!.fault!.code, phase === "decide" ? "internal" : "upstream", label)
-  assert.equal(c!.model, "mock-model-id", label)
+  assert.equal(c.phase, phase, label)
+  assert.equal(c.fault!.code, phase === "decide" ? "internal" : "upstream", label)
+  assert.equal(c.model, "mock-model-id", label)
   // nothing of the failed stage runs after its call; record's settlement marks its node failed on the way out
-  const after = events.slice(events.indexOf(c!) + 1)
+  const after = events.slice(events.indexOf(c) + 1)
   assert.ok(
     after.every((e) => e.kind === "change"),
     `${label}: ${after.map((e) => e.kind).join(" ")}`,

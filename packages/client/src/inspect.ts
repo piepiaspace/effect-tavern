@@ -110,9 +110,9 @@ export const regions = (msgs: readonly Message[]): Region[] => {
     if (isBreakpoint(m)) chunks.push([])
   }
   if (chunks.at(-1)!.length === 0) chunks.pop() // a request ending on a breakpoint: no input region
-  const names = NAMES[chunks.length] ?? NAMES[4]!
+  const names = NAMES[chunks.length] ?? NAMES[4]
   return chunks.map((c, i) => ({
-    name: names[Math.min(i, names.length - 1)]!,
+    name: names[Math.min(i, names.length - 1)],
     msgs: c,
     chars: c.reduce((n, m) => n + textOf(m).length, 0),
     breakpoint: isBreakpoint(c.at(-1)!),
@@ -256,7 +256,7 @@ const written = (value: unknown, f: Pick<Facts, "label" | "fields">): string[] =
 export const polishPairs = (call: Call): { id: string; before?: string; after: string }[] => {
   const sent = new Map(
     call.msgs.flatMap((m) =>
-      [...textOf(m).matchAll(/<target id="(hit-\d+)"[^>]*>(.*?)<\/target>/g)].map(([, id, s]) => [id!, s!] as const),
+      [...textOf(m).matchAll(/<target id="(hit-\d+)"[^>]*>(.*?)<\/target>/g)].map(([, id, s]) => [id, s] as const),
     ),
   )
   return Object.entries((call.out ?? {}) as Record<string, unknown>).map(([id, after]) => ({
@@ -414,6 +414,6 @@ export const stepOps = (step: StageStep, f: Pick<Facts, "label" | "fields">): Op
     }
     const m = /^(read|replace|patch|insert|remove)_(.+)$/.exec(c.name)
     return [
-      m ? { kind: "op", verb: m[1]!, target: f.label(m[2]!), ...e } : { kind: "op", verb: c.name, target: "", ...e },
+      m ? { kind: "op", verb: m[1], target: f.label(m[2]), ...e } : { kind: "op", verb: c.name, target: "", ...e },
     ]
   })

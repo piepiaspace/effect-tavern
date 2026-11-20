@@ -140,7 +140,7 @@ export const status = (
   const groups = new Map<string | undefined, Element[]>([[undefined, []]])
   for (const f of rules.fields) {
     if (f.hidden) continue
-    const v = state[f.path]!
+    const v = state[f.path]
     groups.set(f.group, [...(groups.get(f.group) ?? []), reading(f, v, v, whens)])
   }
   return [...groups].filter(([, items]) => items.length).map(([group, items]) => (group ? { group, items } : { items }))

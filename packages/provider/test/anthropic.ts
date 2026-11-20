@@ -58,7 +58,7 @@ const m: Model = {
   model: compile(conn, { onTrace: (t) => traces.push(t), traceBody: true }),
   prefill: true,
 }
-const body = (t: Trace) => JSON.parse(t.body!) as any
+const body = (t: Trace) => JSON.parse(t.body!)
 const user = (t: string): Message => ({ role: "user", content: t })
 
 const program = Effect.gen(function* () {
@@ -88,7 +88,7 @@ const program = Effect.gen(function* () {
   // 4. cache: a breakpoint on the head; first call writes, identical second call reads
   const nonce = `Session ${Date.now()}.`
   const filler = Array.from({ length: 400 }, (_, i) => `Rule ${i + 1}: item ${i + 1} stays in order.`).join(" ")
-  const head = breakpoint({ role: "system", content: `${nonce} Follow these rules. ${filler}` } as Message)
+  const head = breakpoint({ role: "system", content: `${nonce} Follow these rules. ${filler}` })
   const once = () => text(m, [head, user("Reply with the word ok.")], { effort: "off", maxOutputTokens: 5 })
   const a = yield* once()
   const b = yield* once()

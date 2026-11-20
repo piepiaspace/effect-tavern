@@ -81,9 +81,9 @@ try {
     assert.deepEqual(reads, ["missing", "entry"])
     assert.equal(traces.length, 2)
     assert.ok(traces.every((t) => t.status === 200))
-    assert.equal(out.trace[0]!.calls[0]!.result.ok, false)
+    assert.equal(out.trace[0].calls[0].result.ok, false)
     assert.deepEqual(
-      out.trace[1]!.calls.map((c) => c.name),
+      out.trace[1].calls.map((c) => c.name),
       ["read", "finish"],
     )
     const [first, second] = traces.map((t) => JSON.parse(t.body!))

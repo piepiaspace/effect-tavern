@@ -302,7 +302,7 @@ export const makeSession = ({
   let policy: Policy | undefined // one read for a synchronous snapshot; never retained across requests
   const policyOf = () => (typeof P === "function" ? P() : P)
 
-  const wording = (id: string) => layer().asks[id]!.text
+  const wording = (id: string) => layer().asks[id].text
   const products = () => layer().products
   /** Narrate blocks under the declared product's cap; a block of an undeclared id is kept as written (the Inspector's). */
   const capped = (bs: Readonly<Record<string, string>>) =>
@@ -746,7 +746,7 @@ export const makeSession = ({
               resident.find((s) => s.resourceId === r.resourceId),
             ),
           )
-      let looked: Disclosure[] = reused ? [...base!.read] : [...automatic, ...selected].flatMap((r) => r.disclosures)
+      const looked: Disclosure[] = reused ? [...base!.read] : [...automatic, ...selected].flatMap((r) => r.disclosures)
       // An edit keeps its original context, but newly selected player tools still need a frozen delivery.
       if (reused) {
         const added = selected.filter((r) => !base!.input.invoke?.includes(r.resourceId))
@@ -809,7 +809,7 @@ export const makeSession = ({
         }
       }
       // decide → settle, looping; the k-th decide sees the first k events
-      let beats: Beat[] = from !== "lookup" ? [...base!.beats] : []
+      const beats: Beat[] = from !== "lookup" ? [...base!.beats] : []
       let end: Turn["end"] = from !== "lookup" ? base!.end : "end"
       if (hasInput && card.rules.actions.length && from === "lookup") {
         for (;;) {

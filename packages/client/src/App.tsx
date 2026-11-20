@@ -333,7 +333,7 @@ const Draft = (props: { d: Draft; phase: Phase | null; error: Failure | null }) 
                 <span
                   class="cursor"
                   role="status"
-                  aria-label={props.phase ? t(waiting[props.phase]!) : t("app.waiting")}
+                  aria-label={props.phase ? t(waiting[props.phase]) : t("app.waiting")}
                 >
                   <Show when={props.phase === "decide"}>
                     <DieFill />
@@ -347,7 +347,7 @@ const Draft = (props: { d: Draft; phase: Phase | null; error: Failure | null }) 
       <Theater products={props.d.products ?? {}} />
       <Show when={done()}>
         <footer class="actions">
-          <span class="record-pill" role="status" aria-label={t(waiting[props.phase!]!)}>
+          <span class="record-pill" role="status" aria-label={t(waiting[props.phase!])}>
             <Record aria-hidden="true" />
             <span class="dots">
               <span />
@@ -486,7 +486,7 @@ const Section = (props: { node: Node; n: number; last: boolean }) => {
       const top = sec.getBoundingClientRect().top - scroller().getBoundingClientRect().top
       follow.checkout = { index: props.n - 1, top: top < head - 2 ? "start" : top }
     }
-    turn.checkout(siblings()[i]!.id)
+    turn.checkout(siblings()[i].id)
   }
   const options = () => props.node.theater.options as readonly string[] | undefined
   // the editor's close: with text, the edit is sent; without (Escape, unchanged, empty), it is only closed

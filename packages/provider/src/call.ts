@@ -17,7 +17,7 @@ import type { Fault } from "./fault.ts"
 import type { Format } from "./url.ts"
 
 export type Message = ModelMessage
-export type Part = TextStreamPart<{}>
+export type Part = TextStreamPart<Record<string, never>>
 
 export type Effort = "off" | "low" | "medium" | "high" | "max"
 export interface CallOptions {
@@ -85,7 +85,7 @@ export const wire = (format: Format, messages: readonly Message[], prefill?: boo
   return messages.map((m, i) =>
     m.role === "system" &&
     (format === "anthropic" ? messages[i - 1]?.role === "assistant" : format === "gemini" && head >= 0 && i > head)
-      ? ({ ...m, role: "user" } as Message)
+      ? { ...m, role: "user" }
       : m,
   )
 }
@@ -189,7 +189,7 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
       ...settings(m.format, o),
     })
     m.exchange?.finish(replyText(result.response.messages))
-    return { value: result.output as S["Type"], usage: usage(result.usage), finishReason: result.finishReason }
+    return { value: result.output, usage: usage(result.usage), finishReason: result.finishReason }
   }).pipe(Effect.mapError((e) => observedError(e, m.exchange)))
 
 export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}) =>

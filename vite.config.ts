@@ -21,6 +21,17 @@ export default defineConfig({
       ...solidV2.rules,
       "anti-slop-effect/throw-in-effect-gen": "error", // a throw in an Effect generator is a defect; fail with a tagged error
       "anti-slop-effect/no-unbounded-retry": "error", // every retry policy stops
+      // built-ins picked from a trial of @cloudflare/oxlint-config (the preset itself is React-shaped)
+      "prefer-const": "error",
+      "preserve-caught-error": "error",
+      "typescript/no-unnecessary-type-assertion": "error",
+      "typescript/no-unsafe-function-type": "error",
+      "typescript/no-empty-object-type": "error",
+      "typescript/switch-exhaustiveness-check": [
+        "error",
+        { allowDefaultCaseForExhaustiveSwitch: true, considerDefaultExhaustiveForUnions: true },
+      ],
+      "unicorn/prefer-set-has": "error",
     },
     overrides: [
       {
@@ -31,6 +42,6 @@ export default defineConfig({
         },
       },
     ],
-    options: { typeAware: true, typeCheck: true },
+    options: { typeAware: true, typeCheck: true, reportUnusedDisableDirectives: "error" },
   },
 })

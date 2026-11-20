@@ -526,7 +526,7 @@ try {
     const after = JSON.parse((await tavern(["doctor", "--json"], offline)).out)
     assert.match(after.checks.find((c: { check: string }) => c.check === "failure").what, /14:07/)
     const earlier = after.checks.find((c: { check: string }) => c.check === "failure")
-    assert.equal(earlier.raw, failedAttempts[0]!.error)
+    assert.equal(earlier.raw, failedAttempts[0].error)
     assert.ok(earlier.file.endsWith("/turns.1.jsonl"))
     assert.ok(!JSON.stringify(after).includes("private request"))
   }

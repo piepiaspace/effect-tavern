@@ -74,7 +74,7 @@ export const layout = <T extends L.Noded>(log: L.Log<T>, line: (n: T) => string,
       place(t, ids, parent, row, lane)
       end[lane] = Math.max(end[lane] ?? -1, row)
       if (ids.length === 1)
-        units(ids[0]!).forEach((u, i) => visit(u, ids[0]!, row + 1, i === 0 ? lane : free(row + 1, lane + 1)))
+        units(ids[0]).forEach((u, i) => visit(u, ids[0], row + 1, i === 0 ? lane : free(row + 1, lane + 1)))
     }
     visit([r.id], null, 0, 0)
   }
@@ -84,7 +84,7 @@ export const layout = <T extends L.Noded>(log: L.Log<T>, line: (n: T) => string,
   else if (draftParent !== undefined) {
     const p = at.get(draftParent)
     if (p) {
-      const t = threads[p.thread]!
+      const t = threads[p.thread]
       const row = p.row + 1
       let lane = p.lane
       while (cells.some((c) => c.thread === p.thread && c.row === row && c.lane === lane)) lane++

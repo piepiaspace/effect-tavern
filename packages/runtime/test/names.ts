@@ -144,7 +144,7 @@ const nodeOf = (es: readonly Event[]) => es.flatMap((e) => (e.kind === "change" 
 
 const S = session()
 // the opening is stored expanded; a hole nothing fills stays in it as written
-const root = S.greet(card.greetings[0]!).node!
+const root = S.greet(card.greetings[0]).node!
 assert.deepEqual(root.turn.reply, [{ type: "text", text: "G 依瑞丝" }])
 const open = session().greet({ text: "G {{char}} {{missing}}" }).node!
 assert.deepEqual(open.turn.reply, [{ type: "text", text: "G 依瑞丝 {{missing}}" }])
@@ -243,7 +243,7 @@ assert.ok(has(doc(third, "narrate"), "HELD 玩家给的."))
     [{ lore: [{ id: "l", layers: ["L."], sections: [{ id: "s", text: "S {{missing}}." }], ...always }] }, "", ""],
   ] as [Partial<Card>, string, string][]) {
     const C = at(c)
-    assert.ok(C.greet(C.greetings[0]!).node, JSON.stringify(c))
+    assert.ok(C.greet(C.greetings[0]).node, JSON.stringify(c))
     const es = await collect(C.act(null, { text: "hi" }))
     assert.ok(nodeOf(es), JSON.stringify(c))
     if (seen) assert.ok(has(doc(es, phase), seen), seen)
@@ -271,9 +271,9 @@ assert.ok(has(doc(third, "narrate"), "HELD 玩家给的."))
   assert.deepEqual(nodeOf(await collect(bare.begin({}))).turn.reply, [{ type: "text", text: "早安，{{user}}" }])
   // a persona, or a local name, fills it
   const worn = at(hello, { ...plain, persona: { name: "林默", text: "P" } })
-  assert.deepEqual(worn.greet(worn.greetings[0]!).node!.turn.reply, [{ type: "text", text: "早安，林默" }])
+  assert.deepEqual(worn.greet(worn.greetings[0]).node!.turn.reply, [{ type: "text", text: "早安，林默" }])
   const local = at(hello, { ...plain, local: { id: "local", name: "local", card: chat.id, names: { user: "阿青" } } })
-  assert.deepEqual(local.greet(local.greetings[0]!).node!.turn.reply, [{ type: "text", text: "早安，阿青" }])
+  assert.deepEqual(local.greet(local.greetings[0]).node!.turn.reply, [{ type: "text", text: "早安，阿青" }])
 
   // a player's row keeps the silent drop: a pack entry and a global theater holding `{{char}}` on a card that names
   // no `char` (an ensemble card) stay out, and the turn runs

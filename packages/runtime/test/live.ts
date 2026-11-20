@@ -113,6 +113,8 @@ const print = (e: Event) => {
     case "stage":
       if (e.phase === "narrate") process.stdout.write("  narrate ┃ ")
       return
+    case "exchange":
+      return
     case "delta":
       if (e.part.type === "text-delta") {
         process.stdout.write(e.part.text.replaceAll("\n", "⏎"))

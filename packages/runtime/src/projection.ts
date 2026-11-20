@@ -61,13 +61,13 @@ export interface ActiveContextView {
 export type InspectorTrace = readonly Extract<Event, { kind: "call" }>[]
 
 export type TimelineEvent =
-  | Exclude<Event, { kind: "call" | "change" }>
+  | Exclude<Event, { kind: "call" | "change" | "exchange" }>
   | ({ kind: "change"; updated?: readonly TimelineNode[] } & Change<TimelineNode>)
 
 const fieldChanges = (n: Node, before: State, rules: Rules) =>
   rules.fields
     .filter((f) => !f.hidden && before[f.path] !== n.state[f.path])
-    .map((f) => ({ path: f.path, was: before[f.path]!, now: n.state[f.path]! }))
+    .map((f) => ({ path: f.path, was: before[f.path], now: n.state[f.path] }))
 
 export const timelineNode = (n: Node, before: State, rules: Rules, products: readonly Product[]): TimelineNode => ({
   id: n.id,

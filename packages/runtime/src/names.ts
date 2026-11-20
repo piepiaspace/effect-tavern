@@ -20,7 +20,7 @@ export type Names = typeof Names.Type
 
 export const HOLE = /\{\{\s*([A-Za-z_]\w*)\s*\}\}/g
 /** The holes in a text: deduplicated, in order of appearance. */
-export const holes = (text: string): string[] => [...new Set(Array.from(text.matchAll(HOLE), (m) => m[1]!))]
+export const holes = (text: string): string[] => [...new Set(Array.from(text.matchAll(HOLE), (m) => m[1]))]
 /** The holes the table has no value for (own keys only: `{{constructor}}` is a hole like any other). */
 export const unfilled = (text: string, names: Names): string[] => holes(text).filter((k) => !Object.hasOwn(names, k))
 /** Who wrote a text: `"card"` for the card's own; anything else (a row's `From`, `"hat"`) is a player's. */
@@ -30,7 +30,7 @@ export type Author = string
 export const expand = (text: string, names: Names, from: Author): string | undefined =>
   from !== "card" && unfilled(text, names).length
     ? undefined
-    : text.replace(HOLE, (hole, k: string) => (Object.hasOwn(names, k) ? names[k]! : hole))
+    : text.replace(HOLE, (hole, k: string) => (Object.hasOwn(names, k) ? names[k] : hole))
 /** Items expanded by their own `from`, or the one given (an item with neither is a player's); one that does not fill is
  *  dropped, one with no text passes as it is. */
 export const fill = <T extends { readonly text?: string; readonly from?: Author }>(

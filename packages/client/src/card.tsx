@@ -112,7 +112,7 @@ export const CardPage = () => {
               : undefined
     if (pos === undefined) return
     e.preventDefault()
-    setAt(items[pos]!.i)
+    setAt(items[pos].i)
     e.currentTarget.children[pos]?.scrollIntoView({ block: "nearest" })
   }
   return (

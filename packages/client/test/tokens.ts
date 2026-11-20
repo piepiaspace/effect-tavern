@@ -10,7 +10,7 @@ const defined = new Set(
 const used = new Map<string, string>()
 for (const f of readdirSync(src)) {
   if (f === "tokens.css" || !/\.(css|tsx?)$/.test(f)) continue
-  for (const m of readFileSync(join(src, f), "utf8").matchAll(/var\((--[a-z0-9-]+)/g)) used.set(m[1]!, f)
+  for (const m of readFileSync(join(src, f), "utf8").matchAll(/var\((--[a-z0-9-]+)/g)) used.set(m[1], f)
 }
 // set at runtime on a popup by @ui-sdk (its styling contract), not design constants
 const runtime = new Set(["--anchor-width", "--available-height"])
@@ -26,7 +26,7 @@ for (const f of readdirSync(src)) {
   // blank comments out, keeping newlines so line numbers hold
   const text = readFileSync(join(src, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, " "))
   for (const m of text.matchAll(ruled)) {
-    if (!literal.test(m[2]!)) continue
+    if (!literal.test(m[2])) continue
     const line = text.slice(0, m.index).split("\n").length
     off.push(`${f}:${line} ${m[0].replace(/\s+/g, " ").trim()}`)
   }
@@ -40,5 +40,5 @@ const css = readdirSync(src)
   .map((f) => readFileSync(join(src, f), "utf8"))
   .join("\n")
 const anchors = new Set([...css.matchAll(/anchor-name:\s*(--[a-z0-9-]+)/g)].map((m) => m[1]))
-const adrift = [...css.matchAll(/position-anchor:\s*(--[a-z0-9-]+)/g)].map((m) => m[1]!).filter((a) => !anchors.has(a))
+const adrift = [...css.matchAll(/position-anchor:\s*(--[a-z0-9-]+)/g)].map((m) => m[1]).filter((a) => !anchors.has(a))
 assert.deepEqual(adrift, [], `position-anchor without an anchor-name: ${adrift.join(", ")}`)

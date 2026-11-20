@@ -96,7 +96,7 @@ export const add = <T extends Noded>(log: Log<T>, node: Omit<T, "id">): Written<
   write(log, { node: { ...node, id: log.next } as T, head: log.next })
 /** The node replaced in place: id, parent and head kept. */
 export const amend = <T extends Noded>(log: Log<T>, id: Id, patch: Partial<Omit<T, "id" | "parent">>): Written<T> =>
-  write(log, { node: { ...get(log, id), ...patch } as T, head: log.head })
+  write(log, { node: { ...get(log, id), ...patch }, head: log.head })
 /** Head moves to the newest leaf under the node (a version's whole follow-up comes back); null empties the line. */
 export const checkout = <T extends Noded>(log: Log<T>, id: Id | null): Written<T> =>
   write(log, { head: id === null ? null : leaf(log, id) })

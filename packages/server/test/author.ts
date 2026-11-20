@@ -59,7 +59,7 @@ try {
   // Normal compile leaves only author-owned blanks; no repair is spent on empty-text.
   fixture(good)
   const result = await lib.author.compile(input)
-  assert.equal(result.candidate.rules.actions[0]!.text, "")
+  assert.equal(result.candidate.rules.actions[0].text, "")
   assert.ok(result.diagnostics.some((d) => d.rule === "empty-text"))
   assert.equal(mock.getRequests().length, 1)
   const privateCard = {
@@ -91,7 +91,7 @@ try {
   ])
     assert.ok(!sent.includes(text))
   fixture({ ...good, actions: [{ id: "bad", text: "model prose" }] })
-  assert.equal((await lib.author.compile(input)).candidate.rules.actions[0]!.text, "")
+  assert.equal((await lib.author.compile(input)).candidate.rules.actions[0].text, "")
   // Structural repair receives diagnostics but never the empty rubric diagnostics.
   mock.reset()
   mock.on({ userMessage: /"previous"/ }, { content: JSON.stringify(good) })
@@ -212,7 +212,7 @@ try {
       out,
       ...remote,
     )
-    assert.equal(decodeCard(Bun.YAML.parse(await Bun.file(out).text())).rules.actions[0]!.text, "")
+    assert.equal(decodeCard(Bun.YAML.parse(await Bun.file(out).text())).rules.actions[0].text, "")
     fixture([{ paragraphs: [0], to: "fiction.new" }])
     assert.equal(
       decodeCard(Bun.YAML.parse(await run("sort", file, source, ...remote))).fiction.at(-1)!.text,

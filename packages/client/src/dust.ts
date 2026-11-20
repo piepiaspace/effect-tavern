@@ -55,7 +55,7 @@ const snapshot = async (el: HTMLElement, dpr: number): Promise<HTMLImageElement>
   // the .md host, a <strong> in a <p>, a list, a table)
   copy(el, clone)
   const src = el.querySelectorAll("*")
-  clone.querySelectorAll("*").forEach((e, i) => copy(src[i]!, e as HTMLElement))
+  clone.querySelectorAll("*").forEach((e, i) => copy(src[i], e as HTMLElement))
   clone.style.width = `${w}px`
   clone.style.visibility = "visible"
   const xhtml = new XMLSerializer().serializeToString(clone)
@@ -137,7 +137,7 @@ export const dust = async (el: HTMLElement): Promise<void> => {
     gl.compileShader(s)
     return s
   }
-  const prog = gl.createProgram()!
+  const prog = gl.createProgram()
   gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS))
   gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS))
   gl.linkProgram(prog)

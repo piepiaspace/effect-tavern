@@ -51,11 +51,11 @@ export const readStage = (o: FakeCall): StageDoc => {
     known: after(facts, "Known: ")?.split("; ").filter(Boolean) ?? [],
     questions: qs.flatMap((l) => {
       const m = /^(\S+): .*\[(.*)\]$/.exec(l)
-      return m ? [{ id: m[1]!, options: m[2]!.split(" | ").map((x) => head(x, ":")) }] : []
+      return m ? [{ id: m[1], options: m[2].split(" | ").map((x) => head(x, ":")) }] : []
     }),
     asked: recordTask.flatMap((l) => /^(\w+): /.exec(l)?.[1] ?? []),
     targets: [...last.matchAll(/<target id="(hit-\d+)"[^>]*>(.*?)<\/target>/g)].map(
-      ([, id, s]) => [id!, s!] as [string, string],
+      ([, id, s]) => [id, s] as [string, string],
     ),
   }
 }
@@ -108,7 +108,7 @@ export const lookupAnswer = (o: FakeCall, query?: string): FakeReply => {
       "value" in result.output &&
       typeof result.output.value === "string"
     ) {
-      const value = JSON.parse(result.output.value as string)
+      const value = JSON.parse(result.output.value)
       return {
         text: "",
         toolCalls: [

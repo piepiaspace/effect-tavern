@@ -50,7 +50,7 @@ try {
     listModels(conn("openai-compatible"), { fetch: page, onTrace: (t) => traces.push(t) }),
     /model listing failed: not JSON/,
   )
-  assert.deepEqual([traces.length, traces[0]!.status, traces[0]!.method], [1, 200, "GET"])
+  assert.deepEqual([traces.length, traces[0].status, traces[0].method], [1, 200, "GET"])
   // a fetch that throws is traced as status 0 (the probe's "nothing answered"), and the error goes on up
   const dead: Fetch = async () => {
     throw Object.assign(new TypeError("Unable to connect"), { code: "ECONNREFUSED" })
@@ -59,7 +59,7 @@ try {
     listModels(conn("openai-compatible"), { fetch: dead, onTrace: (t) => traces.push(t) }),
     (e: Error & { code?: string }) => e.code === "ECONNREFUSED",
   )
-  assert.deepEqual([traces.length, traces[1]!.status, traces[1]!.url], [2, 0, `${mock.url}/v1/models`])
+  assert.deepEqual([traces.length, traces[1].status, traces[1].url], [2, 0, `${mock.url}/v1/models`])
 } finally {
   await mock.stop()
 }

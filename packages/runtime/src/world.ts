@@ -128,7 +128,7 @@ export const recordTransaction = (
         `Create ${p.id}; the host returns entityId. ${p.text}`,
         async ({ data }) => {
           const key = `${p.id}:insert`
-          if (s.max !== undefined && Object.keys((world[p.id] ?? {}) as Row).length >= s.max)
+          if (s.max !== undefined && Object.keys(world[p.id] ?? {}).length >= s.max)
             return fail(key, `${p.id}: collection is full`)
           const entityId = allocate()
           if (!entityId || used.has(entityId) || ["__proto__", "constructor", "prototype"].includes(entityId))
@@ -154,7 +154,7 @@ export const recordTransaction = (
             collection: p.id,
             entityId,
             patch,
-            prev: structuredClone(entities[entityId]!),
+            prev: structuredClone(entities[entityId]),
           })
         },
       )
@@ -169,7 +169,7 @@ export const recordTransaction = (
             kind: "remove_entity",
             collection: p.id,
             entityId,
-            prev: structuredClone(entities[entityId]!),
+            prev: structuredClone(entities[entityId]),
           })
         },
       )

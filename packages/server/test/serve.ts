@@ -60,7 +60,7 @@ const sse = (text: string) =>
     .filter(Boolean)
     .map((block) => {
       const [ev, data] = block.split("\n")
-      return { event: ev!.slice(7), data: JSON.parse(data!.slice(6)) as Event & { message?: string; code?: string } }
+      return { event: ev.slice(7), data: JSON.parse(data.slice(6)) as Event & { message?: string; code?: string } }
     })
 
 {
@@ -112,7 +112,7 @@ const sse = (text: string) =>
       switches: { pov: "third" },
     })
     assert.equal(
-      ((await (await fetch(`${base}/card`)).json()) as { layer: { snippets: { name: string }[] } }).layer.snippets[0]!
+      ((await (await fetch(`${base}/card`)).json()) as { layer: { snippets: { name: string }[] } }).layer.snippets[0]
         .name,
       "Q",
     )
@@ -138,7 +138,7 @@ const sse = (text: string) =>
     assert.equal(node.input.text, "hi")
     assert.deepEqual(node, wired(lib.session(story).timelineNode(node.id))) // the wire carries the projection whole
     assert.equal(lib.session(story).log.head, node.id)
-    const context = (await (await fetch(`${base}/context?node=${node.id}`)).json()) as any
+    const context = await (await fetch(`${base}/context?node=${node.id}`)).json()
     assert.equal(context.worldState.world.scene.place, "P")
     assert.deepEqual(context, wired(lib.session(story).activeContext(node.id)))
     assert.ok(!("world" in node))
@@ -199,12 +199,12 @@ const sse = (text: string) =>
     const rows = (await (await fetch(`${base}/stories`)).json()) as { stories: { id: number; busy: string | null }[] }
     assert.equal(rows.stories.find((s) => s.id === story)!.busy, "narrate")
     const attached = sse(await (await fetch(`${base}/turn`)).text())
-    const snap = attached[0]!.data as unknown as {
+    const snap = attached[0].data as unknown as {
       phase: string
       draft: { parent: null; input: unknown; text: string }
     }
     assert.deepEqual(
-      [attached[0]!.event, snap.phase, snap.draft.parent, snap.draft.input, snap.draft.text.length > 0],
+      [attached[0].event, snap.phase, snap.draft.parent, snap.draft.input, snap.draft.text.length > 0],
       ["attach", "narrate", null, { text: "slow" }, true],
     )
     const finished = (attached.at(-1)!.data as Extract<Event, { kind: "change" }>).node!
@@ -228,22 +228,22 @@ const sse = (text: string) =>
     assert.equal((await post("{")).status, 400)
 
     const err = sse(await (await post({ kind: "setField", node: node.id, effects: [{ path: "x", set: 1 }] })).text())
-    const incident = err[0]!.data as unknown as { code: string; message: string; story: number; at: number }
+    const incident = err[0].data as unknown as { code: string; message: string; story: number; at: number }
     assert.deepEqual(
-      [err.length, err[0]!.event, incident.code, incident.message, incident.story],
+      [err.length, err[0].event, incident.code, incident.message, incident.story],
       [1, "error", "internal", "", story],
     )
     assert.ok(Number.isFinite(incident.at))
     // A parent that does not exist is a defect on the stream, not a new root (it once became its own parent and spun).
     const orphan = sse(await (await post({ kind: "act", parent: 99, input: { text: "hi" } })).text())
-    assert.deepEqual([orphan.length, orphan[0]!.event, orphan[0]!.data.code], [1, "error", "internal"])
+    assert.deepEqual([orphan.length, orphan[0].event, orphan[0].data.code], [1, "error", "internal"])
 
     // a new thread is a greeting root; dropping a root takes its subtree, the trace with it, and ids never come back
     const greeted = sse(await (await post({ kind: "greet" })).text())
     const g = (greeted.at(-1)!.data as Extract<Event, { kind: "change" }>).node!
     assert.deepEqual([g.parent, g.input.text, g.prose], [null, "", "G"])
     const noSuch = sse(await (await post({ kind: "greet", greeting: 3 })).text())
-    assert.deepEqual([noSuch.length, noSuch[0]!.event], [1, "error"])
+    assert.deepEqual([noSuch.length, noSuch[0].event], [1, "error"])
     const tree = [...lib.session(story).log.nodes.keys()]
     // checkout: head to a version's newest leaf (its follow-up comes back); act without a parent lands under head
     const back = sse(await (await post({ kind: "checkout", node: node.id })).text())
@@ -297,13 +297,13 @@ const sse = (text: string) =>
         RuntimeEvent,
         { kind: "call" }
       >[]
-      return JSON.stringify(trace[0]!.msgs)
+      return JSON.stringify(trace[0].msgs)
     }
     assert.ok((await headOf("who am i")).includes(monk.text))
     await persona("monk", { name: monk.name, text: "你是还俗的武僧。" })
     assert.ok((await headOf("and now")).includes("你是还俗的武僧。")) // the edit is in force, same story
     const listed = (await (await fetch(`${base}/stories`)).json()) as { stories: { turns: number }[] }
-    assert.equal(listed.stories[0]!.turns, 1) // two roots (parent: null): the head's line holds one turn
+    assert.equal(listed.stories[0].turns, 1) // two roots (parent: null): the head's line holds one turn
     // Two clients on two stories: each request is on the story its header names, and neither moves the other.
     const on = (id: number) => ({ headers: { "x-tavern-story": String(id) } })
     const sizeOn = async (id: number) =>
@@ -465,7 +465,7 @@ const sse = (text: string) =>
       ["harness", "kit"],
     )
     assert.equal(
-      layerRows[0]!.asks!.some((a) => a.id === "switch.pov.second"),
+      layerRows[0].asks!.some((a) => a.id === "switch.pov.second"),
       true,
     ) // the harness row whole
     await local({ persona: "monk", mounts: ["kit"] })
@@ -482,15 +482,15 @@ const sse = (text: string) =>
     const given = { id: "harness", name: "内置", ...player.harness }
     const edited = {
       ...layerRows[0],
-      asks: layerRows[0]!.asks!.map((a) => (a.id === "lookup" ? { ...a, text: "OVERLAY" } : a)),
+      asks: layerRows[0].asks!.map((a) => (a.id === "lookup" ? { ...a, text: "OVERLAY" } : a)),
       products: [
         { id: "options", on: true, shape: { kind: "table", columns: [] } },
         { role: "theater" as const, id: "town", text: "gossip", shape: { kind: "list" } },
       ],
     }
     const after = (await (await pack(edited, "harness")).json()) as typeof layerRows
-    assert.equal(after[0]!.asks!.find((a) => a.id === "lookup")!.text, "OVERLAY")
-    assert.equal(after[0]!.asks!.length, layerRows[0]!.asks!.length)
+    assert.equal(after[0].asks!.find((a) => a.id === "lookup")!.text, "OVERLAY")
+    assert.equal(after[0].asks!.length, layerRows[0].asks!.length)
     assert.deepEqual(
       shared.packs.list().find((p) => p.id === "harness"),
       {
@@ -639,7 +639,7 @@ const sse = (text: string) =>
     const r = await fetch(base + path, { method, body: v === undefined ? undefined : JSON.stringify(v) })
     const text = await r.text()
     assert.ok(!text.includes(VALUE), `${method} ${path} leaked the key`)
-    return { status: r.status, body: text ? (JSON.parse(text) as any) : undefined }
+    return { status: r.status, body: text ? JSON.parse(text) : undefined }
   }
   try {
     const made = (await call("POST", "/secrets", { name: "Relay key", type: "api_key", value: VALUE })).body

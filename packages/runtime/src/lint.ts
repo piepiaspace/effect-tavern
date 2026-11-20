@@ -98,9 +98,9 @@ const pieces = (f: Pick<Field, "type" | "min" | "max">, cuts: readonly number[])
     const at = !Number.isFinite(a) ? b - 1 : !Number.isFinite(b) ? a + 1 : int ? a + 1 : (a + b) / 2
     if (!int || at < b) out.push({ lo: a, hi: b, closed: false, at })
   }
-  if (lo === -Infinity) gap(lo, pts[0]!)
+  if (lo === -Infinity) gap(lo, pts[0])
   pts.forEach((x, i) => {
-    if (i) gap(pts[i - 1]!, x)
+    if (i) gap(pts[i - 1], x)
     out.push({ lo: x, hi: x, closed: true, at: x })
   })
   if (hi === Infinity) gap(pts.at(-1)!, hi)
@@ -109,7 +109,7 @@ const pieces = (f: Pick<Field, "type" | "min" | "max">, cuts: readonly number[])
 const show = (x: number) => (x === Infinity ? "∞" : x === -Infinity ? "-∞" : String(x))
 /** A run of pieces as an interval: `9..12` for an int field, `[0.5, 1)` for a number. */
 const span = (int: boolean, run: readonly Piece[]) => {
-  const a = run[0]!
+  const a = run[0]
   const b = run.at(-1)!
   if (int) {
     const lo = a.closed || !Number.isFinite(a.lo) ? a.lo : a.lo + 1
@@ -522,11 +522,11 @@ const rules: Rule[] = [
         }))
         const out: Diagnostic[] = []
         for (let i = 0; i < ps.length;) {
-          const kind = ps[i]!.on.length === 0 ? "gap" : ps[i]!.on.length > 1 ? "overlap" : undefined
+          const kind = ps[i].on.length === 0 ? "gap" : ps[i].on.length > 1 ? "overlap" : undefined
           let j = i + 1
           while (
             j < ps.length &&
-            (ps[j]!.on.length === 0 ? "gap" : ps[j]!.on.length > 1 ? "overlap" : undefined) === kind
+            (ps[j].on.length === 0 ? "gap" : ps[j].on.length > 1 ? "overlap" : undefined) === kind
           )
             j++
           if (kind) {

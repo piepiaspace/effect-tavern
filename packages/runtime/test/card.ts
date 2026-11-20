@@ -314,7 +314,7 @@ assert.deepEqual(
 )
 assert.equal(facets({ ...banxing, input: "note" }).mode, "note")
 assert.equal(
-  facets({ ...full, rules: { ...full.rules, fields: [{ ...full.rules.fields[0]!, hidden: true }] } }).fields,
+  facets({ ...full, rules: { ...full.rules, fields: [{ ...full.rules.fields[0], hidden: true }] } }).fields,
   false,
 ) // a hidden switch is not state the player sees
 

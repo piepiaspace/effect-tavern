@@ -114,22 +114,19 @@ assert.deepEqual(
   ["Input"],
 )
 // parts content counts its text
-assert.equal(
-  regions([{ role: "assistant", content: [{ type: "text", text: "abc" }] } as Call["msgs"][number]])[0]!.chars,
-  3,
-)
+assert.equal(regions([{ role: "assistant", content: [{ type: "text", text: "abc" }] }])[0].chars, 3)
 
 // search: literal, case-insensitive
 assert.equal(count("axb", "a.b"), 0)
 // a row's hits: its request and its prose answer (an object answer is not searched); none for an empty query
 const [hit] = rows([{ ...call("narrate"), msgs: [usr("a.b"), sys("A.B")], out: "and a.b" }], { end: "end" })
-assert.equal(rowHits(hit!, "a.b"), 3)
-assert.equal(rowHits(hit!, ""), 0)
-assert.equal(rowHits(rows([call("record")], { end: "end" })[0]!, "a.b"), 0)
+assert.equal(rowHits(hit, "a.b"), 3)
+assert.equal(rowHits(hit, ""), 0)
+assert.equal(rowHits(rows([call("record")], { end: "end" })[0], "a.b"), 0)
 // the opened row lands on the request when the query hits there, else on the result (the prose's marks)
-assert.equal(defaultView(hit!, "a.b"), "prompt")
-assert.equal(defaultView(hit!, "and"), "result")
-assert.equal(defaultView(hit!, ""), "result")
+assert.equal(defaultView(hit, "a.b"), "prompt")
+assert.equal(defaultView(hit, "and"), "result")
+assert.equal(defaultView(hit, ""), "result")
 
 assert.deepEqual(totals([call("narrate", 5), call("record", 2)]), {
   calls: 2,
@@ -157,7 +154,7 @@ const cancelled = nativeTrace({
   ],
 })!
 assert.equal(cancelled.status, "cancelled")
-assert.equal(cancelled.steps[0]!.calls[0]!.toolCallId, "t1")
+assert.equal(cancelled.steps[0].calls[0].toolCallId, "t1")
 assert.equal(cancelled.budget!.maxSteps, 3)
 assert.equal(nativeTrace("text"), undefined)
 assert.deepEqual(nativeTrace({ status: "completed", trace: [] })!.steps, [])
@@ -171,7 +168,7 @@ const facts: Facts = {
   fields: (a) => (a["affinity"] ? ["好感度"] : []),
 }
 const row = (c: Partial<Call>, end: "end" | "stopped" = "end") =>
-  rows([{ ...call(c.phase ?? "narrate"), ...c }], { end })[0]!
+  rows([{ ...call(c.phase ?? "narrate"), ...c }], { end })[0]
 // the ordinal only when a stage ran twice; a pre-check counts apart from its LLM call, lookup's apart from check's
 assert.deepEqual(
   ordinals(
@@ -359,5 +356,5 @@ assert.deepEqual(stepOps(step([]) as never, facts), [])
     ["check", "ok"],
     ["record", "failed"],
   ])
-  assert.deepEqual(digest(rows([failed], { end: "end" })[0]!, 0, facts).pills, [{ word: "failed", tone: "bad" }])
+  assert.deepEqual(digest(rows([failed], { end: "end" })[0], 0, facts).pills, [{ word: "failed", tone: "bad" }])
 }

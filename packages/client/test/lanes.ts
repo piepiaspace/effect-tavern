@@ -25,7 +25,7 @@ assert.deepEqual(
     [[3], 3, 0],
   ],
 )
-assert.deepEqual([l.threads.length, l.threads[0]!.rows, l.threads[0]!.lanes], [1, 4, 1])
+assert.deepEqual([l.threads.length, l.threads[0].rows, l.threads[0].lanes], [1, 4, 1])
 
 // the sample tree of docs/timeline-prototype-brief.md: under 2, 3 and 5 have subtrees (branches), 8 and 9 share
 // 3's line without one (a cluster); under 3, 4 and 10 share a line (a cluster), 11 revised it (a branch)

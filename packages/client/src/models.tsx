@@ -4,7 +4,6 @@
 import type { Effort } from "@effect-tavern/provider/src/call.ts"
 import { DEFAULTS, type Capabilities } from "@effect-tavern/provider/src/capabilities.ts"
 import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
-import type { Format } from "@effect-tavern/provider/src/url.ts"
 import { createSignal, For, Show, onSettled } from "solid-js"
 import { read } from "./bridge.ts"
 import { FORMAT, Menu, Modal, type Opener, Switch, dialogHandle } from "./controls.tsx"
@@ -89,7 +88,7 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
                       { value: "", label: t("models.defaultFormat", { format: FORMAT[c().x.defaultFormat] }) },
                       ...FORMATS.map((f) => ({ value: f, label: FORMAT[f] })),
                     ]}
-                    onPick={(v) => change((m) => without(m, "format", (v || undefined) as Format | undefined))}
+                    onPick={(v) => change((m) => without(m, "format", v || undefined))}
                   />
                 </div>
               </div>
@@ -175,7 +174,7 @@ const Effort = (props: { value: Effort | undefined; onPick: (v: Effort | undefin
     <div class="field-group">
       <div class="label-row">
         <span class="label">{t("models.effort")}</span>
-        <span class="tag mono">{at() >= 0 ? t(EFFORTS[at()]![1]) : t("common.default")}</span>
+        <span class="tag mono">{at() >= 0 ? t(EFFORTS[at()][1]) : t("common.default")}</span>
       </div>
       <div class="effort" role="radiogroup" aria-label={t("models.effort")}>
         <div class="rail">

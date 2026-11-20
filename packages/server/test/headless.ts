@@ -48,7 +48,7 @@ const sse = (text: string) =>
   text
     .trim()
     .split("\n\n")
-    .map((block) => JSON.parse(block.split("\ndata: ")[1]!))
+    .map((block) => JSON.parse(block.split("\ndata: ")[1]))
 try {
   assert.equal((await http(remote, "/bun:info")).status, 404)
   const invalid = { kind: "act", input: { text: 42 } }
@@ -84,7 +84,7 @@ try {
   put({
     ...card,
     title: "Installed",
-    rules: { ...card.rules, fields: [{ ...card.rules.fields[0]!, initial: 7 }] },
+    rules: { ...card.rules, fields: [{ ...card.rules.fields[0], initial: 7 }] },
   })
   const installed = lib.session(direct)
   assert.equal(installed.meta.title, "Installed")
@@ -121,7 +121,7 @@ try {
   put({
     ...card,
     title: "Next",
-    rules: { ...card.rules, fields: [{ ...card.rules.fields[0]!, initial: 9 }] },
+    rules: { ...card.rules, fields: [{ ...card.rules.fields[0], initial: 9 }] },
   })
   assert.equal(lib.session(direct).meta.title, "Installed") // a running turn retains its definition
   assert.equal(lib.session(remote).meta.title, "Next") // an idle sibling reloads immediately

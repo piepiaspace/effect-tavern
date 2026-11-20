@@ -146,9 +146,7 @@ export const Composer = () => {
     else turn.act()
     return true
   }
-  // oxlint-disable-next-line solid/reactivity -- submit runs inside the keydown handler, where its reads are current
   const ime = imeController(submit)
-  // oxlint-disable-next-line solid/reactivity -- the note box's own composition state, the same submit
   const noteIme = imeController(submit)
   onSettled(() => () => {
     ime.dispose()

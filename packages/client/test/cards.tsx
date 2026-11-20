@@ -27,7 +27,7 @@ const index = () => [
   { id: "alpha", title: "甲", file: "cards/alpha.yaml" }, // an id the shelf holds from somewhere else
 ]
 const view = (): DepotView => ({
-  ...libs[0]!,
+  ...libs[0],
   entries: index().map((e) => {
     const o = shelf.find((c) => c.id === e.id)?.origin
     const ours = o?.via === "depot" && o.depot === LOCATION

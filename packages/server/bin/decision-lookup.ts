@@ -103,7 +103,7 @@ const ask = async (
   card: Card,
 ) => {
   const R = resolve(card, rows)
-  const q = lookupQuestions({ scene: scened ? scene : "", input, units, wording: (id) => R.asks[id]!.text })
+  const q = lookupQuestions({ scene: scened ? scene : "", input, units, wording: (id) => R.asks[id].text })
   const pool = q.asked
   const state = q.state
   const questions = Object.entries(q.questions)
@@ -203,7 +203,7 @@ for (const s of cardFile ? [] : all("select id, card, head, next from story orde
     const pool = session.readable(last.id)
     if (!pool.length) continue
     cased.add(card.id)
-    for (const c of CASES[card.id]!)
+    for (const c of CASES[card.id])
       await ask(
         `${card.id} ${s["id"] as number} case`,
         pool,

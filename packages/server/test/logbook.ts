@@ -214,7 +214,7 @@ const playAll = async (
   const filed: [number, number][] = []
   for (const name of names) {
     now = T0
-    const s = scripts[name]!
+    const s = scripts[name]
     const wrapped = await run(
       logbook.turn(3, card, (node, calls) => void filed.push([node, calls.length]))(s.action, streamOf(s)),
     )
@@ -386,7 +386,7 @@ for (const columns of [48, 100]) {
   logbook.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev" })
   let mid: string | undefined
   now = T0
-  const s = scripts["landed"]!
+  const s = scripts["landed"]
   await run(
     logbook.turn(3, card, () => {})(
       s.action,
@@ -630,7 +630,7 @@ for (const columns of [48, 100]) {
   const at = rows.findIndex((_, i) => kept.every((k, j) => rows[i + j] === k))
   assert.ok(at > 0)
   assert.equal(rows[at + kept.length], "  </setting>")
-  assert.match(rows[at + kept.length + 1]!, /^ {2}╌╌ 断点 ╌+$/)
+  assert.match(rows[at + kept.length + 1], /^ {2}╌╌ 断点 ╌+$/)
   // a call's #n counts across the turn (session.ts `emitting`): narrate #1, the settlement #2, its repair #3
   assert.ok(rows.some((r) => r.startsWith("→ 伴星 #1 · narrate · #1")))
   assert.ok(rows.some((r) => r.startsWith("→ 伴星 #1 · record · #2")))
@@ -638,10 +638,10 @@ for (const columns of [48, 100]) {
   // every summary names what ran, in pipeline order; a stage that called twice is counted
   const said = summaries(rows)
   assert.equal(said.length, 4)
-  assert.match(said[0]!, /✓ 伴星 #1 ─ narrate record · /)
-  assert.match(said[1]!, /✓ 理 · 竹林夜谈 ─ narrate record ×2 · /)
-  assert.match(said[2]!, /✗ 雾港 · 第一夜 ─ narrate 失败 · /)
-  assert.match(said[3]!, /✗ 伴星 #1 ─ narrate 失败 · /)
+  assert.match(said[0], /✓ 伴星 #1 ─ narrate record · /)
+  assert.match(said[1], /✓ 理 · 竹林夜谈 ─ narrate record ×2 · /)
+  assert.match(said[2], /✗ 雾港 · 第一夜 ─ narrate 失败 · /)
+  assert.match(said[3], /✗ 伴星 #1 ─ narrate 失败 · /)
   const tty = memoryScreen({ columns, color: true, live: true })
   await play(tty)
   assert.ok(tty.shown().includes("\x1b[7m system \x1b[27m"))
@@ -728,7 +728,7 @@ for (const columns of [48, 100]) {
   )
   const said = summaries(screen.shown())
   assert.equal(said.length, 1)
-  assert.match(said[0]!, /─ narrate record ×2 · check 预检 转交 · record 超出预算 · [\d.]+s ↑2,200 ↓30 ↻1,100 ─/)
+  assert.match(said[0], /─ narrate record ×2 · check 预检 转交 · record 超出预算 · [\d.]+s ↑2,200 ↓30 ↻1,100 ─/)
 }
 
 // ───────── a failed stage that is the last one listed takes its pill in place ─────────
@@ -741,7 +741,7 @@ for (const columns of [48, 100]) {
         99,
         p,
       ),
-    )[0]!
+    )[0]
   const c = (phase: Phase) => call(phase, 10, u(1, 1)).e as Call
   assert.match(said([c("narrate"), c("record")], "record"), /─ narrate record 失败 · /)
   assert.match(said([c("record"), c("record")], "record"), /─ record ×2 失败 · /)
@@ -800,7 +800,7 @@ for (const columns of [48, 100]) {
   const book = openLogbook({ screen, clock })
   book.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev" })
   now = T0
-  await run(book.turn(3, card, () => {})(scripts["landed"]!.action, streamOf(scripts["landed"]!)))
+  await run(book.turn(3, card, () => {})(scripts["landed"].action, streamOf(scripts["landed"])))
   assert.ok(raw.length > 0)
   assert.ok(!raw.includes("\x1b"), JSON.stringify(raw))
   // with colour the same TTY redraws its live row

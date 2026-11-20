@@ -208,7 +208,7 @@ try {
         if (/event: delta/.test(text) && at.length === 0) at.push(performance.now() - t0)
       }
       const end = performance.now() - t0
-      assert.ok(at[0]! < end - 100, `${name}: the first delta came ${at[0]} ms in, the end at ${end} ms`)
+      assert.ok(at[0] < end - 100, `${name}: the first delta came ${at[0]} ms in, the end at ${end} ms`)
       // gone after the first piece: the turn goes on to its node
       const before = lib.session(story).timeline().nodes.length
       const left = (await post(send, "slow")).body!.getReader()

@@ -40,7 +40,7 @@ const { artifact } = await captureArtifact(
     ] as const)
       assert.deepEqual(backspaceInvocation(two, start, end, composing).invocations, [a, b])
     const catalog = [a, b].map((i) => ({ ...i, available: true, category: "guide", summary: "写作技巧" }))
-    const locked = { ...catalog[0]!, resourceId: "card:locked", available: false }
+    const locked = { ...catalog[0], resourceId: "card:locked", available: false }
     assert.deepEqual(availableInvocations([...catalog, locked], [a]), [catalog[1]])
     registry.set(card, { input: "act" } as CardView)
     registry.set(log, L.of())

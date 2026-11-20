@@ -23,7 +23,7 @@ assert.deepEqual(wire("openai-compatible", seq), seq)
 
 // content and the breakpoint marker ride through the role change
 for (const f of ["anthropic", "gemini"] as const) {
-  const last = wire(f, seq)[4]!
+  const last = wire(f, seq)[4]
   assert.equal(last.content, "lore")
   assert.deepEqual(last.providerOptions, { anthropic: { cacheControl: { type: "ephemeral" } } })
 }

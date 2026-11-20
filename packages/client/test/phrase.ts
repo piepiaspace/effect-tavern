@@ -12,7 +12,7 @@ assert.equal(
 assert.deepEqual([cond({ any: [] }, by), cond({ all: [] }, by)], ["never", "always"]) // a lore entry that never unlocks
 assert.deepEqual([cond({ path: "恋人", is: true }, by), cond({ path: "恋人", is: false }, by)], ["恋人", "not 恋人"])
 assert.deepEqual(
-  full.rules.actions[0]!.hit!.map((e) => effect(e, by)),
+  full.rules.actions[0].hit!.map((e) => effect(e, by)),
   ["敌手 −10", "event strike:hit"],
 )
 assert.deepEqual(

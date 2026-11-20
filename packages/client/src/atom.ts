@@ -37,9 +37,10 @@ export function make<A>(arg: A | ((get: <B>(a: Atom<B>) => B) => A)): Atom<A> {
         { pipe },
       )
     }
+    // oxlint-disable-next-line typescript/no-unsafe-function-type -- createSignal's value overload is typed Exclude<T, Function>
     const [get, set] = createSignal(arg as Exclude<A, Function>)
     return Object.assign(get as Accessor<A>, { pipe, set: (f: (a: A) => A) => void set(f as never) })
-  })!
+  })
 }
 
 /** Memos already live for the page under the one root. */
@@ -76,5 +77,5 @@ export const registry = {
         createEffect(a, (v) => f(v), { defer: true })
         return dispose
       }),
-    )!,
+    ),
 }

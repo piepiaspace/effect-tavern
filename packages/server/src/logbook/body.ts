@@ -152,7 +152,7 @@ const openai = (b: J): Reading => {
       r.put(isObj(item) && str(item["role"]) ? item["role"] : "?", json(item))
       continue
     }
-    const m = item as J
+    const m = item
     const who = m["role"] === "tool" ? (names.get(m["tool_call_id"]) ?? "tool") : (m["role"] as string)
     const content = m["content"]
     if (str(content)) r.put(who, content)

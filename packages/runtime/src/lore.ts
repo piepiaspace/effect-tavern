@@ -39,7 +39,7 @@ export const key = (d: Disclosure) => `${d.id}#${d.layer}`
 /** An entry's line in the lookup index: the first sentence of its first layer. A CJK end or `!?` ends one where it
  *  stands; an ASCII period only before whitespace or the end, so "D.E.E.P" and "E.H.的档案" stay whole.
  *  ponytail: "Dr. Smith" still cuts at "Dr."; add an abbreviation list when a card's hooks need one. */
-export const hook = (layer: string) => layer.split(/(?<=[。！？!?])\s*|(?<=\.)(?:\s+|$)/)[0]!
+export const hook = (layer: string) => layer.split(/(?<=[。！？!?])\s*|(?<=\.)(?:\s+|$)/)[0]
 
 export const makeLore = <S, C>(entries: readonly Entry<S, C>[]) => {
   const byId = new Map(entries.map((e) => [e.id, e]))

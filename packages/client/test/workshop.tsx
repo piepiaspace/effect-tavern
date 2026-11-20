@@ -75,7 +75,7 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
   }
   const whole = /^\/cards\/([^/]+)\/whole$/.exec(path)
   if (whole) {
-    const id = decodeURIComponent(whole[1]!)
+    const id = decodeURIComponent(whole[1])
     if (!held.has(id)) return Response.json({ error: `no card ${id}` }, { status: 404 })
     if (method === "GET") return Response.json({ card: held.get(id), rev: revOf(id) })
     const { card, rev } = JSON.parse(body) as { card: Card; rev: string }
@@ -100,7 +100,7 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
   }
   // a card's view, the listing and the rest: nothing these pages draw
   const view = /^\/cards\/([^/]+)$/.exec(path)
-  if (view) return Response.json({ id: decodeURIComponent(view[1]!), title: "", greetings: [], local: {} })
+  if (view) return Response.json({ id: decodeURIComponent(view[1]), title: "", greetings: [], local: {} })
   return Response.json(path === "/stories" ? { current: null, stories: [] } : [])
 })
 
@@ -288,7 +288,7 @@ const run = async () => {
   await settled()
   check(
     JSON.stringify(last()) ===
-      JSON.stringify({ ...made, fiction: [{ ...made.fiction[0]!, text: "盐道上的镇子，雨季。" }, made.fiction[1]!] }),
+      JSON.stringify({ ...made, fiction: [{ ...made.fiction[0], text: "盐道上的镇子，雨季。" }, made.fiction[1]] }),
     `the rest of the card is carried through: ${JSON.stringify(last())}`,
   )
   // the card changed elsewhere while it is open here (an install from a terminal): this page's next save is refused,
@@ -321,7 +321,7 @@ const run = async () => {
   const sent = requests.length
   key("去游玩")?.click()
   await until(() => requests.length > sent) // its save is out, held until `first` resolves
-  const summary = fields("一句话简介")[0]!
+  const summary = fields("一句话简介")[0]
   summary.value = "后来的一行"
   summary.dispatchEvent(new InputEvent("input", { bubbles: true }))
   // The first write succeeds; another editor changes the revision before the follow-up write.

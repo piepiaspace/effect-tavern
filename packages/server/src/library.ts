@@ -101,7 +101,7 @@ export class NoModel extends Error {
 }
 
 /** The rows of the `pack` table that are ranks, not packs. */
-const RESERVED = ["harness"]
+const RESERVED = new Set(["harness"])
 
 export const library = ({
   data,
@@ -262,7 +262,7 @@ export const library = ({
     const rows = data.packs.list()
     return {
       harness: overlayIn(rows),
-      packs: rows.filter((p) => !RESERVED.includes(p.id)),
+      packs: rows.filter((p) => !RESERVED.has(p.id)),
       local: data.locals.get(card),
       persona,
     }
@@ -472,7 +472,7 @@ export const library = ({
       /** `[harness, ...packs]`, one row template: the harness row whole, the code's defaults under its overlay. */
       list: (): Layer[] => {
         const rows = data.packs.list()
-        return [overlaid("act", overlayIn(rows)), ...rows.filter((p) => !RESERVED.includes(p.id))]
+        return [overlaid("act", overlayIn(rows)), ...rows.filter((p) => !RESERVED.has(p.id))]
       },
       /** The harness keeps only what differs from the code's defaults, nothing at all when nothing does: a left-out item is
        *  its default again. A pack's id may not be a rank's name: `from` says which row an item came from; nor `base`, which
@@ -549,7 +549,7 @@ export const library = ({
         got.forEach((r, i) => {
           if (r.status !== "fulfilled") return
           for (const m of r.value) {
-            const formats = m.formats ?? groups[i]!.formats
+            const formats = m.formats ?? groups[i].formats
             merged.set(m.id, [...new Set([...(merged.get(m.id) ?? []), ...formats])])
           }
         })

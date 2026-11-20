@@ -10,7 +10,7 @@ const built = await Bun.build({
   format: "iife",
 })
 assert.ok(built.success, built.logs.map((log) => log.message).join("\n"))
-const browser = runInNewContext(`${await built.outputs[0]!.text()}; authoring`, {
+const browser = runInNewContext(`${await built.outputs[0].text()}; authoring`, {
   TextEncoder,
   TextDecoder,
   structuredClone,

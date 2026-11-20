@@ -87,12 +87,12 @@ const none = { events: [], before: [] }
   const a = add(add([], { answers: { warmth: "warm" } }), { answers: { warmth: "warm" } })
   const b = add(a, { answers: { warmth: "cold" } })
   assert.equal(D.at(b).state.bond, 3)
-  assert.equal(D.at(b).gated().lore.li!.floor, 2)
+  assert.equal(D.at(b).gated().lore.li.floor, 2)
   assert.ok(
     D.at(b)
       .resources()
       .find((r) => r.resourceId === "card:li")!
-      .text.includes(full.lore[0]!.layers[1]!),
+      .text.includes(full.lore[0].layers[1]),
   )
 }
 
@@ -233,16 +233,16 @@ const none = { events: [], before: [] }
   D.at(path).context()
   assert.equal(folds, firstFolds, "reads of the same world path must reuse settlements")
   const amended = {
-    ...parent[0]!,
+    ...parent[0],
     changes: [{ kind: "patch_record" as const, product: "scene", patch: { open: false }, prev: {} }],
   }
-  assert.throws(() => D.at([amended, path[1]!]).state, /not an available action/)
+  assert.throws(() => D.at([amended, path[1]]).state, /not an available action/)
   assert.deepEqual(D.at(path).context().world, { scene: { open: true } }) // original branch still correct
   const adjusted = {
-    ...path[1]!,
+    ...path[1],
     changes: [{ kind: "patch_record" as const, product: "scene", patch: { open: false }, prev: {} }],
   }
-  assert.deepEqual(D.at([parent[0]!, adjusted]).context().world, { scene: { open: false } })
+  assert.deepEqual(D.at([parent[0], adjusted]).context().world, { scene: { open: false } })
   assert.deepEqual(D.at(path).context().world, { scene: { open: true } })
 }
 

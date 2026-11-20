@@ -87,7 +87,7 @@ export const lastFailure = async (
     const lines = text.split("\n").filter(Boolean)
     for (let i = lines.length - 1; i >= 0; i--) {
       try {
-        const e = JSON.parse(lines[i]!) as {
+        const e = JSON.parse(lines[i]) as {
           at?: string
           story?: number
           end?: string
@@ -317,7 +317,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
     add({
       check: "tools",
       mark: missing.length ? "warn" : "ok",
-      what: missing.length ? w.noOpener(tools[0]!.name) : w.opener(tools[0]!.name),
+      what: missing.length ? w.noOpener(tools[0].name) : w.opener(tools[0].name),
       ...(missing.length && { next: w.noOpenerNext }),
       facts: listed,
     })
@@ -350,13 +350,13 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
   const last = await lastFailure(c.data)
   if (!last) add({ check: "failure", mark: "ok", what: w.noFailure })
   else {
-    const t = troubleOf({ ...last.fault, message: last.fault.message ?? "" }, c.lang as Lang)
+    const t = troubleOf({ ...last.fault, message: last.fault.message ?? "" }, c.lang)
     add({
       check: "failure",
       mark: last.later ? "ok" : "warn",
       what: last.later
         ? w.failedEarlier(when(last.at))
-        : w.failedLast(when(last.at), storyName(c.data, last.story, c.lang as Lang), t.what),
+        : w.failedLast(when(last.at), storyName(c.data, last.story, c.lang), t.what),
       ...(t.raw && { raw: t.raw }),
       ...(!last.later && t.next?.[0] && { next: t.next[0] }),
       file: show(last.file),

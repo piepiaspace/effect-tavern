@@ -62,7 +62,7 @@ export const manuscriptOf = (card: Card): Manuscript => ({
   openings: card.greetings.filter(shown.opening).map((g) => ({ key: key(), text: g.text ?? "", from: g })),
   entries: card.lore
     .filter(shown.entry)
-    .map((e) => ({ key: key(), id: e.id, name: nameOf(e.id), text: e.layers[0]!, from: e })),
+    .map((e) => ({ key: key(), id: e.id, name: nameOf(e.id), text: e.layers[0], from: e })),
 })
 
 /** The first of `stem-1`, `stem-2`, … no one holds. */

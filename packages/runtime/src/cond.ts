@@ -21,8 +21,8 @@ export const Cond: Schema.Codec<Cond> = Schema.Union([
 export type State = Record<string, unknown>
 export const lookup = (s: State, path: string) => {
   // Bare paths address rule fields; world and lore are explicit namespaces.
-  if (s.fields && Object.hasOwn(s.fields as State, path)) return (s.fields as State)[path]
-  if (path.startsWith("fields.") && s.fields && Object.hasOwn(s.fields as State, path.slice(7)))
+  if (s.fields && Object.hasOwn(s.fields, path)) return (s.fields as State)[path]
+  if (path.startsWith("fields.") && s.fields && Object.hasOwn(s.fields, path.slice(7)))
     return (s.fields as State)[path.slice(7)]
   const v = path in s ? s[path] : path.split(".").reduce<unknown>((o, k) => (o as State | undefined)?.[k], s)
   if (v === undefined && path.startsWith("world.")) return undefined

@@ -102,7 +102,7 @@ export const remove = (id: number): Promise<void> => {
   const i = s.list.findIndex((t) => t.id === id)
   if (i < 0) return last
   if (s.list.length === 1) {
-    const only = s.list[0]!
+    const only = s.list[0]
     if (isHome(only) && only.page === "home") return last
     const fresh = homeTab()
     registry.set(tabs, { list: [fresh], active: fresh.id })
@@ -114,7 +114,7 @@ export const remove = (id: number): Promise<void> => {
     return last
   }
   // the closed tab's scroll goes with it
-  registry.set(tabs, { list, active: (s.list[i + 1] ?? s.list[i - 1])!.id })
+  registry.set(tabs, { list, active: (s.list[i + 1] ?? s.list[i - 1]).id })
   return navigate((current) => show(now().active, current))
 }
 /** Deleted stories: a tab on one stays, on its card's page with no story and home under it. */
@@ -203,7 +203,7 @@ export const restore = (
       } else return
       if (i === v.active) active = id
     })
-  return list.length ? { list, active: active ?? list[0]!.id } : null
+  return list.length ? { list, active: active ?? list[0].id } : null
 }
 /** The remembered list, when there is one the device still holds and the library still names. */
 export const remembered = (): Tabs | null => {

@@ -124,8 +124,8 @@ assert.deepEqual(setFragmentText(g1, 1, " L2 ").fragments![1], {
 })
 assert.deepEqual(setFragmentText(g1, 0, "").fragments, g0.fragments)
 assert.deepEqual(setFragmentAt(g1, 0, "head").fragments![0], { id: "req-1", text: "白描" })
-assert.equal(setFragmentAt(g1, 1, "tail").fragments![1]!.at, "tail")
-assert.deepEqual([atOf(g1.fragments![0]!), atOf(g1.fragments![1]!)], ["tail", "head"])
+assert.equal(setFragmentAt(g1, 1, "tail").fragments![1].at, "tail")
+assert.deepEqual([atOf(g1.fragments![0]), atOf(g1.fragments![1])], ["tail", "head"])
 assert.deepEqual(removeFragment(g1, 0).fragments, g0.fragments)
 
 // the quick inputs: a key or a snippet round-trips through the editor's draft

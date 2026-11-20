@@ -313,7 +313,7 @@ const run = async () => {
   check(!document.querySelector("#snippets"), "and it stays closed")
   tap(plus)
   await quiet()
-  ;[...document.querySelectorAll<HTMLElement>('#snippets [data-slot="command-item"]')][0]!.click()
+  ;[...document.querySelectorAll<HTMLElement>('#snippets [data-slot="command-item"]')][0].click()
   await quiet()
   check(
     registry.get(composition).text === "继续" && !document.querySelector("#snippets"),

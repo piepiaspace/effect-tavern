@@ -122,7 +122,7 @@ try {
       seed,
       steps: [{ text: "try", replies: { decide: [{ next: "win" }] } }],
     })
-    assert.equal(rolled[0]!.state.hp, rollOf(seed + 1) < 0.5 ? 2 : 0)
+    assert.equal(rolled[0].state.hp, rollOf(seed + 1) < 0.5 ? 2 : 0)
   }
   assert.throws(
     () => view({ ...card, lore: card.lore.map((e) => ({ ...e, access: undefined })) }, {}, { pin: "secret" }),
@@ -227,9 +227,9 @@ const wiring = {
   bindings: [{ to: "fiction.setting.when", when: { path: "bond", op: "gte" as const, value: 1 } }],
 }
 const candidate = applyCompile(base, wiring)
-assert.equal(candidate.fiction[0]!.text, base.fiction[0]!.text)
-assert.equal(candidate.rules.actions[0]!.text, "")
-assert.equal(candidate.rules.readouts![0]!.options[0]!.text, "")
+assert.equal(candidate.fiction[0].text, base.fiction[0].text)
+assert.equal(candidate.rules.actions[0].text, "")
+assert.equal(candidate.rules.readouts![0].options[0].text, "")
 assert.ok(
   checkCard(Bun.YAML.stringify(candidate))
     .diagnostics.filter((d) => d.level === "error")
@@ -239,18 +239,18 @@ const authored = {
   ...candidate,
   rules: {
     ...candidate.rules,
-    actions: [{ ...candidate.rules.actions[0]!, text: "Author rubric", roll: { judge: "Author odds" } }],
+    actions: [{ ...candidate.rules.actions[0], text: "Author rubric", roll: { judge: "Author odds" } }],
   },
 }
-assert.equal(applyCompile(authored, wiring).rules.actions[0]!.text, "Author rubric")
-assert.deepEqual(applyCompile(authored, wiring).rules.actions[0]!.roll, { judge: "Author odds" })
+assert.equal(applyCompile(authored, wiring).rules.actions[0].text, "Author rubric")
+assert.deepEqual(applyCompile(authored, wiring).rules.actions[0].roll, { judge: "Author odds" })
 const decodeCompile = Schema.decodeUnknownSync(CompileOutput)
 assert.equal(
-  applyCompile(base, decodeCompile({ ...wiring, actions: [{ ...wiring.actions[0]!, text: "injected" }] })).rules
-    .actions[0]!.text,
+  applyCompile(base, decodeCompile({ ...wiring, actions: [{ ...wiring.actions[0], text: "injected" }] })).rules
+    .actions[0].text,
   "",
 )
-assert.throws(() => decodeCompile({ ...wiring, fields: [{ ...wiring.fields[0]!, path: "two words" }] }))
+assert.throws(() => decodeCompile({ ...wiring, fields: [{ ...wiring.fields[0], path: "two words" }] }))
 assert.deepEqual(decodeCompile({ bindings: [], text: "injected" }), { bindings: [] })
 assert.equal(
   applySort(
@@ -269,9 +269,9 @@ const sorted = applySort(base, source, [
   { paragraphs: [1], to: "lore.letter.layers[0]" },
 ])
 assert.equal(sorted.fiction.at(-1)!.text, source[0] + "\n\n" + source[2])
-assert.equal(sorted.lore[0]!.layers[0], source[1])
-assert.deepEqual(sorted.lore[0]!.unlock, { all: [] })
-assert.deepEqual(sorted.lore[0]!.offer, { any: [] })
+assert.equal(sorted.lore[0].layers[0], source[1])
+assert.deepEqual(sorted.lore[0].unlock, { all: [] })
+assert.deepEqual(sorted.lore[0].offer, { any: [] })
 assert.deepEqual(base, decodeCard(Bun.YAML.parse(scaffold("workshop", "chat"))))
 for (const placements of [
   [{ paragraphs: [3], to: "fiction.new" }],
@@ -283,7 +283,7 @@ for (const placements of [
 ])
   assert.throws(() => applySort(base, source, placements))
 assert.equal(
-  applySort({ ...base, frame: [{ id: "voice" }] }, source, [{ paragraphs: [0], to: "frame.voice" }]).frame[0]!.text,
+  applySort({ ...base, frame: [{ id: "voice" }] }, source, [{ paragraphs: [0], to: "frame.voice" }]).frame[0].text,
   source[0],
 )
 const emptyEverywhere = {
@@ -316,16 +316,16 @@ const linked = applyCompile(layered, {
   actions: [{ id: "judge", roll: { judged: true } }],
   products: [{ id: "custom", role: "theater", shape: { kind: "text" } }],
 })
-assert.deepEqual(linked.lore[0]!.layers, layered.lore[0]!.layers)
-assert.deepEqual(linked.lore[0]!.unlock, [{ all: [] }, { path: "bond", is: 2 }])
-assert.deepEqual(linked.lore[0]!.offer, { event: "letter:open" })
-assert.deepEqual(linked.greetings[0]!.do, [{ event: "letter:open" }])
-assert.equal(linked.greetings[0]!.text, base.greetings[0]!.text)
+assert.deepEqual(linked.lore[0].layers, layered.lore[0].layers)
+assert.deepEqual(linked.lore[0].unlock, [{ all: [] }, { path: "bond", is: 2 }])
+assert.deepEqual(linked.lore[0].offer, { event: "letter:open" })
+assert.deepEqual(linked.greetings[0].do, [{ event: "letter:open" }])
+assert.equal(linked.greetings[0].text, base.greetings[0].text)
 assert.equal(linked.fiction.at(-1)!.text, "")
-assert.equal(linked.greetings[1]!.text, "")
-assert.equal(linked.lore[1]!.layers[0], "")
-assert.equal(linked.products![0]!.text, "")
-assert.deepEqual(linked.rules.actions[0]!.roll, { judge: "" })
+assert.equal(linked.greetings[1].text, "")
+assert.equal(linked.lore[1].layers[0], "")
+assert.equal(linked.products![0].text, "")
+assert.deepEqual(linked.rules.actions[0].roll, { judge: "" })
 assert.throws(() =>
   decodeCompile({
     bindings: [],
@@ -377,16 +377,16 @@ const full = decodeCompile({
 })
 const keys = (o: object) => Object.keys(o).sort()
 assert.deepEqual(
-  keys(full.fields![0]!),
+  keys(full.fields![0]),
   keys(Field.fields).filter((k) => !["label", "group"].includes(k)),
 )
 assert.deepEqual(
-  keys(full.products![0]!),
+  keys(full.products![0]),
   keys(Product.fields).filter((k) => !["text", "label", "initial"].includes(k)),
 )
-const shape = full.products![0]!.shape
+const shape = full.products![0].shape
 assert.ok(shape.kind === "table")
-assert.deepEqual(keys(shape.columns[0]!), keys(Col.fields))
+assert.deepEqual(keys(shape.columns[0]), keys(Col.fields))
 for (const patch of [{ fold: { key: "two words" } }, { recall: "two words" }])
   assert.throws(() => decodeCompile({ bindings: [], products: [{ ...full.products![0], ...patch }] }))
 const detailed: Card = {
@@ -428,21 +428,21 @@ const detailed: Card = {
 }
 const projected = mechanical(detailed)
 assert.ok(!JSON.stringify(projected).includes("PRIVATE"))
-assert.deepEqual(projected.rules.fields[0]!.options, ["text"])
-assert.deepEqual(projected.lore[0]!.unlock, { path: "mode", is: "text" })
+assert.deepEqual(projected.rules.fields[0].options, ["text"])
+assert.deepEqual(projected.lore[0].unlock, { path: "mode", is: "text" })
 const revised = applyCompile(detailed, full)
-assert.equal(revised.rules.fields[0]!.start, true)
-assert.equal(revised.rules.fields[0]!.label, "PRIVATE LABEL")
-assert.equal(revised.rules.fields[0]!.group, "PRIVATE GROUP")
-assert.equal(revised.products![0]!.initial, "PRIVATE INITIAL")
-assert.equal(revised.products![0]!.text, "PRIVATE QUESTION")
-assert.equal(revised.products![0]!.recall, "id")
-assert.deepEqual(revised.products![0]!.fold, { key: "id" })
-assert.deepEqual(revised.products![0]!.shape, full.products![0]!.shape)
+assert.equal(revised.rules.fields[0].start, true)
+assert.equal(revised.rules.fields[0].label, "PRIVATE LABEL")
+assert.equal(revised.rules.fields[0].group, "PRIVATE GROUP")
+assert.equal(revised.products![0].initial, "PRIVATE INITIAL")
+assert.equal(revised.products![0].text, "PRIVATE QUESTION")
+assert.equal(revised.products![0].recall, "id")
+assert.deepEqual(revised.products![0].fold, { key: "id" })
+assert.deepEqual(revised.products![0].shape, full.products![0].shape)
 assert.equal(selectedText(detailed, "greetings[0]"), "PRIVATE OPENING")
 assert.equal(selectedText(detailed, "lore.dotted.id.layers[0]"), "PRIVATE LAYER")
 assert.deepEqual(
-  applyCompile(detailed, decodeCompile({ bindings: [{ to: "lore.dotted.id.unlock", when: { all: [] } }] })).lore[0]!
+  applyCompile(detailed, decodeCompile({ bindings: [{ to: "lore.dotted.id.unlock", when: { all: [] } }] })).lore[0]
     .unlock,
   { all: [] },
 )

@@ -109,7 +109,7 @@ const entries = [lore("a", "A points to card:b."), lore("b", "B points to card:c
     t.deliveries.map((d) => d.text),
     ["BASE", "BASE\n\nDEEP"],
   )
-  assert.equal(t.deliveries[1]!.superseded, t.deliveries[0]!.revision)
+  assert.equal(t.deliveries[1].superseded, t.deliveries[0].revision)
   const edited = await f.go(f.S.edit(t.id, { input: { text: "find", invoke: ["card:layered"] } }))
   assert.deepEqual(edited.deliveries, t.deliveries) // keep both revisions, their order and superseded evidence
 
@@ -142,7 +142,7 @@ const entries = [lore("a", "A points to card:b."), lore("b", "B points to card:c
   )
   const t = await f.go(f.S.act(f.g.id, { text: "find" }))
   assert.deepEqual(t.read, [{ id: "a", layer: 1 }])
-  assert.ok(JSON.stringify(f.lookup[1]!.prompt).includes("unavailable_resource"))
+  assert.ok(JSON.stringify(f.lookup[1].prompt).includes("unavailable_resource"))
   assert.ok(!JSON.stringify(f.lookup).includes("LOCKED BODY"))
   assert.ok(!JSON.stringify(f.lookup).includes("PLAYER ONLY"))
 }
@@ -168,7 +168,7 @@ const entries = [lore("a", "A points to card:b."), lore("b", "B points to card:c
   assert.ok(first.includes("Available (2000): card 2000"))
   assert.ok(first.includes("card:entry0 Shared hook 0.") && first.includes("card:entry7 "))
   assert.ok(!first.includes("card:entry8 ") && !first.includes("entry1999"))
-  const out = JSON.stringify(f.lookup[1]!.prompt)
+  const out = JSON.stringify(f.lookup[1].prompt)
   assert.ok(out.includes("card:entry7") && !out.includes("card:entry8"))
 }
 // A complete catalog at its character bound still keeps the first request under the same 16000.
@@ -202,11 +202,11 @@ const entries = [lore("a", "A points to card:b."), lore("b", "B points to card:c
   await assert.rejects(f.go(f.S.act(f.g.id, { text: "find" })), /lookup transport failed/)
   assert.equal(f.S.log.nodes.size, 1)
   const retried = await f.go(f.S.act(f.g.id, { text: "find" }))
-  assert.equal(retried.deliveries[0]!.resourceId, "card:a")
+  assert.equal(retried.deliveries[0].resourceId, "card:a")
 }
 const r = (id: string, text: string, patch: Partial<Resource> = {}): Resource => ({
   resourceId: id,
-  title: text.split(".")[0]!,
+  title: text.split(".")[0],
   text,
   revision: revision(text),
   source: "memory",
@@ -222,11 +222,11 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   const old = r("memory:people/e_li", "李鹤 青城弃徒 警惕")
   const next = r(old.resourceId, "李鹤 青城弃徒 盟友")
   const lookup = contextLookup([next, r("memory:place/p1", "福记面馆 西栅街面")], [freeze(old)])
-  assert.equal(lookup.search("李鹤 盟友")[0]!.supersedes, old.revision)
+  assert.equal(lookup.search("李鹤 盟友")[0].supersedes, old.revision)
   const got = await lookup.tools.read_context.execute({ refs: [old.resourceId] }, tc)
   assert.equal(got.ok, true)
-  assert.equal(lookup.delivered[0]!.superseded, old.revision)
-  assert.match(lookup.delivered[0]!.text, /青城弃徒/)
+  assert.equal(lookup.delivered[0].superseded, old.revision)
+  assert.match(lookup.delivered[0].text, /青城弃徒/)
   assert.equal(lookup.search("李鹤").length, 0)
   assert.equal(lookup.search("福记面馆 西栅街面").length, 1)
   await lookup.tools.read_context.execute({ refs: [old.resourceId] }, tc)
@@ -299,20 +299,17 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   const harbor = { id: "harbor", layers: ["The Gray Reach harbor. Boats come in at dusk."] }
   const resources = [mira, harbor].flatMap((e) => [loreResource(e, 1), ...sectionResources(e, 1)])
   const [kin, past] = sectionResources(mira, 1)
-  assert.equal(past!.resourceId, "card:mira#past")
-  assert.deepEqual(
-    [past!.access, past!.activation, past!.disclosures],
-    [{ model: true, player: false }, "on_demand", []],
-  )
+  assert.equal(past.resourceId, "card:mira#past")
+  assert.deepEqual([past.access, past.activation, past.disclosures], [{ model: true, player: false }, "on_demand", []])
   assert.deepEqual(loreResource(mira, 1), loreResource({ id: mira.id, layers: mira.layers }, 1)) // the face is today's, byte for byte
   // reading the face: the snapshot has no section text, the tool result lists the sections
   {
     const l = contextLookup(resources, [])
     const got = await l.tools.read_context.execute({ refs: ["card:mira"] }, tc)
     assert.ok(!JSON.stringify(l.delivered).includes("Gray Reach") && !JSON.stringify(l.delivered).includes("#kin"))
-    assert.deepEqual((got as { value: { sections?: unknown }[] }).value[0]!.sections, [
-      { resourceId: kin!.resourceId, title: kin!.title },
-      { resourceId: past!.resourceId, title: past!.title },
+    assert.deepEqual((got as { value: { sections?: unknown }[] }).value[0].sections, [
+      { resourceId: kin.resourceId, title: kin.title },
+      { resourceId: past.resourceId, title: past.title },
     ])
     // the face resident, a section unread: still searchable, flagged resident, sections listed with the hit one first
     const hits = l.search("reach")
@@ -320,20 +317,20 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
       hits.map((h) => h.resourceId),
       ["card:harbor", "card:mira"], // the anchor hit ranks above the section-body hit
     )
-    assert.equal(hits[1]!.resident, true)
+    assert.equal(hits[1].resident, true)
     assert.deepEqual(l.search("tall"), []) // a word only the resident face holds is nothing left to read
     assert.deepEqual(
-      hits[1]!.sections!.map((x) => x.resourceId),
+      hits[1].sections!.map((x) => x.resourceId),
       ["card:mira#past", "card:mira#kin"],
     )
-    assert.match(l.told(l.delivered[0]!), /\nSections \(read_context\): card:mira#kin .* \| card:mira#past /)
+    assert.match(l.told(l.delivered[0]), /\nSections \(read_context\): card:mira#kin .* \| card:mira#past /)
     await l.tools.read_context.execute({ refs: ["card:mira#kin", "card:mira#past"] }, tc)
     assert.deepEqual(
       l.delivered.map((d) => d.resourceId),
       ["card:mira", "card:mira#kin", "card:mira#past"],
     )
     // every section resident: the entry leaves search, readable() holds only the other entry, the told line is bare
-    assert.equal(l.told(l.delivered[0]!), deliveryText(l.delivered[0]!))
+    assert.equal(l.told(l.delivered[0]), deliveryText(l.delivered[0]))
     assert.deepEqual(
       l.readable().map((r) => r.resourceId),
       ["card:harbor"],
@@ -348,7 +345,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
       l.delivered.map((d) => d.resourceId),
       ["card:mira", "card:mira#past"],
     )
-    const face = contextLookup(resources, [freeze(resources[0]!)])
+    const face = contextLookup(resources, [freeze(resources[0])])
     await face.tools.read_context.execute({ refs: ["card:mira#past"] }, tc)
     assert.deepEqual(
       face.delivered.map((d) => d.resourceId),
@@ -389,20 +386,20 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
             : done,
   )
   const t1 = await f.go(f.S.act(f.g.id, { text: "who keeps the light" }))
-  assert.ok(JSON.stringify(f.lookup[1]!.prompt).includes("unavailable_resource"))
+  assert.ok(JSON.stringify(f.lookup[1].prompt).includes("unavailable_resource"))
   assert.ok(!JSON.stringify(f.lookup).includes("VAULT SECRET"))
-  assert.ok(!JSON.stringify(f.lookup[2]!.prompt.at(-1)).includes("card:vault"))
+  assert.ok(!JSON.stringify(f.lookup[2].prompt.at(-1)).includes("card:vault"))
   assert.deepEqual(
     t1.deliveries.map((d) => d.resourceId),
     ["card:mira"],
   )
-  assert.ok(JSON.stringify(f.lookup[3]!.prompt.at(-1)).includes("card:mira#past")) // read_context's result lists it
+  assert.ok(JSON.stringify(f.lookup[3].prompt.at(-1)).includes("card:mira#past")) // read_context's result lists it
   await f.go(f.S.act(t1.id, { text: "tell me about her past" }))
   assert.equal(f.lookup.length, 5)
-  assert.ok(JSON.stringify(f.lookup[4]!.prompt).includes("Sections (read_context): card:mira#past"))
+  assert.ok(JSON.stringify(f.lookup[4].prompt).includes("Sections (read_context): card:mira#past"))
   const narrated = f.calls.filter((c) => c.phase === "narrate").map((c) => JSON.stringify(c.msgs))
   assert.equal(narrated.length, 2)
-  assert.ok(narrated[1]!.includes("Mira keeps the lighthouse") && !narrated.some((m) => m.includes("#past")))
+  assert.ok(narrated[1].includes("Mira keeps the lighthouse") && !narrated.some((m) => m.includes("#past")))
 }
 // ───────── The decision model over a complete catalog (#168, decision.ts) ─────────
 // Selection, pure: over the threshold, highest first, at most 8 ids, the lines to be read marked; an answer with no
@@ -446,7 +443,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
     return Object.fromEntries(
       Object.keys(c.questions).map((k, i) => [
         k,
-        { type: "boolean", probability: questions[i]!.includes("Mira") ? 0.9 : 0.1 },
+        { type: "boolean", probability: questions[i].includes("Mira") ? 0.9 : 0.1 },
       ]),
     )
   })
@@ -465,9 +462,9 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   )
   assert.deepEqual(t.read, [{ id: "mira", layer: 1 }])
   assert.equal(sent.length, 1)
-  for (const text of [scene, "her years at sea", "slow down"]) assert.ok(sent[0]!.state.includes(text))
-  assert.ok(sent[0]!.questions.some((q) => q.includes("Mira keeps the lighthouse.")))
-  assert.ok(sent[0]!.questions.every((q) => !q.includes("Mira's years at sea.")))
+  for (const text of [scene, "her years at sea", "slow down"]) assert.ok(sent[0].state.includes(text))
+  assert.ok(sent[0].questions.some((q) => q.includes("Mira keeps the lighthouse.")))
+  assert.ok(sent[0].questions.every((q) => !q.includes("Mira's years at sea.")))
   const row = f.calls.find((c) => c.via === "decision")!
   assert.equal(row.phase, "lookup")
   const out = row.out as { lines: { label: string; read?: true }[]; verdict: string; delivered: string[] }
@@ -481,8 +478,8 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   // the turn after: the face is held, so its section is asked, and read
   const t2 = await f.go(f.S.act(t.id, { text: "her years at sea" }))
   assert.equal(f.lookup.length, 0)
-  assert.ok(sent[1]!.questions.some((q) => q.includes("Mira's years at sea.")))
-  assert.ok(sent[1]!.questions.every((q) => !q.includes("Mira keeps the lighthouse.")))
+  assert.ok(sent[1].questions.some((q) => q.includes("Mira's years at sea.")))
+  assert.ok(sent[1].questions.every((q) => !q.includes("Mira keeps the lighthouse.")))
   assert.ok(t2.deliveries.some((d) => d.resourceId === "card:mira#past"))
 }
 // A failed decision call: the LLM loop runs, the whole catalog in its first request, and nothing was delivered early.
@@ -497,7 +494,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   )
   const t = await f.go(f.S.act(f.g.id, { text: "find" }))
   assert.equal((f.calls.find((c) => c.via)!.out as { error: string }).error, "upstream down")
-  const first = JSON.stringify(f.lookup[0]!.prompt)
+  const first = JSON.stringify(f.lookup[0].prompt)
   assert.ok(first.includes("Available (4, complete):\\ncard:a A points to card:b.\\ncard:b"))
   assert.deepEqual(
     t.deliveries.map((d) => d.resourceId),

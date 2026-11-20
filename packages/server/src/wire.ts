@@ -78,7 +78,7 @@ export const node =
         },
       })
     const headers = new Headers()
-    for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) headers.append(req.rawHeaders[i]!, req.rawHeaders[i + 1]!)
+    for (let i = 0; i + 1 < req.rawHeaders.length; i += 2) headers.append(req.rawHeaders[i], req.rawHeaders[i + 1])
     const gone = new AbortController()
     res.on("close", () => {
       if (!res.writableFinished) gone.abort()
@@ -90,7 +90,7 @@ export const node =
         headers,
         signal: gone.signal,
         ...(body && { body, duplex: "half" }),
-      } as RequestInit)
+      })
       response = await wire(request)
     } catch (e) {
       response = new Response(e instanceof Error ? e.message : String(e), { status: 500 })

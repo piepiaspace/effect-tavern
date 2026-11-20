@@ -101,18 +101,18 @@ try {
   const head = (story: number, attempt: number, rest: string) =>
     new RegExp(`^${rest} .* #${story} · narrate · #${attempt}`)
   assert.ok(at(head(fast, 1, "→")) >= 0)
-  assert.match(output[at(head(fast, 1, "←"))]!, /HTTP 200/)
+  assert.match(output[at(head(fast, 1, "←"))], /HTTP 200/)
   const reply1 = output.indexOf("[assistant]", at(head(fast, 1, "←")))
   assert.ok(reply1 - at(head(fast, 1, "←")) <= 3)
   assert.equal(output[reply1 + 1], "  The other story")
-  assert.match(output[at(head(slow, 1, "←"))]!, /HTTP 503/)
+  assert.match(output[at(head(slow, 1, "←"))], /HTTP 503/)
   // the error just under its head (and the head's facts, when they took a row of their own)
   const under = (line: string, re: RegExp) => {
     const d = output.indexOf(line) - at(re)
     return d >= 2 && d <= 3
   }
   assert.ok(under("retry this attempt", head(slow, 1, "←")))
-  assert.match(output[at(head(slow, 2, "←"))]!, /HTTP 403/)
+  assert.match(output[at(head(slow, 2, "←"))], /HTTP 403/)
   assert.ok(under(denied, head(slow, 2, "←")))
 
   // A failed decision pre-check falls back to the language model and still lands.

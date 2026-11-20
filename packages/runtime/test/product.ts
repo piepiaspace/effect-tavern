@@ -80,9 +80,9 @@ assert.equal(cap({ kind: "text", max: 3 }, "abcdef"), "abc")
 const path = [{ notes: ["a"], bag: bag.slice(0, 1) }, { notes: ["b"] }, { notes: ["c"], bag }]
 assert.deepEqual(fold([...defaults, inventory], path), { notes: ["a", "b", "c"], bag })
 assert.deepEqual(fold([scene], path), {})
-const kpath = [{ kbag: [bag[0]!, bag[1]!] }, {}, { kbag: [{ item: "coin", n: 3, kind: "misc" }, bag[2]!] }]
+const kpath = [{ kbag: [bag[0], bag[1]] }, {}, { kbag: [{ item: "coin", n: 3, kind: "misc" }, bag[2]] }]
 assert.deepEqual(fold([keyed], kpath), { kbag: [bag[0], { item: "coin", n: 3, kind: "misc" }, bag[2]] })
-assert.deepEqual(fold([keyed], [{ kbag: [bag[0]!] }, { kbag: [] }]), { kbag: [bag[0]] }) // a turn with no new rows keeps the table
+assert.deepEqual(fold([keyed], [{ kbag: [bag[0]] }, { kbag: [] }]), { kbag: [bag[0]] }) // a turn with no new rows keeps the table
 
 // Revisioned recall is exercised through derived.ts and context.ts.
 
@@ -133,19 +133,19 @@ const mood: Product = {
 }
 const day = { fields: { dark: false, hp: 50 } }
 const [p1, m1] = withCatalogs([pics, mood], cgs, day)
-assert.deepEqual(p1!.shape, {
+assert.deepEqual(p1.shape, {
   kind: "table",
   columns: [
     { key: "after", type: "int" },
     { key: "id", type: "enum", options: ["sword"] },
   ],
 })
-assert.deepEqual(dec(p1!)([{ after: 2, id: "sword" }]), [{ after: 2, id: "sword" }])
-assert.throws(() => dec(p1!)([{ after: 2, id: "night" }])) // filtered out: not decodable
-assert.deepEqual(dec(p1!)([]), []) // a table answers "none" with no row
-assert.deepEqual(m1!.shape, { kind: "record", keys: [{ key: "line", type: "text" }] }) // bgm empty: the key dropped
+assert.deepEqual(dec(p1)([{ after: 2, id: "sword" }]), [{ after: 2, id: "sword" }])
+assert.throws(() => dec(p1)([{ after: 2, id: "night" }])) // filtered out: not decodable
+assert.deepEqual(dec(p1)([]), []) // a table answers "none" with no row
+assert.deepEqual(m1.shape, { kind: "record", keys: [{ key: "line", type: "text" }] }) // bgm empty: the key dropped
 const [, m2] = withCatalogs([pics, mood], cgs, { fields: { dark: true, hp: 5 } })
-assert.deepEqual(m2!.shape, {
+assert.deepEqual(m2.shape, {
   kind: "record",
   keys: [
     { key: "line", type: "text" },

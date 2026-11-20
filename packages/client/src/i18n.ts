@@ -75,7 +75,7 @@ export const t = (key: Key, params?: Record<string, string | number>): string =>
   if (!params) return s
   return s.replace(/\{(\w+)(?:\|([^|{}]*)\|([^|{}]*))?\}/g, (hole, name: string, one?: string, other?: string) => {
     if (!(name in params)) return hole
-    const v = params[name]!
+    const v = params[name]
     if (one === undefined) return String(v)
     return `${v} ${new Intl.PluralRules(l).select(Number(v)) === "one" ? one : other}`
   })

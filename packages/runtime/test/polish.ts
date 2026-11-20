@@ -24,7 +24,7 @@ assert.deepEqual(
 )
 const text = `${pad}他的指节攥得发白。`
 const [t] = scan(text, lex)
-assert.equal(text.slice(t!.start, t!.end), "他的指节攥得发白。") // exact coordinates: the whole sentence
+assert.equal(text.slice(t.start, t.end), "他的指节攥得发白。") // exact coordinates: the whole sentence
 // Dialogue is skipped: a hit inside 「」 or “” is how people talk; the narration around it still counts.
 assert.deepEqual(scan(`${pad}他说：「我指节都发白了。」`, lex), [])
 assert.deepEqual(scan(`${pad}他说：“不是我，而是他。”`, lex), [])
@@ -44,9 +44,9 @@ assert.deepEqual(spans("“Don’t!” 他走了。"), ["“Don’t!”", "他�
 assert.deepEqual(scan("他的指节发白。", lex), [])
 assert.deepEqual(scan(text, []), [])
 // The marks the call reads, and the splice: an echoed sentence is a pass-through, a changed one replaces its span only.
-assert.equal(marked(text, [t!]), `${pad}<target id="hit-1" hits="指节攥得发白">他的指节攥得发白。</target>`)
-assert.equal(splice(text, [t!], { "hit-1": "他的指节攥得发白。" }), text)
-assert.equal(splice(text, [t!], { "hit-1": "他握紧了拳。" }), `${pad}他握紧了拳。`)
-assert.equal(splice(text, [t!], { "hit-1": "" }), text) // a blank answer keeps the sentence: a rewrite may not delete
-assert.equal(splice(text, [t!], { "hit-1": "  \n" }), text)
+assert.equal(marked(text, [t]), `${pad}<target id="hit-1" hits="指节攥得发白">他的指节攥得发白。</target>`)
+assert.equal(splice(text, [t], { "hit-1": "他的指节攥得发白。" }), text)
+assert.equal(splice(text, [t], { "hit-1": "他握紧了拳。" }), `${pad}他握紧了拳。`)
+assert.equal(splice(text, [t], { "hit-1": "" }), text) // a blank answer keeps the sentence: a rewrite may not delete
+assert.equal(splice(text, [t], { "hit-1": "  \n" }), text)
 console.log("polish ok")

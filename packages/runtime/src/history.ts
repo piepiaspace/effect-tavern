@@ -78,7 +78,7 @@ export const policyFor = (contextTokens?: number): Policy => ({
 export const folded = <B>(path: readonly Turn<B>[], cost: (t: Turn<B>) => number, p: Policy) => {
   const cap = Math.max(0, Math.floor((path.length - p.keep) / p.block) * p.block)
   let j = path.length // the smallest j whose tail path[j..] fits
-  for (let sum = 0; j > 0 && (sum += cost(path[j - 1]!)) <= p.budget; j--);
+  for (let sum = 0; j > 0 && (sum += cost(path[j - 1])) <= p.budget; j--);
   return Math.min(cap, Math.ceil(j / p.block) * p.block)
 }
 /** Narrator transcript: past input and prose, never brief/notes/note.

@@ -377,7 +377,7 @@ const compile = (w: Writing, say: Readonly<Record<string, string>>): Fragment[] 
   ].filter((x): x is string => typeof x === "string")
   return [
     ...(pov.length ? [{ id: "pov", text: pov.join("") }] : []),
-    ...(w.verbosity ? [{ id: "verbosity", text: line("verbosity", w.verbosity)! }] : []),
+    ...(w.verbosity ? [{ id: "verbosity", text: line("verbosity", w.verbosity) }] : []),
   ]
 }
 

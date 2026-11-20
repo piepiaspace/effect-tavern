@@ -94,8 +94,8 @@ assert.equal(u.blocks.find((b) => b.kind === "first_mes")!.text, "*Ann looks up.
 assert.equal(u.blocks.find((b) => b.kind === "alternate_greetings[0]")!.text, "Hello, Bo.")
 
 // mes_example: forced <START>, speakers by `name:`, the pre-speaker line rides into the first message.
-assert.equal(u.blocks[5]!.text, "example_user: This line rides along.\n hi\nexample_assistant: hey\nsecond line")
-assert.equal(u.blocks[6]!.text, "example_assistant: alone")
+assert.equal(u.blocks[5].text, "example_user: This line rides along.\n hi\nexample_assistant: hey\nsecond line")
+assert.equal(u.blocks[6].text, "example_assistant: alone")
 assert.deepEqual(examples("no speakers here", "U", "C"), [[]])
 
 // Triggers: selective entries only, in insertion_order; logic shown when secondary keys apply.
@@ -149,7 +149,7 @@ const noted = unroll({
   },
 })
 assert.deepEqual(
-  noted.blocks.filter((b) => b.kind === "entry").map((b) => b.heading.split(" · ")[1]!.split(" ")[0]),
+  noted.blocks.filter((b) => b.kind === "entry").map((b) => b.heading.split(" · ")[1].split(" ")[0]),
   ["six", "top", "bottom", "zero"],
 )
 console.log("unroll ok")

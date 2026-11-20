@@ -61,7 +61,7 @@ export const Timeline = () => {
     const lanes = Math.max(1, ...threads.map((t) => t.lanes))
     return { threads, width: RULER + PAD * 2 + lanes * (LANE + GAP) - GAP, height: y }
   })
-  const xy = (c: Cell) => ({ x: RULER + PAD + c.lane * (LANE + GAP), y: geo().threads[c.thread]!.rows + c.row * STEP })
+  const xy = (c: Cell) => ({ x: RULER + PAD + c.lane * (LANE + GAP), y: geo().threads[c.thread].rows + c.row * STEP })
   const knot = (c: Cell) => ({ x: xy(c).x + KNOT.x, y: xy(c).y + KNOT.y })
   const node = (id: Id) => all().nodes.get(id)
   const sel = () => (selected() === null ? undefined : node(selected()!))
@@ -156,7 +156,7 @@ export const Timeline = () => {
       const i = p.c.ids.indexOf(selected()!)
       return Math.max(0, i < 0 ? p.c.ids.indexOf(all().head!) : i)
     }
-    const shown = () => node(p.c.ids[at()]!)!
+    const shown = () => node(p.c.ids[at()])!
     return (
       <button
         type="button"
@@ -265,7 +265,7 @@ export const Timeline = () => {
                     class={{ band: true, active: th().root !== null && onLine().has(th().root!) }}
                     style={{
                       left: `${RULER + PAD}px`,
-                      top: `${geo().threads[i()]!.top}px`,
+                      top: `${geo().threads[i()].top}px`,
                       width: `${Math.max(260, th().lanes * (LANE + GAP) - GAP)}px`,
                     }}
                   >
@@ -281,7 +281,7 @@ export const Timeline = () => {
                     {(r) => (
                       <span
                         class={{ tick: true, lit: line()[0]?.id === th().root && r() < line().length }}
-                        style={{ top: `${geo().threads[i()]!.rows + r() * STEP}px` }}
+                        style={{ top: `${geo().threads[i()].rows + r() * STEP}px` }}
                       >
                         T{r() + 1}
                       </span>
@@ -292,7 +292,7 @@ export const Timeline = () => {
             </For>
             <For each={laid().cells} keyed={(c) => c.ids.join()}>
               {(c) => (
-                <Switch fallback={<Single c={c()} id={c().ids[0]!} />}>
+                <Switch fallback={<Single c={c()} id={c().ids[0]} />}>
                   <Match when={c().ids[0] === DRAFT}>
                     <DraftCell c={c()} />
                   </Match>

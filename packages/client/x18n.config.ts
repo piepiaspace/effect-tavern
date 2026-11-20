@@ -10,7 +10,7 @@ const braces = {
     [...value.matchAll(/\{(\w+)(?:\|[^|{}]*\|[^|{}]*)?\}/g)].map((m) => ({
       syntax: "braces",
       text: m[0],
-      name: m[1]!,
+      name: m[1],
       range: { start: m.index, end: m.index + m[0].length },
     })),
 }

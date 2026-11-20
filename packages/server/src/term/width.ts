@@ -38,7 +38,7 @@ const units = (s: string): string[] => {
   }
   const cs = chars(s)
   for (let i = 0; i < cs.length; i++) {
-    const c = cs[i]!
+    const c = cs[i]
     const close = c === "「" ? cs.indexOf("」", i) : -1
     if (close > i && close - i <= 10) {
       flush()

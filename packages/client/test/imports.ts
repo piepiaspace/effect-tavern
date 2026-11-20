@@ -12,7 +12,7 @@ const INDEX = join(packages, "provider/src/index.ts")
 const at = (from: string, spec: string): string | undefined => {
   if (spec === "@effect-tavern/provider") return INDEX
   const m = /^@effect-tavern\/(runtime|provider)\/(.+)$/.exec(spec)
-  if (m) return join(packages, m[1]!, m[2]!)
+  if (m) return join(packages, m[1], m[2])
   if (spec.startsWith(".")) return resolve(dirname(from), spec)
   return undefined // a dependency: Vite's to bundle
 }
@@ -20,7 +20,7 @@ const at = (from: string, spec: string): string | undefined => {
 const imports = (file: string): string[] =>
   [
     ...readFileSync(file, "utf8").matchAll(/^(?:import|export)\s+(?!type\b)(?:[^"';]*?\sfrom\s+)?["']([^"']+)["']/gm),
-  ].map((m) => m[1]!)
+  ].map((m) => m[1])
 
 const seen = new Map<string, string>() // file → the file that imported it
 const queue = readdirSync(join(import.meta.dir, "../src"), { recursive: true })

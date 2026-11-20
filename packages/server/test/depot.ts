@@ -79,16 +79,16 @@ try {
     depot("https://cards.example/lib/index.json", { fetch: web }),
   ]) {
     assert.deepEqual(await d.index(), { name: "样例卡库", entries })
-    assert.equal(await d.text(entries[0]!), printCard(one))
+    assert.equal(await d.text(entries[0]), printCard(one))
     // never above the library: refused before anything is read, though the file is there on both sides
     asked.length = 0
-    await assert.rejects(d.text(entries[3]!), /outside the library/)
+    await assert.rejects(d.text(entries[3]), /outside the library/)
     assert.deepEqual(asked, [])
   }
   // an address may carry a query (a ref, a token): it goes with the index and with every file, a fragment with none
   asked.length = 0
   const pinned = depot("https://cards.example/lib?ref=main#readme", { fetch: web })
-  await pinned.text((await pinned.index()).entries[0]!)
+  await pinned.text((await pinned.index()).entries[0])
   assert.deepEqual(asked, [
     "https://cards.example/lib/index.json?ref=main",
     "https://cards.example/lib/cards/one.yaml?ref=main",
@@ -114,7 +114,7 @@ try {
   // a directory whose name merely starts with dots is inside the library
   mkdirSync(join(dir, "lib/..drafts"))
   writeFileSync(join(dir, "lib/..drafts/one.yaml"), printCard(one))
-  assert.equal(await depot(join(dir, "lib")).text({ ...entries[0]!, file: "..drafts/one.yaml" }), printCard(one))
+  assert.equal(await depot(join(dir, "lib")).text({ ...entries[0], file: "..drafts/one.yaml" }), printCard(one))
   await assert.rejects(depot(join(dir, "nowhere")).index(), refused("depot-unreadable"))
   await assert.rejects(depot("https://cards.example/other/", { fetch: web }).index(), /HTTP 404/)
   writeFileSync(join(dir, "outside.yaml"), "{}")
@@ -167,7 +167,7 @@ try {
   served.version = "1.1"
   assert.deepEqual((await states(remote.id))[0], ["one", "update", false])
   await assert.rejects(depots.pull(remote.id, "one"), refused("card-exists"))
-  assert.equal(cards.list()[0]!.origin.version, "1.0")
+  assert.equal(cards.list()[0].origin.version, "1.0")
   cards.save("one", { ...one, title: "我改的" })
   assert.deepEqual((await states(remote.id))[0], ["one", "update", true]) // the player's edit is what an update would replace
   assert.deepEqual((await depots.pull(remote.id, "one", { replace: true })).origin, {
@@ -224,7 +224,7 @@ try {
       name: string
       entries: { id: string; state: string }[]
     }
-    assert.deepEqual([view.name, view.entries[0]!.state], ["样例卡库", "installed"])
+    assert.deepEqual([view.name, view.entries[0].state], ["样例卡库", "installed"])
     assert.equal((await call("GET", "/depots/none"))[0], 404)
     served.version = "2.0"
     const again = await call("POST", `/depots/${remote.id}/pull`, { entry: "one" })

@@ -42,7 +42,7 @@ export const newId = (kind: string) => `${kind}-${Date.now().toString(36)}${(mad
 /** A model's group: its owner when the name table knows it (`meta`, `anthropic`), else its id up to the first `-`, `/`
  *  or `_` (the prototype's grouping). Tracked: the table arrives after the lists. */
 const groupOf = (id: string) =>
-  lookup(names(), id)?.owner ?? (id.split(/[-/_]/)[0]!.toLowerCase() || t("common.default"))
+  lookup(names(), id)?.owner ?? (id.split(/[-/_]/)[0].toLowerCase() || t("common.default"))
 export const grouped = (ids: readonly string[]): [string, string[]][] => {
   const by = new Map<string, string[]>()
   for (const id of ids) by.set(groupOf(id), [...(by.get(groupOf(id)) ?? []), id])
@@ -105,7 +105,7 @@ export const Menu = <T extends string>(props: {
     <Select
       value={props.value ?? null}
       items={props.options.map((o) => ({ value: o.value, label: o.label }))}
-      onValueChange={(v) => v !== null && props.onPick(v as T)}
+      onValueChange={(v) => v !== null && props.onPick(v)}
       disabled={props.options.length === 0}
       presentation="auto"
     >

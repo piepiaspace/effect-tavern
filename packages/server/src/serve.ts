@@ -305,7 +305,7 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     if (method === "GET" && url === "/personas") return json(200, lib.personas.list())
     const personaAt = /^\/personas\/([^/]+)$/.exec(url)
     if (personaAt && (method === "PUT" || method === "DELETE")) {
-      const id = decodeURIComponent(personaAt[1]!)
+      const id = decodeURIComponent(personaAt[1])
       return reply(async () => {
         if (method === "PUT") lib.personas.put({ id, ...(await read(PersonaBody)) })
         else lib.personas.del(id)
@@ -315,7 +315,7 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     if (method === "GET" && url === "/hats") return json(200, lib.hats.list())
     const hatAt = /^\/hats\/([^/]+)$/.exec(url)
     if (hatAt && (method === "PUT" || method === "DELETE")) {
-      const id = decodeURIComponent(hatAt[1]!)
+      const id = decodeURIComponent(hatAt[1])
       return reply(async () => {
         if (method === "PUT") lib.hats.put({ id, ...(await read(HatBody)) })
         else lib.hats.del(id)
@@ -325,7 +325,7 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     if (method === "GET" && url === "/packs") return json(200, lib.packs.list())
     const packAt = /^\/packs\/([^/]+)$/.exec(url)
     if (packAt && (method === "PUT" || method === "DELETE")) {
-      const id = decodeURIComponent(packAt[1]!)
+      const id = decodeURIComponent(packAt[1])
       return reply(async () => {
         if (method === "PUT") {
           const raw = (await read((u) => u)) as object
@@ -338,12 +338,12 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     if (method === "POST" && url === "/secrets") return reply(async () => lib.secrets.add(await read(SecretBody)))
     const valueAt = method === "GET" && /^\/secrets\/([^/]+)\/value$/.exec(url)
     if (valueAt) {
-      const value = lib.secrets.value(decodeURIComponent(valueAt[1]!))
+      const value = lib.secrets.value(decodeURIComponent(valueAt[1]))
       return value === undefined ? json(404, { error: "no such secret" }) : json(200, { value })
     }
     const secretAt = /^\/secrets\/([^/]+)$/.exec(url)
     if (secretAt && (method === "PUT" || method === "DELETE")) {
-      const id = decodeURIComponent(secretAt[1]!)
+      const id = decodeURIComponent(secretAt[1])
       return reply(async () => {
         if (method === "PUT") lib.secrets.set(id, await read(SecretMeta))
         else lib.secrets.del(id)
@@ -353,7 +353,7 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     if (method === "GET" && url === "/providers") return json(200, lib.providers.list())
     const providerAt = /^\/providers\/([^/]+)(\/models|\/test)?$/.exec(url)
     if (providerAt) {
-      const id = decodeURIComponent(providerAt[1]!)
+      const id = decodeURIComponent(providerAt[1])
       const known = lib.providers.list().some((p) => p.id === id)
       if (!providerAt[2] && (method === "PUT" || method === "DELETE"))
         return reply(async () => {
@@ -397,7 +397,7 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
       return reply(async () => (await lib.depots.add((await read(DepotBody)).location, { dirs }), lib.depots.list()))
     const depotAt = /^\/depots\/([^/]+)(\/pull)?$/.exec(url)
     if (depotAt) {
-      const id = decodeURIComponent(depotAt[1]!)
+      const id = decodeURIComponent(depotAt[1])
       if (depotAt[2] && method === "POST")
         return reply(async () => {
           const { entry, replace } = await read(PullBody)
@@ -408,7 +408,7 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     }
     const cardFile = method === "GET" && /^\/cards\/([^/]+)\/export\.yaml$/.exec(url)
     if (cardFile) {
-      const id = decodeURIComponent(cardFile[1]!)
+      const id = decodeURIComponent(cardFile[1])
       let text
       try {
         text = lib.cards.text(id)
@@ -424,7 +424,7 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     }
     const wholeAt = /^\/cards\/([^/]+)\/whole$/.exec(url)
     if (wholeAt && (method === "GET" || method === "PUT")) {
-      const id = decodeURIComponent(wholeAt[1]!)
+      const id = decodeURIComponent(wholeAt[1])
       if (!lib.cards.has(id)) return json(404, { error: `no card ${id}` })
       if (method === "GET") return reply(() => lib.cards.whole(id))
       return reply(async () => {
@@ -434,7 +434,7 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     }
     const localAt = /^\/cards\/([^/]+)\/local$/.exec(url)
     if (localAt && (method === "GET" || method === "PUT")) {
-      const card = decodeURIComponent(localAt[1]!)
+      const card = decodeURIComponent(localAt[1])
       if (!lib.cards.has(card)) return json(404, { error: `no card ${card}` })
       return reply(async () => {
         if (method === "PUT") {
@@ -445,9 +445,9 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
       })
     }
     const removing = method === "DELETE" && /^\/cards\/([^/]+)$/.exec(url)
-    if (removing) return reply(() => (lib.cards.remove(decodeURIComponent(removing[1]!)), lib.cards.list()), 404)
+    if (removing) return reply(() => (lib.cards.remove(decodeURIComponent(removing[1])), lib.cards.list()), 404)
     const cardAt = method === "GET" && /^\/cards\/([^/]+)$/.exec(url)
-    if (cardAt) return reply(() => lib.view(decodeURIComponent(cardAt[1]!)), 404)
+    if (cardAt) return reply(() => lib.view(decodeURIComponent(cardAt[1])), 404)
     // a card or library route none of the above took (a method it has no use for, a route that is gone): said here,
     // before the story's routes answer it with "no story"
     if (/^\/(cards|depots)(?:[/?]|$)/.test(url)) return json(404, { error: "not found" })
@@ -552,7 +552,7 @@ export const app = (api: Wire, dist?: string): Wire => {
           headers: request.headers,
           signal: request.signal,
           ...(request.body && { body: request.body, duplex: "half" }),
-        } as RequestInit),
+        }),
       )
     }
     if (!root) return text(404, "not found")

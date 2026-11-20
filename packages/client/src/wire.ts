@@ -110,7 +110,7 @@ export const fetchCardOf = async (id: string, current: () => boolean = () => tru
   }
 }
 export const dropNodes = async (id: number): Promise<void> => {
-  const c = (await got(call(`${base}/nodes/${id}`, { method: "DELETE" }))) as Change
+  const c = await got<Change>(call(`${base}/nodes/${id}`, { method: "DELETE" }))
   registry.update(log, (l) => L.apply(l, c))
   await fetchStories() // the head moved: the row's last line and size follow
 }
@@ -148,7 +148,7 @@ export const fetchLocals = async (): Promise<void> => {
   await Promise.all(cs.map((c) => fetchLocal(c.id)))
 }
 
-const listing = (res: Promise<Response>) => got(res) as Promise<Listing>
+const listing = (res: Promise<Response>) => got<Listing>(res)
 // The story calls answer the listing with the story to be on; what the client does with it is pages.ts's (`land`).
 export const openStory = (id: number): Promise<Listing> => listing(call(`${base}/stories/${id}`, { method: "PUT" }))
 export const newStory = (card: string): Promise<Listing> =>
@@ -172,7 +172,7 @@ export const pickStoryPersona = async (id: number, persona: string | null): Prom
   keep(await got(call(`${base}/stories/${id}`, { method: "PUT", body: JSON.stringify({ persona }) })))
 /** The manager's search: the stories whose turns hold `q`, as hits by story (stories.ts `Hit`). */
 export const searchStories = (q: string): Promise<Hit[]> =>
-  got(call(`${base}/stories/search?q=${encodeURIComponent(q)}`)) as Promise<Hit[]>
+  got<Hit[]>(call(`${base}/stories/search?q=${encodeURIComponent(q)}`))
 /** Where a story's export is: a link the browser downloads (the server names the file by the title). */
 export const exportUrl = (id: number, ext: "md" | "json"): string => `${base}/stories/${id}/export.${ext}`
 const at = (id: string) => `${base}/personas/${encodeURIComponent(id)}`
@@ -351,7 +351,7 @@ export const send = (action: Action): (() => void) =>
 export const attach = (): (() => void) => listen((signal) => call(`${base}/turn`, { signal }))
 /** The player's stop (`POST /stop`): "withdrawn" before the first character, "halted" after it, null when idle. */
 export const stop = async (): Promise<"withdrawn" | "halted" | null> =>
-  ((await got(call(`${base}/stop`, { method: "POST" }))) as { stopped: "withdrawn" | "halted" | null }).stopped
+  (await got<{ stopped: "withdrawn" | "halted" | null }>(call(`${base}/stop`, { method: "POST" }))).stopped
 /** Reads an SSE response into `apply` until it ends or is closed; a 204 is nothing to read. */
 const listen = (open: (signal: AbortSignal) => Promise<Response>): (() => void) => {
   const ac = new AbortController()

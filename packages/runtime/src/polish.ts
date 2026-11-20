@@ -35,12 +35,12 @@ export const sentences = (text: string): [number, number][] => {
   let start = 0
   let depth = 0
   const push = (end: number) => {
-    while (start < end && /\s/.test(text[start]!)) start++
+    while (start < end && /\s/.test(text[start])) start++
     if (start < end) out.push([start, end])
     start = end
   }
   for (let i = 0; i < text.length; i++) {
-    const c = text[i]!
+    const c = text[i]
     if (c === "\n") {
       push(i)
       depth = 0 // an unclosed quote ends with its paragraph
@@ -49,7 +49,7 @@ export const sentences = (text: string): [number, number][] => {
     if (OPEN.test(c)) depth++
     else if (closing(text, i)) {
       depth = Math.max(0, depth - 1)
-      if (depth === 0 && i > 0 && STOP.test(text[i - 1]!)) {
+      if (depth === 0 && i > 0 && STOP.test(text[i - 1])) {
         while (closing(text, i + 1)) i++
         push(i + 1)
       }
