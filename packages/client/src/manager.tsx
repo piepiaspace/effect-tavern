@@ -65,7 +65,9 @@ export const Manager = (props: {
       .filter((s) => matches(s, q(), hits())),
   )
   /** The selected rows still present on this card: a deleted story leaves the set on its own. */
-  const chosen = createMemo(() => rows().filter((s) => picked().has(s.id)))
+  const chosen = createMemo(() => rows().filter((s) => picked().has(s.id)), {
+    equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]),
+  })
   const selecting = () => chosen().length > 0
   const toggle = (id: number) => {
     setPicked((p) => {

@@ -18,6 +18,7 @@ const fixtures: [file: string, passed: (snapshot: unknown[]) => string][] = [
     "test/writing-page.tsx",
     () => "chronicles and per-card wording and slot overrides save and restore through the writing page",
   ],
+  ["test/home.tsx", (s) => `home free-chat flow and visibility rules pass, in ${s.length} requests`],
   ["test/workshop.tsx", (s) => `a card is made, written and saved through the workshop, in ${s.length} requests`],
 ]
 for (const [fixture, passed] of fixtures) {

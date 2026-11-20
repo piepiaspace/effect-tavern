@@ -384,6 +384,11 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
       }))
     if (method === "POST" && url === "/cards/new")
       return reply(async () => ({ card: lib.cards.create((await read(NewCard, "{}")).title), cards: lib.cards.list() }))
+    if (method === "POST" && url === "/cards/free-chat")
+      return reply(async () => ({
+        card: lib.cards.ensureFreeChat((await read(NewCard, "{}")).title),
+        cards: lib.cards.list(),
+      }))
     if (method === "POST" && url === "/cards/link")
       return reply(async () => {
         const { url, replace } = await read(LinkBody)

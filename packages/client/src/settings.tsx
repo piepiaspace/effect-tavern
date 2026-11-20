@@ -35,6 +35,7 @@ import { close, open } from "./pages.ts"
 import * as Atom from "./atom.ts"
 import {
   cards,
+  cardTitle,
   decision,
   hats,
   locals,
@@ -446,7 +447,8 @@ const Personas = (props: Pane) => {
   const picks = createMemo(() => {
     const by = new Map<string, string[]>()
     for (const [c, l] of Object.entries(allLocals()))
-      if (l.persona) by.set(l.persona, [...(by.get(l.persona) ?? []), known().find((x) => x.id === c)?.title ?? c])
+      if (l.persona)
+        by.set(l.persona, [...(by.get(l.persona) ?? []), cardTitle(known().find((x) => x.id === c) ?? c, known())])
     return by
   })
   const onCards = (id: string) => picks().get(id) ?? []

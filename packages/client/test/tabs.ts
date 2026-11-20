@@ -18,11 +18,14 @@ import {
   card,
   type CardView,
   focus,
+  FREE_CHAT_ID,
+  homeDrafts,
   isHome,
   layer,
   log,
   page,
   registry,
+  setHomeDraft,
   settle,
   stories,
   type StoryRow,
@@ -366,4 +369,28 @@ shed("b")
 assert.deepEqual([isHome(tab()), registry.get(page), tab().under], [true, "workshop", ["home"]])
 close()
 assert.deepEqual([registry.get(page), registry.get(layer)], ["home", "shelf"])
+// restoring a story-less built-in free-chat tab on the card page normalizes it to home; a legacy user card of the same
+// id keeps its card page intact.
+const restoredFree = restore(
+  JSON.stringify({ tabs: [{ story: null, card: FREE_CHAT_ID, page: "card", under: ["home"] }], active: 0 }),
+  { stories: [] },
+  [{ id: FREE_CHAT_ID, origin: { via: "builtin" } }],
+)
+assert.deepEqual(
+  [restoredFree?.list[0].story, restoredFree?.list[0].card, restoredFree?.list[0].page, restoredFree?.list[0].under],
+  [null, null, "home", []],
+)
+const restoredLegacy = restore(
+  JSON.stringify({ tabs: [{ story: null, card: FREE_CHAT_ID, page: "card", under: ["home"] }], active: 0 }),
+  { stories: [] },
+  [{ id: FREE_CHAT_ID, origin: { via: "file" } }],
+)
+assert.deepEqual([restoredLegacy?.list[0].card, restoredLegacy?.list[0].page], [FREE_CHAT_ID, "card"])
+// closing a home tab drops its per-tab draft
+await add()
+const draftedTab = tab().id
+setHomeDraft(draftedTab, "未发完的草稿")
+assert.equal(registry.get(homeDrafts)[draftedTab], "未发完的草稿")
+await remove(draftedTab)
+assert.equal(registry.get(homeDrafts)[draftedTab], undefined)
 console.log("tabs ok")

@@ -11,12 +11,17 @@ import type { Facets, Phase } from "./session.ts"
  *  hold an unbounded body. Cards in the wild run to several MB, a dozen with what some authors inline; this is well
  *  clear of them. */
 export const CARD_BYTES = 32 * 1024 * 1024
+/** Preferred card id for home-tab free chat: lazily created on first send and reused across free-chat stories. */
+export const FREE_CHAT_ID = "_free-chat"
+/** Whether a card row or view is the built-in free-chat container (identified by origin, never colliding with legacy user cards). */
+export const isFreeChatCard = (card: Pick<CardRow, "origin"> | null | undefined): boolean =>
+  card?.origin?.via === "builtin"
 /** How a card reached this install, the install's own fact beside the author's `creator` / `version` / `source` in the
- *  card: a file the player gave, a single card's link (`url`), the workshop, or a card library (`depot`, its location;
- *  `version` the entry's when it was taken). `edited`: the player has since installed their own changes over what
- *  arrived. */
+ *  card: a file the player gave, a single card's link (`url`), the workshop, a card library (`depot`, its location;
+ *  `version` the entry's when it was taken), or the built-in free-chat container (`builtin`). `edited`: the player has
+ *  since installed their own changes over what arrived. */
 export interface Origin {
-  via: "file" | "link" | "workshop" | "depot"
+  via: "file" | "link" | "workshop" | "depot" | "builtin"
   url?: string
   depot?: string
   version?: string

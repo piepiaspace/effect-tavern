@@ -1,153 +1,148 @@
-// Home (the 10-31 decision that reverses sidebar-brief-1's "no home page"): where a fresh start lands, a home tab's
-// stage with no story and no card, the sidebar beside it on the shelf. What it holds is not settled yet: for now a
-// placeholder, a mark and a title in the middle of the stage card, nothing to click. It fills the stage card over the
-// reader like any page, with no head (nothing is under it to go back to); on a phone it leaves the strip above it in
-// view, the drawer's key with it.
-import { createSignal, For, Show } from "solid-js"
+// Home (#209): where a fresh start and "+" land — a quiet stage with the finalized emblem and a bottom composer ready
+// to start a free chat on the first line sent. Empty-shelf onboarding ("Add cards · Card workshop") stays visible until
+// the player has at least one character card (excluding the built-in free-chat container). Drafts are stored per home tab
+// so opening "+" starts blank and switching back preserves unfinished words. When the sidebar shelf is collapsed on
+// desktop or hidden in the phone drawer, a faint attachment strip on the composer's top edge opens it.
+import { createEffect, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { open } from "./pages.ts"
+import { Card as CardIcon, Send } from "./icons.tsx"
+import { imeController } from "./ime.ts"
+import { open, startFreeChat } from "./pages.ts"
 import { openSettings } from "./settings.tsx"
-import { cards } from "./store.ts"
+import {
+  cards,
+  characterCards,
+  homeDrafts,
+  homeSending,
+  setHomeDraft,
+  shelfHidden,
+  shelfOpener,
+  tabs,
+} from "./store.ts"
 import { theme } from "./theme.ts"
 import { t } from "./i18n.ts"
 
-export type BrandId =
-  | "rosette-04"
-  | "astrolabe-04"
-  | "rosette-03"
-  | "astrolabe-03"
-  | "rosette-01"
-  | "rosette-02"
-  | "astrolabe-01"
-  | "key-visual"
+const BRAND_SRC = "/brand/projector-rosette-04.svg"
+const finePointer = () =>
+  typeof window !== "undefined" && window.matchMedia?.("(hover: hover) and (pointer: fine)").matches
 
-export const BRAND_OPTIONS: readonly {
-  id: BrandId
-  code: string
-  src: string
-  iconSrc: string
-  tall?: boolean
-  kind: "svg" | "img"
-}[] = [
-  {
-    id: "rosette-04",
-    code: "04 · Twin-Reel",
-    src: "/brand/projector-rosette-04.svg",
-    iconSrc: "/brand/projector-rosette-04.svg",
-    tall: true,
-    kind: "svg",
-  },
-  {
-    id: "astrolabe-04",
-    code: "04 · Bayonet",
-    src: "/brand/cinema-astrolabe-04.svg",
-    iconSrc: "/brand/cinema-astrolabe-04.svg",
-    kind: "svg",
-  },
-  {
-    id: "rosette-03",
-    code: "03 · Crescent",
-    src: "/brand/projector-rosette-03.svg",
-    iconSrc: "/brand/projector-rosette-03.svg",
-    kind: "svg",
-  },
-  {
-    id: "astrolabe-03",
-    code: "03 · Art Deco",
-    src: "/brand/cinema-astrolabe-03.svg",
-    iconSrc: "/brand/cinema-astrolabe-03.svg",
-    tall: true,
-    kind: "svg",
-  },
-  {
-    id: "rosette-01",
-    code: "01 · Maltese",
-    src: "/brand/projector-rosette-01.svg",
-    iconSrc: "/brand/projector-rosette-01.svg",
-    kind: "svg",
-  },
-  {
-    id: "rosette-02",
-    code: "02 · Oblique",
-    src: "/brand/projector-rosette-02.svg",
-    iconSrc: "/brand/projector-rosette-02.svg",
-    kind: "svg",
-  },
-  {
-    id: "astrolabe-01",
-    code: "01 · Round",
-    src: "/brand/cinema-astrolabe-01.svg",
-    iconSrc: "/brand/cinema-astrolabe-01.svg",
-    kind: "svg",
-  },
-  {
-    id: "key-visual",
-    code: "GPT · Frame",
-    src: "/brand/key-visual.jpg",
-    iconSrc: "/brand/cinema-astrolabe-04.svg",
-    kind: "img",
-  },
-]
+export const BrandGlyph = () => (
+  <img
+    class="brand-glyph"
+    data-dark={theme() === "dark" ? "true" : "false"}
+    src={BRAND_SRC}
+    alt=""
+    aria-hidden="true"
+  />
+)
 
-const [activeBrand, setActiveBrand] = createSignal<BrandId>("rosette-04")
-
-export const BrandGlyph = () => {
-  const cur = () => BRAND_OPTIONS.find((o) => o.id === activeBrand()) ?? BRAND_OPTIONS[0]
-  return (
-    <img
-      class="brand-glyph"
-      data-dark={theme() === "dark" ? "true" : "false"}
-      src={cur().iconSrc}
-      alt=""
-      aria-hidden="true"
-    />
-  )
-}
-
-export const Home = () => {
+export const Home = (props: { shelfHidden?: boolean; onOpenShelf?: () => void }) => {
   const shelf = read(cards)
-  const cur = () => BRAND_OPTIONS.find((o) => o.id === activeBrand()) ?? BRAND_OPTIONS[0]
+  const hidden = read(shelfHidden)
+  const strip = read(tabs)
+  const drafts = read(homeDrafts)
+  const sendingTabs = read(homeSending)
+  const tabId = () => strip().active
+  const text = () => drafts()[tabId()] ?? ""
+  const sending = () => sendingTabs().has(tabId())
+  const showPick = () => props.shelfHidden ?? hidden()
+  const openShelf = () => (props.onOpenShelf ?? shelfOpener.open)()
+  let box: HTMLTextAreaElement | undefined
+
+  // Desktop: entering home or opening "+" focuses the composer so the player can type right away (touch devices stay
+  // unfocused so the virtual keyboard does not cover the stage unexpectedly).
+  createEffect(
+    () => tabId(),
+    () => {
+      if (!finePointer()) return
+      queueMicrotask(() => {
+        if (!box || box.disabled) return
+        if (document.querySelector(":popover-open, dialog[open], .drawer")) return
+        box.focus()
+      })
+    },
+  )
+
+  const submit = () => {
+    const id = tabId()
+    const line = text()
+    if (!line.trim() || sending()) return false
+    void startFreeChat(line, id).catch(() => {})
+    return true
+  }
+  const ime = imeController(submit)
+  onSettled(() => () => ime.dispose())
+  const keep = (e: Event) => e.preventDefault()
+
   return (
     <div class="home-page" data-dark={theme() === "dark" ? "true" : "false"}>
-      <div class="home-mark" data-kind={cur().kind}>
-        <Show
-          when={cur().kind === "svg"}
-          fallback={
-            <figure class="home-still">
-              <img src={cur().src} alt="" aria-hidden="true" />
-            </figure>
-          }
+      <div class="home-stage">
+        <div class="home-mark">
+          <img class="home-emblem tall" src={BRAND_SRC} alt="" aria-hidden="true" />
+          <h1>{t("home.title")}</h1>
+          {/* a new install has no character card: keep onboarding visible even after a first free chat */}
+          <Show when={!characterCards(shelf()).length}>
+            <p>{t("side.noCards")}</p>
+            <div class="home-first">
+              <button type="button" class="btn" onClick={() => openSettings("cards")}>
+                {t("side.addCards")}
+              </button>
+              <button type="button" class="btn" onClick={() => open("workshop")}>
+                {t("side.workshop")}
+              </button>
+            </div>
+          </Show>
+        </div>
+      </div>
+      <form
+        class="composer home-composer"
+        onSubmit={(e) => {
+          e.preventDefault()
+          submit()
+        }}
+      >
+        <div
+          class="box"
+          onPointerDown={(e) => {
+            const target = e.target as HTMLElement
+            if (target.closest("button, textarea")) return
+            e.preventDefault()
+            box?.focus()
+          }}
         >
-          <img class={{ "home-emblem": true, tall: Boolean(cur().tall) }} src={cur().src} alt="" aria-hidden="true" />
-        </Show>
-        <h1>{t("home.title")}</h1>
-        {/* a new install has no card: the one thing to do first is to bring one in, or to write one */}
-        <Show when={!shelf().length}>
-          <p>{t("side.noCards")}</p>
-          <div class="home-first">
-            <button type="button" class="btn" onClick={() => openSettings("cards")}>
-              {t("side.addCards")}
-            </button>
-            <button type="button" class="btn" onClick={() => open("workshop")}>
-              {t("side.workshop")}
+          <div class={{ attach: true, "home-attach": true, closed: !showPick() }} inert={!showPick()}>
+            <span class="home-mode">{t("home.freeChat")}</span>
+            <span class="spacer" />
+            <button type="button" class="bare home-pick" onPointerDown={keep} onClick={openShelf}>
+              <CardIcon aria-hidden="true" />
+              <span>{t("home.pickCard")}</span>
             </button>
           </div>
-        </Show>
-      </div>
-      <nav class="home-Direction-picker" aria-label={t("home.title")}>
-        <For each={BRAND_OPTIONS} keyed={(o) => o.id}>
-          {(o) => (
+          <div class="row">
+            <textarea
+              ref={(el) => (box = el)}
+              value={text()}
+              placeholder={t("home.placeholder")}
+              aria-label={t("home.placeholder")}
+              enterkeyhint="enter"
+              disabled={sending()}
+              onInput={(e) => setHomeDraft(tabId(), e.currentTarget.value)}
+              onCompositionStart={ime.compositionStart}
+              onCompositionEnd={ime.compositionEnd}
+              onKeyDown={(e) => ime.keyDown(e)}
+            />
             <button
-              type="button"
-              class="chip"
-              aria-pressed={activeBrand() === o().id ? "true" : "false"}
-              onClick={() => setActiveBrand(o().id)}
+              type="submit"
+              class="send"
+              aria-label={t("composer.send")}
+              disabled={!text().trim() || sending()}
+              onPointerDown={keep}
             >
-              {o().code}
+              <Send />
             </button>
-          )}
-        </For>
-      </nav>
+          </div>
+        </div>
+      </form>
     </div>
   )
 }

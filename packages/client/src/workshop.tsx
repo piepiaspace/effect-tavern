@@ -21,7 +21,7 @@ import { Back, Plus, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./manuscript.ts"
 import { close, editCard, newCard, showCard } from "./pages.ts"
-import { cards, focus } from "./store.ts"
+import { cards, characterCards, focus } from "./store.ts"
 import { saveCard, wholeCard } from "./wire.ts"
 
 /** How long after the last keystroke the card is written. */
@@ -136,6 +136,7 @@ const NewCard = (props: { primary?: boolean }) => (
 
 export const Workshop = () => {
   const shelf = read(cards)
+  const list = () => characterCards(shelf())
   return (
     <div class="status-page workshop-page">
       <header>
@@ -144,14 +145,14 @@ export const Workshop = () => {
         </button>
         <h1>{t("side.workshop")}</h1>
         <span class="workshop-end">
-          <Show when={shelf().length}>
+          <Show when={list().length}>
             <NewCard />
           </Show>
         </span>
       </header>
       <div class="workshop-body">
         <Show
-          when={shelf().length}
+          when={list().length}
           fallback={
             <div class="workshop-none">
               <p>{t("workshop.none")}</p>
@@ -160,7 +161,7 @@ export const Workshop = () => {
           }
         >
           <ul class="workshop-list">
-            <For each={shelf()} keyed={(c) => c.id}>
+            <For each={list()} keyed={(c) => c.id}>
               {(c) => (
                 <li>
                   <button type="button" class="workshop-card" onClick={() => void editCard(c().id)}>

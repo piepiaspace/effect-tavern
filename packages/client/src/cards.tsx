@@ -17,7 +17,7 @@ import { ask, dialogHandle, Modal, ToList, type Pane } from "./controls.tsx"
 import { Export, Import, Sync, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { removeCard } from "./pages.ts"
-import { cards, depots, type DepotView, type Origin } from "./store.ts"
+import { cards, characterCards, depots, type DepotView, type Origin } from "./store.ts"
 import { addDepot, cardFile, importCard, importLink, pullCard, removeDepot, viewDepot } from "./wire.ts"
 
 /** The list's first row: the shelf itself, beside the libraries. */
@@ -58,6 +58,7 @@ const TAKE: Record<DepotView["entries"][number]["state"], Key> = {
 
 export const Cards = (props: Pane) => {
   const shelf = read(cards)
+  const installed = () => characterCards(shelf())
   const libs = read(depots)
   const depot = () => libs().find((d) => d.id === props.picked)
   /** What the last action on this page was refused for. */
@@ -164,7 +165,7 @@ export const Cards = (props: Pane) => {
             onClick={() => pick(INSTALLED)}
           >
             <span class="p-name">{t("cards.installed")}</span>
-            <span class="tag mono">{shelf().length}</span>
+            <span class="tag mono">{installed().length}</span>
           </button>
           <For each={libs()} keyed={(d) => d.id}>
             {(d) => (
@@ -235,7 +236,7 @@ export const Cards = (props: Pane) => {
               </header>
               <div class="detail-scroll scroller">
                 <Refusal note={note()} />
-                <For each={shelf()} keyed={(c) => c.id} fallback={<div class="empty">{t("cards.empty")}</div>}>
+                <For each={installed()} keyed={(c) => c.id} fallback={<div class="empty">{t("cards.empty")}</div>}>
                   {(c) => (
                     <div class="setting-card card-row">
                       <div class="row">

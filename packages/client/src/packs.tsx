@@ -20,7 +20,7 @@ import {
   withProductPatch,
 } from "./pack.ts"
 import { EXTRA, addFragment, atOf, removeFragment, setFragmentAt, setFragmentText } from "./requirements.ts"
-import { cards, locals, packs } from "./store.ts"
+import { cards, cardTitle, locals, packs } from "./store.ts"
 import { SWITCHES } from "./switches.ts"
 import { type Key, t } from "./i18n.ts"
 import { deletePack, putPack, refreshActiveCard } from "./wire.ts"
@@ -102,7 +102,7 @@ export const Packs = (props: Pane) => {
   const mounts = createMemo(() => {
     const by = new Map<string, string[]>()
     for (const [cid, loc] of Object.entries(allLocals())) {
-      const title = known().find((x) => x.id === cid)?.title ?? cid
+      const title = cardTitle(known().find((x) => x.id === cid) ?? cid, known())
       for (const pid of loc.mounts ?? []) by.set(pid, [...(by.get(pid) ?? []), title])
     }
     return by

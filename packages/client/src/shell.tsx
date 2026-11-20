@@ -12,7 +12,7 @@
 // the reader's strip is ☰ (the sidebar as a drawer, whose workspace holds the persona and writing), `card › story`
 // as plain text, and the same three keys.
 import { type JSX } from "@solidjs/web"
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { createDrawerController, Drawer, DrawerBackdrop, DrawerContent } from "@ui-sdk/solid/drawer"
 import { read } from "./bridge.ts"
 import { StoryDialogs } from "./dialogs.tsx"
@@ -38,7 +38,20 @@ import { Edge } from "./edge.tsx"
 import { remembered, SIDE } from "./fold.ts"
 import { hasReadings } from "./readings.tsx"
 import { InstallKeys, Sidebar } from "./side.tsx"
-import { card, cards, isHome, page, type Page, path, stories, tabs } from "./store.ts"
+import {
+  card,
+  cards,
+  cardTitle,
+  isHome,
+  page,
+  type Page,
+  path,
+  registry,
+  shelfHidden,
+  shelfOpener,
+  stories,
+  tabs,
+} from "./store.ts"
 import { add, remove, unread } from "./tabs.ts"
 import { openTimeline } from "./timeline.tsx"
 import { close, open, pick } from "./pages.ts"
@@ -149,7 +162,7 @@ export const Shell = (props: { children: JSX.Element }) => {
   const current = createMemo(() => lib()?.stories.find((s) => s.id === lib()?.current))
   const storyCard = () => {
     const c = current()
-    return (c && shelf().find((x) => x.id === c.card)?.title) ?? view()?.title ?? ""
+    return cardTitle((c && shelf().find((x) => x.id === c.card)) ?? c?.card ?? view(), shelf())
   }
   const storyTitle = () => {
     const c = current()
@@ -158,6 +171,18 @@ export const Shell = (props: { children: JSX.Element }) => {
   // ── the phone's drawer ──
   const drawer = createDrawerController()
   const leaveDrawer = () => void drawer.close()
+  createEffect(
+    () => !wide() || folded(),
+    (hidden) => registry.set(shelfHidden, hidden),
+  )
+  onSettled(() => {
+    // oxlint-disable-next-line solid/reactivity -- open runs inside click handlers, where wide() is current
+    shelfOpener.open = () => (wide() ? dock() : void drawer.open())
+    return () => {
+      shelfOpener.open = () => {}
+      registry.set(shelfHidden, false)
+    }
+  })
   /** The reader's three keys: Timeline, Inspector, 读数 (when the card has one), one behaviour (a page in place, Escape and Back to return);
    *  small on the canvas, the strip's size on the phone. They are the reader's, so no page they open is ever under
    *  them: no key of the three has a pressed state. */
@@ -253,7 +278,7 @@ export const Shell = (props: { children: JSX.Element }) => {
                       <span class="c">
                         {isHome(x())
                           ? t("home.tab")
-                          : (shelf().find((c) => c.id === x().card)?.title ?? x().card ?? "")}
+                          : cardTitle(shelf().find((c) => c.id === x().card) ?? x().card, shelf())}
                       </span>
                       <Show when={named()}>
                         {(r) => (

@@ -10,10 +10,32 @@
 // back from any page, which also puts the open story's card back in the view. Landing reads the story's card (stories of every card
 // share one listing) and picks up a turn in flight there. One Escape rule for every page, mounted once by the App. The
 // reader stays mounted under all of it, so a turn in flight keeps streaming; another story only stops reading it.
+import { emptyDraft } from "./composition.ts"
 import { latestOf } from "./stories.ts"
 import { reading } from "./reading.ts"
-import { activeOf, card, cards, isHome, log, page, type Page, registry, stories, type Tab, tabs } from "./store.ts"
-import { edit, forget, home, load, navigate, remembered, select, shed } from "./tabs.ts"
+import {
+  activeOf,
+  card,
+  cards,
+  characterCards,
+  clearHomeDraft,
+  composition,
+  freeChatCard,
+  homeDrafts,
+  homeSending,
+  isFreeChat,
+  isHome,
+  log,
+  page,
+  type Page,
+  registry,
+  setHomeDraft,
+  stories,
+  type Tab,
+  tabs,
+} from "./store.ts"
+import { edit, forget, home, load, navigate, patchTab, remembered, select, shed } from "./tabs.ts"
+import { turn } from "./turn.ts"
 import * as wire from "./wire.ts"
 import type { Listing } from "./wire.ts"
 
@@ -66,9 +88,15 @@ const arrive = async (valid: () => boolean): Promise<void> => {
   const cur = current()
   if (!cur && !registry.get(cards).length) await wire.fetchCards()
   if (!valid()) return
-  const id = cur?.card ?? registry.get(cards)[0]?.id ?? null
-  const at = cur && registry.get(log).nodes.size ? "reader" : "card"
-  edit({ story: cur?.id ?? null, card: id, page: at, under: cur ? [] : ["home"] })
+  const id = cur?.card ?? characterCards(registry.get(cards))[0]?.id ?? null
+  const at: Page = cur
+    ? registry.get(log).nodes.size || isFreeChat(cur.card)
+      ? "reader"
+      : "card"
+    : id === null
+      ? "home"
+      : "card"
+  edit({ story: cur?.id ?? null, card: id, page: at, under: cur || id === null ? [] : ["home"] })
   if (!cur && id !== null && registry.get(card)?.id !== id) await wire.fetchCardOf(id, valid)
 }
 /** Back to the reader from any page: what covered it is dropped, and the card view is the tab's story's again (a card
@@ -126,9 +154,69 @@ export const toHome = async (): Promise<void> => {
 export const browse = async (id: string): Promise<void> => {
   const lib = registry.get(stories)
   const mine = lib?.stories.filter((s) => s.card === id) ?? []
-  if (!mine.length) return showCard(id)
+  if (!mine.length) return isFreeChat(id) ? toHome() : showCard(id)
   if (mine.some((s) => s.id === lib?.current)) return toReader()
   await openStory(latestOf(mine)!.id)
+}
+/** Starts a new free-chat story from a home tab and sends its opening line directly in the reader (no CardPage flash).
+ *  If the player switches tabs while card/story creation is in flight, their new active tab stays untouched, the
+ *  originating home tab binds to the new story (if still open), and the opening line is sent directly to that story so
+ *  it runs in the background without leaving an empty ghost story. */
+export const startFreeChat = async (
+  text: string,
+  originTabId: number = activeOf(registry.get(tabs)).id,
+): Promise<boolean> => {
+  const line = text.trim()
+  if (!line) return false
+  const mark = (on: boolean) =>
+    registry.update(homeSending, (s) => {
+      const next = new Set(s)
+      if (on) next.add(originTabId)
+      else next.delete(originTabId)
+      return next
+    })
+  mark(true)
+  clearHomeDraft(originTabId)
+  try {
+    const fc = freeChatCard() ?? (await wire.ensureFreeChat())
+    const cardId = fc.id
+    const listing = await wire.newStory(cardId)
+    const storyId = listing.current
+    if (storyId === null) {
+      if (!registry.get(homeDrafts)[originTabId]) setHomeDraft(originTabId, line)
+      return false
+    }
+    const sameTab = () => {
+      const cur = activeOf(registry.get(tabs))
+      return cur.id === originTabId && isHome(cur) && cur.page === "home"
+    }
+    if (sameTab()) {
+      let live = false
+      await navigate(async (valid) => {
+        if (!valid() || !sameTab()) return
+        registry.set(stories, listing)
+        await reading.activate(storyId)
+        if (!valid() || !sameTab()) return
+        edit({ story: storyId, card: cardId, page: "reader", under: [] })
+        registry.set(composition, { ...emptyDraft(), text: line })
+        turn.act()
+        live = true
+      })
+      if (live) return true
+    }
+    const origin = registry.get(tabs).list.find((t) => t.id === originTabId)
+    if (origin && isHome(origin) && origin.page === "home") {
+      patchTab(originTabId, { story: storyId, card: cardId, page: "reader", under: [] })
+    }
+    await wire.sendTo(storyId, { kind: "act", input: { text: line } })
+    await wire.fetchStories().catch(() => {})
+    return true
+  } catch (e) {
+    if (!registry.get(homeDrafts)[originTabId]) setHomeDraft(originTabId, line)
+    throw e
+  } finally {
+    mark(false)
+  }
 }
 
 /** This load is the browser's reload of the page (⌘R, Vite's full reload), not a fresh open of it (a new window or

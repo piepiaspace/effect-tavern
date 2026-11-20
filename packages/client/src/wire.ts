@@ -228,6 +228,9 @@ export const importLink = (url: string, replace = false): Promise<ShelfCard> =>
 // way out of the window: sent `keepalive`, so it outlives the page, where the body is small enough to be allowed to.
 export const newCard = (title: string): Promise<ShelfCard> =>
   shelved(call(`${base}/cards/new`, json("POST", { title })))
+/** Ensures the built-in free-chat blank card exists on the shelf (idempotent, lazy on first home send). */
+export const ensureFreeChat = (title?: string): Promise<ShelfCard> =>
+  shelved(call(`${base}/cards/free-chat`, json("POST", title ? { title } : {})))
 export const wholeCard = (id: string): Promise<{ card: Card; rev: string }> =>
   got(call(`${base}/cards/${enc(id)}/whole`))
 const KEEPALIVE = 60_000 // a browser's ceiling on keepalive bodies is 64 KiB, all such requests together
@@ -348,6 +351,17 @@ export const fetchSettings = (): Promise<unknown> =>
 /** Sends one action; returns what closes its stream (the turn goes on on the server). */
 export const send = (action: Action): (() => void) =>
   listen((signal) => call(base, { method: "POST", body: JSON.stringify(action), signal }))
+/** Starts an action on a specific story id without touching the active tab's slots (used when a home send finishes
+ *  after the player switched tabs: once the server accepts the request, the turn runs to completion on the server). */
+export const sendTo = async (storyId: number, action: Action): Promise<void> => {
+  const res = await fetch(base, {
+    method: "POST",
+    headers: { "x-tavern-story": String(storyId) },
+    body: JSON.stringify(action),
+  })
+  if (!res.ok) throw await responseError(res)
+  void res.body?.cancel().catch(() => {})
+}
 /** The turn in flight on this story, if any (`GET /turn`): its `attach` then its events; returns what closes it. */
 export const attach = (): (() => void) => listen((signal) => call(`${base}/turn`, { signal }))
 /** The player's stop (`POST /stop`): "withdrawn" before the first character, "halted" after it, null when idle. */

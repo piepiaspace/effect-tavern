@@ -25,7 +25,7 @@ import { AsksTab, ProseTab } from "./packs.tsx"
 import { EXTRA, atOf, extraOf, withExtra } from "./requirements.ts"
 import { openSettings } from "./settings.tsx"
 import { close, open } from "./pages.ts"
-import { card, packs, page, personas, stories } from "./store.ts"
+import { card, cardTitle, isFreeChat, packs, page, personas, stories } from "./store.ts"
 import { personaOn } from "./stories.ts"
 import { openPicker } from "./dialogs.tsx"
 import { kindOf } from "./record.ts"
@@ -108,7 +108,8 @@ export const WritingPage = () => {
   const view = read(card)
   const allPacks = read(packs)
   const cardId = () => view()?.id ?? ""
-  const title = () => view()?.title ?? ""
+  const title = () => cardTitle(view())
+  const freeChat = () => isFreeChat(view())
   const loc = () => view()?.local
   const layer = () => view()?.layer
 
@@ -143,8 +144,10 @@ export const WritingPage = () => {
             <button type="button" class="icon" aria-label={t("common.backToStory")} onClick={close}>
               <Back />
             </button>
-            <h1>{t("writing.title")}</h1>
-            <Show when={title()}>{(c) => <span class="tag clip">{c()}</span>}</Show>
+            <h1>{freeChat() ? t("writing.freeChatTitle") : t("writing.title")}</h1>
+            <Show when={freeChat()} fallback={<Show when={title()}>{(c) => <span class="tag clip">{c()}</span>}</Show>}>
+              <span class="tag">{t("writing.freeChatScope")}</span>
+            </Show>
           </header>
 
           <Show when={dropped().length > 0}>

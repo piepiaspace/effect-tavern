@@ -15,7 +15,22 @@ import { untrack } from "solid-js"
 import { registry } from "./atom.ts"
 import * as Atom from "./atom.ts"
 import { reading } from "./reading.ts"
-import { activeOf, card, cards, type Id, isHome, log, type Page, stories, type Tab, tabs, type Tabs } from "./store.ts"
+import {
+  activeOf,
+  card,
+  cards,
+  clearHomeDraft,
+  type Id,
+  isFreeChat,
+  isHome,
+  log,
+  type Origin,
+  type Page,
+  stories,
+  type Tab,
+  tabs,
+  type Tabs,
+} from "./store.ts"
 import * as wire from "./wire.ts"
 
 export const CAP = 8
@@ -31,6 +46,13 @@ export const edit = (patch: Partial<Omit<Tab, "id">>): void => {
   const s = now()
   registry.set(tabs, { ...s, list: s.list.map((t) => (t.id === s.active ? { ...t, ...patch } : t)) })
   if (patch.story !== undefined) seen(patch.story)
+}
+/** A specific tab by id, changed in place when still on the strip (e.g., an async home send finishing off-tab). */
+export const patchTab = (id: number, patch: Partial<Omit<Tab, "id">>): void => {
+  const s = now()
+  if (!s.list.some((t) => t.id === id)) return
+  registry.set(tabs, { ...s, list: s.list.map((t) => (t.id === id ? { ...t, ...patch } : t)) })
+  if (patch.story !== undefined && id === s.active) seen(patch.story)
 }
 
 /** On the tab now active, once the switch before it is done: its story in the slots and its card in the view; a story
@@ -49,6 +71,7 @@ const show = async (id: number, current: () => boolean): Promise<void> => {
   if (!current()) return
   if (
     t.story !== null &&
+    !isFreeChat(t.card) &&
     !registry.get(log).nodes.size &&
     (t.page === "reader" || t.page === "timeline" || t.page === "status" || typeof t.page === "object")
   )
@@ -104,10 +127,12 @@ export const remove = (id: number): Promise<void> => {
   if (s.list.length === 1) {
     const only = s.list[0]
     if (isHome(only) && only.page === "home") return last
+    clearHomeDraft(only.id)
     const fresh = homeTab()
     registry.set(tabs, { list: [fresh], active: fresh.id })
     return navigate((current) => show(fresh.id, current))
   }
+  clearHomeDraft(id)
   const list = s.list.filter((t) => t.id !== id)
   if (id !== s.active) {
     registry.set(tabs, { ...s, list })
@@ -117,14 +142,16 @@ export const remove = (id: number): Promise<void> => {
   registry.set(tabs, { list, active: (s.list[i + 1] ?? s.list[i - 1]).id })
   return navigate((current) => show(now().active, current))
 }
-/** Deleted stories: a tab on one stays, on its card's page with no story and home under it. */
+/** Deleted stories: a tab on one stays, on its card's page with no story and home under it (free chat returns home). */
 export const forget = (ids: readonly Id[]): void => {
   const s = now()
   registry.set(tabs, {
     ...s,
     list: s.list.map((t): Tab =>
       t.story !== null && ids.includes(t.story)
-        ? { id: t.id, story: null, card: t.card, page: "card", under: ["home"] }
+        ? isFreeChat(t.card)
+          ? { id: t.id, story: null, card: null, page: "home", under: [] }
+          : { id: t.id, story: null, card: t.card, page: "card", under: ["home"] }
         : t,
     ),
   })
@@ -167,7 +194,7 @@ const stackOf = (u: unknown, allowHome: boolean): Page[] =>
 export const restore = (
   raw: unknown,
   lib: { stories: readonly { id: Id; card: string }[] } | null,
-  shelf: readonly { id: string }[],
+  shelf: readonly { id: string; origin?: Origin }[],
 ): Tabs | null => {
   let v: { tabs?: unknown; active?: unknown }
   try {
@@ -197,9 +224,14 @@ export const restore = (
           x.page === "workshop" || x.page === "manuscript" || x.page === "writing" || x.page === "settings"
             ? x.page
             : "card"
-        const rawUnder = stackOf(x.under, true)
-        const under: Page[] = rawUnder[0] === "home" ? rawUnder : page === "card" ? ["home"] : ["home", "card"]
-        list.push({ id, story: null, card: x.card as string, page, under })
+        const isBuiltin = shelf.find((c) => c.id === x.card)?.origin?.via === "builtin"
+        if (isBuiltin && page === "card") {
+          list.push({ id, story: null, card: null, page: "home", under: [] })
+        } else {
+          const rawUnder = stackOf(x.under, true)
+          const under: Page[] = rawUnder[0] === "home" ? rawUnder : page === "card" ? ["home"] : ["home", "card"]
+          list.push({ id, story: null, card: x.card as string, page, under })
+        }
       } else return
       if (i === v.active) active = id
     })

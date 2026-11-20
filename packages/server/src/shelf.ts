@@ -15,7 +15,7 @@
 // never overwritten by a page that has not seen it.
 import { validateCard } from "@effect-tavern/runtime/src/author.ts"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
-import type { CardRow, Origin } from "@effect-tavern/runtime/src/library.ts"
+import { FREE_CHAT_ID, type CardRow, type Origin } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
 import { parseCard, printCard } from "@effect-tavern/runtime/support/author.ts"
 import type { Data } from "./data.ts"
@@ -95,8 +95,20 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
           throw new Refused("card-invalid", `error schema $: ${e instanceof Error ? e.message : String(e)}`)
         }
       const card = gate(value)
+      if (row(card.id)?.origin.via === "builtin")
+        throw new Refused("card-invalid", `error schema id: ${card.id} is reserved`)
       if (!replace && row(card.id)) throw new Refused("card-exists", `card ${card.id} is already installed`, 409)
       return put(card, origin)
+    },
+    /** The built-in blank card for home-tab free chat: created lazily on first send and reused afterwards. If a legacy
+     *  user card already occupies `FREE_CHAT_ID`, picks a non-colliding id so the legacy card stays untouched. */
+    ensureFreeChat: (title?: string): CardRow => {
+      const existing = data.cards.list().find((c) => c.origin.via === "builtin")
+      if (existing) return existing
+      let id: string = FREE_CHAT_ID
+      let n = 1
+      while (row(id)) id = `${FREE_CHAT_ID}-${n++}`
+      return put(gate(blank(id, title?.trim() || "自由对话")), { via: "builtin" })
     },
     /** Gone, with the player's row on it; `card-in-use` while a story of it exists. */
     remove: (id: string) => {
@@ -126,6 +138,7 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
     save: (id: string, value: unknown, was?: string): CardRow => {
       const had = row(id)
       if (!had) throw noCard(id)
+      if (had.origin.via === "builtin") throw new Refused("card-invalid", `error schema id: ${id} is reserved`)
       if (was !== undefined && was !== rev(id))
         throw new Refused("card-changed", `card ${id} has changed since it was read`, 409)
       const card = gate(value)

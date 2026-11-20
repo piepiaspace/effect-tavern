@@ -2,7 +2,15 @@
 // (src/log.ts: the same code, fed by the snapshot and by `change` events; head is where the reader is, and the server
 // keeps it). `draft` is the node being written: its prose grows by `delta`; a second draft (check failed) starts it over
 // and keeps the first as `prev`, greyed in place until the node lands. A failed turn keeps its draft as a ghost under `error`.
-import type { CardView, DepotRow, StoryRow, Persona, CardRow as ShelfCard } from "@effect-tavern/runtime/src/library.ts"
+import {
+  isFreeChatCard,
+  type CardView,
+  type DepotRow,
+  type StoryRow,
+  type Persona,
+  type CardRow as ShelfCard,
+} from "@effect-tavern/runtime/src/library.ts"
+export { FREE_CHAT_ID, isFreeChatCard } from "@effect-tavern/runtime/src/library.ts"
 export type {
   CardView,
   DepotRow,
@@ -65,6 +73,43 @@ export const providers = Atom.make<readonly Provider[]>([]).pipe(Atom.keepAlive)
 /** Every card of the install (GET /cards, server shelf.ts): the sidebar's shelf (side.tsx, searched by query.ts), and
  *  what a persona's picks are named by. A row says how its card got here (`origin`); a new install has none. */
 export const cards = Atom.make<readonly ShelfCard[]>([]).pipe(Atom.keepAlive)
+/** Whether a card row, view, or card id is the built-in free-chat container (identified by origin, never by id alone). */
+export const isFreeChat = (
+  c: Pick<ShelfCard, "id" | "origin"> | string | null | undefined,
+  shelf: readonly ShelfCard[] = registry.get(cards),
+): boolean => {
+  if (!c) return false
+  if (typeof c !== "string") return isFreeChatCard(c)
+  return Array.isArray(shelf) && shelf.some((x) => x.id === c && isFreeChatCard(x))
+}
+/** The installed built-in free-chat card row, if it has been lazily created. */
+export const freeChatCard = (shelf: readonly ShelfCard[] = registry.get(cards)): ShelfCard | undefined =>
+  Array.isArray(shelf) ? shelf.find(isFreeChatCard) : undefined
+/** Display name of a card in the active locale: the built-in free-chat card follows the UI language. */
+export const cardTitle = (
+  c: Pick<ShelfCard, "id" | "title" | "origin"> | string | null | undefined,
+  shelf: readonly ShelfCard[] = registry.get(cards),
+): string => {
+  if (!c) return ""
+  if (isFreeChat(c, shelf)) return t("home.freeChat")
+  return typeof c === "string" ? c : c.title
+}
+/** User character cards on the shelf, excluding the built-in free-chat container. */
+export const characterCards = (shelf: readonly ShelfCard[]): readonly ShelfCard[] => shelf.filter((c) => !isFreeChat(c))
+/** Per-home-tab draft text, keyed by tab id (cleared when the tab closes or submits a free chat). */
+export const homeDrafts = Atom.make<Readonly<Record<number, string>>>({}).pipe(Atom.keepAlive)
+export const setHomeDraft = (tabId: number, text: string): void =>
+  registry.update(homeDrafts, (m) => {
+    if (!text) {
+      if (!(tabId in m)) return m
+      const { [tabId]: _, ...rest } = m
+      return rest
+    }
+    return m[tabId] === text ? m : { ...m, [tabId]: text }
+  })
+export const clearHomeDraft = (tabId: number): void => setHomeDraft(tabId, "")
+/** Home tab ids currently creating a free-chat story, so another home tab stays interactive. */
+export const homeSending = Atom.make<ReadonlySet<number>>(new Set<number>()).pipe(Atom.keepAlive)
 /** The card libraries the install knows (GET /depots, server depot.ts): places cards can be taken from, none until the
  *  player adds one. What a library holds is read when it is opened (wire.ts `viewDepot`), never kept. */
 export const depots = Atom.make<readonly DepotRow[]>([]).pipe(Atom.keepAlive)
@@ -160,6 +205,10 @@ export const focus = Atom.make((get) => activeOf(get(tabs)).card).pipe(Atom.keep
 export const layer = Atom.make<"shelf" | "workspace">((get) => (get(focus) === null ? "shelf" : "workspace")).pipe(
   Atom.keepAlive,
 )
+/** Whether the sidebar shelf is currently hidden from view (collapsed on desktop or inside the phone drawer). */
+export const shelfHidden = Atom.make(false).pipe(Atom.keepAlive)
+/** Opens the shelf sidebar or phone drawer from pages inside the shell (wired by shell.tsx on mount). */
+export const shelfOpener = { open: (): void => {} }
 
 /** The reading line: root → head. */
 const emptyPath: Node[] = []

@@ -21,7 +21,7 @@
 // the row does not name runs on `model`, the environment's (dev.ts); `pinned` puts it over the row (MODEL=fake).
 // Every turn's stream passes through the `logbook` (logbook.ts), which files its calls under the node; a library given
 // none has a silent one (nothing is printed before a host says it is up).
-import type { CardView, Persona, StoryRow } from "@effect-tavern/runtime/src/library.ts"
+import { FREE_CHAT_ID, type CardView, type Persona, type StoryRow } from "@effect-tavern/runtime/src/library.ts"
 export type { CardRow } from "@effect-tavern/runtime/src/library.ts"
 export { Routing } from "@effect-tavern/runtime/src/session.ts"
 import {
@@ -407,6 +407,7 @@ export const library = ({
       /** A new, empty story of `card`, on the persona the card is on (`personaFor`), copied: a later change of the
        *  card's pick or the install's default leaves it alone. Throws when there is no such card. */
       create: (card: string): Id => {
+        if (card === FREE_CHAT_ID && !cards.has(FREE_CHAT_ID)) cards.ensureFreeChat()
         const c = cards.get(card)
         const p = personaFor(c, data.locals.get(c.id)?.persona)
         return data.stories.create(c.id, p.id, p.yields)

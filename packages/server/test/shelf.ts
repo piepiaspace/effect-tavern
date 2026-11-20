@@ -2,7 +2,7 @@
 // as text or as a value through one gate, an id is never taken over without being asked, a card with stories stays, and
 // what a card was is what it exports as.
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
-import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
+import { CARD_BYTES, FREE_CHAT_ID } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
 import { checkCard, scaffold } from "@effect-tavern/runtime/support/author.ts"
 import { cardFile, chat } from "@effect-tavern/runtime/test/cards/index.ts"
@@ -264,6 +264,59 @@ const file = { via: "file" } as const
       ["PUT", "/depots/x"],
     ] as const)
       assert.deepEqual(await call(method, path), [404, { error: "not found" }], `${method} ${path}`)
+    // built-in free-chat card: lazily created, idempotent, protected from file/workshop overwrite, and playable directly
+    const [fcStatus, fcFirst] = await call("POST", "/cards/free-chat")
+    assert.equal(fcStatus, 200)
+    assert.equal((fcFirst["card"] as { id: string }).id, FREE_CHAT_ID)
+    assert.deepEqual((fcFirst["card"] as { origin: unknown }).origin, { via: "builtin" })
+    assert.deepEqual(
+      (await call("POST", "/cards?replace=1", JSON.stringify({ ...chat, id: FREE_CHAT_ID }))).map((x) =>
+        typeof x === "number" ? x : x["code"],
+      ),
+      [400, "card-invalid"],
+    )
+    assert.deepEqual(
+      (await call("PUT", `/cards/${FREE_CHAT_ID}/whole`, JSON.stringify({ card: { ...chat, id: FREE_CHAT_ID } }))).map(
+        (x) => (typeof x === "number" ? x : x["code"]),
+      ),
+      [400, "card-invalid"],
+    )
+    const [, fcSecond] = await call("POST", "/cards/free-chat")
+    assert.deepEqual(fcSecond["card"], fcFirst["card"])
+    assert.equal((fcSecond["cards"] as unknown[]).length, 1)
+    const [s1Status, s1] = await call("POST", "/stories", JSON.stringify({ card: FREE_CHAT_ID }))
+    const [s2Status, s2] = await call("POST", "/stories", JSON.stringify({ card: FREE_CHAT_ID }))
+    const s1Id = s1["current"] as number
+    const s2Id = s2["current"] as number
+    assert.deepEqual([s1Status, s2Status], [200, 200])
+    assert.notEqual(s1Id, s2Id)
+    assert.equal(t.lib.cards.list().length, 1)
+    assert.equal((await call("DELETE", `/stories/${s1Id}`))[0], 200)
+    assert.equal((await call("DELETE", `/stories/${s2Id}`))[0], 200)
+    assert.deepEqual(await call("DELETE", `/cards/${FREE_CHAT_ID}`), [200, [] as never])
+    // Legacy collision: an existing user card whose id happens to be FREE_CHAT_ID stays intact and ensureFreeChat picks a fresh id
+    const [legStatus, legInstalled] = await call(
+      "POST",
+      "/cards",
+      JSON.stringify({ ...chat, id: FREE_CHAT_ID, title: "旧角色卡" }),
+    )
+    assert.deepEqual([legStatus, (legInstalled["card"] as { origin: unknown }).origin], [200, { via: "file" }])
+    const [colStatus, colFree] = await call("POST", "/cards/free-chat")
+    const colId = (colFree["card"] as { id: string }).id
+    assert.equal(colStatus, 200)
+    assert.notEqual(colId, FREE_CHAT_ID)
+    assert.deepEqual((colFree["card"] as { origin: unknown }).origin, { via: "builtin" })
+    assert.equal(t.lib.cards.get(FREE_CHAT_ID).title, "旧角色卡")
+    assert.equal(((await call("POST", "/cards/free-chat"))[1]["card"] as { id: string }).id, colId)
+    assert.equal((await call("DELETE", `/cards/${colId}`))[0], 200)
+    assert.deepEqual(await call("DELETE", `/cards/${FREE_CHAT_ID}`), [200, [] as never])
+    // POST /stories on FREE_CHAT_ID also auto-ensures the card if it was never created yet
+    const [autoStatus, autoListing] = await call("POST", "/stories", JSON.stringify({ card: FREE_CHAT_ID }))
+    const autoId = autoListing["current"] as number
+    assert.equal(autoStatus, 200)
+    assert.ok(typeof autoId === "number" && t.lib.cards.has(FREE_CHAT_ID))
+    assert.equal((await call("DELETE", `/stories/${autoId}`))[0], 200)
+    assert.deepEqual(await call("DELETE", `/cards/${FREE_CHAT_ID}`), [200, [] as never])
   } finally {
     server.close()
   }

@@ -58,7 +58,10 @@ import {
 import {
   card as cardAtom,
   cards,
+  cardTitle,
+  characterCards,
   focus,
+  isFreeChat,
   layer,
   locals,
   page,
@@ -129,6 +132,7 @@ export const Sidebar = (props: {
   const pg = read(page)
   const rows = () => lib()?.stories ?? []
   const card = createMemo(() => shelf().find((c) => c.id === at()))
+  const freeChat = () => isFreeChat(card() ?? at(), shelf())
   // who the player is here (the open story's persona, else the card's default), and the writing in force: a change rewrites the cached prefix, no new story
   const allLocals = read(locals)
   const view = read(cardAtom)
@@ -194,7 +198,16 @@ export const Sidebar = (props: {
   const wordsOn = (id: string) => allTags()[id] ?? []
   const terms = createMemo(() => parse(cq()))
   const marked = createMemo(() => plain(terms()))
-  const shown = createMemo(() => shelf().filter((c) => admits(c, terms(), wordsOn(c.id), picked())))
+  // The built-in free-chat card appears on the shelf once it has at least one story, pinned at the top and titled in the active locale.
+  const visibleShelf = createMemo(() => {
+    const listed = shelf()
+      .filter((c) => !isFreeChat(c) || rows().some((s) => s.card === c.id))
+      .map((c) => (isFreeChat(c) ? { ...c, title: cardTitle(c) } : c))
+    const free = listed.filter((c) => isFreeChat(c))
+    const rest = listed.filter((c) => !isFreeChat(c))
+    return [...free, ...rest]
+  })
+  const shown = createMemo(() => visibleShelf().filter((c) => admits(c, terms(), wordsOn(c.id), picked())))
   // the facet panel (#130): a popover under the filter block while the box holds the focus and the query is only `#`
   // terms or ends in a `#…` being typed (query.ts `facetsWanted`; a plain word closes it, freeing the list under it).
   // System facets (squircle badges) and the player's tags (round pills) sit in separate groups, each with its hit count
@@ -202,8 +215,8 @@ export const Sidebar = (props: {
   const capsules = createMemo(() => {
     const d = fold(draft() ?? "")
     const base = draft() === undefined ? terms() : parse(cq().slice(0, -draft()!.length - 1))
-    const rows = shelf().filter((c) => admits(c, base, wordsOn(c.id), picked()))
-    const { facets, tags } = facetCounts(rows, wordsOn)
+    const matching = visibleShelf().filter((c) => admits(c, base, wordsOn(c.id), picked()))
+    const { facets, tags } = facetCounts(matching, wordsOn)
     return {
       facets: facets.filter(([w]) => fold(w).includes(d)),
       tags: tags.filter(([w]) => fold(w).includes(d)),
@@ -453,7 +466,7 @@ export const Sidebar = (props: {
                 <li class="none">
                   <span>{cq().trim() || picked().length ? t("side.noCardMatch") : t("side.noCards")}</span>
                   {/* an empty shelf (not an empty search): the way to the first card */}
-                  <Show when={!shelf().length}>
+                  <Show when={!characterCards(shelf()).length}>
                     <button type="button" class="btn sm" onClick={toCards}>
                       {t("side.addCards")}
                     </button>
@@ -464,105 +477,116 @@ export const Sidebar = (props: {
           </section>
           {/* layer B, the workspace: one card's stories */}
           <section class="pane workspace" aria-label={t("side.workspace")} inert={which() !== "workspace"}>
-            <button type="button" class="cardhead" disabled={!card()} onClick={toEditor}>
-              <h1>{card()?.title ?? at() ?? ""}</h1>
-              <span class="enter" aria-hidden="true">
-                <Next />
-              </span>
-            </button>
-            <div class="workspace-tags scroller">
-              <For each={words()} keyed={false}>
-                {(w) => (
-                  <span class="chip">
-                    <button type="button" class="word" onClick={() => filterByTag(w())}>
-                      {w()}
-                    </button>
-                    <button
-                      type="button"
-                      class="del"
-                      aria-label={`${w()} · ${t("side.removeTag")}`}
-                      onClick={() => tagsOf((ws) => ws.filter((x) => x !== w()))}
-                    >
-                      <Close aria-hidden="true" />
-                    </button>
-                  </span>
-                )}
-              </For>
-              <button
-                type="button"
-                class={{ chip: true, add: true, empty: !words().length }}
-                disabled={at() === null}
-                aria-label={t("side.addTag")}
-                popovertarget={tagPop()}
-              >
-                <Show
-                  when={words().length}
-                  fallback={
-                    <>
-                      <Tag aria-hidden="true" />
-                      <span>{t("side.addTag")}</span>
-                    </>
-                  }
-                >
-                  <Snippets aria-hidden="true" />
-                </Show>
-              </button>
-              <div
-                id={tagPop()}
-                class="tag-pop"
-                popover
-                onToggle={(e) => {
-                  if (e.newState === "open") return tagBox?.focus()
-                  setTq("")
-                  if (tagBox) tagBox.value = ""
-                }}
-              >
-                <div class="input-box sm">
-                  <input
-                    type="text"
-                    ref={(el) => (tagBox = el)}
-                    disabled={words().length >= MAX_TAGS}
-                    placeholder={t("side.addTag")}
-                    aria-label={t("side.addTag")}
-                    onInput={(e) => setTq(e.currentTarget.value)}
-                    onKeyDown={(e) => {
-                      if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return // an IME's confirming Enter is not a tag
-                      e.preventDefault()
-                      const w = e.currentTarget.value.trim()
-                      if (w && !words().includes(w)) attach(w)
-                      clear()
-                    }}
-                  />
+            <Show
+              when={!freeChat()}
+              fallback={
+                <div class="cardhead static">
+                  <h1>{cardTitle(card() ?? at(), shelf())}</h1>
                 </div>
-                <Show when={offered().length}>
-                  <div class="tag-chips scroller">
-                    <For each={offered()} keyed={false}>
-                      {(w) => (
-                        <button
-                          type="button"
-                          class="chip"
-                          onClick={() => {
-                            attach(w())
-                            clear()
-                          }}
-                        >
-                          {w()}
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </Show>
+              }
+            >
+              <button type="button" class="cardhead" disabled={!card()} onClick={toEditor}>
+                <h1>{cardTitle(card() ?? at(), shelf())}</h1>
+                <span class="enter" aria-hidden="true">
+                  <Next />
+                </span>
+              </button>
+            </Show>
+            <Show when={!freeChat()}>
+              <div class="workspace-tags scroller">
+                <For each={words()} keyed={false}>
+                  {(w) => (
+                    <span class="chip">
+                      <button type="button" class="word" onClick={() => filterByTag(w())}>
+                        {w()}
+                      </button>
+                      <button
+                        type="button"
+                        class="del"
+                        aria-label={`${w()} · ${t("side.removeTag")}`}
+                        onClick={() => tagsOf((ws) => ws.filter((x) => x !== w()))}
+                      >
+                        <Close aria-hidden="true" />
+                      </button>
+                    </span>
+                  )}
+                </For>
                 <button
                   type="button"
-                  class="btn sm ghost manage"
+                  class={{ chip: true, add: true, empty: !words().length }}
+                  disabled={at() === null}
+                  aria-label={t("side.addTag")}
                   popovertarget={tagPop()}
-                  popovertargetaction="hide"
-                  onClick={() => leaveFor(openTagManager)}
                 >
-                  {t("tags.manage")}
+                  <Show
+                    when={words().length}
+                    fallback={
+                      <>
+                        <Tag aria-hidden="true" />
+                        <span>{t("side.addTag")}</span>
+                      </>
+                    }
+                  >
+                    <Snippets aria-hidden="true" />
+                  </Show>
                 </button>
+                <div
+                  id={tagPop()}
+                  class="tag-pop"
+                  popover
+                  onToggle={(e) => {
+                    if (e.newState === "open") return tagBox?.focus()
+                    setTq("")
+                    if (tagBox) tagBox.value = ""
+                  }}
+                >
+                  <div class="input-box sm">
+                    <input
+                      type="text"
+                      ref={(el) => (tagBox = el)}
+                      disabled={words().length >= MAX_TAGS}
+                      placeholder={t("side.addTag")}
+                      aria-label={t("side.addTag")}
+                      onInput={(e) => setTq(e.currentTarget.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return // an IME's confirming Enter is not a tag
+                        e.preventDefault()
+                        const w = e.currentTarget.value.trim()
+                        if (w && !words().includes(w)) attach(w)
+                        clear()
+                      }}
+                    />
+                  </div>
+                  <Show when={offered().length}>
+                    <div class="tag-chips scroller">
+                      <For each={offered()} keyed={false}>
+                        {(w) => (
+                          <button
+                            type="button"
+                            class="chip"
+                            onClick={() => {
+                              attach(w())
+                              clear()
+                            }}
+                          >
+                            {w()}
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                  <button
+                    type="button"
+                    class="btn sm ghost manage"
+                    popovertarget={tagPop()}
+                    popovertargetaction="hide"
+                    onClick={() => leaveFor(openTagManager)}
+                  >
+                    {t("tags.manage")}
+                  </button>
+                </div>
               </div>
-            </div>
+            </Show>
             <div class="workspace-tools">
               <button type="button" class="row" disabled={at() === null} onClick={() => leaveFor(openPicker)}>
                 <span class="lbl">
@@ -571,10 +595,16 @@ export const Sidebar = (props: {
                 </span>
                 <span class="val">{persona()}</span>
               </button>
-              <button type="button" class="row" disabled={at() === null} onClick={() => leaveFor(openWriting)}>
+              <button
+                type="button"
+                class="row"
+                disabled={at() === null}
+                aria-label={freeChat() ? t("writing.freeChatTitle") : undefined}
+                onClick={() => leaveFor(openWriting)}
+              >
                 <span class="lbl">
                   <Write aria-hidden="true" />
-                  <span>{t("side.writing")}</span>
+                  <span>{freeChat() ? t("side.freeChatWriting") : t("side.writing")}</span>
                 </span>
                 <span class="val">{writing()}</span>
               </button>
@@ -634,12 +664,12 @@ export const Sidebar = (props: {
             <button
               type="button"
               class="new-story"
-              aria-current={pg() === "card" ? "page" : undefined}
+              aria-current={!freeChat() && pg() === "card" ? "page" : undefined}
               disabled={at() === null}
-              onClick={toCard}
+              onClick={() => (freeChat() ? leaveFor(toShelf) : toCard())}
             >
               <Snippets aria-hidden="true" />
-              <span>{t("side.newStory")}</span>
+              <span>{freeChat() ? t("side.newChat") : t("side.newStory")}</span>
             </button>
           </section>
         </div>
