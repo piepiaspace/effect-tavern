@@ -46,7 +46,7 @@ export const stageNames: Record<Phase, Key> = {
 export type Id = number
 export type Draft = SharedDraft & { composition?: DraftModel }
 export type { Attach, Failure } from "@effect-tavern/runtime/src/projection.ts"
-export type Wire = Event | ({ kind: "error" } & Failure) | Attach
+export type Wire = Event | ({ kind: "error" } & Failure) | Attach | { kind: "streamEnd" }
 
 export { registry }
 export const log = Atom.make<L.Log<Node>>(L.of<Node>())
@@ -107,7 +107,10 @@ export const error = Atom.make<Failure | null>(null)
 export const demanded = Atom.make<Id | null>(null)
 /** A turn in flight: a draft that is not the ghost of a failed one, or any stage running (a demand runs one with no
  *  draft, and two streams would interleave into one `apply` queue). What holds the composer, the story and a new root. */
-export const working = Atom.make((get) => (get(draft) !== null && get(error) === null) || get(stage) !== null)
+export const openStreams = Atom.make(0)
+export const working = Atom.make(
+  (get) => get(openStreams) > 0 || (get(draft) !== null && get(error) === null) || get(stage) !== null,
+)
 /** The page over the reader: none, the card page, the Timeline, the settings, the Writing page (writing.tsx) or the
  *  Inspect page on one node. The reader stays mounted under it, so a turn in flight keeps streaming. "home" is no page
  *  over a story: the bottom of a home tab's stack (`isHome`), where a fresh start and "+" land (pages.ts, tabs.ts).
@@ -313,6 +316,10 @@ export const running = (phase: Phase | null): void =>
   )
 const applyNow = (e: Wire): void => {
   switch (e.kind) {
+    case "streamEnd":
+      registry.set(stage, null)
+      running(null)
+      return
     case "attach":
       // the turn as it stands: its prose so far drawn at once, the live deltas playing on from there (the switch here
       // reset the playout, so the loop is told the prose is still coming). `fresh` is the server's: an act's line that
@@ -357,10 +364,12 @@ const applyNow = (e: Wire): void => {
         // What waits behind this node is the same turn's (record's commit, a passage's node): `settle` clears the
         // queue for a turn that is over, and this one is not. Dropped, a record that finished while the prose was
         // still playing out (a backgrounded tab) left the node pending and the turn running for good.
+        const activeStage = registry.get(stage)
         const rest = held
         settle(!amended) // an amend leaves a typed revision alone
         held = rest
         if (e.node?.settlementStatus === "pending") registry.set(stage, "record")
+        else if (registry.get(openStreams)) registry.set(stage, activeStage)
         else running(null)
       }
       return

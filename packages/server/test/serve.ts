@@ -149,7 +149,7 @@ const sse = (text: string) =>
     >[]
     assert.deepEqual(
       calls.map((c) => c.msgs.length > 0),
-      [true, true],
+      [true, true, true],
     )
     assert.ok(calls.every((c) => c.ms >= 0))
     assert.equal((await fetch(`${base}/calls`)).status, 404)

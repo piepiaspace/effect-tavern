@@ -27,6 +27,7 @@ export interface Turn<B> {
   boundary?: true // starts a new transcript window; state and products still fold over the full path
   passageStatus?: "pending" | "failed" | "committed" | "skipped" // recover a transition whose digest or narration failed
   passage?: true // automatic transition, never dispatches another passage on settlement
+  passageSeed?: Pick<Turn<B>, "products" | "changes"> // interval digest before this passage generated its own outputs
   opening?: readonly (typeof Effect_.Type)[] // a greeting's effects, applied before anything else on the path
   beats: readonly B[] // decide + seed, settled by code on replay
   answers: Readonly<Record<string, string>> // readout id → option id, chosen at record; settled by code on replay

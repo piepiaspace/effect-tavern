@@ -261,6 +261,7 @@ export const openLogbook = (
         usage: sum(e.calls),
         calls: e.calls.map((c) => ({
           phase: c.phase,
+          ...(c.product && { product: c.product }),
           ...(c.via && { via: c.via }),
           ...(c.model && { model: c.model }),
           ms: c.ms,

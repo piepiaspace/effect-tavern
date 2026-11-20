@@ -290,7 +290,7 @@ const Step = (props: {
         <span class="stage">
           <Next class="chev" aria-hidden="true" />
           <span class="nm">
-            {props.row.phase}
+            {c().product ?? props.row.phase}
             <Show when={props.ord}>{(n) => <span class="ord">{n()}</span>}</Show>
           </span>
           <Show when={hits()}>{(h) => <span class="hits">{h()}</span>}</Show>

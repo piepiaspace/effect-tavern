@@ -132,7 +132,7 @@ const made = () => events.filter((e) => e.kind === "call")
 const calls = () => made().map((e) => e.phase)
 const prompts = (phase: string) =>
   made()
-    .filter((e) => e.phase === phase)
+    .filter((e) => e.phase === phase && !e.product)
     .map((e) => e.msgs)
 const lastNarr = () => prompts("narrate").at(-1)!
 const since = (i: number) => calls().slice(i)
@@ -144,23 +144,20 @@ const go = (s: Stream.Stream<Event, unknown>) =>
 
 const program = Effect.gen(function* () {
   const c0 = yield* go(C.act(null, { text: "hello" }))
-  assert.deepEqual(calls(), ["narrate", "record"])
+  assert.deepEqual(calls(), ["narrate", "record", "record"])
   assert.deepEqual([c0.read, c0.beats, c0.brief, c0.fired], [[], [], { must: [], may: [] }, []])
   assert.deepEqual(c0.answers, {}) // no readouts declared: record only takes the products
   assert.ok(!/Questions/.test(str(prompts("record")[0]!)))
   // The event stream: a stage announced before each call, the prose streamed by part, the node last.
   assert.deepEqual(
-    events.map((e) => e.kind),
-    [
-      "stage",
-      ...Array(Math.ceil(prose(c0).length / 8)).fill("delta"),
-      "call",
-      "change",
-      "change",
-      "stage",
-      "call",
-      "change",
-    ],
+    events.filter((e) => e.kind === "stage").map((e) => e.phase),
+    ["narrate", "record", "record"],
+  )
+  assert.deepEqual(
+    made()
+      .filter((e) => e.product)
+      .map((e) => e.product),
+    ["options"],
   )
   assert.equal(
     events
@@ -184,7 +181,7 @@ const program = Effect.gen(function* () {
   const t1 = yield* go(S.act(null, { text: "ask about li" }))
   // the lookup's index names every entry by its hook, a lore entry's first sentence included
   assert.ok(!str(prompts("lookup")[0]!).includes("Index:"))
-  assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record", "record"])
   assert.deepEqual(t1.read, [{ id: "li", layer: 1 }])
   assert.equal(S.node(t1.id).delivered[0]!.text, full.lore[0]!.layers[0])
   assert.ok(str(lastNarr()).includes(full.lore[0]!.layers[0]!) && !str(lastNarr()).includes(full.lore[0]!.layers[1]!))
@@ -212,7 +209,7 @@ const program = Effect.gen(function* () {
   warmths.push("warm")
   const t2 = yield* go(S.act(t1.id, { text: "strike B", note: "NOTE#2" }))
   assert.deepEqual([t2.answers, S.node(t2.id).state.bond], [{ warmth: "warm" }, 4])
-  assert.deepEqual(since(i), ["lookup", "decide", "decide", "decide", "direct", "narrate", "check", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "decide", "decide", "direct", "narrate", "check", "record", "record"])
   assert.deepEqual(S.node(t2.id).playerCatalog, []) // the row's node is in the tail
   assert.deepEqual(t2.read, [])
   assert.ok(/^Current: scene=place: P#2; present: name=B, mood=calm$/m.test(str(lastNarr())))
@@ -259,7 +256,7 @@ const program = Effect.gen(function* () {
     ].join("\n\n"),
     `<fiction>\n${full.fiction[0]!.text!}\n\n${full.fiction[1]!.text!}\n</fiction>`,
   ]) // narrate.role → frame (persona, setting tagged; player zone and style after) → fiction
-  assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record", "record"])
   assert.deepEqual(t3.brief, { must: [], may: [] }) // no beat event this turn, t2's readout emitted none: no window
   // Cache breakpoints: the head's last message and the last history message (t2's reply, what next turn resends
   // verbatim) carry markers; this turn's input and tail do not.
@@ -281,7 +278,7 @@ const program = Effect.gen(function* () {
   i = calls().length
   narrations.push("cut")
   const t4 = yield* go(C.act(c0.id, { text: "more" }))
-  assert.deepEqual(since(i), ["narrate", "narrate", "record"])
+  assert.deepEqual(since(i), ["narrate", "narrate", "record", "record"])
   assert.ok(prose(t4).endsWith("partial …and the rest."))
   const resumed = prompts("narrate").at(-1)!.at(-1)!
   assert.equal(resumed.role, "assistant")
@@ -292,7 +289,7 @@ const program = Effect.gen(function* () {
   narrations.push("kill", "plain")
   warmths.push("close")
   const t5 = yield* go(S.act(t3.id, { text: "finish him" }))
-  assert.deepEqual(since(i), ["decide", "narrate", "check", "narrate", "check", "record"])
+  assert.deepEqual(since(i), ["decide", "narrate", "check", "narrate", "check", "record", "record"])
   assert.ok(str(prompts("narrate").at(-1)!).includes(`Previous draft broke: rule "${full.guard[0]!}"`))
   assert.deepEqual(t5.violated, [])
   // The band switched: bond reached 8 at t3's record, so t5's head reads the warm fragment and not the cool one.
@@ -310,7 +307,7 @@ const program = Effect.gen(function* () {
   const late = Deferred.makeUnsafe<void>()
   onCheck.push(() => void Deferred.doneUnsafe(late, Effect.void))
   const t5s = yield* go(S.act(t3.id, { text: "finish him" }, Deferred.await(late)))
-  assert.deepEqual(since(i), ["decide", "narrate", "check", "narrate", "record"])
+  assert.deepEqual(since(i), ["decide", "narrate", "check", "narrate", "record", "record"])
   assert.deepEqual([t5s.end, t5s.violated, prose(t5s).endsWith("KILL")], ["stopped", [full.guard[0]!], true])
   // nothing to run from: an act of nothing, an edit of nothing
   for (const ex of [yield* Effect.exit(go(S.act(t3.id, { text: "" }))), yield* Effect.exit(go(S.edit(t3.id, {})))])
@@ -322,7 +319,7 @@ const program = Effect.gen(function* () {
   // window on that next turn: t5's "close" is carried into t6's gate, li's third layer is offered, the director runs.
   // At four turns on the path the first block (t1, t2) folds, and t1's people row enters the lookup's Index.
   assert.ok(S.node(t5.id).events.includes("warmth:close") && /warmth:close/.test(str(prompts("decide").at(-1)!)))
-  assert.deepEqual(since(i), ["lookup", "decide", "direct", "narrate", "check", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "direct", "narrate", "check", "record", "record"])
   assert.ok(!str(prompts("lookup").at(-1)!).includes("Index:"))
   assert.deepEqual(t6.brief.may, ["li"])
   assert.ok(str(lastNarr()).includes(`MAY reveal: ${full.lore[0]!.layers[2]}`))
@@ -343,7 +340,7 @@ const program = Effect.gen(function* () {
   // fully delivered on the folded nodes), and the lookup reads t1's row, now folded.
   i = calls().length
   const t7 = yield* go(S.act(t6.id, { text: "speak about Li" }))
-  assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record", "record"])
   assert.deepEqual(t7.read, [
     { id: "li", layer: 1 },
     { id: "li", layer: 2 },
@@ -377,7 +374,7 @@ const program = Effect.gen(function* () {
   // reword: narrate, check, record only; read/beats/brief kept; sibling under the same parent.
   i = calls().length
   const w = yield* go(S.reword(t2.id))
-  assert.deepEqual(since(i), ["narrate", "check", "record"])
+  assert.deepEqual(since(i), ["narrate", "check", "record", "record"])
   assert.deepEqual([w.parent, w.read, w.beats, w.brief], [t2.parent, t2.read, t2.beats, t2.brief])
   assert.deepEqual([t2.sibling, t7b.sibling, w.sibling], [undefined, "swipe", "reword"]) // which action made it, for a version list
   // a reword with a word to the narrator: it rides as this sibling's note, in the request and on the record
@@ -393,7 +390,7 @@ const program = Effect.gen(function* () {
   assert.equal(g.state.bond, 8)
   i = calls().length
   const t9 = yield* go(S.act(g.turn.id, { text: "wait" }))
-  assert.deepEqual(since(i), ["lookup", "decide", "direct", "narrate", "check", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "direct", "narrate", "check", "record", "record"])
   assert.deepEqual([t9.beats, t9.brief.may], [[], ["li"]])
   assert.deepEqual(t9.read, [
     { id: "li", layer: 1 },
@@ -440,7 +437,7 @@ const program = Effect.gen(function* () {
   // The edited text mentions the tattoo, so the reveal that was open at t2 fires from the player's own words.
   i = calls().length
   const e = yield* go(S.edit(t2.id, { text: "EDITED: the sleeve tears, a crane tattoo" }))
-  assert.deepEqual(since(i), ["check", "record"])
+  assert.deepEqual(since(i), ["check", "record", "record"])
   assert.deepEqual(
     [e.parent, e.read, e.beats, e.brief, prose(e)],
     [t2.parent, t2.read, t2.beats, t2.brief, "EDITED: the sleeve tears, a crane tattoo"],
@@ -451,7 +448,7 @@ const program = Effect.gen(function* () {
   // edit with the line revised and the prose kept: the same sibling shape, the record redone over the new words
   i = calls().length
   const r = yield* go(S.edit(t2.id, { input: { text: "REVISED line" } }))
-  assert.deepEqual(since(i), ["check", "record"])
+  assert.deepEqual(since(i), ["check", "record", "record"])
   assert.deepEqual(
     [r.parent, r.input.text, prose(r), r.beats, r.sibling],
     [t2.parent, "REVISED line", prose(t2), t2.beats, "edit"],
@@ -460,7 +457,7 @@ const program = Effect.gen(function* () {
   // edit whose prose breaks a rule: the verdict is recorded and the player's words stand, never rewritten
   i = calls().length
   const v = yield* go(S.edit(t2.id, { text: "EDITED: KILL" }))
-  assert.deepEqual([since(i), v.violated, prose(v)], [["check", "record"], [full.guard[0]!], "EDITED: KILL"])
+  assert.deepEqual([since(i), v.violated, prose(v)], [["check", "record", "record"], [full.guard[0]!], "EDITED: KILL"])
 
   // setField: an effect kept on t3 and folded last; every descendant's state moves with it (t6 was 16: t5's +8 on 20), no call made.
   // A value outside the field is refused and the node is untouched.
@@ -484,10 +481,10 @@ const program = Effect.gen(function* () {
       Stream.tap((e) => (e.kind === "delta" ? Deferred.succeed(halt, undefined) : Effect.void)),
     ),
   )
-  assert.deepEqual(since(i), ["lookup", "decide", "narrate", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "narrate", "record", "record"])
   assert.equal(t12.end, "stopped")
   assert.ok(prose(t12).startsWith("PROSE#") && prose(t12).length < 100, prose(t12))
-  assert.equal(made().at(-2)!.out, prose(t12)) // the narrate call reports what was kept
+  assert.equal(made().findLast((e) => e.phase === "narrate")!.out, prose(t12)) // the narrate call reports what was kept
   const t13 = yield* go(S.act(t12.id, { text: "", note: "继续。" }))
   assert.ok(str(lastNarr()).includes(prose(t12)) && t13.end === "end")
   // A thought in the input: decide and narrate both hear what ⦅ ⦆ is; a turn without one carries no such line.
@@ -572,7 +569,7 @@ const program = Effect.gen(function* () {
   i = calls().length
   narrations.push("slop")
   const p1 = yield* go(P.act(null, { text: "hello" }))
-  assert.deepEqual(since(i), ["narrate", "polish", "record"])
+  assert.deepEqual(since(i), ["narrate", "polish", "record", "record"])
   const asked = str(prompts("polish").at(-1)!)
   assert.ok(asked.includes('<target id="hit-1" hits="knuckles went white">His knuckles went white.</target>'), asked)
   assert.ok(asked.includes("hit-2: stock image") && !/A: |PROSE#\d+\n/.test(asked.split("\n")[0]!))
@@ -586,12 +583,12 @@ const program = Effect.gen(function* () {
   i = calls().length
   narrations.push("slop")
   const p2 = yield* go(P.act(p1.id, { text: "hello" }))
-  assert.deepEqual([since(i), /went white/.test(prose(p2))], [["narrate", "record"], true])
+  assert.deepEqual([since(i), /went white/.test(prose(p2))], [["narrate", "record", "record"], true])
   polishing = player
   // The player's own prose (an edit) is never rewritten, hits or not.
   i = calls().length
   const p3 = yield* go(P.edit(p1.id, { text: prose(p2) }))
-  assert.deepEqual([since(i), prose(p3)], [["record"], prose(p2)])
+  assert.deepEqual([since(i), prose(p3)], [["record", "record"], prose(p2)])
   // A stopped stream is not polished: halted past the floor, the hits in the kept prose stand.
   i = calls().length
   narrations.push("slop")
@@ -605,7 +602,7 @@ const program = Effect.gen(function* () {
       }),
     ),
   )
-  assert.deepEqual([since(i), p4.end, /went white/.test(prose(p4))], [["narrate", "record"], "stopped", true])
+  assert.deepEqual([since(i), p4.end, /went white/.test(prose(p4))], [["narrate", "record", "record"], "stopped", true])
 
   // ───────── Narrate products: each `<<aside>> <id>` block is cut off the prose into products[id] ─────────
   // The fake streams eight characters a delta, so the nine-character delimiter always arrives split across two.
@@ -788,7 +785,7 @@ const program = Effect.gen(function* () {
   })
   i = calls().length
   const d0 = yield* go(perform(dyn, { kind: "greet", opening: [{ path: "bond", set: 8 }], note: "a wish" }))
-  assert.deepEqual(since(i), ["lookup", "decide", "direct", "narrate", "check", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "direct", "narrate", "check", "record", "record"])
   assert.deepEqual(
     [d0.parent, d0.input, d0.opening],
     [null, { text: "", note: "OPEN the scene\n\na wish" }, [{ event: "warmth:close" }, { path: "bond", set: 8 }]],

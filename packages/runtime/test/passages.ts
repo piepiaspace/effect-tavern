@@ -368,3 +368,48 @@ C.skipRecord(child.id)
 inOpening = false
 await Effect.runPromise(outcome(C.act(child.id, { text: "continue" })))
 console.log("dynamic child recovery: ok")
+
+// A passage's own settlement must never leak into its on-demand reconstruction of the digest or catalog.
+{
+  const prompts: unknown[] = []
+  const order: string[] = []
+  const T = makeSession({
+    card: {
+      ...card,
+      products: [
+        ...card.products!,
+        {
+          id: "track",
+          role: "theater",
+          on: true,
+          text: "Choose a track.",
+          shape: { kind: "table", columns: [{ key: "id", type: "enum", catalog: "tracks" }] },
+        },
+      ],
+      catalogs: [{ id: "tracks", items: [{ id: "pre" }, { id: "post", when: { path: "clock", is: 1 } }] }],
+      passages: [
+        { when: { path: "clock", is: 1 }, note: "new day", digest: ["notes"], do: [{ path: "clock", set: 0 }] },
+      ],
+    },
+    rows: () => ({}),
+    model: () =>
+      fake((o) => {
+        const d = readStage(o)
+        if (d.asked.includes("track")) {
+          prompts.push([o.prompt, o.responseFormat])
+          order.push("track")
+        }
+        const digest = d.subject.includes("preceding story transcript")
+        if (digest) order.push("digest")
+        return defaultAnswer(d, { notes: digest ? "interval digest" : "scene note", track: [{ id: "pre" }] })
+      }),
+  })
+  const child = await Effect.runPromise(outcome(T.act(null, { text: "day" })))
+  assert.deepEqual(order, ["track", "digest", "track"])
+  assert.equal(child.passage, true)
+  for (const [i, id] of [child.parent!, child.id].entries()) {
+    await Effect.runPromise(outcome(T.demand(id, "track")))
+    assert.deepEqual(prompts.at(-1), prompts[i])
+    assert.ok(!JSON.stringify(prompts[i]).includes('"post"'))
+  }
+}

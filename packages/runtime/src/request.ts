@@ -284,7 +284,11 @@ export const request = (c: Common, a: Ask, w: Wire = {}): Message[] => {
       return [
         ...reviewed,
         ...(a.invoked?.length
-          ? [sys(`Invoked context (reference only; extract world facts from <scene> only):\n${a.invoked.join("\n\n")}`)]
+          ? [
+              sys(
+                `Invoked context${a.tools ? " (reference only; extract world facts from <scene> only)" : ""}:\n${a.invoked.join("\n\n")}`,
+              ),
+            ]
           : []),
         ...(a.known || a.current ? [sys([a.known, a.current].filter(Boolean).join("\n"))] : []),
         ...thoughtOf(c),

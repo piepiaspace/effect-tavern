@@ -27,6 +27,7 @@ import type { Call } from "./inspect.ts"
 import type { Hit } from "./stories.ts"
 import {
   apply,
+  openStreams,
   card,
   cards,
   depots,
@@ -354,12 +355,23 @@ export const stop = async (): Promise<"withdrawn" | "halted" | null> =>
 /** Reads an SSE response into `apply` until it ends or is closed; a 204 is nothing to read. */
 const listen = (open: (signal: AbortSignal) => Promise<Response>): (() => void) => {
   const ac = new AbortController()
+  let opened = false
+  const closed = () => {
+    if (!opened) return
+    opened = false
+    registry.update(openStreams, (count) => count - 1)
+    if (!ac.signal.aborted && !registry.get(openStreams)) apply({ kind: "streamEnd" })
+  }
+  ac.signal.addEventListener("abort", closed, { once: true })
   void (async () => {
     try {
       const res = await open(ac.signal)
       if (res.status === 204) return
       if (!res.ok) throw await responseError(res)
       if (!res.body) throw new Error("missing event stream")
+      if (ac.signal.aborted) return
+      opened = true
+      registry.update(openStreams, (count) => count + 1)
       const reader = res.body.getReader()
       const dec = new TextDecoder()
       let buf = ""
@@ -384,6 +396,8 @@ const listen = (open: (signal: AbortSignal) => Promise<Response>): (() => void) 
           message: e instanceof Error ? e.message : String(e),
           ...(e instanceof Error && "code" in e && typeof e.code === "string" ? { code: e.code } : {}),
         })
+    } finally {
+      closed()
     }
   })()
   return () => ac.abort()

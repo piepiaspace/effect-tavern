@@ -7,6 +7,10 @@ import assert from "node:assert/strict"
 import { open } from "../src/data.ts"
 import { library, type PublicEvent } from "../src/library.ts"
 import { handle, listen } from "../src/serve.ts"
+import { mkdtempSync, readFileSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { openLogbook } from "../src/logbook.ts"
 import { Busy } from "../src/turn.ts"
 
 const card: Card = {
@@ -139,3 +143,122 @@ try {
   data.close()
 }
 console.log("headless ok")
+
+// Hold one model response until the other branch has published its change on this Run.
+for (const slow of ["settlement", "options", "stop", "stop-passage", "skip", "failure", "retry"] as const) {
+  const ready = Promise.withResolvers<void>()
+  const release = Promise.withResolvers<void>()
+  const requests: string[] = []
+  let fail = true
+  const scripted = fake((o) => {
+    const d = readStage(o)
+    if (d.phase !== "record") return defaultAnswer(d)
+    const settlement = d.tools.includes("finish_record")
+    requests.push(settlement ? "settlement" : d.asked.join(","))
+    if (settlement) assert.ok(!d.asked.includes("options"))
+    else assert.ok(!JSON.stringify(o.prompt).includes("Use the native tools"))
+    if (fail && ((slow === "failure" && d.asked.includes("forum")) || (slow === "retry" && settlement)))
+      throw Error("scripted failure")
+    return defaultAnswer(d, { notes: "N", options: ["A"], forum: "F" })
+  })
+  const sdk = scripted.model
+  assert.ok(typeof sdk === "object" && sdk.specificationVersion === "v4")
+  const generate = sdk.doGenerate.bind(sdk)
+  sdk.doGenerate = async (o) => {
+    const d = readStage(o)
+    if (
+      d.phase === "record" &&
+      (((slow === "settlement" || slow === "skip") && d.tools.includes("finish_record")) ||
+        (slow !== "settlement" && d.asked.includes("options")))
+    )
+      await release.promise
+    return generate(o)
+  }
+  const data = open(":memory:")
+  const dir = mkdtempSync(join(tmpdir(), "theater-run-"))
+  try {
+    const lib = library({ data, model: () => scripted, logbook: openLogbook({ dir, level: "quiet" }) })
+    lib.cards.install(
+      {
+        ...card,
+        ...(slow === "stop-passage" && { passages: [{ when: { all: [] }, text: "Next scene" }] }),
+        products: [
+          { id: "notes", on: true },
+          { id: "options", on: true },
+          { id: "forum", role: "theater", text: "Forum", shape: { kind: "text" }, on: true },
+        ],
+      },
+      { via: "file" },
+    )
+    const id = lib.stories.create(card.id)
+    const act = { kind: "act", input: { text: "go" } }
+    const s = lib.session(id)
+    const ended = collect(
+      lib.submit(id, act).pipe(
+        Stream.tap((e) =>
+          Effect.sync(() => {
+            if (e.kind !== "change" || !e.node) return
+            const t = s.log.nodes.get(e.node.id)!
+            if (
+              slow === "skip"
+                ? t.products.forum
+                : slow === "settlement"
+                  ? t.products.options
+                  : t.settlementStatus !== "pending"
+            )
+              ready.resolve()
+          }),
+        ),
+      ),
+    )
+    await ready.promise
+    assert.throws(() => lib.submit(id, act), Busy)
+    const node = s.log.head!
+    const before = s.log.nodes.get(node)!
+    if (slow === "settlement") assert.equal(before.settlementStatus, "pending")
+    else assert.equal(before.products.options, undefined)
+    if (slow === "skip") {
+      await collect(lib.submit(id, { kind: "skipRecord", node }))
+      await ended
+      assert.equal(s.log.nodes.get(node)!.settlementStatus, "skipped")
+      assert.deepEqual(s.log.nodes.get(node)!.products, { forum: "F" })
+      assert.equal(lib.attach(id), undefined)
+      continue
+    }
+    if (slow === "stop" || slow === "stop-passage") {
+      assert.equal(lib.stop(id), "halted")
+      await ended
+      const log = JSON.parse(readFileSync(join(dir, "turns.jsonl"), "utf8").trim())
+      assert.equal(log.end, "landed")
+      if (slow === "stop-passage") {
+        assert.equal(s.log.nodes.get(node)!.passageStatus, "committed")
+        assert.equal(s.log.nodes.get(s.log.head!)!.parent, node)
+      }
+    }
+    release.resolve()
+    const events = await ended
+    fail = false
+    if (slow === "retry") {
+      assert.equal(s.log.nodes.get(node)!.settlementStatus, "failed")
+      const before = requests.length
+      await collect(lib.submit(id, { kind: "retryRecord", node }))
+      assert.deepEqual(requests.slice(before), ["settlement"])
+    } else assert.ok(events.every((e) => e.kind !== "error"))
+    assert.equal(s.log.nodes.get(node)!.settlementStatus, "committed")
+    if (slow === "stop" || slow === "stop-passage") {
+      assert.equal(s.log.nodes.get(node)!.products.options, undefined)
+      await collect(lib.submit(id, act))
+    } else {
+      if (slow === "failure") {
+        assert.equal(s.log.nodes.get(node)!.products.forum, undefined)
+        assert.ok(lib.trace(id, node).some((c) => c.product === "forum" && c.fault))
+        await collect(lib.submit(id, { kind: "demand", node, product: "forum" }))
+      }
+      assert.deepEqual(s.log.nodes.get(node)!.products, { options: ["A"], forum: "F", notes: "N" })
+    }
+  } finally {
+    release.resolve()
+    data.close()
+    rmSync(dir, { recursive: true })
+  }
+}

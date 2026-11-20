@@ -5,7 +5,7 @@ import { timelineNode as node } from "./fixtures.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import { captureArtifact, expectNoDiagnostics } from "@solidjs/diagnostics"
 import assert from "node:assert/strict"
-import { apply, draft, log, path, registry, stage, working, composition, error } from "../src/store.ts"
+import { apply, draft, log, path, registry, stage, working, openStreams, composition, error } from "../src/store.ts"
 
 let frames: (() => void)[] = []
 ;(globalThis as any).requestAnimationFrame = (f: () => void) => frames.push(f)
@@ -92,6 +92,14 @@ const { artifact } = await captureArtifact(
     assert.equal(registry.get(draft), null)
     assert.equal(registry.get(working), true)
     assert.equal(registry.get(stage), "record")
+    registry.set(openStreams, 1)
+    apply({ kind: "change", node: { ...pending, settlementStatus: "committed" }, head: 99 })
+    assert.equal(registry.get(working), true)
+    assert.equal(registry.get(stage), "record")
+    registry.set(openStreams, 0)
+    apply({ kind: "streamEnd" })
+    assert.equal(registry.get(stage), null)
+    assert.equal(registry.get(working), false)
     apply({ kind: "change", node: { ...pending, settlementStatus: "failed" }, head: 99 })
     apply({ kind: "error", message: "record failed" })
     assert.equal(registry.get(working), false)

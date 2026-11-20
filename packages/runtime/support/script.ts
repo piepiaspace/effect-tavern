@@ -79,6 +79,7 @@ export const defaultAnswer = (doc: StageDoc, canned: Record<string, unknown> = {
     case "record": {
       const cross = new Set(doc.tools.filter((t) => t.startsWith("read_")).map((t) => t.slice(5)))
       const products = Object.fromEntries(doc.asked.filter((id) => !cross.has(id)).map((id) => [id, canned[id]]))
+      if (!doc.tools.includes("finish_record")) return json(products)
       const calls: NonNullable<FakeReply["toolCalls"]>[number][] = []
       for (const id of cross) {
         const value = canned[id]

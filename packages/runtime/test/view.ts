@@ -36,7 +36,7 @@ S.setField(root, [{ path: "局势", set: 8 }])
 const calls = new Map<string, readonly Message[]>()
 await Effect.runPromise(
   Stream.runForEach(S.act(root, { text: "", note: "继续" }), (e) =>
-    Effect.sync(() => void (e.kind === "call" && calls.set(e.phase, e.msgs))),
+    Effect.sync(() => void (e.kind === "call" && !e.product && calls.set(e.phase, e.msgs))),
   ),
 )
 const text = (m: Message) =>
@@ -89,12 +89,12 @@ const G = makeSession({ card: gated, rows: () => player, model })
 calls.clear()
 await Effect.runPromise(
   Stream.runForEach(G.act(G.greet(gated.greetings[0]!).node!.id, { text: "", note: "继续" }), (e) =>
-    Effect.sync(() => void (e.kind === "call" && calls.set(e.phase, e.msgs))),
+    Effect.sync(() => void (e.kind === "call" && !e.product && calls.set(e.phase, e.msgs))),
   ),
 )
 const quiet = view(gated, player, { stage: "record" }).doc.map(text)
 assert.ok(!quiet.join("\n").includes("Questions:"))
-assert.deepEqual(sent("record").slice(0, -1), quiet.slice(0, -1))
+assert.equal(calls.has("record"), false) // only the independent options request remains
 
 // the band ↔ readout section puts the band on 局势 directly above the readout that moves it
 assert.match(n.sections[3]!.text, /^tension moves 局势\n {2}band tense [^]*\n {2}readout: [^]*\n {4}worse: /)
@@ -236,7 +236,7 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
   await Effect.runPromise(
     Stream.runForEach(
       runtime.act(runtime.greet(card.greetings[0]!).node!.id, { text: "", note: "继续", invoke: ["card:manual"] }),
-      (e) => Effect.sync(() => void (e.kind === "call" && calls.set(e.phase, e.msgs))),
+      (e) => Effect.sync(() => void (e.kind === "call" && !e.product && calls.set(e.phase, e.msgs))),
     ),
   )
   for (const stage of ["lookup", "record"] as const) {

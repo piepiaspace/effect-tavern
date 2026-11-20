@@ -176,7 +176,11 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
 
   // ───────── record ─────────
   // a 小剧场 is narrate's, not this record document's; a catalog with no survivor drops what reads it (session `record`)
-  const asked = withCatalogs(askedAt(R.products, "record", gated), card.catalogs ?? [], gated)
+  const asked = withCatalogs(
+    askedAt(R.products, "record", gated).filter((p) => p.role !== "theater"),
+    card.catalogs ?? [],
+    gated,
+  )
   const asks = productAsks(asked, gated)
   const qs = rpg.questions(s, R.names, context)
   const questions = qs.length ? qs : undefined // none active: no Questions line, as the session sends none
