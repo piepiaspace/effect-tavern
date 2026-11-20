@@ -4,6 +4,7 @@
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
+import { checkCard, scaffold } from "@effect-tavern/runtime/support/author.ts"
 import { cardFile, chat } from "@effect-tavern/runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
@@ -14,7 +15,10 @@ import { Refused, shelf } from "../src/shelf.ts"
 import { tavern } from "../src/tavern.ts"
 import { node } from "../src/wire.ts"
 
-const refused = (code: Refused["code"]) => (e: unknown) => e instanceof Refused && e.code === code
+const refused =
+  (code: Refused["code"]) =>
+  (e: unknown): e is Refused =>
+    e instanceof Refused && e.code === code
 const file = { via: "file" } as const
 
 {
@@ -49,13 +53,28 @@ const file = { via: "file" } as const
     /error empty-text guard\[0\]: /, // every error line, as the lint words it
   )
   assert.ok(!cards.has("blank"))
-  // an id is the card's address on the wire and in a file name: nothing a URL or a path would read otherwise
-  for (const id of ["", "a/b", "..", ".", "a b", "a?b", "a#b"]) {
-    assert.throws(() => cards.install({ ...full, id }, file), refused("card-invalid"), JSON.stringify(id))
+  // an id is the card's address on the wire and in a file name: same rule across scaffold, checkCard, and Shelf.install
+  for (const id of ["a.b", "竹林", "竹林-2.0_b"]) {
+    const yaml = scaffold(id, "chat")
+    assert.deepEqual(checkCard(yaml).diagnostics, [], id)
+    assert.equal(cards.install(yaml, file).id, id)
+    cards.remove(id)
+  }
+  for (const id of ["a:b", ".", "..", "", "a/b", "a b", "a?b", "a#b"]) {
+    assert.throws(() => scaffold(id, "chat"), /card id/i, JSON.stringify(id))
+    const candidate = { ...chat, id }
+    const checked = checkCard(Bun.YAML.stringify(candidate)).diagnostics.filter((d) => d.level === "error")
+    assert.ok(
+      checked.some((d) => d.rule === "schema" && d.path === "id" && /card id/i.test(d.message)),
+      JSON.stringify(id),
+    )
+    assert.throws(
+      () => cards.install(candidate, file),
+      (e) => refused("card-invalid")(e) && /error schema id:.*card id/i.test(e.message),
+      JSON.stringify(id),
+    )
     assert.ok(!cards.has(id))
   }
-  assert.equal(cards.install({ ...full, id: "竹林-2.0_b" }, file).id, "竹林-2.0_b")
-  cards.remove("竹林-2.0_b")
 
   // a card is its file again, and that file is the same card
   for (const name of ["wuxia", "yandao", "banxing", "ri"]) {

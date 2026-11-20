@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { decodeCard, rollOf, type Card } from "../src/card.ts"
@@ -36,6 +36,40 @@ try {
   assert.equal((await run("init", "chat")).exitCode, 1)
   assert.equal(readFileSync(join(dir, "chat.yaml"), "utf8"), original)
   assert.equal((await run("test", "chat.yaml")).exitCode, 0)
+  // Top-level Card.id rule shared by card init (scaffold) and card check (validateCard).
+  for (const id of ["a.b", "竹林", "竹林-2.0_b"]) {
+    assert.deepEqual(checkCard(scaffold(id, "chat")).diagnostics, [], id)
+    assert.equal((await run("init", id, "--template", "chat")).exitCode, 0, id)
+    assert.ok(existsSync(join(dir, `${id}.yaml`)), id)
+    assert.equal((await run("check", `${id}.yaml`)).exitCode, 0, id)
+  }
+  const chatCard = decodeCard(Bun.YAML.parse(original))
+  for (const id of ["a:b", ".", "..", ""]) {
+    assert.throws(() => scaffold(id, "chat"), /card id/i, JSON.stringify(id))
+    const init = await run("init", id)
+    assert.equal(init.exitCode, 1, JSON.stringify(id))
+    assert.match(init.stderr, /card id/i, JSON.stringify(id))
+    assert.ok(!existsSync(join(dir, `${id}.yaml`)), JSON.stringify(id))
+    const yaml = Bun.YAML.stringify({ ...chatCard, id })
+    const checked = checkCard(yaml).diagnostics.filter((d) => d.level === "error")
+    assert.ok(
+      checked.some((d) => d.rule === "schema" && d.path === "id" && /card id/i.test(d.message)),
+      JSON.stringify(id),
+    )
+    writeFileSync(join(dir, "bad-id.yaml"), yaml)
+    const cliCheck = await run("check", "bad-id.yaml", "--json")
+    assert.equal(cliCheck.exitCode, 1, JSON.stringify(id))
+    const cliDiags = JSON.parse(cliCheck.stdout).diagnostics as {
+      rule: string
+      level: string
+      path: string
+      message: string
+    }[]
+    assert.ok(
+      cliDiags.some((d) => d.rule === "schema" && d.level === "error" && d.path === "id" && /card id/i.test(d.message)),
+      JSON.stringify(id),
+    )
+  }
   await runScenario(
     {
       ...decodeCard(Bun.YAML.parse(original)),

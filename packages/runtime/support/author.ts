@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 // YAML is a host concern; the value report and workshop transformations also run in the browser.
-import { checkValue } from "../src/author.ts"
+import { cardIdError, checkValue } from "../src/author.ts"
 import { decodeCard, type Card } from "../src/card.ts"
 import { player } from "./rows.ts"
 
@@ -24,7 +24,8 @@ export const checkCard = (source: string): ReturnType<typeof checkValue> => {
 
 export const templates = ["chat", "readout", "rpg", "world"] as const
 export const scaffold = (id: string, template: (typeof templates)[number]) => {
-  if (!/^[\p{L}\p{N}_-]+$/u.test(id)) throw new Error("id must contain only letters, numbers, _ or -")
+  const idError = cardIdError(id)
+  if (idError) throw new Error(idError)
   const persona = template === "chat" || template === "readout"
   const card: Card = {
     id,

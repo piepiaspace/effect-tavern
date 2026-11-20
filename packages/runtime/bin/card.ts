@@ -59,8 +59,9 @@ const init = Command.make(
   },
   ({ id, template }) =>
     Effect.gen(function* () {
+      const content = yield* attempt(() => scaffold(id, template))
       const path = yield* here(`${id}.yaml`)
-      yield* (yield* FileSystem.FileSystem).writeFileString(path, scaffold(id, template), { flag: "wx" })
+      yield* (yield* FileSystem.FileSystem).writeFileString(path, content, { flag: "wx" })
       yield* Console.log(`Created ${id}.yaml`)
     }),
 ).pipe(Command.withDescription("Scaffold a new <id>.yaml card from one of the four coordinate templates"))

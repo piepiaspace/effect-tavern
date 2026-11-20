@@ -42,7 +42,6 @@ export class Refused extends Error {
   }
 }
 const noCard = (id: string) => new Refused("no-card", `no card ${id}`)
-const ID = /^[\p{L}\p{N}_.-]+$/u
 
 /** A card with nothing in it: what the workshop's New puts on the shelf, under the name the shelf is to call it. */
 const blank = (id: string, title?: string): Card => ({
@@ -69,9 +68,6 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
     const errors = diagnostics.filter((d) => d.level === "error")
     if (!card || errors.length)
       throw new Refused("card-invalid", errors.map((d) => `${d.level} ${d.rule} ${d.path}: ${d.message}`).join("\n"))
-    // the id is the card's address on the wire and in a file name: one path segment that survives a URL
-    if (!ID.test(card.id) || card.id === "." || card.id === "..")
-      throw new Refused("card-invalid", "error schema id: an id is letters, digits, _ - and . only")
     return card
   }
   /** A card's revision: a digest of it as stored, so it moves with every write and with nothing else. */
