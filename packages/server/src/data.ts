@@ -154,7 +154,7 @@ const fromPlayer = (p: OldPlayer): { overlay: Layer; locals: Local[] } => {
   return { overlay, locals }
 }
 /** A row folded into the overlay: each list the overlay's first, the row's copy standing on a shared key (it was the higher
- *  rank), a product patch merged field by field; the lexicon has no key, so every entry stands. */
+ *  rank), a product patch merged field by field. */
 const foldIn = (o: Partial<Layer>, r: Partial<Layer>): Partial<Layer> => {
   const list = <T>(a: readonly T[] = [], b: readonly T[] = [], key: (x: T) => unknown) => [
     ...new Map([...a, ...b].map((x) => [key(x), x])).values(),
@@ -180,7 +180,7 @@ const foldIn = (o: Partial<Layer>, r: Partial<Layer>): Partial<Layer> => {
     ),
     ...set(
       "lexicon",
-      list(o.lexicon, r.lexicon, (x) => x),
+      list(o.lexicon, r.lexicon, (x) => x.pattern),
     ),
     ...set(
       "snippets",

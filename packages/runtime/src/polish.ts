@@ -115,7 +115,7 @@ export const scan = (text: string, lexicon: readonly Entry[], floor = FLOOR): Ta
     const hints: string[] = []
     per[j].forEach((ms, i) => {
       if (!active[i] || !ms.length) return
-      hits.push(...ms)
+      for (const m of ms) hits.push(m)
       const hint = res[i].e.hint
       if (hint && !hints.includes(hint)) hints.push(hint)
     })

@@ -3,7 +3,7 @@
 import { harness, type Layer, type Local } from "@effect-tavern/runtime/src/layer.ts"
 import assert from "node:assert/strict"
 import { caretOf, defaultsOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf } from "../src/inserts.ts"
-import { mergeLexicon, parseLexicon, serializeLexicon } from "../src/lexicon.ts"
+import { cleanLex, mergeLexicon, parseLexicon, serializeLexicon } from "../src/lexicon.ts"
 import {
   cardNameKeys,
   fillKnown,
@@ -84,6 +84,47 @@ assert.ok("error" in parseLexicon(`{"writing":{}}`))
 assert.deepEqual(parseLexicon(serializeLexicon([{ pattern: "a", hint: "b" }])), {
   entries: [{ pattern: "a", hint: "b" }],
 })
+assert.deepEqual(
+  parseLexicon(
+    serializeLexicon([
+      { pattern: "像", max: 3, enabled: false },
+      { pattern: "微微", hint: "节制", max: 0, enabled: true },
+      { pattern: "缓缓", max: 2.5 },
+    ]),
+  ),
+  {
+    entries: [
+      { pattern: "像", max: 3, enabled: false },
+      { pattern: "微微", hint: "节制", max: 0, enabled: true },
+      { pattern: "缓缓", max: 2.5 },
+    ],
+  },
+)
+assert.deepEqual(
+  parseLexicon(
+    JSON.stringify([
+      { pattern: "neg", max: -1, enabled: "false" },
+      { pattern: "str", max: "3", enabled: 0 },
+      { pattern: "nil", max: null, enabled: null },
+      { pattern: "ok", max: 0, enabled: false },
+    ]),
+  ),
+  {
+    entries: [{ pattern: "neg" }, { pattern: "str" }, { pattern: "nil" }, { pattern: "ok", max: 0, enabled: false }],
+  },
+)
+assert.deepEqual(cleanLex({ pattern: " 像 ", hint: " 新提示 ", max: 3, enabled: false }), {
+  pattern: "像",
+  hint: "新提示",
+  max: 3,
+  enabled: false,
+})
+assert.deepEqual(cleanLex({ pattern: "微微", hint: "  ", max: 0, enabled: false }), {
+  pattern: "微微",
+  max: 0,
+  enabled: false,
+})
+assert.deepEqual(cleanLex({ pattern: " 眸子 ", hint: "" }), { pattern: "眸子" })
 assert.deepEqual(mergeLexicon([{ pattern: "a", hint: "mine" }], [{ pattern: "a", hint: "theirs" }, { pattern: "b" }]), [
   { pattern: "a", hint: "mine" },
   { pattern: "b" },

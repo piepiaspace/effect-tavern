@@ -462,7 +462,7 @@ data.close()
     switches: { pov: "second", verbosity: "concise" },
     asks: [{ id: "lookup", text: "OVER" }],
     products: [{ id: "notes", label: "OVER", text: "OVER" }],
-    lexicon: [{ pattern: "o" }],
+    lexicon: [{ pattern: "o" }, { pattern: "shared", hint: "OVER", max: 1 }],
     snippets: [{ name: "q", text: "OVER" }],
   })
   put(old, "base", "全局基底", {
@@ -479,7 +479,7 @@ data.close()
       { id: "notes", text: "BASE", on: false },
       { id: "town", text: "gossip" },
     ],
-    lexicon: [{ pattern: "b" }],
+    lexicon: [{ pattern: "shared", hint: "BASE", max: 3, enabled: false }, { pattern: "b" }],
     entries: [{ id: "e", text: "E." }],
     format: [{ label: "k", text: "K" }],
     names: { place: "B" },
@@ -504,7 +504,7 @@ data.close()
       { id: "town", text: "gossip" },
     ],
     entries: [{ id: "e", text: "E." }],
-    lexicon: [{ pattern: "o" }, { pattern: "b" }],
+    lexicon: [{ pattern: "o" }, { pattern: "shared", hint: "BASE", max: 3, enabled: false }, { pattern: "b" }],
     snippets: [{ name: "q", text: "OVER" }],
     format: [{ label: "k", text: "K" }],
     names: { place: "B" },

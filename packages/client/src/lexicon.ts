@@ -1,12 +1,21 @@
 // The lexicon as a file: what the Writing page's 导出 writes and 导入 reads, so a list a player gathers while reading
-// can be kept, shared, or kept up by a tool outside the app. JSON only: an array of `{ pattern, hint? }` (polish.ts
-// `Entry`), or an object with a `lexicon` key holding one (the shape a player layer or a pack file carries). Reading is
-// strict about shape and lenient about junk: a row without a non-empty string pattern is dropped, a hint that is not
-// a string is dropped, duplicates (by pattern) keep the first. Pure, so a test reads it without the page.
+// can be kept, shared, or kept up by a tool outside the app. JSON only: an array of `{ pattern, hint?, max?, enabled? }`
+// (polish.ts `Entry`), or an object with a `lexicon` key holding one (the shape a player layer or a pack file carries).
+// Reading is strict about shape and lenient about junk: a row without a non-empty string pattern is dropped, a hint
+// that is not a string is dropped, invalid `max` or `enabled` fields are dropped, duplicates (by pattern) keep the
+// first. Pure, so a test reads it without the page.
 import type { Entry } from "@effect-tavern/runtime/src/polish.ts"
 import { t } from "./i18n.ts"
 
 export const FILE = "lexicon.json"
+
+/** Normalize a lexicon entry from the editor: trim pattern and hint, drop blank hint, preserve `max` and `enabled`. */
+export const cleanLex = (e: Entry): Entry => ({
+  pattern: e.pattern.trim(),
+  ...(e.hint?.trim() ? { hint: e.hint.trim() } : {}),
+  ...(e.max !== undefined ? { max: e.max } : {}),
+  ...(e.enabled !== undefined ? { enabled: e.enabled } : {}),
+})
 
 /** The entries in a file's text, or why it is not a lexicon. */
 export const parseLexicon = (text: string): { entries: Entry[] } | { error: string } => {
@@ -26,10 +35,20 @@ export const parseLexicon = (text: string): { entries: Entry[] } | { error: stri
   const entries: Entry[] = []
   for (const row of list) {
     if (!row || typeof row !== "object") continue
-    const { pattern, hint } = row as { pattern?: unknown; hint?: unknown }
+    const { pattern, hint, max, enabled } = row as {
+      pattern?: unknown
+      hint?: unknown
+      max?: unknown
+      enabled?: unknown
+    }
     if (typeof pattern !== "string" || !pattern.trim() || seen.has(pattern)) continue
     seen.add(pattern)
-    entries.push(typeof hint === "string" && hint.trim() ? { pattern, hint } : { pattern })
+    entries.push({
+      pattern,
+      ...(typeof hint === "string" && hint.trim() ? { hint } : {}),
+      ...(typeof max === "number" && Number.isFinite(max) && max >= 0 ? { max } : {}),
+      ...(typeof enabled === "boolean" ? { enabled } : {}),
+    })
   }
   return { entries }
 }

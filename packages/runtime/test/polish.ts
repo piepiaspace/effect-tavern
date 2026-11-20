@@ -114,5 +114,11 @@ const padTo = (s: string, len: number) => `${"雨".repeat(len - s.length - 1)}�
   assert.equal(scan(text, [{ pattern: "指节*白", max: 0 }]).length, 1)
   assert.deepEqual(scan("", [{ pattern: "像", max: 3 }], 0), [])
   assert.equal(scan("风像刀。", [{ pattern: "像", max: 3 }], 0).length, 1)
+
+  // High-frequency matches in a single sentence must not overflow the call stack.
+  const huge = "像".repeat(250_000)
+  const hugeHits = scan(huge, [{ pattern: "像" }], 0)
+  assert.equal(hugeHits.length, 1)
+  assert.equal(hugeHits[0].hits.length, 250_000)
 }
 console.log("polish ok")

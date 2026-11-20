@@ -10,7 +10,7 @@ import { read } from "./bridge.ts"
 import { ask, Menu, Modal, Name, newId, Switch, ToList, type Pane, dialogHandle, Well } from "./controls.tsx"
 import { Clue, Close, Export, Import, Snippets as Plus, Trash } from "./icons.tsx"
 import { caretOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf, type InsertDraft } from "./inserts.ts"
-import { FILE, mergeLexicon, parseLexicon, serializeLexicon } from "./lexicon.ts"
+import { cleanLex, FILE, mergeLexicon, parseLexicon, serializeLexicon } from "./lexicon.ts"
 import {
   isReservedPack,
   packHoles,
@@ -721,9 +721,6 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
 }
 
 // ───────── 3. 润色禁词 (`Layer.lexicon` + `Layer.switches.polish`) ─────────
-const cleanLex = (e: { pattern: string; hint?: string }): Entry =>
-  e.hint?.trim() ? { pattern: e.pattern.trim(), hint: e.hint.trim() } : { pattern: e.pattern.trim() }
-
 const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
   const lex = (): readonly Entry[] => props.pack.lexicon ?? []
   const on = () => props.pack.switches?.polish !== false
