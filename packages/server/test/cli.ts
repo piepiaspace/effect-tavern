@@ -376,10 +376,17 @@ await readEvents(
   ),
   (e) => got.push(e),
 )
-assert.equal(got[0]?.kind, "attach")
-assert.equal(got[1]?.kind === "error" && got[1].message, "错误")
-await assert.rejects(
-  readEvents(new Response('data: {"kind":"change"}'), () => {}),
-  /incomplete/,
-)
+assert.deepEqual(got, [
+  { kind: "attach", phase: null, draft: null },
+  { kind: "error", phase: "narrate", message: "错误" },
+])
+for (const partial of [
+  'data: {"kind":"change"}',
+  'event: attach\ndata: {"phase":null,"draft":null}\n',
+  "event: delta\n",
+])
+  await assert.rejects(
+    readEvents(new Response(partial), () => {}),
+    /incomplete event stream/,
+  )
 console.log("cli ok")

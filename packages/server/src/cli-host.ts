@@ -4,6 +4,7 @@
 import type { Local } from "@effect-tavern/runtime/src/layer.ts"
 import type { ActiveContextView, TimelineNode, TurnDetail } from "@effect-tavern/runtime/src/projection.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
+import { readTurnEvents } from "@effect-tavern/runtime/src/sse.ts"
 import type { Library, PublicEvent } from "./library.ts"
 import type { Attach } from "@effect-tavern/runtime/src/projection.ts"
 import type { CardRow, CardView, DepotRow, DepotView, Listing } from "@effect-tavern/runtime/src/library.ts"
@@ -48,31 +49,11 @@ export interface CliHost {
   close(): void
 }
 
-// SSE frames may be split at any byte; TextDecoderStream also preserves split UTF-8 characters.
-export const readEvents = async (response: Response, emit: Emit) => {
+// SSE frames may be split at any byte; the shared decoder preserves split UTF-8 characters and rejects truncated frames.
+export const readEvents = async (response: Response, emit: Emit): Promise<void> => {
   if (response.status === 204) return
   if (!response.body) throw new Error("missing event stream")
-  let buffer = ""
-  let event = ""
-  let data: string[] = []
-  for await (const chunk of response.body.pipeThrough(new TextDecoderStream())) {
-    buffer += chunk
-    let end: number
-    while ((end = buffer.indexOf("\n")) >= 0) {
-      const line = buffer.slice(0, end).replace(/\r$/, "")
-      buffer = buffer.slice(end + 1)
-      if (!line) {
-        if (data.length) {
-          const value = JSON.parse(data.join("\n"))
-          emit(event === "attach" ? { ...value, kind: "attach" } : value)
-        }
-        event = ""
-        data = []
-      } else if (line.startsWith("event:")) event = line.slice(6).trim()
-      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""))
-    }
-  }
-  if (buffer.trim() || data.length) throw new Error("incomplete event stream")
+  await readTurnEvents<CliEvent>(response.body, emit)
 }
 
 /** A refusal the tavern answered with: its own sentence and code. In-process and over the network alike, since both

@@ -23,6 +23,7 @@ import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
+import { readTurnEvents } from "@effect-tavern/runtime/src/sse.ts"
 import type { Call } from "./inspect.ts"
 import type { Hit } from "./stories.ts"
 import {
@@ -352,15 +353,18 @@ export const attach = (): (() => void) => listen((signal) => call(`${base}/turn`
 /** The player's stop (`POST /stop`): "withdrawn" before the first character, "halted" after it, null when idle. */
 export const stop = async (): Promise<"withdrawn" | "halted" | null> =>
   (await got<{ stopped: "withdrawn" | "halted" | null }>(call(`${base}/stop`, { method: "POST" }))).stopped
-/** Reads an SSE response into `apply` until it ends or is closed; a 204 is nothing to read. */
-const listen = (open: (signal: AbortSignal) => Promise<Response>): (() => void) => {
+/** Reads an SSE response into `emit` until it ends or is closed; a 204 is nothing to read. */
+export const listen = (
+  open: (signal: AbortSignal) => Promise<Response>,
+  emit: (e: Wire) => void = apply,
+): (() => void) => {
   const ac = new AbortController()
   let opened = false
   const closed = () => {
     if (!opened) return
     opened = false
     registry.update(openStreams, (count) => count - 1)
-    if (!ac.signal.aborted && !registry.get(openStreams)) apply({ kind: "streamEnd" })
+    if (!ac.signal.aborted && !registry.get(openStreams)) emit({ kind: "streamEnd" })
   }
   ac.signal.addEventListener("abort", closed, { once: true })
   void (async () => {
@@ -369,29 +373,17 @@ const listen = (open: (signal: AbortSignal) => Promise<Response>): (() => void) 
       if (res.status === 204) return
       if (!res.ok) throw await responseError(res)
       if (!res.body) throw new Error("missing event stream")
-      if (ac.signal.aborted) return
+      if (ac.signal.aborted) {
+        void res.body.cancel().catch(() => {})
+        return
+      }
       opened = true
       registry.update(openStreams, (count) => count + 1)
-      const reader = res.body.getReader()
-      const dec = new TextDecoder()
-      let buf = ""
-      for (;;) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buf += dec.decode(value, { stream: true })
-        let i: number
-        while ((i = buf.indexOf("\n\n")) >= 0) {
-          const block = buf.slice(0, i)
-          buf = buf.slice(i + 2)
-          const ev = /^event: (.*)$/m.exec(block)?.[1]
-          const data = /^data: (.*)$/m.exec(block)?.[1]
-          if (ev && data && !ac.signal.aborted) apply({ ...(JSON.parse(data) as object), kind: ev } as Wire)
-        }
-      }
-      void fetchStories() // the open story's row: its size, its last line, its time
+      await readTurnEvents<Wire>(res.body, emit, ac.signal)
+      if (!ac.signal.aborted) void fetchStories() // the open story's row: its size, its last line, its time
     } catch (e) {
       if (!ac.signal.aborted)
-        apply({
+        emit({
           kind: "error",
           message: e instanceof Error ? e.message : String(e),
           ...(e instanceof Error && "code" in e && typeof e.code === "string" ? { code: e.code } : {}),
