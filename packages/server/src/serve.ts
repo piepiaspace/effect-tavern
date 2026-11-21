@@ -171,7 +171,7 @@ const body = async (request: Request, limit = 1 << 20): Promise<string> => {
     }
   }
   if (size > limit) throw over()
-  return Buffer.concat(chunks).toString("utf8")
+  return new Blob(chunks as BlobPart[]).text()
 }
 // The body besides Action and the player's rows, decoded here like them.
 const PersonaBody = Schema.decodeUnknownSync(
