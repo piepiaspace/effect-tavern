@@ -5,20 +5,38 @@ import type { Effort } from "@effect-tavern/provider/src/call.ts"
 import { DEFAULTS, type Capabilities } from "@effect-tavern/provider/src/capabilities.ts"
 import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
 import { createSignal, For, Show, onSettled } from "solid-js"
+import { Slider, SliderControl, SliderIndicator, SliderThumb, SliderTrack } from "@ui-sdk/solid/slider"
 import { read } from "./bridge.ts"
 import { FORMAT, Menu, Modal, type Opener, Switch, dialogHandle } from "./controls.tsx"
 import { capOf, FORMATS, formatOf, without, withModels, withoutModels } from "./connections.ts"
-import { hats, providers, registry } from "./store.ts"
+import { Next } from "./icons.tsx"
+import { providers, registry } from "./store.ts"
 import { putProvider, type Listed } from "./wire.ts"
 import { type Key, t } from "./i18n.ts"
 
-const EFFORTS: [Effort, Key][] = [
+const EFFORTS: readonly [Effort, Key][] = [
   ["off", "models.effortOff"],
   ["low", "models.effortLow"],
   ["medium", "models.effortMedium"],
   ["high", "models.effortHigh"],
   ["max", "models.effortMax"],
 ]
+
+const CONTEXT_PRESETS: readonly [string, number][] = [
+  ["32K", 32768],
+  ["128K", 131072],
+  ["200K", 200000],
+  ["512K", 524288],
+  ["1M", 1048576],
+]
+
+const OUTPUT_PRESETS: readonly [string, number][] = [
+  ["8K", 8192],
+  ["16K", 16384],
+  ["32K", 32768],
+  ["64K", 65536],
+]
+
 /** Added as listed, one already there with no format of its own taking the listing's too (添加全部 fixes what 更正
  *  would; connections.ts `withModels`). */
 export const addModels = (p: Provider, models: readonly Listed[]) => void putProvider(withModels(p, models))
@@ -28,7 +46,6 @@ export const removeModels = (p: Provider, ids: readonly string[]) => void putPro
 
 export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) => {
   const list = read(providers)
-  const hatList = read(hats)
   const p = () => list().find((x) => x.id === props.id)
   const el = dialogHandle()
   const [entry, setEntry] = createSignal<ModelEntry | null>(null)
@@ -45,10 +62,15 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
         return Object.keys(next).length ? { ...rest, capabilities: next } : rest
       })
   }
-  const conflict = (x: Provider, m: ModelEntry) =>
-    hatList()
-      .find((h) => h.id === m.hat)
-      ?.narrate?.tail?.at(-1)?.role === "assistant" && !capOf(x, m, "prefill")
+  const hasCompatOverrides = (x: Provider, m: ModelEntry) => {
+    const fmt = formatOf(x, m)
+    const def = DEFAULTS[fmt]
+    return (
+      capOf(x, m, "prefill") !== def.prefill ||
+      capOf(x, m, "reasoningBack") !== def.reasoningBack ||
+      (fmt === "openai-compatible" && capOf(x, m, "structured") !== def.structured)
+    )
+  }
   const commit = () => {
     const m = entry()
     const x = p()
@@ -63,97 +85,79 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
         {(c) => (
           <>
             <div class="modal-body scroller">
-              <Show when={conflict(c().x, c().m)}>
-                <div class="warn">{t("models.hatNeedsPrefill")}</div>
-              </Show>
-              <div class="pair">
-                <div class="field-group">
-                  <span class="label">{t("models.hat")}</span>
-                  <Menu
-                    label={t("models.hat")}
-                    value={c().m.hat ?? ""}
-                    options={[
-                      { value: "", label: t("models.noHat") },
-                      ...hatList().map((h) => ({ value: h.id, label: h.name })),
-                    ]}
-                    onPick={(v) => change((m) => without(m, "hat", v || undefined))}
-                  />
-                </div>
-                <div class="field-group">
-                  <span class="label">{t("models.endpointFormat")}</span>
-                  <Menu
-                    label={t("models.endpointFormat")}
-                    value={c().m.format ?? ""}
-                    options={[
-                      { value: "", label: t("models.defaultFormat", { format: FORMAT[c().x.defaultFormat] }) },
-                      ...FORMATS.map((f) => ({ value: f, label: FORMAT[f] })),
-                    ]}
-                    onPick={(v) => change((m) => without(m, "format", v || undefined))}
-                  />
-                </div>
-              </div>
               <div class="field-group">
-                <span class="label">{t("models.structured")}</span>
+                <span class="label">{t("models.endpointFormat")}</span>
                 <Menu
-                  label={t("models.structured")}
-                  value={capOf(c().x, c().m, "structured")}
+                  label={t("models.endpointFormat")}
+                  value={c().m.format ?? ""}
                   options={[
-                    { value: "schema", label: t("models.jsonSchema") },
-                    { value: "tool", label: t("models.toolCall") },
-                    { value: "json", label: t("models.jsonObject") },
+                    { value: "", label: t("models.defaultFormat", { format: FORMAT[c().x.defaultFormat] }) },
+                    ...FORMATS.map((f) => ({ value: f, label: FORMAT[f] })),
                   ]}
-                  onPick={(v) => setCap("structured", v)}
+                  onPick={(v) => change((m) => without(m, "format", v || undefined))}
                 />
               </div>
+
               <Effort value={c().m.effort} onPick={(v) => change((m) => without(m, "effort", v))} />
-              <div class="pair">
-                <label class="field-group">
-                  <span class="label">{t("models.contextWindow")}</span>
-                  <input
-                    class="field mono"
-                    type="number"
-                    min="1024"
-                    step="1024"
-                    placeholder={t("common.default")}
-                    value={c().m.contextTokens ?? ""}
-                    onChange={(e) => {
-                      const n = parseInt(e.currentTarget.value, 10)
-                      change((m) => without(m, "contextTokens", n > 0 ? n : undefined))
-                    }}
-                  />
-                </label>
-                <label class="field-group">
-                  <span class="label">{t("models.maxOutput")}</span>
-                  <input
-                    class="field mono"
-                    type="number"
-                    min="256"
-                    step="256"
-                    placeholder={t("common.default")}
-                    value={c().m.maxOutputTokens ?? ""}
-                    onChange={(e) => {
-                      const n = parseInt(e.currentTarget.value, 10)
-                      change((m) => without(m, "maxOutputTokens", n > 0 ? n : undefined))
-                    }}
-                  />
-                </label>
-              </div>
-              <div class="inline-row">
-                <span>{t("models.prefill")}</span>
-                <Switch
-                  on={capOf(c().x, c().m, "prefill")}
-                  label={t("models.prefill")}
-                  onFlip={() => setCap("prefill", !capOf(c().x, c().m, "prefill"))}
-                />
-              </div>
-              <div class="inline-row">
-                <span>{t("models.thinkingHistory")}</span>
-                <Switch
-                  on={capOf(c().x, c().m, "reasoningBack")}
-                  label={t("models.thinkingHistory")}
-                  onFlip={() => setCap("reasoningBack", !capOf(c().x, c().m, "reasoningBack"))}
-                />
-              </div>
+
+              <TokenField
+                label={t("models.contextWindow")}
+                hint={t("models.contextWindowHint")}
+                presets={CONTEXT_PRESETS}
+                min={1024}
+                value={c().m.contextTokens}
+                onChange={(v) => change((m) => without(m, "contextTokens", v))}
+              />
+
+              <TokenField
+                label={t("models.maxOutput")}
+                hint={t("models.maxOutputHint")}
+                presets={OUTPUT_PRESETS}
+                min={256}
+                value={c().m.maxOutputTokens}
+                onChange={(v) => change((m) => without(m, "maxOutputTokens", v))}
+              />
+
+              <details class="model-compat">
+                <summary>
+                  <span>{t("models.compat")}</span>
+                  <Show when={hasCompatOverrides(c().x, c().m)}>
+                    <span class="compat-dot" aria-hidden="true" />
+                  </Show>
+                  <Next class="compat-chevron" aria-hidden="true" />
+                </summary>
+                <div class="compat-body">
+                  <p class="compat-note">{t("models.compatNote")}</p>
+                  <div class="inline-row">
+                    <span>{t("models.prefill")}</span>
+                    <Switch
+                      on={capOf(c().x, c().m, "prefill")}
+                      label={t("models.prefill")}
+                      onFlip={() => setCap("prefill", !capOf(c().x, c().m, "prefill"))}
+                    />
+                  </div>
+                  <div class="inline-row">
+                    <span>{t("models.thinkingHistory")}</span>
+                    <Switch
+                      on={capOf(c().x, c().m, "reasoningBack")}
+                      label={t("models.thinkingHistory")}
+                      onFlip={() => setCap("reasoningBack", !capOf(c().x, c().m, "reasoningBack"))}
+                    />
+                  </div>
+                  <Show when={formatOf(c().x, c().m) === "openai-compatible"}>
+                    <div class="inline-row">
+                      <span>{t("models.nativeJsonSchema")}</span>
+                      <Switch
+                        on={capOf(c().x, c().m, "structured") === "schema"}
+                        label={t("models.nativeJsonSchema")}
+                        onFlip={() =>
+                          setCap("structured", capOf(c().x, c().m, "structured") === "schema" ? "json" : "schema")
+                        }
+                      />
+                    </div>
+                  </Show>
+                </div>
+              </details>
             </div>
             <div class="modal-foot">
               <button type="button" class="btn primary" onClick={() => el.close()}>
@@ -167,36 +171,125 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
   )
 }
 
-/** The effort stepper: five stops on a rail; unset reads 默认, and pressing the set stop unsets it. */
+/** Token ceiling field with inline preset chips (pressing an active preset clears back to default). */
+const TokenField = (props: {
+  label: string
+  hint: string
+  presets: readonly [string, number][]
+  min: number
+  value: number | undefined
+  onChange: (v: number | undefined) => void
+}) => (
+  <div class="field-group">
+    <div class="label-row token-head">
+      <span class="label">{props.label}</span>
+      <div class="token-presets">
+        <For each={props.presets} keyed={false}>
+          {(p) => (
+            <button
+              type="button"
+              class="preset-chip"
+              aria-pressed={props.value === p()[1] ? "true" : "false"}
+              onClick={() => props.onChange(props.value === p()[1] ? undefined : p()[1])}
+            >
+              {p()[0]}
+            </button>
+          )}
+        </For>
+      </div>
+    </div>
+    <input
+      class="field token-input"
+      type="number"
+      min={props.min}
+      placeholder={t("common.default")}
+      aria-label={props.label}
+      value={props.value ?? ""}
+      onInput={(e) => {
+        const raw = e.currentTarget.value.trim()
+        if (!raw) {
+          props.onChange(undefined)
+          return
+        }
+        const n = parseInt(raw, 10)
+        if (n > 0) props.onChange(n)
+      }}
+    />
+    <p class="field-hint">{props.hint}</p>
+  </div>
+)
+
+/** Effort horizontal slider built on @ui-sdk/solid/slider: five bounded levels on one rail; unset leaves the rail neutral. */
 const Effort = (props: { value: Effort | undefined; onPick: (v: Effort | undefined) => void }) => {
-  const at = () => EFFORTS.findIndex(([e]) => e === props.value)
+  const index = () => {
+    const i = EFFORTS.findIndex(([v]) => v === props.value)
+    return i < 0 ? undefined : i
+  }
+  const max = EFFORTS.length - 1
   return (
     <div class="field-group">
       <div class="label-row">
         <span class="label">{t("models.effort")}</span>
-        <span class="tag mono">{at() >= 0 ? t(EFFORTS[at()][1]) : t("common.default")}</span>
+        <Show when={props.value !== undefined}>
+          <button type="button" class="effort-reset" onClick={() => props.onPick(undefined)}>
+            {t("models.effortReset")}
+          </button>
+        </Show>
       </div>
-      <div class="effort" role="radiogroup" aria-label={t("models.effort")}>
-        <div class="rail">
-          <div class="fill" style={{ width: `${Math.max(0, at()) * 25}%` }} />
-        </div>
-        <div class="stops">
+      <Slider
+        class="effort-slider"
+        data-unset={index() === undefined ? "" : undefined}
+        min={0}
+        max={max}
+        step={1}
+        largeStep={1}
+        value={index() ?? 0}
+        format={(n) => t(EFFORTS[n]?.[1] ?? "models.effortOff")}
+        onValueChange={(v) => {
+          const i = typeof v === "number" ? v : (v[0] ?? 0)
+          props.onPick(EFFORTS[i]?.[0])
+        }}
+      >
+        <SliderControl
+          class="effort-control"
+          onPointerDown={(e) => {
+            if (props.value !== undefined) return
+            const rect = e.currentTarget.getBoundingClientRect()
+            const pct = rect.width > 0 ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0
+            props.onPick(EFFORTS[Math.round(pct * max)]?.[0])
+          }}
+        >
+          <SliderTrack class="effort-track">
+            <SliderIndicator class="effort-fill" />
+            <For each={EFFORTS} keyed={false}>
+              {(_, i) => (
+                <span
+                  class="effort-dot"
+                  data-passed={index() !== undefined && i <= index()! ? "" : undefined}
+                  style={{ left: `${(i / max) * 100}%` }}
+                  aria-hidden="true"
+                />
+              )}
+            </For>
+            <SliderThumb class="effort-thumb" aria-label={t("models.effort")} />
+          </SliderTrack>
+        </SliderControl>
+        <div class="effort-ticks">
           <For each={EFFORTS} keyed={false}>
             {(e, i) => (
               <button
                 type="button"
-                role="radio"
-                aria-checked={at() === i ? "true" : "false"}
-                class={{ stop: true, passed: i < at(), active: at() === i }}
-                onClick={() => props.onPick(props.value === e()[0] ? undefined : e()[0])}
+                class="effort-tick"
+                data-active={i === index() ? "" : undefined}
+                style={{ left: `${(i / max) * 100}%` }}
+                onClick={() => props.onPick(e()[0])}
               >
-                <span class="dot" />
-                <span class="tick">{t(e()[1])}</span>
+                {t(e()[1])}
               </button>
             )}
           </For>
         </div>
-      </div>
+      </Slider>
     </div>
   )
 }
