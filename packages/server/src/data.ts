@@ -457,8 +457,10 @@ const rebase = (db: Database) => {
   }
 }
 
-export const open = (asked: string, { isolateOnBusy = false } = {}) => {
-  const { file, unlock } = asked === ":memory:" ? { file: asked, unlock: () => {} } : lock(asked, isolateOnBusy)
+/** `lock: false`: the caller's host holds the library itself (packages/app, whose SQLite is in Go), so no lock file. */
+export const open = (asked: string, { isolateOnBusy = false, lock: locked = true } = {}) => {
+  const { file, unlock } =
+    asked === ":memory:" || !locked ? { file: asked, unlock: () => {} } : lock(asked, isolateOnBusy)
   let db: Database
   try {
     db = new Database(file, { create: true, strict: true })
