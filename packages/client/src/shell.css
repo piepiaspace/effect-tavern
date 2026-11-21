@@ -935,6 +935,9 @@
   place-items: center;
   will-change: transform;
 }
+.home-mech[data-shape="square"] .home-emblem-wrap {
+  height: 76%;
+}
 .home-emblem {
   width: auto;
   height: 100%;

@@ -5,6 +5,7 @@
 // opening "+" starts blank and switching back preserves unfinished words.
 import { createEffect, createSignal, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
+import { DEFAULT_FIGURE } from "./figures/index.ts"
 import { HomeMechanism } from "./home-mechanism.tsx"
 import { createMechanicalSound } from "./home-sound.ts"
 import { Card as CardIcon, Change, Send, Sliders } from "./icons.tsx"
@@ -82,7 +83,13 @@ export const Home = () => {
       <div class="home-stage">
         <div class="home-mark">
           <div class="home-reveal home-reveal-1">
-            <HomeMechanism pulse={pulse()} focused={focused()} dark={theme() === "dark"} sound={sound} />
+            <HomeMechanism
+              figure={DEFAULT_FIGURE}
+              pulse={pulse()}
+              focused={focused()}
+              dark={theme() === "dark"}
+              sound={sound}
+            />
           </div>
           <header class="home-head home-reveal home-reveal-2">
             <h1>{t("home.title")}</h1>

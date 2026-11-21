@@ -1,21 +1,65 @@
 // Musical clockwork / music-box Web Audio engine for Home (home-mechanism.tsx & home.tsx).
-// Designed to always be harmonically pleasant and calm: every sound is pitched to a consonant Dmaj9 pentatonic scale,
-// passed through a warm low-pass filter and a subtle acoustic echo tail, with strict rate-limiting so rapid mouse
-// movement or fast typing can never create harsh noise. Zero external assets; 0% CPU when muted, paused, or hidden.
+// Shared synthesizer base parameterized by a per-figure SoundProfile (scale, motif, waveform, overtone, tap, filter,
+// echo, decay) so each visual theme carries its own musical identity while sharing the same always-consonant,
+// rate-limited, zero-noise Web Audio pipeline. Zero external assets; 0% CPU when muted, paused, or hidden.
 
 const STORAGE_KEY = "tavern.home.sound"
 
-// Dmaj9 pentatonic scale (Hz): D4, E4, F#4, A4, B4, D5, E5, F#5, A5 — every combination is consonant
-const SCALE = [293.66, 329.63, 369.99, 440.0, 493.88, 587.33, 659.25, 739.99, 880.0] as const
+export interface SoundProfile {
+  /** Consonant note frequencies (Hz) defining this figure's musical key/mode. */
+  readonly scale: readonly number[]
+  /** Curated melodic motif (indices into `scale`). */
+  readonly motif: readonly number[]
+  /** Primary voice waveform ("sine" for warm music box, "triangle" for airy celesta, etc.). */
+  readonly wave: OscillatorType
+  /** Harmonic overtone character (e.g. 2.0 octave shimmer, 3.0 glassy astrolabe chime). */
+  readonly overtone: { readonly ratio: number; readonly level: number; readonly decayRatio: number }
+  /** Subtle mechanical felt/escapement body tap. */
+  readonly tap: { readonly startHz: number; readonly endHz: number; readonly level: number }
+  /** Low-pass warmth filter base frequency and pointer modulation range (±Hz). */
+  readonly filter: { readonly baseHz: number; readonly rangeHz: number }
+  /** Acoustic room echo tail parameters. */
+  readonly echo: { readonly delaySec: number; readonly feedback: number; readonly wet: number }
+  /** Base and accented note decay durations (seconds). */
+  readonly decay: { readonly base: number; readonly accent: number }
+  /** Motif accent beats and scale indices used for UI/interaction accents. */
+  readonly accents: {
+    readonly beats: readonly number[]
+    readonly irisOpen: number
+    readonly irisClose: number
+    readonly hover: readonly [number, number]
+    readonly click: number
+    readonly engage: readonly [number, number]
+  }
+}
 
-// Curated 12-step meditative clockwork motif (indices into SCALE)
-const MOTIF = [0, 3, 5, 3, 6, 5, 3, 2, 4, 5, 7, 5] as const
+// Default warm Dmaj9 pentatonic music-box profile (D4, E4, F#4, A4, B4, D5, E5, F#5, A5)
+export const DEFAULT_SOUND_PROFILE: SoundProfile = {
+  scale: [293.66, 329.63, 369.99, 440.0, 493.88, 587.33, 659.25, 739.99, 880.0],
+  motif: [0, 3, 5, 3, 6, 5, 3, 2, 4, 5, 7, 5],
+  wave: "sine",
+  overtone: { ratio: 2, level: 0.16, decayRatio: 0.45 },
+  tap: { startHz: 240, endHz: 110, level: 0.22 },
+  filter: { baseHz: 2400, rangeHz: 600 },
+  echo: { delaySec: 0.32, feedback: 0.24, wet: 0.26 },
+  decay: { base: 0.52, accent: 0.72 },
+  accents: {
+    beats: [0, 6],
+    irisOpen: 7,
+    irisClose: 4,
+    hover: [5, 7],
+    click: 5,
+    engage: [3, 5],
+  },
+}
 
 export interface MechanicalSound {
   /** Whether sound is currently enabled. */
   enabled(): boolean
   /** Enable or disable sound (called from a user gesture to unlock AudioContext). */
   setEnabled(on: boolean): void
+  /** Switch musical theme/timbre smoothly for the active HomeFigure. */
+  setProfile(profile: SoundProfile): void
   /** Advance one gentle music-box / clockwork tine step (strictly rate-limited). */
   step(energy?: number): void
   /** Smoothly modulate timbre warmth from pointer position [-1, 1] without generating noise. */
@@ -32,18 +76,41 @@ export interface MechanicalSound {
   dispose(): void
 }
 
-export const createMechanicalSound = (): MechanicalSound => {
+export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROFILE): MechanicalSound => {
   let ctx: AudioContext | null = null
   let bus: GainNode | null = null
   let toneFilter: BiquadFilterNode | null = null
+  let delayNode: DelayNode | null = null
+  let feedbackNode: GainNode | null = null
+  let wetNode: GainNode | null = null
   let on = false
 
+  let profile: SoundProfile = initial
+  let warmthX = 0
   let motifPos = 0
-  let hoverIdx = 5
+  let hoverFlip = false
   let lastStep = 0
   let lastHover = 0
   let lastIris = 0
   let lastClick = 0
+
+  const noteAt = (index: number) => profile.scale[Math.max(0, Math.min(profile.scale.length - 1, index))]
+
+  const applyProfileNodes = (c: AudioContext, smooth: boolean) => {
+    const now = c.currentTime
+    const targetCutoff = profile.filter.baseHz + warmthX * profile.filter.rangeHz
+    if (smooth) {
+      toneFilter?.frequency.setTargetAtTime(targetCutoff, now, 0.18)
+      delayNode?.delayTime.setTargetAtTime(profile.echo.delaySec, now, 0.18)
+      feedbackNode?.gain.setTargetAtTime(profile.echo.feedback, now, 0.18)
+      wetNode?.gain.setTargetAtTime(profile.echo.wet, now, 0.18)
+    } else {
+      toneFilter?.frequency.setValueAtTime(targetCutoff, now)
+      delayNode?.delayTime.setValueAtTime(profile.echo.delaySec, now)
+      feedbackNode?.gain.setValueAtTime(profile.echo.feedback, now)
+      wetNode?.gain.setValueAtTime(profile.echo.wet, now)
+    }
+  }
 
   const ensureContext = (): AudioContext | null => {
     if (typeof window === "undefined") return null
@@ -53,38 +120,33 @@ export const createMechanicalSound = (): MechanicalSound => {
     if (!ctx) {
       ctx = new Ctor()
 
-      // Master bus → gentle low-pass tone shaper → dry + soft acoustic echo tail → destination
       bus = ctx.createGain()
       bus.gain.value = 0.42
 
       toneFilter = ctx.createBiquadFilter()
       toneFilter.type = "lowpass"
-      toneFilter.frequency.value = 2400
       toneFilter.Q.value = 0.7
 
-      const delay = ctx.createDelay(0.6)
-      delay.delayTime.value = 0.32
+      delayNode = ctx.createDelay(0.8)
 
       const echoFilter = ctx.createBiquadFilter()
       echoFilter.type = "lowpass"
       echoFilter.frequency.value = 1500
 
-      const feedback = ctx.createGain()
-      feedback.gain.value = 0.24
-
-      const wet = ctx.createGain()
-      wet.gain.value = 0.26
+      feedbackNode = ctx.createGain()
+      wetNode = ctx.createGain()
 
       bus.connect(toneFilter)
       toneFilter.connect(ctx.destination)
 
-      // Subtle music-box room resonance
-      toneFilter.connect(delay)
-      delay.connect(echoFilter)
-      echoFilter.connect(feedback)
-      feedback.connect(delay)
-      echoFilter.connect(wet)
-      wet.connect(ctx.destination)
+      toneFilter.connect(delayNode)
+      delayNode.connect(echoFilter)
+      echoFilter.connect(feedbackNode)
+      feedbackNode.connect(delayNode)
+      echoFilter.connect(wetNode)
+      wetNode.connect(ctx.destination)
+
+      applyProfileNodes(ctx, false)
     }
     return ctx
   }
@@ -95,14 +157,14 @@ export const createMechanicalSound = (): MechanicalSound => {
     return ctx
   }
 
-  // Synthesize a single warm music-box / clockwork tine note: pure sine fundamental + soft octave shimmer + tiny felt attack
+  // Synthesize a single warm clockwork tine note using the active SoundProfile
   const pluck = (c: AudioContext, freq: number, gain: number, decay: number, startOffset = 0) => {
     if (!bus) return
     const t0 = c.currentTime + startOffset
+    const { wave, overtone, tap } = profile
 
-    // Fundamental (warm pure sine)
     const osc1 = c.createOscillator()
-    osc1.type = "sine"
+    osc1.type = wave
     osc1.frequency.setValueAtTime(freq, t0)
 
     const env1 = c.createGain()
@@ -115,42 +177,45 @@ export const createMechanicalSound = (): MechanicalSound => {
     osc1.start(t0)
     osc1.stop(t0 + decay + 0.03)
 
-    // Delicate octave overtone (gives the metallic music-box tine character, decays faster)
-    const osc2 = c.createOscillator()
-    osc2.type = "sine"
-    osc2.frequency.setValueAtTime(freq * 2, t0)
+    if (overtone.level > 0) {
+      const osc2 = c.createOscillator()
+      osc2.type = "sine"
+      osc2.frequency.setValueAtTime(freq * overtone.ratio, t0)
 
-    const env2 = c.createGain()
-    env2.gain.setValueAtTime(0.0001, t0)
-    env2.gain.linearRampToValueAtTime(gain * 0.16, t0 + 0.004)
-    env2.gain.exponentialRampToValueAtTime(0.0001, t0 + decay * 0.45)
+      const overDecay = decay * overtone.decayRatio
+      const env2 = c.createGain()
+      env2.gain.setValueAtTime(0.0001, t0)
+      env2.gain.linearRampToValueAtTime(gain * overtone.level, t0 + 0.004)
+      env2.gain.exponentialRampToValueAtTime(0.0001, t0 + overDecay)
 
-    osc2.connect(env2)
-    env2.connect(bus)
-    osc2.start(t0)
-    osc2.stop(t0 + decay * 0.45 + 0.03)
+      osc2.connect(env2)
+      env2.connect(bus)
+      osc2.start(t0)
+      osc2.stop(t0 + overDecay + 0.03)
+    }
 
-    // Whisper-soft mechanical escapement felt tap (low-frequency sine thump, never harsh static)
-    const tap = c.createOscillator()
-    tap.type = "sine"
-    tap.frequency.setValueAtTime(240, t0)
-    tap.frequency.exponentialRampToValueAtTime(110, t0 + 0.018)
+    if (tap.level > 0) {
+      const tapOsc = c.createOscillator()
+      tapOsc.type = "sine"
+      tapOsc.frequency.setValueAtTime(tap.startHz, t0)
+      tapOsc.frequency.exponentialRampToValueAtTime(tap.endHz, t0 + 0.018)
 
-    const tapEnv = c.createGain()
-    tapEnv.gain.setValueAtTime(0.0001, t0)
-    tapEnv.gain.linearRampToValueAtTime(gain * 0.22, t0 + 0.002)
-    tapEnv.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.022)
+      const tapEnv = c.createGain()
+      tapEnv.gain.setValueAtTime(0.0001, t0)
+      tapEnv.gain.linearRampToValueAtTime(gain * tap.level, t0 + 0.002)
+      tapEnv.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.022)
 
-    tap.connect(tapEnv)
-    tapEnv.connect(bus)
-    tap.start(t0)
-    tap.stop(t0 + 0.03)
+      tapOsc.connect(tapEnv)
+      tapEnv.connect(bus)
+      tapOsc.start(t0)
+      tapOsc.stop(t0 + 0.03)
+    }
   }
 
-  // Welcoming two-note fifth chime when sound is switched on
   const playEngage = (c: AudioContext) => {
-    pluck(c, SCALE[3], 0.22, 0.55, 0) // A4
-    pluck(c, SCALE[5], 0.2, 0.7, 0.065) // D5
+    const [a, b] = profile.accents.engage
+    pluck(c, noteAt(a), 0.22, profile.decay.base, 0)
+    pluck(c, noteAt(b), 0.2, profile.decay.accent, 0.065)
   }
 
   const api: MechanicalSound = {
@@ -179,58 +244,62 @@ export const createMechanicalSound = (): MechanicalSound => {
         void ctx.suspend().catch(() => {})
       }
     },
+    setProfile: (next: SoundProfile) => {
+      if (next === profile) return
+      profile = next
+      motifPos = 0
+      hoverFlip = false
+      if (ctx) applyProfileNodes(ctx, true)
+    },
     step: (energy = 0) => {
       const c = ready()
       if (!c) return
       const now = performance.now()
-      // Hard rate limit: never faster than 360ms even under rapid typing/interaction
       const boost = Math.min(1, Math.max(0, energy))
       const minGap = 620 - boost * 260
       if (now - lastStep < minGap) return
       lastStep = now
 
-      const idx = MOTIF[motifPos % MOTIF.length]
-      motifPos = (motifPos + 1) % MOTIF.length
+      const stepIdx = motifPos % profile.motif.length
+      const noteIdx = profile.motif[stepIdx]
+      motifPos = (stepIdx + 1) % profile.motif.length
 
-      // Gentle musical accent pattern (beat 0 & 6 slightly warmer, others lighter)
-      const accented = motifPos === 1 || motifPos === 7
+      const accented = profile.accents.beats.includes(stepIdx)
       const gain = (accented ? 0.22 : 0.14) + boost * 0.05
-      const decay = accented ? 0.72 : 0.52
-      pluck(c, SCALE[idx], gain, decay)
+      const decay = accented ? profile.decay.accent : profile.decay.base
+      pluck(c, noteAt(noteIdx), gain, decay)
     },
     setWarmth: (x: number) => {
+      warmthX = Math.max(-1, Math.min(1, x))
       const c = ready()
       if (!c || !toneFilter) return
-      // Smoothly shift filter brightness between 1900Hz and 3100Hz — zero clicks even on fast mouse sweeps
-      const clamped = Math.max(-1, Math.min(1, x))
-      const target = 2400 + clamped * 600
+      const target = profile.filter.baseHz + warmthX * profile.filter.rangeHz
       toneFilter.frequency.setTargetAtTime(target, c.currentTime, 0.22)
     },
     iris: (opening: boolean) => {
       const c = ready()
       if (!c) return
       const now = performance.now()
-      // Long cooldown prevents mouse-shaking in/out of the emblem from making noise
       if (now - lastIris < 650) return
       lastIris = now
-      const freq = opening ? SCALE[7] : SCALE[4] // F#5 when opening, B4 when settling
-      pluck(c, freq, 0.1, 0.48)
+      const idx = opening ? profile.accents.irisOpen : profile.accents.irisClose
+      pluck(c, noteAt(idx), 0.1, profile.decay.base * 0.9)
     },
     detent: (kind) => {
       const c = ready()
       if (!c) return
       const now = performance.now()
       if (kind === "hover") {
-        // Strict 220ms cooldown so sweeping across buttons stays delicate and musical
         if (now - lastHover < 220) return
         lastHover = now
-        const freq = SCALE[hoverIdx]
-        hoverIdx = hoverIdx === 5 ? 7 : 5 // alternates gently between D5 and F#5
-        pluck(c, freq, 0.09, 0.26)
+        const [a, b] = profile.accents.hover
+        const idx = hoverFlip ? b : a
+        hoverFlip = !hoverFlip
+        pluck(c, noteAt(idx), 0.09, 0.26)
       } else if (kind === "click") {
         if (now - lastClick < 90) return
         lastClick = now
-        pluck(c, SCALE[5], 0.18, 0.36)
+        pluck(c, noteAt(profile.accents.click), 0.18, 0.36)
       } else {
         playEngage(c)
       }
@@ -248,6 +317,9 @@ export const createMechanicalSound = (): MechanicalSound => {
         ctx = null
         bus = null
         toneFilter = null
+        delayNode = null
+        feedbackNode = null
+        wetNode = null
         void c.close().catch(() => {})
       }
     },
