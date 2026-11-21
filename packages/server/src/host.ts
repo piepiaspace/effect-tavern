@@ -1,6 +1,6 @@
 // Shared standalone environment for the HTTP host and in-process CLI. No developer credentials, and no cards: the
 // shelf is what the library's store holds. The settings are the caller's, read once by cli/config.ts.
-import { fake } from "@effect-tavern/provider"
+import { fake } from "@effect-tavern/provider/src/fake.ts"
 import { plain } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { mkdirSync } from "node:fs"
@@ -15,7 +15,15 @@ export const openHost = async (
   logbook?: Logbook, // the running server's (start.ts); a command's library keeps a silent one
 ) => {
   mkdirSync(dir, { recursive: true })
-  const data = open(libraryFile(dir))
+  return standalone(open(libraryFile(dir)), { scripted, page }, logbook)
+}
+
+/** The standalone tavern over a library already open: `openHost`'s, and the app's (packages/app), whose host holds the file. */
+export const standalone = (
+  data: ReturnType<typeof open>,
+  { scripted, page }: { scripted?: boolean; page?: boolean },
+  logbook?: Logbook,
+) => {
   const model = scripted ? fake((call) => defaultAnswer(readStage(call), { notes: "", options: [] })) : undefined
   return tavern({
     data,

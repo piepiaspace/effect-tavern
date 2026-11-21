@@ -284,6 +284,36 @@ export const removeCard = async (id: string): Promise<void> => {
 }
 /** Where a card downloads from as a file: a plain link, the browser's own download. */
 export const cardFile = (id: string): string => `${base}/cards/${enc(id)}/export.yaml`
+
+/** The app's host (packages/app), when the page runs in one: a web view has nowhere to download to, so a file goes
+ *  to the host, which has the player pick where it is saved. */
+type Host = { save(file: Blob, name: string): Promise<void> }
+const host = (): Host | undefined => (globalThis as { tavernHost?: Host }).tavernHost
+/** In the app, whose host reaches every model through the system's own proxy (MyGo's fetch carries no per-request
+ *  one), so a connection's proxy setting would do nothing there and is not shown. */
+export const inApp = (): boolean => host() !== undefined
+/** A file the page made (a pack, the lexicon), saved: downloaded, or handed to the app's host. */
+export const saveFile = async (file: Blob, name: string): Promise<void> => {
+  const h = host()
+  if (h) return h.save(file, name)
+  const url = URL.createObjectURL(file)
+  Object.assign(document.createElement("a"), { href: url, download: name }).click()
+  URL.revokeObjectURL(url)
+}
+/** A download link's click (`cardFile`, `exportUrl`): the browser's own download (returns `undefined`), or in the app
+ *  the file fetched, checked (`!r.ok` throws `responseError` before touching the save dialog) and handed to its host
+ *  under the name the server's content-disposition gives it. */
+export const onDownload = (e: MouseEvent & { currentTarget: HTMLAnchorElement }): Promise<void> | undefined => {
+  const h = host()
+  if (!h) return undefined
+  e.preventDefault()
+  const href = e.currentTarget.href
+  return fetch(href).then(async (r) => {
+    if (!r.ok) throw await responseError(r)
+    const named = r.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+    await h.save(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
+  })
+}
 export const fetchDepots = async (): Promise<void> => registry.set(depots, await got(call(`${base}/depots`)))
 /** Adds a library by its address and answers the list as it now stands. */
 export const addDepot = async (location: string): Promise<readonly DepotRow[]> => {

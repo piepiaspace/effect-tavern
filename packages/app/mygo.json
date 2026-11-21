@@ -1,0 +1,24 @@
+{
+  "name": "Effect Tavern",
+  "slug": "effect-tavern",
+  "identifier": "space.piepia.tavern",
+  "version": "0.0.1",
+  "out": "build",
+  "frontendDist": "dist",
+  "buildCommand": "bun web/build.ts",
+  "ios": {
+    "minimumSystemVersion": "17.5",
+    "team": "4PG5LBH388"
+  },
+  "android": {
+    "adaptiveIcon": {
+      "foreground": "icon/foreground.png",
+      "background": "#fcfcfb"
+    },
+    "splash": "#fcfcfb"
+  },
+  "macos": {
+    "minimumSystemVersion": "14.5",
+    "icon": "icon/AppIcon.icns"
+  }
+}

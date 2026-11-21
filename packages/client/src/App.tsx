@@ -51,6 +51,7 @@ import {
 } from "./store.ts"
 import { turn } from "./turn.ts"
 import { leadKind, settleKind, TurnStatus } from "./turn-status.tsx"
+import { mountBack } from "./back.ts"
 import { onKey } from "./pages.ts"
 import { scroll } from "./tabs.ts"
 import { t } from "./i18n.ts"
@@ -600,10 +601,14 @@ const Reader = () => {
 
 export const App = () => {
   const pg = read(page)
-  // one Escape rule for every page over the reader
+  // one Escape rule for every page over the reader, and the system's back as Escape (back.ts)
   onSettled(() => {
     addEventListener("keydown", onKey)
-    return () => removeEventListener("keydown", onKey)
+    const unmountBack = mountBack()
+    return () => {
+      removeEventListener("keydown", onKey)
+      unmountBack()
+    }
   })
   return (
     <>
