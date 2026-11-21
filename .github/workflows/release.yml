@@ -90,7 +90,9 @@ jobs:
       matrix:
         include:
           - { name: macos, runner: blacksmith-6vcpu-macos-latest, platform: darwin/universal }
-          - { name: windows, runner: blacksmith-2vcpu-ubuntu-2604, platform: "windows/amd64,windows/arm64" }
+          # one row per Windows CPU: each installer is ~9 s of NSIS
+          - { name: windows-x64, runner: blacksmith-2vcpu-ubuntu-2604, platform: windows/amd64 }
+          - { name: windows-arm64, runner: blacksmith-2vcpu-ubuntu-2604, platform: windows/arm64 }
           - { name: linux, runner: blacksmith-2vcpu-ubuntu-2604, platform: "linux/amd64,linux/arm64" }
           - { name: android, runner: blacksmith-2vcpu-ubuntu-2604, platform: android/arm64 }
     defaults:
@@ -111,10 +113,12 @@ jobs:
       - run: bun install --frozen-lockfile
       # web/build.ts runs vp in packages/client
       - run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
-      # the image's package lists are usually fresh enough; refresh them only when they are not
+      # the image has no apt lists, so a plain install refreshes them first (7 s); the package cache skips both
       - name: NSIS, for the Windows installers
-        if: matrix.name == 'windows'
-        run: sudo apt-get install -y --no-install-recommends nsis || { sudo apt-get update && sudo apt-get install -y --no-install-recommends nsis; }
+        if: startsWith(matrix.name, 'windows')
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
+        with:
+          packages: nsis
       - if: matrix.name == 'android'
         uses: actions/setup-java@v6
         with:
