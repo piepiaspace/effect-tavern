@@ -225,6 +225,16 @@
   font-size: var(--text-caption);
   font-weight: 700;
 }
+/* decision model's fixed entry: rounded-square brand glyph badge, distinct from circular provider letter avatars */
+.avatar.decision-badge {
+  border-radius: var(--radius);
+  background: var(--alpha-1);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line);
+}
+.avatar.decision-badge svg {
+  width: 15px;
+  height: 15px;
+}
 
 .detail-header {
   flex: none;

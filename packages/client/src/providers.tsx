@@ -26,7 +26,7 @@ import {
   type Pane,
   dialogHandle,
 } from "./controls.tsx"
-import { Family } from "./family.tsx"
+import { DecisionGlyph, Family } from "./family.tsx"
 import {
   Check,
   Clue,
@@ -191,7 +191,9 @@ export const Providers = (props: Pane) => {
             aria-selected={onDecision() ? "true" : "false"}
             onClick={() => props.onPick(DECISION)}
           >
-            <Avatar name="D" />
+            <span class="avatar decision-badge" aria-hidden="true">
+              <DecisionGlyph driver={dec()?.driver} />
+            </span>
             <span class="p-name">{t("decision.title")}</span>
             <span class={{ dot: true, on: !!dec()?.enabled }} />
           </button>

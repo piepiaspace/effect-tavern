@@ -4,6 +4,7 @@
 // the id ("meta/muse", "anthropic/claude-fable"), else against the whole lowercased id, so an owner prefix
 // ("deepseek-ai/DeepSeek-V3", "anthropic/claude-3.7-sonnet") counts; the first match wins. Only the slugs named here
 // are read into the bundle.
+import type { Driver } from "@effect-tavern/provider/src/decision.ts"
 import { lookup } from "@effect-tavern/provider/src/names.ts"
 import Baichuan from "~icons/lobe/baichuan"
 import Claude from "~icons/lobe/claude"
@@ -27,11 +28,13 @@ import Rwkv from "~icons/lobe/rwkv"
 import Sensenova from "~icons/lobe/sensenova"
 import Spark from "~icons/lobe/spark"
 import Stepfun from "~icons/lobe/stepfun"
+import Typesafeai from "~icons/lobe/typesafeai"
 import Wenxin from "~icons/lobe/wenxin"
 import Xiaomimimo from "~icons/lobe/xiaomimimo"
 import Yi from "~icons/lobe/yi"
 import Zhipu from "~icons/lobe/zhipu"
 import Cube from "~icons/ph/cube"
+import Scales from "~icons/ph/scales"
 import { Dynamic } from "@solidjs/web"
 import { names } from "./store.ts"
 
@@ -74,4 +77,14 @@ export const Family = (props: { id: string }) => (
   <span class="family" aria-hidden="true">
     <Dynamic component={familyGlyph(props.id)} />
   </span>
+)
+
+const DRIVER_GLYPHS: Record<Driver, Glyph> = {
+  google: Gemini,
+  openai: Openai,
+  typesafe: Typesafeai,
+}
+/** A decision driver's brand glyph (LobeHub mono SVG), or Scales before a driver is configured. */
+export const DecisionGlyph = (props: { driver: Driver | undefined }) => (
+  <Dynamic component={props.driver ? DRIVER_GLYPHS[props.driver] : Scales} />
 )
