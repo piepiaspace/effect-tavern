@@ -165,7 +165,7 @@ export const Manager = (props: {
               const checked = () => picked().has(s().id)
               return (
                 <div
-                  class="card"
+                  class="tile card"
                   role="listitem"
                   aria-current={s().id === lib()?.current ? "true" : undefined}
                   data-checked={checked() ? "" : undefined}

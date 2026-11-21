@@ -561,7 +561,7 @@ export const Sidebar = (props: {
               </div>
             </Show>
             <div class="workspace-tools">
-              <button type="button" class="row" disabled={at() === null} onClick={() => leaveFor(openPicker)}>
+              <button type="button" class="tile row" disabled={at() === null} onClick={() => leaveFor(openPicker)}>
                 <span class="lbl">
                   <User aria-hidden="true" />
                   <span>{t("common.persona")}</span>
@@ -570,7 +570,7 @@ export const Sidebar = (props: {
               </button>
               <button
                 type="button"
-                class="row"
+                class="tile row"
                 disabled={at() === null}
                 aria-label={freeChat() ? t("writing.freeChatTitle") : undefined}
                 onClick={() => leaveFor(openWriting)}

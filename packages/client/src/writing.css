@@ -328,6 +328,8 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  margin: calc(-1 * var(--space-half)) calc(-1 * var(--space-1));
+  padding: var(--space-half) var(--space-1);
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -397,6 +399,8 @@
   min-height: 52px;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-card);
+}
+.prod-item:not(.tile) {
   background: var(--surface-2);
   box-shadow: inset 0 0 0 var(--hairline) var(--line);
 }
@@ -427,15 +431,6 @@
 }
 .prod-item[data-editable="true"] {
   cursor: pointer;
-  transition: background var(--dur-2) var(--ease);
-}
-@media (hover: hover) and (pointer: fine) {
-  .prod-item[data-editable="true"]:hover {
-    background: var(--surface-3);
-  }
-}
-.prod-item[data-editable="true"]:active {
-  background: var(--surface-3);
 }
 .tag.warn {
   background: var(--warn-soft);

@@ -164,7 +164,7 @@ export const Workshop = () => {
             <For each={list()} keyed={(c) => c.id}>
               {(c) => (
                 <li>
-                  <button type="button" class="workshop-card" onClick={() => void editCard(c().id)}>
+                  <button type="button" class="tile workshop-card" onClick={() => void editCard(c().id)}>
                     <span class="title">{c().title}</span>
                     <Show when={c().summary}>{(s) => <span class="summary">{s()}</span>}</Show>
                   </button>

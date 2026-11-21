@@ -447,7 +447,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     const missing = () => unfilled(textOf() ?? "", layer()?.names ?? {})
     return (
       <div
-        class="prod-item"
+        class="tile prod-item"
         data-editable="true"
         onClick={() => openEditProduct({ id: p().id, label: p().label, text: textOf(), trigger: p().trigger })}
       >

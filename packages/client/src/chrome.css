@@ -711,6 +711,43 @@ button.record-pill:active {
   box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
 }
 
+/* a clickable list-card tile: owns only the elevated surface and interaction (surface-2, hairline + shadow-1, hover
+   lift on fine pointers, press scale, selected hairline). Geometry (padding, gap, and concentric border-radius when
+   nested beside --radius controls such as `.workspace .row`) stays with each caller. */
+.tile,
+.drawer .shelf-item {
+  box-sizing: border-box;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow:
+    var(--shadow-1),
+    inset 0 0 0 var(--hairline) var(--line);
+  transition:
+    background var(--dur-2) var(--ease),
+    box-shadow var(--dur-2) var(--ease),
+    scale var(--dur-1) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  :is(.tile, .drawer .shelf-item):hover:not(:disabled) {
+    background: var(--surface-3);
+    box-shadow:
+      var(--shadow-1),
+      inset 0 0 0 var(--hairline) var(--line-strong);
+  }
+}
+:is(.tile, .drawer .shelf-item):active:not(:disabled) {
+  scale: 0.98;
+}
+:is(.tile, .drawer .shelf-item):is([aria-current], [aria-checked="true"]) {
+  box-shadow:
+    var(--shadow-1),
+    inset 0 0 0 1px var(--ink-3);
+}
+.tile[data-checked] {
+  background: var(--alpha-2);
+  box-shadow: inset 0 0 0 1px var(--ink-2);
+}
+
 /* the stories manager (manager.tsx): the picker's sheet one step wider (32rem on desktop), a search over the turns
    beside the 全部 / 收藏 toggle, and story cards (star, name, time and actions; preview when present); the list alone
    scrolls */
@@ -773,29 +810,22 @@ button.record-pill:active {
   flex-direction: column;
   gap: var(--space-2);
   margin: 0 calc(-1 * var(--space-2));
-  padding: 0 var(--space-2);
+  padding: var(--space-1) var(--space-2);
 }
 /* a card: the title row and optional preview; in selection mode, a toggle box at the left */
 .manager .card {
   flex: none;
   scroll-snap-align: start;
-  box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   column-gap: var(--space-3);
   align-items: center;
   min-height: 40px;
   padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-card);
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 var(--hairline) var(--line);
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  transition:
-    background var(--dur-2) var(--ease),
-    box-shadow var(--dur-2) var(--ease);
 }
 .manager[data-selecting] .card {
   grid-template-columns: auto minmax(0, 1fr);
@@ -803,23 +833,6 @@ button.record-pill:active {
 .manager .card:has(.preview) {
   align-items: start;
   padding-block: var(--space-3);
-}
-@media (hover: hover) and (pointer: fine) {
-  .manager .card:hover {
-    background: var(--ghost-hover);
-    box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
-  }
-}
-.manager .card:active {
-  background: var(--ghost-active);
-}
-.manager .card[aria-current] {
-  background: var(--alpha-1);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
-}
-.manager .card[data-checked] {
-  background: var(--alpha-2);
-  box-shadow: inset 0 0 0 1px var(--ink-2);
 }
 .manager .card .box {
   display: none;
@@ -1083,12 +1096,11 @@ button.record-pill:active {
   flex-direction: column;
   gap: var(--space-2);
   margin: 0 calc(-1 * var(--space-2));
-  padding: var(--space-half) var(--space-2);
+  padding: var(--space-1) var(--space-2);
 }
 /* a row: a surface card, the name over an optional bio line, the check at the right on the pick in force */
 .picker .item {
   flex: none;
-  box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   column-gap: var(--space-2);
@@ -1098,31 +1110,15 @@ button.record-pill:active {
   min-height: 40px;
   padding: var(--space-2) var(--space-3);
   border: 0;
-  border-radius: var(--radius-card);
-  background: var(--surface-2);
-  box-shadow: inset 0 0 0 var(--hairline) var(--line);
   color: inherit;
   font: inherit;
   text-align: left;
-  transition:
-    background var(--dur-2) var(--ease),
-    box-shadow var(--dur-2) var(--ease);
 }
-.picker .item:focus-visible,
-.picker .item:active {
-  background: var(--ghost-hover);
-  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+.picker .item:focus-visible {
+  box-shadow:
+    var(--shadow-1),
+    inset 0 0 0 1px var(--line-strong);
   outline: none;
-}
-@media (hover: hover) and (pointer: fine) {
-  .picker .item:hover {
-    background: var(--ghost-hover);
-    box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
-  }
-}
-.picker .item[aria-checked="true"] {
-  background: var(--alpha-1);
-  box-shadow: inset 0 0 0 1px var(--line-strong);
 }
 .picker .item .name {
   min-width: 0;

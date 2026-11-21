@@ -317,7 +317,7 @@ export const StoryDialogs = () => {
               <button
                 type="button"
                 role="menuitemradio"
-                class="item"
+                class="tile item"
                 aria-checked={picked() === undefined ? "true" : "false"}
                 onClick={() => (picker.close(), pick(undefined))}
               >
@@ -330,7 +330,7 @@ export const StoryDialogs = () => {
               <button
                 type="button"
                 role="menuitemradio"
-                class="item"
+                class="tile item"
                 aria-checked={picked() === null ? "true" : "false"}
                 onClick={() => (picker.close(), pick(null))}
               >
@@ -345,7 +345,7 @@ export const StoryDialogs = () => {
                   <button
                     type="button"
                     role="menuitemradio"
-                    class="item"
+                    class="tile item"
                     aria-checked={p().id === picked() ? "true" : "false"}
                     onClick={() => (picker.close(), pick(p().id))}
                   >

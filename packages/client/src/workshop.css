@@ -57,26 +57,15 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 .workshop-card {
-  box-sizing: border-box;
   width: 100%;
   text-align: left;
-  padding: var(--space-3);
-  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-half);
-  transition: background var(--dur-2) var(--ease);
-}
-@media (hover: hover) and (pointer: fine) {
-  .workshop-card:hover {
-    background: var(--ghost-hover);
-  }
-}
-.workshop-card:active {
-  background: var(--ghost-active);
+  gap: var(--space-1);
 }
 .workshop-card .title {
   font-weight: 600;
@@ -86,6 +75,11 @@
   font-size: var(--text-footnote);
   color: var(--ink-2);
   overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 /* one card open: its name and line bare at the top, then three parts, each a head with its + key over one grouped
    list of its blocks. A row is what the block says cut short (an entry: its name, then its first line), the whole of
