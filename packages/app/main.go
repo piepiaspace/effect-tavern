@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"runtime"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -45,27 +46,44 @@ func main() {
 	openDB()
 	mygo.App.OnQuit(closeDB)
 	mygo.App.WhenReady(func() {
-		win := mygo.NewWindow(mygo.WindowOptions{
-			Title:           "Effect Tavern",
-			Width:           1280,
-			Height:          820,
-			MinWidth:        360,
-			MinHeight:       480,
-			StateKey:        "main",
-			BackgroundColor: "light-dark(#fcfcfb, #151515)",
-			URL:             "/",
-		})
-		// A web content process the system killed (memory, mostly on phones) leaves Go and the library running:
-		// load the page again, whose library opens with a rollback of any write it was in (web/sqlite.ts).
-		win.Page().OnRenderProcessGone(func(string) { win.Page().Reload() })
-		// The window holds the app alone: a web page it would navigate to (a link in a card's text, say) opens in the
-		// system's browser instead, where the player can come back from it.
-		win.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
-			if external(e.URL) {
-				e.PreventDefault()
-				mygo.Shell.OpenExternal(e.URL)
-			}
-		})
+		var win *mygo.Window
+		var openWindow func() *mygo.Window
+		openWindow = func() *mygo.Window {
+			w := mygo.NewWindow(mygo.WindowOptions{
+				Title:           "Effect Tavern",
+				Width:           1280,
+				Height:          820,
+				MinWidth:        360,
+				MinHeight:       480,
+				StateKey:        "main",
+				BackgroundColor: "light-dark(#fcfcfb, #151515)",
+				URL:             "/",
+			})
+			// A web content process the system killed (memory, mostly on phones) leaves Go and the library running:
+			// load the page again, whose library opens with a rollback of any write it was in (web/sqlite.ts).
+			// Android's WebView is dead once its render process is gone: a fresh window replaces it before closing it.
+			w.Page().OnRenderProcessGone(func(string) {
+				if w != win {
+					return
+				}
+				if runtime.GOOS == "android" {
+					win = openWindow()
+					w.Close()
+					return
+				}
+				w.Page().Reload()
+			})
+			// The window holds the app alone: a web page it would navigate to (a link in a card's text, say) opens in
+			// the system's browser instead, where the player can come back from it.
+			w.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
+				if external(e.URL) {
+					e.PreventDefault()
+					mygo.Shell.OpenExternal(e.URL)
+				}
+			})
+			return w
+		}
+		win = openWindow()
 		mygo.App.OnSecondInstance(func([]string, string) {
 			win.Show()
 			win.Restore()

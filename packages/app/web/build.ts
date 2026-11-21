@@ -1,9 +1,10 @@
 // bun web/build.ts (mygo.json buildCommand): the client's build into dist/, and the server for the page beside it
 // (dist/server.js, bundle.ts), loaded ahead of the client's script so /api answers from the first request.
+import { fileURLToPath } from "node:url"
 import { $, file, write } from "bun"
 import { bundleServer } from "./bundle.ts"
 
-const at = (p: string) => new URL(p, import.meta.url).pathname
+const at = (p: string) => fileURLToPath(new URL(p, import.meta.url))
 const dist = at("../dist")
 const client = at("../../client")
 const { version } = await file(at("../mygo.json")).json()

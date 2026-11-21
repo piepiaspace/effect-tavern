@@ -12,7 +12,7 @@
     "@effect-tavern/runtime": "workspace:*",
     "@effect-tavern/server": "workspace:*",
     "@mygo-plugins/fetch": "0.10.0",
-    "yaml": "2.8.1"
+    "yaml": "2.9.1"
   },
   "devDependencies": {
     "@types/bun": "1.4.4"

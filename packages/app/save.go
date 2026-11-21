@@ -8,13 +8,30 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/egoist/mygo"
 )
 
+var unsafeName = strings.NewReplacer(`\`, "_", "/", "_", ":", "_", "*", "_", "?", "_", `"`, "_", "<", "_", ">", "_", "|", "_")
+
+func cleanName(raw string) string {
+	s := strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, unsafeName.Replace(strings.TrimSpace(raw)))
+	name := strings.Trim(filepath.Base(s), ". ")
+	if name == "" || name == "." || name == "/" {
+		return ""
+	}
+	return name
+}
+
 func serveSave(w http.ResponseWriter, r *http.Request) {
-	name := filepath.Base(r.URL.Query().Get("name"))
-	if name == "." || name == "/" {
+	name := cleanName(r.URL.Query().Get("name"))
+	if name == "" {
 		http.Error(w, "name", http.StatusBadRequest)
 		return
 	}

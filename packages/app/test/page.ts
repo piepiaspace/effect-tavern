@@ -3,14 +3,24 @@
 // bun:sqlite in memory). A Bun or Node API reaching a path the page takes (card install and export, revisions, a
 // story, its opening) fails here before it fails on a phone; so does the library's protocol, and its reopening.
 import assert from "node:assert/strict"
+import { mkdtempSync, rmSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { Database } from "bun:sqlite"
 import { runInNewContext } from "node:vm"
 import { bundleServer } from "../web/bundle.ts"
 
-const built = await bundleServer({ version: "test" })
-assert.ok(built.success, built.logs.map((l) => l.message).join("\n"))
-// run as a script, import.meta as a module in the page has it (no `main`)
-const code = (await built.outputs[0].text()).replaceAll("import.meta", "({ url: location.href })")
+// Include a space in outdir so percent-encoded URL pathnames fail here rather than in a spaced checkout.
+const outdir = mkdtempSync(join(tmpdir(), "tavern app "))
+let code: string
+try {
+  const built = await bundleServer({ outdir, version: "test" })
+  assert.ok(built.success, built.logs.map((l) => l.message).join("\n"))
+  // run as a script, import.meta as a module in the page has it (no `main`)
+  code = (await Bun.file(join(outdir, "server.js")).text()).replaceAll("import.meta", "({ url: location.href })")
+} finally {
+  rmSync(outdir, { recursive: true, force: true })
+}
 
 // Bun APIs the bundle names at all: each must be one host.ts supplies, or one only the CLI's paths reach (Bun.file:
 // static files and a card library's directory, neither of which the app serves).
