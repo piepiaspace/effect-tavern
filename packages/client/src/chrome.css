@@ -63,13 +63,36 @@ button.record-pill:active {
 .sheet:is([data-starting-style], [data-ending-style], [data-closed])::backdrop {
   opacity: 0;
 }
+.sheet[data-dragging] {
+  transition: none;
+  will-change: transform;
+}
 .sheet header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
   font-size: var(--text-heading);
   font-weight: 600;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sheet header::before {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  translate: -50% 0;
+  border-radius: var(--radius-pill);
+  background: var(--alpha-3);
+  pointer-events: none;
+}
+.sheet header :is(button, a, input, select, textarea, [role="button"]) {
+  touch-action: auto;
 }
 .sheet header h2 {
   flex: 1;
@@ -487,7 +510,9 @@ button.record-pill:active {
   padding: var(--space-1);
   border: 0;
   border-radius: var(--radius-card);
-  background: var(--surface-3);
+  background: color-mix(in oklab, var(--surface-3) 86%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
   color: inherit;
   box-shadow:
     var(--shadow-pop),
@@ -590,8 +615,33 @@ button.record-pill:active {
   outline: none;
   transition: opacity var(--dur-3) ease-out;
 }
+.popup-list:not([data-presentation="sheet"]) {
+  background: color-mix(in oklab, var(--surface-3) 86%, transparent);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  transform-origin: center top;
+  transition:
+    opacity var(--dur-2) var(--ease),
+    scale var(--dur-3) var(--ease);
+}
+.popup-list:not([data-presentation="sheet"])[data-side="top"] {
+  transform-origin: center bottom;
+}
+.popup-list:not([data-presentation="sheet"])[data-side="bottom"] {
+  transform-origin: center top;
+}
+.popup-list:not([data-presentation="sheet"])[data-side="left"] {
+  transform-origin: right center;
+}
+.popup-list:not([data-presentation="sheet"])[data-side="right"] {
+  transform-origin: left center;
+}
 .popup-list:not([data-presentation="sheet"]):is([data-starting-style], [data-ending-style], [data-closed]) {
   opacity: 0;
+  scale: 0.97;
+}
+.popup-list:not([data-presentation="sheet"]):is([data-ending-style], [data-closed]) {
+  transition-duration: var(--dur-2);
 }
 .popup-list .item {
   display: flex;
@@ -662,9 +712,26 @@ button.record-pill:active {
   font-size: var(--text-body);
   line-height: var(--leading-body);
   outline: none;
+  transition:
+    opacity var(--dur-3) var(--ease),
+    scale var(--dur-3) var(--ease);
+}
+.confirm:is([data-starting-style], [data-ending-style], [data-closed]) {
+  opacity: 0;
+  scale: 0.96;
+}
+.confirm:is([data-ending-style], [data-closed]) {
+  transition-duration: var(--dur-2);
 }
 .confirm::backdrop {
   background: var(--scrim);
+  transition: opacity var(--dur-3) var(--ease);
+}
+.confirm:is([data-starting-style], [data-ending-style], [data-closed])::backdrop {
+  opacity: 0;
+}
+.confirm:is([data-ending-style], [data-closed])::backdrop {
+  transition-duration: var(--dur-2);
 }
 .confirm p {
   margin: 0 0 var(--space-4);
@@ -822,7 +889,7 @@ button.record-pill:active {
   align-items: center;
   min-height: 40px;
   padding: var(--space-2) var(--space-3);
-  cursor: pointer;
+  cursor: default;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -1189,6 +1256,12 @@ button.record-pill:active {
   .sheet::backdrop {
     transition-duration: var(--dur-3);
   }
+  .sheet header {
+    touch-action: auto;
+  }
+  .sheet header::before {
+    display: none;
+  }
   .sheet .record {
     flex: 0 1 auto;
   }
@@ -1197,6 +1270,42 @@ button.record-pill:active {
   }
   .sheet:has(> .manager) {
     width: min(32rem, calc(100% - 2 * var(--space-5)));
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .snippets,
+  .popup-list:not([data-presentation="sheet"]) {
+    background: var(--surface-3);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet,
+  .snippets,
+  .popup-list,
+  .confirm {
+    transition: opacity 150ms ease;
+  }
+  .sheet:is([data-starting-style], [data-ending-style], [data-closed]),
+  .snippets:is([data-starting-style], [data-ending-style], [data-closed]),
+  .popup-list:not([data-presentation="sheet"]):is([data-starting-style], [data-ending-style], [data-closed]),
+  .confirm:is([data-starting-style], [data-ending-style], [data-closed]) {
+    transform: none;
+    translate: none;
+    scale: none;
+    opacity: 0;
+  }
+  .snippets:is([data-ending-style], [data-closed]),
+  .popup-list:not([data-presentation="sheet"]):is([data-ending-style], [data-closed]),
+  .confirm:is([data-ending-style], [data-closed]) {
+    transition: opacity 150ms ease;
+  }
+  .sheet::backdrop,
+  .confirm::backdrop {
+    transition: opacity 150ms ease;
   }
 }
 
@@ -1210,6 +1319,6 @@ button.record-pill:active {
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   background: var(--warn);
   color: var(--primary-ink);
-  font-size: 11px;
+  font-size: var(--text-caption);
   pointer-events: none;
 }
