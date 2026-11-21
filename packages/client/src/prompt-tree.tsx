@@ -744,6 +744,10 @@ export const PromptTreePage = () => {
                         class="pt-input"
                         aria-label={t("promptTree.events")}
                         placeholder={t("promptTree.eventPlaceholder")}
+                        autocapitalize="none"
+                        autocorrect="off"
+                        spellcheck="false"
+                        enterkeyhint="done"
                         value={eventDraft()}
                         onInput={(e) => setEventDraft(e.currentTarget.value)}
                         onKeyDown={(e) => {
@@ -881,6 +885,7 @@ export const PromptTreePage = () => {
                     id="pt-story-input"
                     class="pt-textarea"
                     rows="2"
+                    enterkeyhint="enter"
                     placeholder={t("promptTree.inputPlaceholder")}
                     value={mem().inputText}
                     onInput={(e) => update({ inputText: e.currentTarget.value }, true)}
@@ -982,6 +987,8 @@ export const PromptTreePage = () => {
                                 type="number"
                                 class="pt-num-input mono"
                                 aria-label={f().label}
+                                inputmode={f().type === "int" ? "numeric" : "decimal"}
+                                enterkeyhint="done"
                                 value={numVal()}
                                 min={f().min}
                                 max={f().max}
@@ -1026,6 +1033,10 @@ export const PromptTreePage = () => {
                               type="text"
                               class="pt-input"
                               aria-label={f().label}
+                              autocapitalize="none"
+                              autocorrect="off"
+                              spellcheck="false"
+                              enterkeyhint="done"
                               value={String(localVal() ?? "")}
                               onInput={(e) => setField(f().path, e.currentTarget.value)}
                             />
@@ -1046,6 +1057,7 @@ export const PromptTreePage = () => {
                 id="pt-sandbox-input"
                 class="pt-textarea"
                 rows="2"
+                enterkeyhint="enter"
                 placeholder={t("promptTree.inputPlaceholder")}
                 value={mem().inputText}
                 onInput={(e) => update({ inputText: e.currentTarget.value }, true)}
@@ -1055,6 +1067,7 @@ export const PromptTreePage = () => {
                 class="pt-input"
                 aria-label={t("promptTree.playerNote")}
                 placeholder={t("promptTree.notePlaceholder")}
+                enterkeyhint="done"
                 value={mem().inputNote}
                 onInput={(e) => update({ inputNote: e.currentTarget.value }, true)}
               />
