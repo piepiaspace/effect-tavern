@@ -357,8 +357,18 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.equal(captured.length, 1)
   assert.equal(sdkCaptured.length, 1)
   assert.deepEqual(previewTurn1.messages, captured[0])
-  assert.deepEqual(wire(format, captured[0], format !== "anthropic"), previewTurn1.wiredMessages)
-  assertSdkPrompt(sdkCaptured[0], previewTurn1.wiredMessages)
+  assert.deepEqual(
+    wire(format, captured[0], format !== "anthropic"),
+    previewTurn1.wiredMessages ?? previewTurn1.messages,
+  )
+  assertSdkPrompt(sdkCaptured[0], previewTurn1.wiredMessages ?? previewTurn1.messages)
+  // The preview body sends no raw template equal to the slice it is shown as
+  for (const tr of previewTurn1.traces) {
+    const m = previewTurn1.messages[tr.index]
+    const text = typeof m.content === "string" ? m.content : m.content.map((p) => ("text" in p ? p.text : "")).join("")
+    for (const sp of tr.spans) assert.notEqual(sp.source.rawText, text.slice(sp.start, sp.end))
+    if (tr.source) assert.notEqual(tr.source.rawText, text)
+  }
   assert.equal(callEvents[0]?.trace?.length, captured[0]?.length)
   assert.deepEqual(callEvents[0]?.trace, stripTraceRawText(previewTurn1.traces))
   // Persisted session call trace must not duplicate message bodies in `rawText`
@@ -500,7 +510,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     store: { read: () => Log.snapshot(nextLog), write: () => {} },
     model: (phase) => ({
       ...fake((o) => {
-        if (phase === "narrate") assertSdkPrompt(o.prompt, pv.wiredMessages)
+        if (phase === "narrate") assertSdkPrompt(o.prompt, pv.wiredMessages ?? pv.messages)
         return { text: "ok" }
       }),
       format: "gemini",
@@ -548,7 +558,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   })
   // No format configured -> wire() is not applied and wiredRole stays undefined
   assert.equal(pv.connection.format, undefined)
-  assert.deepEqual(pv.wiredMessages, pv.messages)
+  assert.equal(pv.wiredMessages, undefined)
   assert.ok(pv.traces.every((tr) => tr.wiredRole === undefined))
   // `unfilled_holes` only reports holes present in assembled messages, with structured `holes`
   const holeDiag = pv.diagnostics.find((d) => d.code === "unfilled_holes")

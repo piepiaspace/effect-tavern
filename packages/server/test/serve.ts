@@ -948,4 +948,34 @@ const sse = (text: string) =>
     refusing.close()
   }
 }
+{
+  // listen gzips a text body for a client that takes it; the turn stream and a client that does not stay raw
+  const body = JSON.stringify({ prose: "她".repeat(4000) })
+  const server = listen(
+    async (r) =>
+      new URL(r.url).pathname === "/sse"
+        ? new Response("data: 1\n\n", { headers: { "content-type": "text/event-stream" } })
+        : new Response(body, { headers: { "content-type": "application/json" } }),
+    "127.0.0.1",
+    0,
+  )
+  try {
+    const at = `http://127.0.0.1:${server.port}`
+    const gz = { "accept-encoding": "gzip" }
+    const zipped = await fetch(at, { headers: gz, decompress: false })
+    assert.equal(zipped.headers.get("content-encoding"), "gzip")
+    const bytes = new Uint8Array(await zipped.arrayBuffer())
+    assert.ok(bytes.length < body.length / 10)
+    assert.equal(new TextDecoder().decode(Bun.gunzipSync(bytes)), body)
+    assert.equal(
+      (await fetch(at, { headers: { "accept-encoding": "identity" } })).headers.get("content-encoding"),
+      null,
+    )
+    const sse = await fetch(`${at}/sse`, { headers: gz, decompress: false })
+    assert.equal(sse.headers.get("content-encoding"), null)
+    assert.equal(await sse.text(), "data: 1\n\n")
+  } finally {
+    server.stop(true)
+  }
+}
 console.log("ok")

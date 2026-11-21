@@ -72,7 +72,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     assert.equal(p2.connection.routingSource, "none")
     assert.equal(p2.connection.format, undefined)
     assert.equal(p2.connection.prefill, true)
-    assert.deepEqual(p2.wiredMessages, p2.messages)
+    assert.equal(p2.wiredMessages, undefined)
     assert.ok(p2.traces.every((tr) => tr.wiredRole === undefined))
     assert.ok(fictionIds(p2).includes("seam-calm"))
     assert.ok(!fictionIds(p2).includes("seam-mid"))

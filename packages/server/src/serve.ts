@@ -535,9 +535,42 @@ const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown]) =
   })
   return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } })
 }
+/** Text bodies go out gzipped to a client that takes it: a preview or a client chunk is a quarter of its size, which
+ *  a phone on another machine's Wi-Fi feels and loopback does not. The turn stream stays raw: gzip would hold its
+ *  events back until a block fills. */
+const gzipped =
+  (fetch: Wire): Wire =>
+  async (request) => {
+    const response = await fetch(request)
+    const type = response.headers.get("content-type") ?? ""
+    if (
+      request.method === "HEAD" ||
+      !response.body ||
+      response.headers.has("content-encoding") ||
+      !/^(text\/(?!event-stream)|application\/json|image\/svg)/.test(type) ||
+      !/\bgzip\b/.test(request.headers.get("accept-encoding") ?? "")
+    )
+      return response
+    const headers = new Headers(response.headers)
+    headers.set("content-encoding", "gzip")
+    headers.append("vary", "accept-encoding")
+    headers.delete("content-length")
+    return new Response(response.body.pipeThrough(new CompressionStream("gzip")), {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    })
+  }
 /** A turn can spend longer than the default HTTP idle timeout waiting for the model. */
 export const listen = (fetch: Wire, hostname: string, port: number) =>
-  Bun.serve({ fetch, hostname, port, development: false, idleTimeout: 0, maxRequestBodySize: CARD_BYTES + SLACK })
+  Bun.serve({
+    fetch: gzipped(fetch),
+    hostname,
+    port,
+    development: false,
+    idleTimeout: 0,
+    maxRequestBodySize: CARD_BYTES + SLACK,
+  })
 
 const types: Record<string, string> = {
   html: "text/html; charset=utf-8",

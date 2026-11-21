@@ -338,7 +338,7 @@ export const PromptTreePage = () => {
   const displayedMessages = () => {
     const r = result()
     if (!r) return []
-    return r.connection.routingSource === "none" ? r.messages : r.wiredMessages
+    return r.connection.routingSource === "none" ? r.messages : (r.wiredMessages ?? r.messages)
   }
 
   const connectionTooltip = () => {

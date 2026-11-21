@@ -21,7 +21,7 @@ import {
 import { gateOf, makeDerived } from "./derived.ts"
 import { evaluateHead, type Hat, type HeadInput, type Msg, type Slotted } from "./fragment.ts"
 import { narratorHistory, policyFor, type Policy } from "./history.ts"
-import { prose as proseOf, type Input, type Turn as TurnOf } from "./journal.ts"
+import { type Input, type Turn as TurnOf } from "./journal.ts"
 import { resolveWithTrace, shown, type ResolvedTrace, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
 import { expand, fill, unfilled, type Names } from "./names.ts"
@@ -138,7 +138,8 @@ export interface PreviewNarrateResult {
   card: { id: string; title: string }
   connection: PreviewConnectionMeta
   messages: readonly Message[]
-  wiredMessages: readonly Message[]
+  /** Absent: the wire rewrote nothing, the SDK gets `messages` as they are. */
+  wiredMessages?: readonly Message[]
   traces: readonly MessageTrace[]
   omitted: readonly OmittedItem[]
   wireError?: WireErrorInfo
@@ -321,6 +322,28 @@ const traceSource = (source: SourceRef): SourceRef => {
   delete compact.rawText
   return compact
 }
+
+const plainText = (m: Message | undefined): string =>
+  !m
+    ? ""
+    : typeof m.content === "string"
+      ? m.content
+      : m.content.map((p) => ("text" in p && typeof p.text === "string" ? p.text : "")).join("")
+const unlessShown = (source: SourceRef, shown: string | undefined) =>
+  source.rawText === shown ? traceSource(source) : source
+/** The preview's body sends a text once: a raw template equal to the text it is shown as (the span's slice, the
+ *  omitted item's preview) is the same characters again, and the client offers the raw view only when they differ. */
+const shownOnce = (traces: readonly MessageTrace[], messages: readonly Message[], omitted: readonly OmittedItem[]) => ({
+  traces: traces.map((tr) => {
+    const text = plainText(messages[tr.index])
+    return {
+      ...tr,
+      ...(tr.source && { source: unlessShown(tr.source, text) }),
+      spans: tr.spans.map((sp) => ({ ...sp, source: unlessShown(sp.source, text.slice(sp.start, sp.end)) })),
+    }
+  }),
+  omitted: omitted.map((o) => ({ ...o, source: unlessShown(o.source, o.preview) })),
+})
 
 /** Strip raw template text from traces before persisting to call logs (bodies live in `msgs`). */
 export const stripTraceRawText = (traces: readonly MessageTrace[]): MessageTrace[] => {
@@ -803,16 +826,21 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
         basePath.findLastIndex((t) => t.boundary === true),
       ),
     )
+    // One row for the folded run: it grows with the story, the rows a turn each would too; a turn is read on the Timeline.
     const foldedTurns = epochTurns.slice(0, foldStart)
-    for (const ft of foldedTurns) {
+    const first = foldedTurns[0]
+    const last = foldedTurns.at(-1)
+    if (first && last) {
+      const label = first === last ? `Turn #${first.id}` : `Turn #${first.id}–#${last.id}`
       extraOmitted.push({
         category: "turn",
-        id: `turn-${ft.id}`,
-        label: `Turn #${ft.id}`,
+        id: `turns-${first.id}-${last.id}`,
+        label,
         reason: "folded",
-        detail: sum ? `Folded into summary (${sum.from}–${sum.to})` : "Slid out of history window without summary",
-        preview: ft.input.text || proseOf(ft).slice(0, 80),
-        source: { kind: "story", nodeId: ft.id, label: `Turn #${ft.id}` },
+        detail: sum
+          ? `${foldedTurns.length} turns folded into summary (${sum.from}–${sum.to})`
+          : `${foldedTurns.length} turns slid out of history window without summary`,
+        source: { kind: "story", nodeId: first.id, label },
       })
     }
     if (!sum) {
@@ -1183,9 +1211,9 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     card: { id: cardId, title: card.title ?? cardId },
     connection,
     messages: prepped.messages,
-    wiredMessages: prepped.wiredMessages,
-    traces: prepped.traces,
-    omitted: prepped.omitted,
+    ...((prepped.wiredMessages.length !== prepped.messages.length ||
+      prepped.wiredMessages.some((m, i) => m !== prepped.messages[i])) && { wiredMessages: prepped.wiredMessages }),
+    ...shownOnce(prepped.traces, prepped.messages, prepped.omitted),
     ...(prepped.wireError && { wireError: prepped.wireError }),
     resources: resourceViews,
     diagnostics,
