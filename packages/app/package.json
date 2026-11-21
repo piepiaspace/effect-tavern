@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "web": "bun web/build.ts"
+    "web": "bun web/build.ts",
+    "verify": "bun test/page.ts"
   },
   "dependencies": {
     "@effect-tavern/provider": "workspace:*",
