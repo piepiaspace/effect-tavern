@@ -356,6 +356,71 @@ export const reusePreviewOutline = (
       }
     : next
 
+/** Filter author-only hidden-field conditions and locked resources for play-entry previews while preserving unchanged references. */
+export const scrubPlayPreview = (r: PreviewNarrateResult): PreviewNarrateResult => {
+  const hidden = new Set(r.sandbox.fields.filter((f) => f.hidden).map((f) => f.path))
+  const secret = (s: SourceRef | undefined) => hidden.size > 0 && !!s?.whenDetails?.some((d) => hidden.has(d.path))
+  const scrub = <S extends SourceRef | undefined>(s: S): S => {
+    if (!s || !secret(s)) return s
+    const { when: _w, whenText: _t, whenResult: _r, whenDetails: _d, ...rest } = s
+    return rest as S
+  }
+
+  let traces = r.traces
+  if (hidden.size > 0) {
+    let tracesChanged = false
+    const nextTraces = r.traces.map((tr) => {
+      const source = scrub(tr.source)
+      let spansChanged = false
+      const nextSpans = tr.spans.map((sp) => {
+        const spSource = scrub(sp.source)
+        if (spSource === sp.source) return sp
+        spansChanged = true
+        return { ...sp, source: spSource }
+      })
+      if (source === tr.source && !spansChanged) return tr
+      tracesChanged = true
+      return { ...tr, source, spans: spansChanged ? nextSpans : tr.spans }
+    })
+    if (tracesChanged) traces = nextTraces
+  }
+
+  let omitted = r.omitted
+  if (hidden.size > 0) {
+    let omittedChanged = false
+    const nextOmitted: OmittedItem[] = []
+    for (const o of r.omitted) {
+      if (secret(o.source)) {
+        omittedChanged = true
+        continue
+      }
+      const by = scrub(o.by)
+      if (by !== o.by) {
+        omittedChanged = true
+        nextOmitted.push({ ...o, by })
+      } else {
+        nextOmitted.push(o)
+      }
+    }
+    if (omittedChanged) omitted = nextOmitted
+  }
+
+  return {
+    ...r,
+    traces,
+    omitted,
+    resources: r.resources
+      .filter((res) => res.unlockedLayer > 0)
+      .map((res) => ({
+        ...res,
+        layers: res.layers?.filter((layer) => layer.unlocked),
+        sections: res.sections.filter((s) => s.inCatalog || s.resident || s.deliveredThisTurn),
+        unlockGates: [],
+        offerGate: undefined,
+      })),
+  }
+}
+
 /** Human-readable display label for a SourceRef. */
 export const sourceLabel = (source: SourceRef): string =>
   source.label ??

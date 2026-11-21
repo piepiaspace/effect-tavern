@@ -14,6 +14,7 @@ import {
   snippetOf,
   spanRows,
   reusePreviewOutline,
+  scrubPlayPreview,
   sourceDestination,
 } from "../src/prompt-tree-state.ts"
 import { activeOf, cards, FREE_CHAT_ID, page, registry, stories, tabs, type StoryRow } from "../src/store.ts"
@@ -172,4 +173,31 @@ assert.notEqual(refreshed.traces[0].spans[1], gated)
 assert.equal(snippetOf("  abc  \n ", 3), "abc")
 assert.equal(snippetOf("  abc  \n d", 3), "ab…")
 assert.equal(snippetOf("a\u00a0\n b"), "a b")
+
+// scrubPlayPreview preserves unchanged trace/span/omitted references while hiding secret conditions.
+const cleanPlay = scrubPlayPreview(outline)
+assert.equal(cleanPlay.traces, outline.traces)
+assert.equal(cleanPlay.omitted, outline.omitted)
+const secretSpan: Span = {
+  ...gated,
+  source: {
+    ...gated.source,
+    whenText: "secret >= 1",
+    whenDetails: [{ path: "secret", label: "secret", expr: "secret >= 1", passed: true, actual: 1 }],
+  },
+}
+const withHidden = {
+  ...outline,
+  sandbox: {
+    ...outline.sandbox,
+    fields: [
+      { path: "secret", label: "secret", type: "int" as const, initial: 0, value: 1, hidden: true, start: false },
+    ],
+  },
+  traces: [{ ...outline.traces[0], spans: [fixed, secretSpan] }],
+}
+const scrubbed = scrubPlayPreview(withHidden)
+assert.equal(scrubbed.traces[0].spans[0], fixed)
+assert.equal(scrubbed.traces[0].spans[1].source.whenText, undefined)
+assert.equal(scrubbed.traces[0].spans[1].source.whenDetails, undefined)
 console.log("prompt-tree ok")

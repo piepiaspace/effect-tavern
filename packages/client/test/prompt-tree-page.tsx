@@ -31,31 +31,33 @@ const author: Tab = { id: 1, page: "prompt-tree", story: null, card: card.id, un
 const player: Tab = { ...author, id: 2, story: 3 }
 const selectTab = (active: number) => registry.set(tabs, { active, list: [author, player] })
 const options = { card, rows: {}, connection: { prefill: false, reasoningBack: false } }
-const story = previewNarrate({
-  ...options,
-  mode: "story",
-  storyId: 3,
-  connection: { ...options.connection, contextTokens: 32 },
-  storyPath: Array.from({ length: 4 }, (_, i) => ({
-    id: i + 1,
-    parent: i || null,
-    input: { text: "Walk" },
-    read: [],
-    deliveries: [],
-    opportunities: [],
-    beats: [],
-    answers: {},
-    end: "end",
-    brief: { must: [], may: [] },
-    reply: [{ type: "text", text: "Another day." }],
-    fired: [],
-    violated: [],
-    products: {},
-    changes: [],
-    settlementStatus: "committed",
-    settlementVersion: 0,
-  })),
-})
+const storyPath = Array.from({ length: 4 }, (_, i) => ({
+  id: i + 1,
+  parent: i || null,
+  input: { text: `Walk ${i + 1}` },
+  read: [],
+  deliveries: [],
+  opportunities: [],
+  beats: [],
+  answers: {},
+  end: "end" as const,
+  brief: { must: [], may: [] },
+  reply: [{ type: "text" as const, text: `Day ${i + 1}.` }],
+  fired: [],
+  violated: [],
+  products: {},
+  changes: [],
+  settlementStatus: "committed" as const,
+  settlementVersion: 0,
+}))
+const storyFor = (nodeId?: number | null) =>
+  previewNarrate({
+    ...options,
+    mode: "story",
+    storyId: 3,
+    connection: { ...options.connection, contextTokens: 32 },
+    storyPath: nodeId === null ? [] : nodeId === undefined ? storyPath : storyPath.slice(0, nodeId),
+  })
 const steps: number[] = []
 let hold: Promise<void> | undefined
 globalThis.fetch = tracked(async (_, init) => {
@@ -64,7 +66,7 @@ globalThis.fetch = tracked(async (_, init) => {
   if (req.fields?.score !== undefined) steps.push(req.fields.score)
   await hold
   return Response.json(
-    req.mode === "story" ? story : previewNarrate({ ...options, mode: "sandbox", fields: req.fields }),
+    req.mode === "story" ? storyFor(req.nodeId) : previewNarrate({ ...options, mode: "sandbox", fields: req.fields }),
   )
 })
 
@@ -195,6 +197,25 @@ async function run() {
       throw Error("Missing folded history detail")
     if (root.querySelector(".pt-omitted-detail .rv-jump")?.textContent !== t("promptTree.jumpTimeline"))
       throw Error("Folded history should open the timeline")
+
+    // Cold-switching to another branch node in the same story keeps the outline and header mounted without flashing blank.
+    const headMsg = root.querySelector(".rv-msg")!
+    const connBtn = root.querySelector(".pt-conn")!
+    const branchDelay = Promise.withResolvers<void>()
+    hold = branchDelay.promise
+    if (narrow) paneSwitch.querySelectorAll("button")[1].click()
+    flush()
+    controls.querySelector<HTMLButtonElement>(".pt-node-row")!.click()
+    flush()
+    if (root.querySelector(".rv-msg") !== headMsg || root.querySelector(".pt-conn") !== connBtn)
+      throw Error("Cold branch switch unmounted the outline or connection pill")
+    branchDelay.resolve()
+    await quiet()
+    if (narrow) paneSwitch.querySelector("button")!.click()
+    flush()
+    if (root.querySelector(".rv-msg") !== headMsg || root.querySelector(".pt-conn") !== connBtn)
+      throw Error("Cold branch switch remounted unchanged head message or connection pill")
+
     // A page restored from disk has its tab address but no per-tab preview memory.
     registry.set(tabs, { active: 3, list: [{ ...author, id: 3, under: ["writing"] }] })
     flush()

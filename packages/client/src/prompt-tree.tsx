@@ -19,6 +19,7 @@ import {
   getPromptTreeMemory,
   omittedRows,
   reusePreviewOutline,
+  scrubPlayPreview,
   setPromptTreeMemory,
   sourceDestination,
   sourceLabel,
@@ -171,16 +172,15 @@ export const PromptTreePage = () => {
     () => {
       const m = mem()
       const body = buildPreviewRequest(m)
-      // Input edits can keep the outline mounted. A different tab, audience or branch needs a fresh outline.
+      // Keep the outline mounted across edits within the same tab, audience, card, mode, and story
+      // (including branch node, greeting, fields, events, and input). Switching tab, audience, card,
+      // mode, or story clears the outline so unrelated or author-only data never lingers.
       const context = JSON.stringify({
         tab: tabId(),
         play: m.play,
         card: m.cardId,
         mode: m.mode,
         story: m.storyId,
-        node: m.nodeId,
-        hat: m.hatId,
-        greeting: m.greetingIndex,
       })
       return { body, context, key: JSON.stringify([context, body]) }
     },
@@ -199,32 +199,7 @@ export const PromptTreePage = () => {
   const shown = createMemo<PreviewNarrateResult | null>(() => {
     if (errMsg() !== null) return null
     const r = result()
-    if (!r || !play()) return r
-    const hidden = new Set(r.sandbox.fields.filter((f) => f.hidden).map((f) => f.path))
-    const secret = (s: SourceRef | undefined) => !!s?.whenDetails?.some((d) => hidden.has(d.path))
-    const scrub = <S extends SourceRef | undefined>(s: S): S => {
-      if (!s || !secret(s)) return s
-      const { when: _w, whenText: _t, whenResult: _r, whenDetails: _d, ...rest } = s
-      return rest as S
-    }
-    return {
-      ...r,
-      traces: r.traces.map((tr) => ({
-        ...tr,
-        source: scrub(tr.source),
-        spans: tr.spans.map((sp) => ({ ...sp, source: scrub(sp.source) })),
-      })),
-      omitted: r.omitted.filter((o) => !secret(o.source)).map((o) => ({ ...o, by: scrub(o.by) })),
-      resources: r.resources
-        .filter((res) => res.unlockedLayer > 0)
-        .map((res) => ({
-          ...res,
-          layers: res.layers?.filter((layer) => layer.unlocked),
-          sections: res.sections.filter((s) => s.inCatalog || s.resident || s.deliveredThisTurn),
-          unlockGates: [],
-          offerGate: undefined,
-        })),
-    }
+    return !r || !play() ? r : scrubPlayPreview(r)
   })
   const sandboxControls = createMemo(() => {
     const r = result()
