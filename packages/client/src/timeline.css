@@ -193,7 +193,7 @@ button.cell:active {
   margin-left: auto;
   padding: 0 var(--space-1);
   border-radius: var(--radius-pill);
-  font-size: 10px;
+  font-size: var(--text-caption);
   font-weight: 600;
 }
 .timeline .badge.head {

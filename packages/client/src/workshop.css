@@ -122,6 +122,8 @@
   justify-content: space-between;
   min-height: var(--control-sm);
   padding-left: var(--space-1);
+  user-select: none;
+  -webkit-user-select: none;
 }
 .workshop-head h2 {
   margin: 0;

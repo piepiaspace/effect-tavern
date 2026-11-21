@@ -62,7 +62,12 @@
   min-width: 0;
   font-size: var(--text-body);
   line-height: var(--leading-body);
+  background: color-mix(in oklab, var(--surface-1) 82%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  backdrop-filter: blur(16px) saturate(160%);
   box-shadow: inset 0 calc(-1 * var(--hairline)) 0 var(--line);
+  user-select: none;
+  -webkit-user-select: none;
 }
 /* the crumb, a name and not a key: the card in ink-2, the story in ink, the story alone truncating; the keys keep
    their size */
@@ -171,6 +176,8 @@
   align-items: center;
   justify-content: space-between;
   flex: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .side-top-end {
   display: inline-flex;
@@ -191,6 +198,8 @@
   color: var(--ink-3);
   letter-spacing: 0.02em;
   padding-left: var(--space-half);
+  user-select: none;
+  -webkit-user-select: none;
 }
 .back-shelf {
   height: 24px;
@@ -789,6 +798,8 @@
   align-items: center;
   justify-content: space-between;
   flex: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .side-foot .left {
   display: flex;
@@ -1471,6 +1482,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  user-select: none;
+  -webkit-user-select: none;
 }
 .status-page h1 {
   margin: 0;
@@ -1598,6 +1611,7 @@
     flex: none;
     background: var(--surface-0);
     user-select: none;
+    -webkit-user-select: none;
   }
   /* the tabs (tabs.ts): equal width across the strip, shrinking together when the strip fills; the active one raised on
      a hairline, the inactive ones separated by a short vertical rule; each has its route icon at the left and × at the
@@ -1647,9 +1661,6 @@
     gap: var(--space-1);
     min-width: 0;
     height: 100%;
-    cursor: pointer;
-  }
-  .shell-tab[aria-current="page"] .name {
     cursor: default;
   }
   .shell-tab .name > svg {
@@ -1675,7 +1686,7 @@
     height: 16px;
     border-radius: var(--radius-sm);
     color: var(--ink-3);
-    cursor: pointer;
+    cursor: default;
   }
   @media (hover: hover) and (pointer: fine) {
     .shell-tab .x:hover {
@@ -1697,7 +1708,7 @@
     font-size: var(--text-footnote);
     font-weight: 500;
     color: var(--ink-2);
-    cursor: pointer;
+    cursor: default;
     transition:
       background var(--dur-2) var(--ease),
       color var(--dur-2) var(--ease);
@@ -1794,7 +1805,9 @@
   }
   .canvas[data-folded="true"][data-peek="true"] .side {
     z-index: 20;
-    background: var(--surface-1);
+    background: color-mix(in oklab, var(--surface-1) 82%, transparent);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
     box-shadow: var(--shadow-pop);
   }
   /* the stage stands clear of the sidebar; folded, it moves to the edge */
@@ -1873,4 +1886,29 @@
 .shelf-list .none .btn {
   display: flex;
   margin: var(--space-3) auto 0;
+}
+@media (prefers-reduced-transparency: reduce) {
+  .strip,
+  .canvas[data-folded="true"][data-peek="true"] .side {
+    background: var(--surface-1);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side-track,
+  .canvas > .stage {
+    transition: none;
+  }
+  .canvas[data-folded="true"][data-peek="false"] .side {
+    translate: 0 0;
+  }
+  .cardhead:hover:not(:disabled) .enter,
+  .home-card:hover,
+  .home-card:hover .home-card-arrow,
+  .home-nav-prev:hover svg,
+  .home-nav-next:hover svg,
+  .home-composer .home-box:focus-within {
+    translate: 0 0;
+  }
 }

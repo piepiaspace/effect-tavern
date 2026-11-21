@@ -2,6 +2,7 @@
 :root {
   font-family: var(--font-sans);
   font-size: var(--text-prose);
+  font-optical-sizing: auto;
   line-height: var(--leading-prose);
   color: var(--ink);
   background: var(--surface-0);
@@ -118,6 +119,7 @@ main > section:last-of-type {
   align-items: center;
   gap: var(--space-2);
   user-select: none;
+  -webkit-user-select: none;
 }
 .turn-status.lead {
   min-height: var(--line-prose);
@@ -367,7 +369,7 @@ section:has(> .editor) > .actions {
   background: var(--alpha-1);
   border-radius: var(--radius-card);
   padding: var(--space-2) var(--space-3);
-  font-size: 15px;
+  font-size: var(--text-heading);
   line-height: 1.6;
   text-align: left;
   white-space: pre-wrap;
@@ -647,6 +649,7 @@ main > section:focus-within > :is(.actions, .theater) .acts {
   text-decoration: underline;
   text-underline-offset: 2px;
   white-space: nowrap;
+  cursor: pointer;
 }
 .failure-raw {
   display: block;
@@ -675,7 +678,7 @@ button {
   border: 0;
   border-radius: var(--radius);
   padding: 0;
-  cursor: pointer;
+  cursor: default;
   transition:
     background var(--dur-2) var(--ease),
     scale var(--dur-1) var(--ease);
@@ -1079,4 +1082,9 @@ a.chip:active {
   background: var(--warn-soft);
   color: var(--warn);
   border-radius: var(--radius-sm);
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(.spoke, .actions, .theater, .group > summary) .acts {
+    translate: 0 0;
+  }
 }

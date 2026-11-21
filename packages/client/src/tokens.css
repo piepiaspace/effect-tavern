@@ -186,12 +186,22 @@
     --hairline: 0.5px;
   }
 }
+@media (prefers-contrast: more) {
+  :root {
+    --hairline: 1px;
+    --line: light-dark(rgb(20 20 20 / 0.28), rgb(255 255 255 / 0.28));
+    --line-strong: light-dark(rgb(20 20 20 / 0.5), rgb(255 255 255 / 0.48));
+    --ink-2: light-dark(#3a3a3a, #c4c4c4);
+    --ink-3: light-dark(#5c5c5c, #9a9a9a);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --dur-1: 0ms;
-    --dur-2: 0ms;
-    --dur-3: 0ms;
-    --dur-4: 0ms;
-    --dur-5: 0ms;
+    /* keep gentle cross-fade durations so opacity and surface transitions settle smoothly instead of flashing */
+    --dur-1: 60ms;
+    --dur-2: 120ms;
+    --dur-3: 120ms;
+    --dur-4: 120ms;
+    --dur-5: 120ms;
   }
 }

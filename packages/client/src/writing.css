@@ -48,6 +48,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  user-select: none;
+  -webkit-user-select: none;
 }
 .whead .icon {
   margin-left: calc((var(--icon) - var(--control)) / 2);
@@ -430,7 +432,7 @@
   text-overflow: ellipsis;
 }
 .prod-item[data-editable="true"] {
-  cursor: pointer;
+  cursor: default;
 }
 .tag.warn {
   background: var(--warn-soft);

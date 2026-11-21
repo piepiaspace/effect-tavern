@@ -78,6 +78,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  user-select: none;
+  -webkit-user-select: none;
 }
 .inspect .top h1 {
   display: none;
@@ -197,6 +199,8 @@
   font-size: var(--text-body);
   font-weight: 600;
   color: var(--ink-2);
+  user-select: none;
+  -webkit-user-select: none;
 }
 .inspect .sechead .meta {
   flex: 1;
@@ -344,7 +348,7 @@
 }
 .inspect .step > summary {
   list-style: none;
-  cursor: pointer;
+  cursor: default;
   padding: var(--space-2) var(--space-3);
   display: grid;
   grid-template-columns: var(--inspect-stage) minmax(0, 1fr);
@@ -353,6 +357,7 @@
   row-gap: var(--space-half);
   border-radius: var(--radius);
   user-select: none;
+  -webkit-user-select: none;
 }
 .inspect .step > summary::-webkit-details-marker {
   display: none;
