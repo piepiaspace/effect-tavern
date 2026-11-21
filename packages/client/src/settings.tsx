@@ -468,12 +468,7 @@ const Templates = (props: Pane) => {
                   }}
                 />
                 <span class="spacer" />
-                <button
-                  type="button"
-                  class="btn sm"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={previewHat}
-                >
+                <button type="button" class="btn sm" onMouseDown={(e) => e.preventDefault()} onClick={previewHat}>
                   <Stack aria-hidden="true" />
                   <span>{t("promptTree.preview")}</span>
                 </button>

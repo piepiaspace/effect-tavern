@@ -18,9 +18,7 @@ import {
 import { activeOf, cards, FREE_CHAT_ID, page, registry, tabs } from "../src/store.ts"
 
 // 1. Sample card fallback when opened from Settings → Templates with no active card
-registry.set(cards, [
-  { id: "life-of-pi", title: "Life of Pi", origin: { via: "file" } },
-])
+registry.set(cards, [{ id: "life-of-pi", title: "Life of Pi", origin: { via: "file" } }])
 registry.set(tabs, {
   list: [{ id: 10, story: null, card: null, page: "settings", under: ["home"] }],
   active: 10,

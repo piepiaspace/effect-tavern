@@ -269,7 +269,8 @@ export const RequestView = (props: RequestViewProps) => {
     <div class={{ "rv-root": true, compact: !!props.compact }}>
       <Show when={props.wireError}>
         {(err) => {
-          const dest = () => (err().source && props.resolveDestination ? props.resolveDestination(err().source!) : undefined)
+          const dest = () =>
+            err().source && props.resolveDestination ? props.resolveDestination(err().source!) : undefined
           return (
             <div class="rv-wire-err" role="alert">
               <Warning aria-hidden="true" />

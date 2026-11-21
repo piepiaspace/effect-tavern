@@ -140,9 +140,7 @@ export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
   const lib = registry.get(stories)
   const activeStory = lib?.stories.find((s) => s.id === tab.story && s.card === cardId)
   const mode: "sandbox" | "story" =
-    opts.candidateCard || opts.candidateHat
-      ? "sandbox"
-      : (opts.mode ?? (sameCard ? base.mode : "sandbox"))
+    opts.candidateCard || opts.candidateHat ? "sandbox" : (opts.mode ?? (sameCard ? base.mode : "sandbox"))
 
   const next: PromptTreeMemory = {
     ...base,
@@ -218,7 +216,12 @@ export interface SourceDestination {
 /** Resolves where clicking a SourceRef's edit link should navigate, or why jumping is disabled. */
 export const sourceDestination = (
   source: SourceRef,
-  ctx: { cardId?: string | null; hasNode?: (nodeId: number) => boolean; hasStory?: boolean; isFreeChatCard?: boolean } = {},
+  ctx: {
+    cardId?: string | null
+    hasNode?: (nodeId: number) => boolean
+    hasStory?: boolean
+    isFreeChatCard?: boolean
+  } = {},
 ): SourceDestination => {
   if (source.builtIn || source.kind === "harness") {
     return { ok: false, reason: "builtIn" }
@@ -286,7 +289,10 @@ export const sourceLabel = (source: SourceRef): string =>
   source.kind
 
 /** Computes region character sums up to each cache breakpoint for a list of traces. */
-export const breakpointChars = (traces: readonly MessageTrace[], messages: readonly Message[]): ReadonlyMap<number, number> => {
+export const breakpointChars = (
+  traces: readonly MessageTrace[],
+  messages: readonly Message[],
+): ReadonlyMap<number, number> => {
   const out = new Map<number, number>()
   let acc = 0
   for (let i = 0; i < traces.length; i++) {

@@ -521,13 +521,7 @@
 }
 .pt-main {
   padding: var(--space-3) var(--space-1) var(--fade);
-  mask-image: linear-gradient(
-    to bottom,
-    transparent,
-    #000 var(--space-3),
-    #000 calc(100% - var(--fade)),
-    transparent
-  );
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--space-3), #000 calc(100% - var(--fade)), transparent);
 }
 .pt-side {
   padding: var(--space-3);

@@ -686,7 +686,8 @@ const en: Dict = {
     modeStory: "Story branch",
     noStoriesForCard: "No stories for this card yet",
     noConnection: "No connection",
-    noConnectionNote: "No narrate model connection is configured. Showing raw assembled messages without wire() conversion.",
+    noConnectionNote:
+      "No narrate model connection is configured. Showing raw assembled messages without wire() conversion.",
     view: "View",
     paneOutline: "Outline",
     paneControls: "Controls",

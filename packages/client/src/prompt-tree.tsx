@@ -24,17 +24,7 @@ import {
 } from "./prompt-tree-state.ts"
 import { RequestView, SourceDetailCard } from "./request-view.tsx"
 import { openSettings } from "./settings.tsx"
-import {
-  activeOf,
-  cards,
-  cardTitle,
-  characterCards,
-  FREE_CHAT_ID,
-  isFreeChat,
-  log,
-  stories,
-  tabs,
-} from "./store.ts"
+import { activeOf, cards, cardTitle, characterCards, FREE_CHAT_ID, isFreeChat, log, stories, tabs } from "./store.ts"
 import { fetchPreview, fetchStoryNodes } from "./wire.ts"
 import { openWriting } from "./writing.tsx"
 
@@ -139,7 +129,8 @@ export const PromptTreePage = () => {
   // Derive story nodes synchronously from activeLog / cache / fetchedStory (zero effect relay tear).
   const storyView = createMemo(() => {
     const m = mem()
-    if (m.mode !== "story" || m.storyId === undefined) return { nodes: [] as readonly Node[], head: null as number | null }
+    if (m.mode !== "story" || m.storyId === undefined)
+      return { nodes: [] as readonly Node[], head: null as number | null }
     if (m.storyId === lib()?.current) {
       const curLog = activeLog()
       return { nodes: [...curLog.nodes.values()].sort((a, b) => a.id - b.id), head: curLog.head }
@@ -187,7 +178,7 @@ export const PromptTreePage = () => {
     if (errMsg() !== null) return null
     const { key } = requestEntry()
     const last = fetched()
-    return last?.key === key ? last.value : previewCache.get(key) ?? null
+    return last?.key === key ? last.value : (previewCache.get(key) ?? null)
   })
   // Keep the current card's field inputs mounted while typing. Only the outline needs the exact request.
   const sandboxControls = createMemo(() => {
@@ -466,7 +457,9 @@ export const PromptTreePage = () => {
       <div class="pt-body">
         <section class="pt-main scroller" aria-label={t("promptTree.paneOutline")}>
           <Show when={loading()}>
-            <span class="pt-meta-item muted" role="status">{t("promptTree.updating")}</span>
+            <span class="pt-meta-item muted" role="status">
+              {t("promptTree.updating")}
+            </span>
           </Show>
           <Show when={errMsg()}>
             {(msg) => (
@@ -484,15 +477,9 @@ export const PromptTreePage = () => {
             {(r) => (
               <>
                 <div class="pt-meta-strip">
-                  <span class="pt-meta-item mono">
-                    {t("promptTree.messageCount", { n: r().traces.length })}
-                  </span>
+                  <span class="pt-meta-item mono">{t("promptTree.messageCount", { n: r().traces.length })}</span>
                   <Show when={r().connection.hatName}>
-                    {(hn) => (
-                      <span class="pt-meta-item">
-                        {t("promptTree.hatActive", { name: hn() })}
-                      </span>
-                    )}
+                    {(hn) => <span class="pt-meta-item">{t("promptTree.hatActive", { name: hn() })}</span>}
                   </Show>
                   <Show when={r().mode === "sandbox"}>
                     <span class="pt-meta-item muted">
@@ -865,7 +852,8 @@ export const PromptTreePage = () => {
                         const effectiveNodeId = () =>
                           mem().nodeId !== undefined ? mem().nodeId : (result()?.story?.nodeId ?? storyHead())
                         const active = () => effectiveNodeId() === n().id
-                        const snippet = () => (n().prose || n().input.text || "").replace(/\s+/g, " ").trim().slice(0, 60)
+                        const snippet = () =>
+                          (n().prose || n().input.text || "").replace(/\s+/g, " ").trim().slice(0, 60)
                         return (
                           <button
                             type="button"
@@ -945,7 +933,8 @@ export const PromptTreePage = () => {
                 <div class="pt-fields">
                   <For each={sandboxControls()?.fields ?? []} keyed={(f) => f.path}>
                     {(f) => {
-                      const localVal = () => (Object.hasOwn(mem().fields, f().path) ? mem().fields[f().path] : f().value)
+                      const localVal = () =>
+                        Object.hasOwn(mem().fields, f().path) ? mem().fields[f().path] : f().value
                       const changed = () => localVal() !== f().initial
                       const numVal = (): number => {
                         const v = localVal()

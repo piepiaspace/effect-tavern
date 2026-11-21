@@ -13,7 +13,21 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
-import { Archive, Clue, Close, Next, Prev, Settings, Shade, Snippets, Stack, Tag, Translate, User, Write } from "./icons.tsx"
+import {
+  Archive,
+  Clue,
+  Close,
+  Next,
+  Prev,
+  Settings,
+  Shade,
+  Snippets,
+  Stack,
+  Tag,
+  Translate,
+  User,
+  Write,
+} from "./icons.tsx"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { openSettings } from "./settings.tsx"
 import { browse, close, editCard, openStory, showCard, toHome } from "./pages.ts"

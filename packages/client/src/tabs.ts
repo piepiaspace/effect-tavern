@@ -200,8 +200,11 @@ const stackOf = (u: unknown, allowHome: boolean): Tab["under"] => {
   if (!Array.isArray(u)) return []
   const stack: Tab["under"] = u.filter((p) => {
     if (isPage(p)) return p !== "reader"
-    return p?.page === "prompt-tree" && (p.story === null || typeof p.story === "number") &&
+    return (
+      p?.page === "prompt-tree" &&
+      (p.story === null || typeof p.story === "number") &&
       (p.card === null || typeof p.card === "string")
+    )
   })
   // A source opened from a story-less preview can have Home underneath it.
   return allowHome || stack.some((p) => typeof p === "object" && "story" in p && p.story === null)
