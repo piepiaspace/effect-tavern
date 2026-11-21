@@ -1179,8 +1179,8 @@ const AddProviderDialog = (props: { opener: Opener<undefined>; onAdded: (id: str
   const fresh = () => ({
     name: "",
     key: "",
-    def: "openai-compatible" as Format,
-    urls: { "openai-compatible": "https://api.openai.com", anthropic: "", gemini: "" } as Record<Format, string>,
+    def: undefined as Format | undefined,
+    urls: { "openai-compatible": "", anthropic: "", gemini: "" } as Record<Format, string>,
   })
   const [draft, setDraft] = createSignal(fresh())
   onSettled(() => props.opener(() => (setDraft(fresh()), void el.open())))
@@ -1189,11 +1189,12 @@ const AddProviderDialog = (props: { opener: Opener<undefined>; onAdded: (id: str
     const d = draft()
     const id = newId("provider")
     const s = d.key.trim() ? await addSecret({ name: d.name.trim(), type: "api_key", value: d.key.trim() }) : undefined
+    const firstFilled = FORMATS.find((f) => d.urls[f]?.trim())
     await putProvider({
       id,
       name: d.name.trim(),
       enabled: true,
-      defaultFormat: d.def,
+      defaultFormat: d.def ?? firstFilled ?? "openai-compatible",
       endpoints: Object.fromEntries(
         FORMATS.filter((f) => d.urls[f]?.trim()).map((f) => [f, { url: d.urls[f].trim() }]),
       ),
@@ -1272,7 +1273,16 @@ const AddProviderDialog = (props: { opener: Opener<undefined>; onAdded: (id: str
                     value={draft().urls[f()] ?? ""}
                     onInput={(e) => {
                       const url = e.currentTarget.value
-                      setDraft((d) => ({ ...d, urls: { ...d.urls, [f()]: url } }))
+                      const fmt = f()
+                      setDraft((d) => {
+                        const urls = { ...d.urls, [fmt]: url }
+                        const def = url.trim()
+                          ? (d.def ?? fmt)
+                          : d.def === fmt
+                            ? FORMATS.find((x) => urls[x]?.trim())
+                            : d.def
+                        return { ...d, def, urls }
+                      })
                     }}
                   />
                   <Show when={draft().urls[f()]?.trim()}>

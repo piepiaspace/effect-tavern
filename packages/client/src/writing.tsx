@@ -327,12 +327,32 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
   }
   const setSwitch = (key: SwitchKey, value: string | boolean) =>
     writeSwitches((x) => ({ ...x, [key]: pressing(key, x, value) }))
+  const [povDraft, setPovDraft] = createSignal<string | null>(null)
   const isCustomPov = () => (localSw()?.pov ?? effSw()?.pov) === "custom"
-  const toggleCustomPov = () => writeSwitches((x) => ({ ...x, pov: isCustomPov() ? undefined : "custom" }))
-  const setPovText = (text: string) =>
-    writeSwitches((x) => ({ ...x, pov: "custom", povText: text.trim() ? text : undefined }))
-  const resetSwitches = () =>
+  const toggleCustomPov = () => {
+    setPovDraft(null)
+    writeSwitches((x) => ({ ...x, pov: isCustomPov() ? undefined : "custom" }))
+  }
+  const commitPovText = (text: string) => {
+    const cid = cardId()
+    if (!cid) return
+    void putLocalAndRefresh(cid, (l) => {
+      const next = Object.fromEntries(
+        Object.entries({
+          ...l.switches,
+          pov: "custom" as const,
+          povText: text.trim() ? text : undefined,
+        }).filter(([, v]) => v !== undefined),
+      ) as Writing
+      return { ...l, switches: next }
+    }).finally(() => {
+      if (povDraft() === text) setPovDraft(null)
+    })
+  }
+  const resetSwitches = () => {
+    setPovDraft(null)
     writeSwitches(({ pov: _p, povText: _pt, echo: _e, agency: _a, verbosity: _v, ...rest }) => rest)
+  }
 
   const activeSentence = (key: SwitchKey) => {
     const val = effSw()?.[key]
@@ -545,8 +565,9 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                       aria-label={t("switches.povCustom")}
                       placeholder={t("switches.povCustomPlaceholder")}
                       disabled={disabled()}
-                      value={localSw()?.povText ?? effSw()?.povText ?? ""}
-                      onChange={(e) => setPovText(e.currentTarget.value)}
+                      value={povDraft() ?? localSw()?.povText ?? effSw()?.povText ?? ""}
+                      onInput={(e) => setPovDraft(e.currentTarget.value)}
+                      onChange={(e) => commitPovText(e.currentTarget.value)}
                       onKeyDown={leaveArea}
                     />
                   </Show>

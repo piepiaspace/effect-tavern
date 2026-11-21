@@ -220,8 +220,14 @@ export const PromptTreePage = () => {
         )
       }
       if (!shouldDebounce) {
-        run()
-        return () => ac.abort()
+        let canceled = false
+        queueMicrotask(() => {
+          if (!canceled) run()
+        })
+        return () => {
+          canceled = true
+          ac.abort()
+        }
       }
       const timer = setTimeout(run, 120)
       return () => {
