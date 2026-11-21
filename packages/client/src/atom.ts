@@ -49,20 +49,30 @@ export const keepAlive = <T>(self: T): T => self
 // A write is visible to reads after Solid's microtask flush. A non-reactive get after a write in the same tick (the
 // handlers, the wire's apply loop) flushes first, once for every write since the last flush: consecutive writes still
 // land together, and a stretch of writes with no get between them (a streamed frame) waits for the microtask.
+// Queueing the clear ahead of `a.set(f)` resets `dirty` right before Solid's own microtask flush runs effect
+// callbacks, and skipping `flush()` under an owner prevents reentrant `FLUSH_IN_EFFECT_CALLBACK` warnings when an
+// effect or component body reads an atom after writing one.
 let dirty = false
+let writeGen = 0
+let subDepth = 0
 const write = <A>(a: Writable<A>, f: (a: A) => A) => {
-  dirty = true
+  if (!dirty && !subDepth) {
+    dirty = true
+    const mark = ++writeGen
+    queueMicrotask(() => {
+      if (writeGen === mark) dirty = false
+    })
+  }
   a.set(f)
 }
 export const registry = {
   get: <A>(a: Atom<A>): A => {
-    if (dirty) {
+    if (dirty && !subDepth && !getOwner()) {
       dirty = false
       try {
         flush()
       } catch {
-        // inside a flush (onSettled, a tracked effect) or an action, where flush() is not reentrant: the pending
-        // writes land in that flush's continuation and this read sees the value before them; the next get drains
+        // inside an action, where flush() is not reentrant: the pending writes stay in the transaction
         dirty = true
       }
     }
@@ -74,7 +84,18 @@ export const registry = {
   subscribe: <A>(a: Atom<A>, f: (a: A) => void): (() => void) =>
     runWithOwner(root, () =>
       createRoot((dispose) => {
-        createEffect(a, (v) => f(v), { defer: true })
+        createEffect(
+          a,
+          (v) => {
+            subDepth++
+            try {
+              f(v)
+            } finally {
+              subDepth--
+            }
+          },
+          { defer: true },
+        )
         return dispose
       }),
     ),
