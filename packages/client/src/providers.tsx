@@ -60,6 +60,7 @@ import {
   setSecret,
   testDecision,
   testProvider,
+  inApp,
   type Listed,
 } from "./wire.ts"
 
@@ -363,45 +364,47 @@ const DecisionDetail = (props: { onBack: () => void; onVault: () => void }) => {
           </div>
           <div class="resolved">{decisionUrl(c())}</div>
         </div>
-        <div class="block">
-          <div class="field-group">
-            <span class="label">{t("providers.proxy")}</span>
-            <Menu
-              small
-              label={t("providers.proxy")}
-              value={proxyMode()}
-              options={[
-                { value: "env", label: t("providers.proxySystem") },
-                { value: "direct", label: t("providers.proxyDirect") },
-                { value: "custom", label: t("providers.proxyCustom") },
-              ]}
-              onPick={(mode) => {
-                setCustom(mode === "custom")
-                if (mode === "direct") void save((x) => ({ ...x, proxy: false }))
-                else if (mode === "env" || typeof c().proxy !== "string") void save((x) => without(x, "proxy"))
-              }}
-            />
-          </div>
-          <Show when={proxyMode() === "custom"}>
-            <div class="input-box sm">
-              <input
-                type="url"
-                inputmode="url"
-                autocapitalize="none"
-                autocorrect="off"
-                spellcheck="false"
-                class="mono"
-                placeholder="http://127.0.0.1:7890"
-                aria-label={t("providers.proxyUrl")}
-                value={typeof c().proxy === "string" ? (c().proxy as string) : ""}
-                onChange={(e) => {
-                  const proxy = e.currentTarget.value.trim()
-                  void save((x) => (proxy ? { ...x, proxy } : without(x, "proxy")))
+        <Show when={!inApp()}>
+          <div class="block">
+            <div class="field-group">
+              <span class="label">{t("providers.proxy")}</span>
+              <Menu
+                small
+                label={t("providers.proxy")}
+                value={proxyMode()}
+                options={[
+                  { value: "env", label: t("providers.proxySystem") },
+                  { value: "direct", label: t("providers.proxyDirect") },
+                  { value: "custom", label: t("providers.proxyCustom") },
+                ]}
+                onPick={(mode) => {
+                  setCustom(mode === "custom")
+                  if (mode === "direct") void save((x) => ({ ...x, proxy: false }))
+                  else if (mode === "env" || typeof c().proxy !== "string") void save((x) => without(x, "proxy"))
                 }}
               />
             </div>
-          </Show>
-        </div>
+            <Show when={proxyMode() === "custom"}>
+              <div class="input-box sm">
+                <input
+                  type="url"
+                  inputmode="url"
+                  autocapitalize="none"
+                  autocorrect="off"
+                  spellcheck="false"
+                  class="mono"
+                  placeholder="http://127.0.0.1:7890"
+                  aria-label={t("providers.proxyUrl")}
+                  value={typeof c().proxy === "string" ? (c().proxy as string) : ""}
+                  onChange={(e) => {
+                    const proxy = e.currentTarget.value.trim()
+                    void save((x) => (proxy ? { ...x, proxy } : without(x, "proxy")))
+                  }}
+                />
+              </div>
+            </Show>
+          </div>
+        </Show>
       </div>
     </>
   )
@@ -920,22 +923,24 @@ const RequestDrawer = (props: { id: string; ready: () => Promise<void>; onClose:
                     onPick={(ttl) => edit((x) => ({ ...x, ttl }))}
                   />
                 </div>
-                <div class="field-group">
-                  <span class="label">{t("providers.proxy")}</span>
-                  <Menu
-                    small
-                    label={t("providers.proxy")}
-                    value={d().proxy}
-                    options={[
-                      { value: "env", label: t("providers.proxySystem") },
-                      { value: "direct", label: t("providers.proxyDirect") },
-                      { value: "custom", label: t("providers.proxyCustom") },
-                    ]}
-                    onPick={(proxy) => edit((x) => ({ ...x, proxy }))}
-                  />
-                </div>
+                <Show when={!inApp()}>
+                  <div class="field-group">
+                    <span class="label">{t("providers.proxy")}</span>
+                    <Menu
+                      small
+                      label={t("providers.proxy")}
+                      value={d().proxy}
+                      options={[
+                        { value: "env", label: t("providers.proxySystem") },
+                        { value: "direct", label: t("providers.proxyDirect") },
+                        { value: "custom", label: t("providers.proxyCustom") },
+                      ]}
+                      onPick={(proxy) => edit((x) => ({ ...x, proxy }))}
+                    />
+                  </div>
+                </Show>
               </div>
-              <Show when={d().proxy === "custom"}>
+              <Show when={!inApp() && d().proxy === "custom"}>
                 <div class="input-box sm">
                   <input
                     type="url"

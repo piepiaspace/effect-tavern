@@ -289,6 +289,9 @@ export const cardFile = (id: string): string => `${base}/cards/${enc(id)}/export
  *  to the host, which has the player pick where it is saved. */
 type Host = { save(file: Blob, name: string): Promise<void> }
 const host = (): Host | undefined => (globalThis as { tavernHost?: Host }).tavernHost
+/** In the app, whose host reaches every model through the system's own proxy (MyGo's fetch carries no per-request
+ *  one), so a connection's proxy setting would do nothing there and is not shown. */
+export const inApp = (): boolean => host() !== undefined
 /** A file the page made (a pack, the lexicon), saved: downloaded, or handed to the app's host. */
 export const saveFile = async (file: Blob, name: string): Promise<void> => {
   const h = host()
