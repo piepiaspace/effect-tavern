@@ -25,8 +25,7 @@
   },
   "updates": {
     "publicKey": "Bksyszg4I/PeK8SDznGN8IOUT/e5uTEt/H4Ro2JI5AY=",
-    "github": "piepiaspace/effect-tavern",
-    "tagPrefix": "app-v"
+    "github": "piepiaspace/effect-tavern"
   },
   "linux": {
     "formats": ["deb"]
