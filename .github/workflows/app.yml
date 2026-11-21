@@ -81,7 +81,9 @@ jobs:
           MYGO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         # desktops upload installers and signed updates to the draft themselves; the phone has no updater, its APK goes
         # up alone (the .aab is Google Play's)
+        # mygo compiles once for the TypeScript client before buildCommand fills dist/, which go:embed needs to exist
         run: |
+          mkdir -p dist && touch dist/.placeholder
           upload=
           [ "$GITHUB_REF_TYPE" = tag ] && [ ${{ matrix.name }} != android ] && upload=-upload
           go tool mygo build -platform "${{ matrix.platform }}" $upload
