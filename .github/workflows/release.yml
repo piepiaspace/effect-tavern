@@ -45,6 +45,7 @@ jobs:
     name: build ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: useblacksmith/checkout@v1
@@ -87,6 +88,7 @@ jobs:
     name: app ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - { name: macos, runner: blacksmith-6vcpu-macos-latest, platform: darwin/universal }
@@ -113,12 +115,22 @@ jobs:
       - run: bun install --frozen-lockfile
       # web/build.ts runs vp in packages/client
       - run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
-      # the image has no apt lists, so a plain install refreshes them first (7 s); the package cache skips both
+      # the image has no apt lists, so installing NSIS means refreshing them first (7 s); keep its .debs instead
+      - if: startsWith(matrix.name, 'windows')
+        id: nsis
+        uses: actions/cache@v6
+        with:
+          path: ~/nsis-debs
+          key: nsis-debs-${{ matrix.runner }}
       - name: NSIS, for the Windows installers
         if: startsWith(matrix.name, 'windows')
-        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
-        with:
-          packages: nsis
+        run: |
+          if [ "${{ steps.nsis.outputs.cache-hit }}" != true ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends --download-only nsis
+            mkdir -p ~/nsis-debs && cp /var/cache/apt/archives/*.deb ~/nsis-debs/
+          fi
+          sudo dpkg -i ~/nsis-debs/*.deb
       - if: matrix.name == 'android'
         uses: actions/setup-java@v6
         with:
