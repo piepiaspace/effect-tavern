@@ -2,7 +2,8 @@
 import type { Card, State } from "@effect-tavern/runtime/src/card.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Message } from "@effect-tavern/provider/src/call.ts"
-import type { MessageTrace, SourceRef, Span } from "@effect-tavern/runtime/src/trace.ts"
+import type { MessageTrace, OmittedItem, SourceRef, Span } from "@effect-tavern/runtime/src/trace.ts"
+import type { PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
 import type { PreviewRequest } from "./wire.ts"
 import {
   activeOf,
@@ -270,9 +271,90 @@ export const sliceSpanText = (text: string, span: Pick<Span, "start" | "end">): 
 
 /** Produces a clean single-line snippet for compact outline rows. */
 export const snippetOf = (text: string, max = 96): string => {
-  const line = text.replace(/\s+/g, " ").trim()
-  return line.length > max ? `${line.slice(0, max - 1)}…` : line
+  let line = ""
+  let space = false
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i]
+    if (/\s/.test(char)) {
+      space = line.length > 0
+      continue
+    }
+    if (space) line += " "
+    space = false
+    line += char
+    if (line.length > max) return `${line.slice(0, max - 1)}…`
+  }
+  return line
 }
+
+/** Identify a source across evaluations even when its offsets, text or condition results change. */
+const sourceKey = (s: SourceRef) => [
+  s.kind,
+  s.from,
+  s.cardId,
+  s.packId,
+  s.personaId,
+  s.hatId,
+  s.hatStage,
+  s.hatSlot,
+  s.hatIndex,
+  s.nodeId,
+  s.fragmentId,
+  s.entryId,
+  s.resourceId,
+  s.layer,
+  s.sectionId,
+  s.path,
+  s.label,
+]
+
+const sourceRows = <T>(items: readonly T[], identity: (item: T) => unknown[]) => {
+  const counts = new Map<string, number>()
+  return items.map((item) => {
+    const source = JSON.stringify(identity(item))
+    const ordinal = counts.get(source) ?? 0
+    counts.set(source, ordinal + 1)
+    return { key: `${source}:${ordinal}`, item }
+  })
+}
+export const spanRows = (spans: readonly Span[]) => sourceRows(spans, (s) => [s.kind, ...sourceKey(s.source)])
+export const omittedRows = (items: readonly OmittedItem[]) =>
+  sourceRows(items, (o) => [o.category, o.id, ...sourceKey(o.source)])
+
+/** Share unchanged branches of the JSON outline, including individual spans within a changed message. */
+function shareJson<T>(prev: unknown, next: T): T {
+  if (prev === next || !prev || !next || typeof prev !== "object" || typeof next !== "object") return next
+  if (Array.isArray(prev) !== Array.isArray(next)) return next
+  const old = prev as Record<string, unknown>
+  const fresh = next as Record<string, unknown>
+  const keys = Object.keys(fresh)
+  let equal = keys.length === Object.keys(old).length
+  let copy: Record<string, unknown> | undefined
+  for (const key of keys) {
+    const value = shareJson(old[key], fresh[key])
+    if (!Object.hasOwn(old, key) || value !== old[key]) equal = false
+    if (value !== fresh[key]) {
+      copy ??= (Array.isArray(next) ? next.slice() : { ...fresh }) as Record<string, unknown>
+      copy[key] = value
+    }
+  }
+  if (equal) return prev as T
+  return (copy as T | undefined) ?? next
+}
+
+export const reusePreviewOutline = (
+  previous: PreviewNarrateResult | undefined,
+  next: PreviewNarrateResult,
+): PreviewNarrateResult =>
+  previous
+    ? {
+        ...next,
+        messages: shareJson(previous.messages, next.messages),
+        wiredMessages: shareJson(previous.wiredMessages, next.wiredMessages),
+        traces: shareJson(previous.traces, next.traces),
+        omitted: shareJson(previous.omitted, next.omitted),
+      }
+    : next
 
 /** Human-readable display label for a SourceRef. */
 export const sourceLabel = (source: SourceRef): string =>

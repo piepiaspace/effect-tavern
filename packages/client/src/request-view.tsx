@@ -25,6 +25,7 @@ import {
   messageText,
   sliceSpanText,
   snippetOf,
+  spanRows,
   sourceLabel,
   type SourceDestination,
 } from "./prompt-tree-state.ts"
@@ -260,9 +261,9 @@ export const RequestView = (props: RequestViewProps) => {
     else setLocalExpanded((list) => (list.includes(idx) ? list.filter((i) => i !== idx) : [...list, idx]))
   }
 
-  const bpMap = createMemo(() =>
-    props.traces?.length ? breakpointChars(props.traces, props.messages) : new Map<number, number>(),
-  )
+  const bpMap = createMemo(() => breakpointChars(props.traces ?? [], props.messages), {
+    equals: (a, b) => a.size === b.size && [...a].every(([index, chars]) => b.get(index) === chars),
+  })
 
   return (
     <div class={{ "rv-root": true, compact: !!props.compact }}>
@@ -322,8 +323,9 @@ export const RequestView = (props: RequestViewProps) => {
         <div class="rv-list">
           <For each={props.traces} keyed={(tr) => tr.index}>
             {(tr) => {
-              const msg = () => props.messages[tr().index]
-              const text = () => messageText(msg())
+              const msg = createMemo(() => props.messages[tr().index])
+              const text = createMemo(() => messageText(msg()))
+              const spans = createMemo(() => spanRows(tr().spans))
               const rewritten = () => tr().wiredRole !== undefined && tr().wiredRole !== tr().role
               const effectiveRole = () => tr().wiredRole ?? tr().role
               const conflict = () => props.wireError?.messageIndex === tr().index
@@ -432,11 +434,12 @@ export const RequestView = (props: RequestViewProps) => {
                             </Show>
                           }
                         >
-                          <For each={tr().spans} keyed={false}>
-                            {(sp, si) => {
-                              const key = () => `msg:${tr().index}:span:${si}`
+                          <For each={spans()} keyed={(row) => row.key}>
+                            {(row) => {
+                              const sp = createMemo(() => row().item)
+                              const key = () => `msg:${tr().index}:span:${row().key}`
                               const open = () => selectedKey() === key()
-                              const sliced = () => sliceSpanText(text(), sp())
+                              const sliced = createMemo(() => sliceSpanText(text(), sp()))
                               const chars = () => Math.max(0, sp().end - sp().start)
                               return (
                                 <div class={{ "rv-span-wrap": true, open: open() }}>

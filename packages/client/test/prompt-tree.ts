@@ -1,4 +1,6 @@
 import assert from "node:assert/strict"
+import { previewNarrate } from "@effect-tavern/runtime/src/preview.ts"
+import type { Span } from "@effect-tavern/runtime/src/trace.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   buildPreviewRequest,
@@ -9,6 +11,9 @@ import {
   patchPromptTreeMemory,
   previewFromPlay,
   sliceSpanText,
+  snippetOf,
+  spanRows,
+  reusePreviewOutline,
   sourceDestination,
 } from "../src/prompt-tree-state.ts"
 import { activeOf, cards, FREE_CHAT_ID, page, registry, stories, tabs, type StoryRow } from "../src/store.ts"
@@ -135,4 +140,36 @@ clearPromptTreeMemory(11)
 clearPromptTreeMemory(12)
 clearPromptTreeMemory(10)
 assert.equal(getPromptTreeMemory(10), undefined)
+// A changing field can insert a span ahead of a selected source, including repeated uses of the same source.
+const fixed: Span = { kind: "fiction", start: 0, end: 4, source: { kind: "card", entryId: "fixed" } }
+const gated: Span = { ...fixed, source: { kind: "card", entryId: "gated" } }
+const beforeKeys = spanRows([fixed, fixed]).map((row) => row.key)
+const afterKeys = spanRows([gated, { ...fixed, start: 5, end: 9 }, fixed]).map((row) => row.key)
+assert.deepEqual(beforeKeys, afterKeys.slice(1))
+assert.notEqual(beforeKeys[0], beforeKeys[1])
+const preview = previewNarrate({
+  mode: "sandbox",
+  card: {
+    id: "sandbox",
+    frame: [],
+    fiction: [],
+    rules: { fields: [], actions: [] },
+    greetings: [],
+    guard: [],
+    lore: [],
+  },
+  connection: { prefill: false, reasoningBack: false },
+  rows: {},
+})
+const outline = { ...preview, traces: [{ ...preview.traces[0], spans: [fixed, gated] }] }
+const fresh = structuredClone(outline)
+fresh.traces[0].spans[1].end++
+const refreshed = reusePreviewOutline(outline, fresh)
+assert.deepEqual(refreshed.traces, fresh.traces)
+assert.equal(refreshed.messages, outline.messages)
+assert.equal(refreshed.traces[0].spans[0], fixed)
+assert.notEqual(refreshed.traces[0].spans[1], gated)
+assert.equal(snippetOf("  abc  \n ", 3), "abc")
+assert.equal(snippetOf("  abc  \n d", 3), "ab…")
+assert.equal(snippetOf("a\u00a0\n b"), "a b")
 console.log("prompt-tree ok")

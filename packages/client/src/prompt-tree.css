@@ -50,6 +50,7 @@
   gap: var(--space-3);
 }
 .rv-msg {
+  contain: layout style paint;
   padding: var(--space-1);
   border-radius: var(--radius-card);
   background: var(--surface-0);
@@ -463,6 +464,10 @@
   user-select: none;
   -webkit-user-select: none;
 }
+/* Reserve the inline label even when the metadata wraps on a narrow screen. */
+.pt-updating:not([role="status"]) {
+  visibility: hidden;
+}
 .pt-meta-item.muted {
   color: var(--ink-3);
 }
@@ -680,6 +685,9 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
+}
+.pt-reset:disabled {
+  visibility: hidden;
 }
 .pt-group-head {
   display: flex;

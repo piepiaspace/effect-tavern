@@ -6,7 +6,7 @@ import type { PreviewNarrateResult, ResourceEntryView } from "@effect-tavern/run
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import type { OmittedReason, SourceRef } from "@effect-tavern/runtime/src/trace.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
-import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Menu, Stepper, Switch } from "./controls.tsx"
 import { Family } from "./family.tsx"
@@ -17,6 +17,8 @@ import {
   buildPreviewRequest,
   defaultMemory,
   getPromptTreeMemory,
+  omittedRows,
+  reusePreviewOutline,
   setPromptTreeMemory,
   sourceDestination,
   sourceLabel,
@@ -94,8 +96,9 @@ export const PromptTreePage = () => {
     }
   })
   const [pane, setPane] = createSignal<"outline" | "controls">("outline")
-  const [fetched, setFetched] = createSignal<{ context: string; value: PreviewNarrateResult } | null>(null)
-  const [loading, setLoading] = createSignal(false)
+  const [cacheRevision, cacheChanged] = createSignal(0)
+  let lastShown: { context: string; value: PreviewNarrateResult } | undefined
+  const [slowContext, setSlowContext] = createSignal<string | null>(null)
   const [errMsg, setErrMsg] = createSignal<string | null>(null)
   const [fetchedStory, setFetchedStory] = createSignal<{
     id: number
@@ -106,18 +109,20 @@ export const PromptTreePage = () => {
   // Per-mount caches (discarded automatically when leaving Prompt Tree so returning from an editor is always fresh).
   const previewCache = new Map<string, PreviewNarrateResult>()
   const storyNodesCache = new Map<number, { nodes: readonly Node[]; head: number | null }>()
-  let debounceNext = false
+  type Timing = "immediate" | "step" | "text"
+  let timing: Timing = "immediate"
 
-  const update = (patch: Partial<PromptTreeMemory>, debounce = false) => {
-    debounceNext = debounce
+  const update = (patch: Partial<PromptTreeMemory>, next: Timing = "immediate") => {
+    timing = next
     const id = tabId()
     setPromptTreeMemory(id, { ...(getPromptTreeMemory(id) ?? mem()), ...patch })
     edited((n) => n + 1)
   }
 
   // Stories belonging to the currently previewed card.
+  const cardId = createMemo(() => mem().cardId)
   const cardStories = createMemo(() => {
-    const cid = mem().cardId
+    const cid = cardId()
     if (!cid) return []
     return (lib()?.stories ?? []).filter((s) => s.card === cid)
   })
@@ -161,7 +166,7 @@ export const PromptTreePage = () => {
   )
 
   // Fetch preview whenever the preview request parameters change.
-  // Instant (0ms + synchronous cache memo, zero relay tear) for mode/node/field/opening clicks; debounced (120ms) only for free-text typing.
+  // Layout and selection edits leave the request key unchanged.
   const requestEntry = createMemo(
     () => {
       const m = mem()
@@ -184,14 +189,17 @@ export const PromptTreePage = () => {
 
   const result = createMemo<PreviewNarrateResult | null>(() => {
     const { key, context } = requestEntry()
-    const last = fetched()
-    return previewCache.get(key) ?? (last?.context === context ? last.value : null)
+    cacheRevision()
+    return previewCache.get(key) ?? (lastShown?.context === context ? lastShown.value : null)
   })
   // Entered from play (the session card): a condition that reads a hidden field is not shown, and an entry it left out is not listed.
+  const play = createMemo(() => !!mem().play)
+  const selectedKey = createMemo(() => mem().selectedKey)
+  const expandedMessages = createMemo(() => mem().expandedMessages)
   const shown = createMemo<PreviewNarrateResult | null>(() => {
     if (errMsg() !== null) return null
     const r = result()
-    if (!r || !mem().play) return r
+    if (!r || !play()) return r
     const hidden = new Set(r.sandbox.fields.filter((f) => f.hidden).map((f) => f.path))
     const secret = (s: SourceRef | undefined) => !!s?.whenDetails?.some((d) => hidden.has(d.path))
     const scrub = <S extends SourceRef | undefined>(s: S): S => {
@@ -223,58 +231,88 @@ export const PromptTreePage = () => {
     return r?.mode === "sandbox" && r.card.id === mem().cardId ? r.sandbox : undefined
   })
 
+  const omitted = createMemo(() => omittedRows(shown()?.omitted ?? []))
+  const loading = () => slowContext() === requestEntry().context && !previewCache.has(requestEntry().key)
+
+  type Entry = ReturnType<typeof requestEntry>
+  let active: { entry: Entry; controller: AbortController } | undefined
+  let pending: { entry: Entry; readyAt: number; step: boolean } | undefined
+  let wake: ReturnType<typeof setTimeout> | undefined
+  let lastStep = -Infinity
+
+  // At most one request runs in a context. While it runs, only the newest unsent input matters.
+  const dispatch = async () => {
+    if (!pending || active) return
+    clearTimeout(wake)
+    const { entry, readyAt, step } = pending
+    const wait = readyAt - performance.now()
+    if (wait > 0) {
+      wake = setTimeout(() => void dispatch(), Math.ceil(wait))
+      return
+    }
+    pending = undefined
+    const { key, context, body } = entry
+    const controller = new AbortController()
+    active = { entry, controller }
+    if (step) lastStep = performance.now()
+    const busyTimer = setTimeout(() => {
+      if (!controller.signal.aborted) setSlowContext(context)
+    }, 150)
+    try {
+      const response = await fetchPreview(body, controller.signal)
+      if (controller.signal.aborted) return
+      const value = reusePreviewOutline(lastShown?.context === context ? lastShown.value : undefined, response)
+      previewCache.set(key, value)
+      if (previewCache.size > 64) previewCache.delete(previewCache.keys().next().value!)
+      if (key === requestEntry().key) {
+        lastShown = { context, value }
+        cacheChanged((n) => n + 1)
+      }
+    } catch (e) {
+      if (!controller.signal.aborted && key === requestEntry().key)
+        setErrMsg(e instanceof Error ? e.message : String(e))
+    } finally {
+      clearTimeout(busyTimer)
+      if (!controller.signal.aborted) {
+        active = undefined
+        setSlowContext(null)
+        void dispatch()
+      }
+    }
+  }
+
   createEffect(
     () => requestEntry(),
-    ({ body, key, context }) => {
-      const shouldDebounce = debounceNext
-      debounceNext = false
-      const cached = previewCache.get(key)
+    (entry) => {
+      const nextTiming = timing
+      timing = "immediate"
+      clearTimeout(wake)
+      pending = undefined
+      setErrMsg(null)
+      if (active && active.entry.context !== entry.context) {
+        active.controller.abort()
+        active = undefined
+        setSlowContext(null)
+        lastStep = -Infinity
+      }
+      const cached = previewCache.get(entry.key)
       if (cached) {
-        setFetched({ context, value: cached })
-        if (untrack(loading)) setLoading(false)
-        if (untrack(errMsg) !== null) setErrMsg(null)
+        previewCache.delete(entry.key)
+        previewCache.set(entry.key, cached)
+        lastShown = { context: entry.context, value: cached }
         return
       }
-      const ac = new AbortController()
-      if (untrack(errMsg) !== null) setErrMsg(null)
-      setLoading(true)
-      const run = () => {
-        void fetchPreview(body, ac.signal).then(
-          (res) => {
-            if (ac.signal.aborted) return
-            if (previewCache.size >= 24) {
-              const oldest = previewCache.keys().next().value
-              if (oldest !== undefined) previewCache.delete(oldest)
-            }
-            previewCache.set(key, res)
-            setFetched({ context, value: res })
-            setErrMsg(null)
-            setLoading(false)
-          },
-          (e: unknown) => {
-            if (ac.signal.aborted) return
-            setErrMsg(e instanceof Error ? e.message : String(e))
-            setLoading(false)
-          },
-        )
-      }
-      if (!shouldDebounce) {
-        let canceled = false
-        queueMicrotask(() => {
-          if (!canceled) run()
-        })
-        return () => {
-          canceled = true
-          ac.abort()
-        }
-      }
-      const timer = setTimeout(run, 120)
-      return () => {
-        clearTimeout(timer)
-        ac.abort()
-      }
+      if (active?.entry.key === entry.key) return
+      const readyAt = nextTiming === "text" ? performance.now() + 120 : nextTiming === "step" ? lastStep + 75 : 0
+      pending = { entry, readyAt, step: nextTiming === "step" }
+      queueMicrotask(() => void dispatch())
     },
   )
+  onCleanup(() => {
+    pending = undefined
+    clearTimeout(wake)
+    active?.controller.abort()
+  })
 
   const currentCardTitle = () => {
     const r = result()
@@ -338,8 +376,8 @@ export const PromptTreePage = () => {
     }
   }
 
-  const setField = (path: string, value: unknown) => {
-    update({ fields: { ...mem().fields, [path]: value } })
+  const setField = (path: string, value: unknown, timing: Timing = "immediate") => {
+    update({ fields: { ...mem().fields, [path]: value } }, timing)
   }
 
   const resetFields = () => update({ fields: {} })
@@ -366,7 +404,7 @@ export const PromptTreePage = () => {
 
   const allExpanded = () => {
     const traces = result()?.traces ?? []
-    return traces.length > 0 && traces.every((tr) => mem().expandedMessages.includes(tr.index))
+    return traces.length > 0 && traces.every((tr) => expandedMessages().includes(tr.index))
   }
 
   const toggleExpandAll = () => {
@@ -503,7 +541,7 @@ export const PromptTreePage = () => {
 
       <div class="cols">
         <section class="pane pipeline pt-main" aria-label={t("promptTree.paneOutline")}>
-          <Show when={loading()}>
+          <Show when={loading() && !shown() && !errMsg()}>
             <span class="pt-meta-item muted" role="status">
               {t("promptTree.updating")}
             </span>
@@ -535,6 +573,9 @@ export const PromptTreePage = () => {
                         : t("promptTree.upstreamSkipped")}
                     </span>
                   </Show>
+                  <span class="pt-meta-item muted pt-updating" role={loading() ? "status" : undefined}>
+                    {t("promptTree.updating")}
+                  </span>
                   <span class="rv-spacer" />
                   <Show when={r().traces.length > 0}>
                     <button
@@ -576,9 +617,9 @@ export const PromptTreePage = () => {
                   messages={displayedMessages()}
                   traces={r().traces}
                   wireError={r().wireError}
-                  selectedKey={mem().selectedKey}
+                  selectedKey={selectedKey()}
                   onSelectKey={(k) => update({ selectedKey: k })}
-                  expandedMessages={mem().expandedMessages}
+                  expandedMessages={expandedMessages()}
                   onToggleExpand={toggleExpandMsg}
                   resolveDestination={resolveDest}
                   onJump={jumpTo}
@@ -601,9 +642,10 @@ export const PromptTreePage = () => {
                       fallback={<p class="pt-empty">{t("promptTree.omittedEmpty")}</p>}
                     >
                       <div class="pt-omitted-list">
-                        <For each={r().omitted} keyed={false}>
-                          {(item, idx) => {
-                            const key = () => `om:${idx}:${item().category}:${item().id}`
+                        <For each={omitted()} keyed={(row) => row.key}>
+                          {(row) => {
+                            const item = () => row().item
+                            const key = () => row().key
                             const open = () => selectedOmitted() === key()
                             const detail = () => {
                               const story = r().story
@@ -940,7 +982,7 @@ export const PromptTreePage = () => {
                     enterkeyhint="enter"
                     placeholder={t("promptTree.inputPlaceholder")}
                     value={mem().inputText}
-                    onInput={(e) => update({ inputText: e.currentTarget.value }, true)}
+                    onInput={(e) => update({ inputText: e.currentTarget.value }, "text")}
                   />
                 </div>
               </>
@@ -975,17 +1017,16 @@ export const PromptTreePage = () => {
               <div class="pt-group">
                 <div class="pt-group-head">
                   <span class="pt-label">{t("promptTree.fields")}</span>
-                  <Show when={modifiedFieldCount() > 0}>
-                    <button
-                      type="button"
-                      class="icon sm"
-                      aria-label={t("promptTree.resetFields")}
-                      title={t("promptTree.resetFields")}
-                      onClick={resetFields}
-                    >
-                      <Swipe aria-hidden="true" />
-                    </button>
-                  </Show>
+                  <button
+                    type="button"
+                    class="icon sm pt-reset"
+                    disabled={modifiedFieldCount() === 0}
+                    aria-label={t("promptTree.resetFields")}
+                    title={t("promptTree.resetFields")}
+                    onClick={resetFields}
+                  >
+                    <Swipe aria-hidden="true" />
+                  </button>
                 </div>
                 <div class="pt-fields">
                   <For each={sandboxControls()?.fields ?? []} keyed={(f) => f.path}>
@@ -1028,7 +1069,7 @@ export const PromptTreePage = () => {
                               min={f().min}
                               max={f().max}
                               step={f().type === "int" ? 1 : 0.5}
-                              onChange={(n) => setField(f().path, n)}
+                              onChange={(n) => setField(f().path, n, "step")}
                             />
                           </Show>
 
@@ -1060,7 +1101,7 @@ export const PromptTreePage = () => {
                               spellcheck="false"
                               enterkeyhint="done"
                               value={fieldText()}
-                              onInput={(e) => setField(f().path, e.currentTarget.value)}
+                              onInput={(e) => setField(f().path, e.currentTarget.value, "text")}
                             />
                           </Show>
                         </div>
@@ -1082,7 +1123,7 @@ export const PromptTreePage = () => {
                 enterkeyhint="enter"
                 placeholder={t("promptTree.inputPlaceholder")}
                 value={mem().inputText}
-                onInput={(e) => update({ inputText: e.currentTarget.value }, true)}
+                onInput={(e) => update({ inputText: e.currentTarget.value }, "text")}
               />
               <input
                 type="text"
@@ -1091,7 +1132,7 @@ export const PromptTreePage = () => {
                 placeholder={t("promptTree.notePlaceholder")}
                 enterkeyhint="done"
                 value={mem().inputNote}
-                onInput={(e) => update({ inputNote: e.currentTarget.value }, true)}
+                onInput={(e) => update({ inputNote: e.currentTarget.value }, "text")}
               />
             </div>
           </Show>
