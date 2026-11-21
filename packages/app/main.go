@@ -8,6 +8,8 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/fetch"
@@ -15,6 +17,12 @@ import (
 
 //go:embed all:dist
 var dist embed.FS
+
+// external: a web page outside the app, whose own pages are mygo://localhost (https://mygo.localhost on Android).
+func external(raw string) bool {
+	u, err := url.Parse(raw)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && !strings.HasSuffix(u.Hostname(), ".localhost")
+}
 
 func main() {
 	// Two desktop instances would write one library at once; a second launch brings the first forward instead.
@@ -50,6 +58,14 @@ func main() {
 		// A web content process the system killed (memory, mostly on phones) leaves Go and the library running:
 		// load the page again, whose library opens with a rollback of any write it was in (web/sqlite.ts).
 		win.Page().OnRenderProcessGone(func(string) { win.Page().Reload() })
+		// The window holds the app alone: a web page it would navigate to (a link in a card's text, say) opens in the
+		// system's browser instead, where the player can come back from it.
+		win.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
+			if external(e.URL) {
+				e.PreventDefault()
+				mygo.Shell.OpenExternal(e.URL)
+			}
+		})
 		mygo.App.OnSecondInstance(func([]string, string) {
 			win.Show()
 			win.Restore()
