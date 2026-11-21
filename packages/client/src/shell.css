@@ -1233,11 +1233,6 @@
     translate var(--dur-3) var(--ease),
     scale var(--dur-1) var(--ease);
 }
-.home-card.primary {
-  background: var(--primary);
-  color: var(--primary-ink);
-  box-shadow: var(--shadow-1);
-}
 .home-card-icon {
   flex: none;
   width: 28px;
@@ -1250,13 +1245,6 @@
   transition:
     background var(--dur-2) var(--ease),
     color var(--dur-2) var(--ease);
-}
-.home-card.primary .home-card-icon {
-  background: rgb(255 255 255 / 0.14);
-  color: var(--primary-ink);
-}
-.home-page[data-dark="true"] .home-card.primary .home-card-icon {
-  background: rgb(0 0 0 / 0.14);
 }
 .home-card-icon svg {
   width: 15px;
@@ -1277,10 +1265,6 @@
     translate var(--dur-3) var(--ease);
   transition-timing-function: var(--ease), var(--ease-spring);
 }
-.home-card.primary .home-card-arrow {
-  color: var(--primary-ink);
-  opacity: 0.72;
-}
 @media (hover: hover) and (pointer: fine) {
   .home-card:hover {
     background: var(--surface-3);
@@ -1296,22 +1280,6 @@
   .home-card:hover .home-card-arrow {
     color: var(--ink);
     translate: 3px 0;
-  }
-  .home-card.primary:hover {
-    background: var(--primary);
-    box-shadow: var(--shadow-2);
-    opacity: 0.92;
-  }
-  .home-card.primary:hover .home-card-icon {
-    background: rgb(255 255 255 / 0.2);
-    color: var(--primary-ink);
-  }
-  .home-page[data-dark="true"] .home-card.primary:hover .home-card-icon {
-    background: rgb(0 0 0 / 0.2);
-  }
-  .home-card.primary:hover .home-card-arrow {
-    color: var(--primary-ink);
-    opacity: 1;
   }
 }
 .home-card:active {

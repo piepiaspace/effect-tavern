@@ -187,7 +187,7 @@ export const Home = () => {
               <div class="home-first">
                 <button
                   type="button"
-                  class="home-card primary"
+                  class="home-card"
                   onPointerEnter={onCardHover}
                   onClick={runCard(() => openSettings("cards"))}
                 >
