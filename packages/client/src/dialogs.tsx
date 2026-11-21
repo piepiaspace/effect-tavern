@@ -15,7 +15,15 @@ import { openSettings } from "./settings-navigation.ts"
 import { deleteStories, deleteStory, openStory } from "./pages.ts"
 import { card, focus, locals, log, page, personas, stories, type StoryRow } from "./store.ts"
 import { openOn } from "./stories.ts"
-import { exportUrl, followStoryPersona, nameStory, pickStoryPersona, putLocal, refreshActiveCard } from "./wire.ts"
+import {
+  exportUrl,
+  followStoryPersona,
+  onDownload,
+  nameStory,
+  pickStoryPersona,
+  putLocal,
+  refreshActiveCard,
+} from "./wire.ts"
 import { t } from "./i18n.ts"
 
 const manager = dialogHandle()
@@ -199,7 +207,10 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
             href={exportUrl(exporting()?.id ?? 0, "json")}
             title={t("side.exportJsonHint")}
             download
-            onClick={() => exportDialog.close()}
+            onClick={(e) => {
+              onDownload(e)
+              exportDialog.close()
+            }}
           >
             {t("side.exportJson")}
           </a>
@@ -208,7 +219,10 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
             href={exportUrl(exporting()?.id ?? 0, "md")}
             title={t("side.exportMdHint")}
             download
-            onClick={() => exportDialog.close()}
+            onClick={(e) => {
+              onDownload(e)
+              exportDialog.close()
+            }}
           >
             {t("side.exportMd")}
           </a>

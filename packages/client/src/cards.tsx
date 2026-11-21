@@ -18,7 +18,7 @@ import { Export, Import, Sync, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { removeCard } from "./pages.ts"
 import { cards, characterCards, depots, type DepotView, type Origin } from "./store.ts"
-import { addDepot, cardFile, importCard, importLink, pullCard, removeDepot, viewDepot } from "./wire.ts"
+import { addDepot, cardFile, importCard, importLink, onDownload, pullCard, removeDepot, viewDepot } from "./wire.ts"
 
 /** The list's first row: the shelf itself, beside the libraries. */
 export const INSTALLED = "installed"
@@ -251,7 +251,13 @@ export const Cards = (props: Pane) => {
                           <span class="tag warn">{t("cards.edited")}</span>
                         </Show>
                         <span class="spacer" />
-                        <a class="icon sm" href={cardFile(c().id)} download aria-label={t("cards.exportCard")}>
+                        <a
+                          class="icon sm"
+                          href={cardFile(c().id)}
+                          download
+                          onClick={onDownload}
+                          aria-label={t("cards.exportCard")}
+                        >
                           <Export />
                         </a>
                         <button

@@ -23,7 +23,7 @@ import { EXTRA, addFragment, atOf, removeFragment, setFragmentAt, setFragmentTex
 import { cards, cardTitle, locals, packs } from "./store.ts"
 import { SWITCHES } from "./switches.ts"
 import { type Key, t } from "./i18n.ts"
-import { deletePack, putPack, refreshActiveCard } from "./wire.ts"
+import { deletePack, putPack, refreshActiveCard, saveFile } from "./wire.ts"
 
 type PackTab = "prose" | "entries" | "lexicon" | "products" | "inputs" | "asks"
 const PACK_TABS: [PackTab, Key][] = [
@@ -141,10 +141,7 @@ export const Packs = (props: Pane) => {
     }
   }
   const exportPack = (p: Layer) => {
-    const url = URL.createObjectURL(new Blob([serializePack(p)], { type: "application/json" }))
-    const a = Object.assign(document.createElement("a"), { href: url, download: `${p.name}.pack.json` })
-    a.click()
-    URL.revokeObjectURL(url)
+    void saveFile(new Blob([serializePack(p)], { type: "application/json" }), `${p.name}.pack.json`)
   }
 
   return (
@@ -778,10 +775,7 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
     })
   }
   const exportFile = () => {
-    const url = URL.createObjectURL(new Blob([serializeLexicon(lex())], { type: "application/json" }))
-    const a = Object.assign(document.createElement("a"), { href: url, download: FILE })
-    a.click()
-    URL.revokeObjectURL(url)
+    void saveFile(new Blob([serializeLexicon(lex())], { type: "application/json" }), FILE)
   }
   return (
     <section class="wpanel" role="tabpanel" aria-label={t("packs.lexicon")}>
