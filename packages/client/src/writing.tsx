@@ -327,10 +327,16 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
   }
   const setSwitch = (key: SwitchKey, value: string | boolean) =>
     writeSwitches((x) => ({ ...x, [key]: pressing(key, x, value) }))
-  const resetSwitches = () => writeSwitches(({ pov: _p, echo: _e, agency: _a, verbosity: _v, ...rest }) => rest)
+  const isCustomPov = () => (localSw()?.pov ?? effSw()?.pov) === "custom"
+  const toggleCustomPov = () => writeSwitches((x) => ({ ...x, pov: isCustomPov() ? undefined : "custom" }))
+  const setPovText = (text: string) =>
+    writeSwitches((x) => ({ ...x, pov: "custom", povText: text.trim() ? text : undefined }))
+  const resetSwitches = () =>
+    writeSwitches(({ pov: _p, povText: _pt, echo: _e, agency: _a, verbosity: _v, ...rest }) => rest)
 
   const activeSentence = (key: SwitchKey) => {
     const val = effSw()?.[key]
+    if (key === "pov" && val === "custom") return effSw()?.povText ?? ""
     return val !== undefined ? sentence(key, val, sentences()) : ""
   }
 
@@ -479,7 +485,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
       <div class="wsec">
         <div class="block-title">
           <h3>{t("writing.switches")}</h3>
-          <Show when={SWITCHES.some((s) => localSw()?.[s.key] !== undefined)}>
+          <Show when={SWITCHES.some((s) => localSw()?.[s.key] !== undefined) || localSw()?.povText !== undefined}>
             <div class="right">
               <button type="button" class="btn sm ghost" onClick={resetSwitches}>
                 {t("writing.allFollowCard")}
@@ -496,11 +502,26 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                 <fieldset class="sw-card" disabled={disabled()}>
                   <legend>
                     {t(s().label)}
-                    <Show when={taken()}>
+                    <Show
+                      when={taken()}
+                      fallback={
+                        <Show when={s().key === "pov"}>
+                          <button
+                            type="button"
+                            class="sw-custom-toggle"
+                            aria-pressed={isCustomPov() ? "true" : "false"}
+                            disabled={disabled()}
+                            onClick={toggleCustomPov}
+                          >
+                            {t("switches.povCustom")}
+                          </button>
+                        </Show>
+                      }
+                    >
                       {(who) => <span class="tag clip">{t("writing.takenBy", { from: props.fromLabel(who()) })}</span>}
                     </Show>
                   </legend>
-                  <div class="sw-pills">
+                  <div class="sw-pills" data-count={s().values.length}>
                     <For each={s().values} keyed={(v) => String(v[0])}>
                       {(v) => (
                         <button
@@ -514,7 +535,21 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                       )}
                     </For>
                   </div>
-                  <p class="sw-sentence">{activeSentence(s().key)}</p>
+                  <Show
+                    when={s().key === "pov" && isCustomPov()}
+                    fallback={<p class="sw-sentence">{activeSentence(s().key)}</p>}
+                  >
+                    <textarea
+                      class="sw-custom-input"
+                      rows={2}
+                      aria-label={t("switches.povCustom")}
+                      placeholder={t("switches.povCustomPlaceholder")}
+                      disabled={disabled()}
+                      value={localSw()?.povText ?? effSw()?.povText ?? ""}
+                      onChange={(e) => setPovText(e.currentTarget.value)}
+                      onKeyDown={leaveArea}
+                    />
+                  </Show>
                 </fieldset>
               )
             }}

@@ -303,6 +303,61 @@
   clear: both;
   padding-top: var(--space-2); /* not a margin: a cleared box's top margin is absorbed by the clearance */
 }
+.sw-card .sw-pills[data-count="4"] {
+  grid-auto-flow: row;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.sw-custom-toggle {
+  height: 22px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--alpha-1);
+  color: var(--ink-2);
+  font-size: var(--text-caption);
+  font-weight: 550;
+  white-space: nowrap;
+  transition:
+    background var(--dur-2) var(--ease),
+    color var(--dur-2) var(--ease),
+    scale var(--dur-1) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sw-custom-toggle:hover:not(:disabled) {
+    background: var(--alpha-2);
+    color: var(--ink);
+  }
+}
+.sw-custom-toggle:active:not(:disabled) {
+  background: var(--alpha-2);
+  color: var(--ink);
+  scale: 0.97;
+}
+.sw-custom-toggle[aria-pressed="true"] {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+.sw-custom-input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 3.25rem;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--alpha-1);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-field);
+  line-height: 1.45;
+  resize: none;
+  outline: none;
+  field-sizing: content;
+  transition: box-shadow var(--dur-2) var(--ease);
+}
+.sw-custom-input:focus {
+  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+}
 .sw-card .sw-pills button {
   height: 32px;
   padding: 0 var(--space-2);

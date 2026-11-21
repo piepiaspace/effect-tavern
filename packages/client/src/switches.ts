@@ -17,6 +17,7 @@ export const SWITCHES: Switch[] = [
     key: "pov",
     label: "switches.pov",
     values: [
+      ["first", "switches.povFirst"],
       ["second", "switches.povSecond"],
       ["third", "switches.povThird"],
       ["none", "switches.povNone"],
@@ -89,9 +90,10 @@ export const pressing = (key: SwitchKey, w: Writing | undefined, v: string | boo
 /** The switches in force, by name (moot ones left out); none set, "跟随卡片". `extra` adds the chip for a per-card
  *  supplement in force, named as the Writing page names it. */
 export const chosen = (w: Writing | undefined, extra = false): string[] => {
-  const on = SWITCHES.filter((s) => !moot(s.key, w)).flatMap((s) =>
-    s.values.filter(([v]) => w?.[s.key] === v).map(([, l]) => t(l)),
-  )
+  const on = SWITCHES.filter((s) => !moot(s.key, w)).flatMap((s) => {
+    if (s.key === "pov" && w?.pov === "custom") return [t("switches.povCustom")]
+    return s.values.filter(([v]) => w?.[s.key] === v).map(([, l]) => t(l))
+  })
   const chips = on.length ? on : [t("switches.followCard")]
   return extra ? [...chips, t("switches.cardExtra")] : chips
 }

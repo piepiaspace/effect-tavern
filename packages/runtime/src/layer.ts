@@ -184,6 +184,7 @@ const words: readonly Ask[] = [
 // The sentence each writing switch value compiles to, by ask id `switch.<key>.<value>`; a client shows it as the value's
 // title. An overlay edit of one changes what compiles.
 const sentences: readonly Ask[] = [
+  { id: "switch.pov.first", text: "用第一人称「我」写玩家。" },
   { id: "switch.pov.second", text: "用第二人称「你」写玩家。" },
   { id: "switch.pov.third", text: "用玩家角色的名字、以第三人称写玩家。" },
   { id: "switch.pov.none", text: "故事里没有玩家角色；输入是给叙述者的指示，不是任何人物的话，不要把它写进故事。" },
@@ -371,8 +372,9 @@ export interface Resolved {
  *  and `verbosity`. */
 const compile = (w: Writing, say: Readonly<Record<string, string>>): Fragment[] => {
   const line = (k: string, v: string | boolean) => say[`switch.${k}.${String(v)}`]
+  const povLine = w.pov === "custom" ? w.povText?.trim() || undefined : w.pov ? line("pov", w.pov) : undefined
   const pov = [
-    w.pov && line("pov", w.pov),
+    povLine,
     w.pov !== "none" && w.echo !== undefined && line("echo", w.echo),
     w.pov !== "none" && w.agency && line("agency", w.agency),
   ].filter((x): x is string => typeof x === "string")
@@ -522,7 +524,7 @@ export const resolveWithTrace = (
       const held = slots.get(c.id)
       const setHere =
         c.id === "pov"
-          ? "pov" in row.switches || "echo" in row.switches || "agency" in row.switches
+          ? "pov" in row.switches || "povText" in row.switches || "echo" in row.switches || "agency" in row.switches
           : "verbosity" in row.switches
       if (theirs.has(c.id)) {
         if (setHere)

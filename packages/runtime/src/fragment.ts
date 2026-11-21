@@ -69,7 +69,8 @@ export type Format = typeof Format.Type
 // `agency` are one slot (`pov`): a card that writes the player's place in the story itself (盐道: no player in the
 // fiction) takes the whole group with it. `verbosity` is its own slot. Only switches with live evidence are here.
 export const Writing = Schema.Struct({
-  pov: Schema.optionalKey(Schema.Literals(["second", "third", "none"])), // the player in the prose: 你, by name, absent
+  pov: Schema.optionalKey(Schema.Literals(["first", "second", "third", "none", "custom"])), // the player in the prose: 我, 你, by name, absent, or custom
+  povText: Schema.optionalKey(Schema.String), // free-form perspective instruction when pov === "custom"
   echo: Schema.optionalKey(Schema.Boolean), // restate the player's line before the reaction (转述), or start from the reaction
   agency: Schema.optionalKey(Schema.Literals(["strict", "free"])), // only what the player gave, or the narrator may continue them (co-writing)
   verbosity: Schema.optionalKey(Schema.Literals(["concise", "medium", "detailed"])),

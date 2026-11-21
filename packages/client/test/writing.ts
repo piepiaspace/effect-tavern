@@ -30,7 +30,8 @@ import { chosen, moot, pressing, sentence, SWITCHES, takenBy } from "../src/swit
 // every value the table offers compiles to a sentence in `harness`, and only those values do
 for (const s of SWITCHES)
   for (const [v] of s.values) assert.ok(sentence(s.key, v), `${s.key}=${String(v)} has a sentence`)
-assert.equal(sentence("pov", "first"), "")
+assert.equal(sentence("pov", "unknown"), "")
+assert.equal(sentence("pov", "first"), harness("act").asks?.find((a) => a.id === "switch.pov.first")?.text)
 assert.equal(sentence("pov", "second"), harness("act").asks?.find((a) => a.id === "switch.pov.second")?.text)
 assert.equal(sentence("pov", "second", { "switch.pov.second": "自定义第二人称" }), "自定义第二人称")
 
@@ -63,6 +64,8 @@ assert.equal(
 // the chips: what is set, by name; nothing set reads 跟随卡片; echo and agency are moot with no player in the fiction
 assert.deepEqual(chosen(undefined), ["跟随卡片"])
 assert.deepEqual(chosen({ pov: "third", echo: false, verbosity: "concise" }), ["第三人称", "直接反应", "简短"])
+assert.deepEqual(chosen({ pov: "first", echo: true }), ["第一人称", "转述言行"])
+assert.deepEqual(chosen({ pov: "custom", povText: "半文言旁白。", echo: false }), ["自定义", "直接反应"])
 assert.deepEqual(chosen({ pov: "none", echo: true, agency: "free" }), ["无主角"])
 assert.deepEqual(chosen({ polish: false }, true), ["跟随卡片", "本卡补充"])
 assert.ok(moot("echo", { pov: "none" }) && !moot("echo", { pov: "third" }) && !moot("pov", { pov: "none" }))

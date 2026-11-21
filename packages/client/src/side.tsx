@@ -149,10 +149,10 @@ export const Sidebar = (props: {
     let sw = v ? v.layer.switches.value : loc?.switches
     if (v && sw) {
       // a slot free text holds (the card's, or a fragment) compiles no switch: its values are not in force
-      const { pov, echo, agency, verbosity, ...rest } = sw
+      const { pov, povText, echo, agency, verbosity, ...rest } = sw
       sw = {
         ...rest,
-        ...(takenBy("pov", v.layer) === null && { pov, echo, agency }),
+        ...(takenBy("pov", v.layer) === null && { pov, povText, echo, agency }),
         ...(takenBy("verbosity", v.layer) === null && { verbosity }),
       }
     }

@@ -380,6 +380,17 @@ const packs = [packB, packA]
     resolve(chat, { harness: row("harness", { switches: { pov: "none", echo: true, agency: "free" } }) }).frame[0].text,
     line("switch.pov.none"),
   )
+  // first-person and custom pov: custom text composes with echo and agency without locking the slot
+  assert.equal(
+    resolve(chat, { harness: row("harness", { switches: { pov: "first" } }) }).frame[0].text,
+    line("switch.pov.first"),
+  )
+  assert.equal(
+    resolve(chat, {
+      harness: row("harness", { switches: { pov: "custom", povText: "以半文言旁白叙述。", echo: false } }),
+    }).frame[0].text,
+    "以半文言旁白叙述。" + line("switch.echo.false"),
+  )
   // a later row's switch wins key by key: one slot compiled from the merge, the later row's name on it
   const merged = resolve(chat, {
     harness: row("harness", { switches: { pov: "second", agency: "strict" } }),
