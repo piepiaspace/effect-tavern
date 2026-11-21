@@ -141,9 +141,11 @@ const en: Dict = {
   },
   home: {
     freeChat: "Free chat",
+    nextFigure: "Next figure",
     pauseMotion: "Pause animation",
     placeholder: "Write a first line to start a free chat…",
     playMotion: "Play animation",
+    prevFigure: "Previous figure",
     soundOff: "Mute mechanical sound",
     soundOn: "Enable mechanical sound",
     subtitle: "Interactive stories & card workshop",

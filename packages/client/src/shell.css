@@ -870,6 +870,115 @@
   display: grid;
   place-items: center;
   user-select: none;
+  touch-action: pan-y;
+}
+/* Directional figure-switch reveal (opt-in under no-preference) */
+@media (prefers-reduced-motion: no-preference) {
+  .home-mech-stage[data-dir="next"] {
+    animation:
+      home-fade var(--dur-3) var(--ease) both,
+      home-fig-next var(--dur-4) var(--ease) both;
+    animation-timing-function: var(--ease), var(--ease-spring);
+  }
+  .home-mech-stage[data-dir="prev"] {
+    animation:
+      home-fade var(--dur-3) var(--ease) both,
+      home-fig-prev var(--dur-4) var(--ease) both;
+    animation-timing-function: var(--ease), var(--ease-spring);
+  }
+  @supports not (animation-timing-function: linear(0, 1)) {
+    .home-mech-stage[data-dir="next"],
+    .home-mech-stage[data-dir="prev"] {
+      animation-timing-function: var(--ease), var(--ease);
+    }
+  }
+}
+@keyframes home-fig-next {
+  from {
+    translate: 20px 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+@keyframes home-fig-prev {
+  from {
+    translate: -20px 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+/* Flank figure switcher buttons: whisper-faint at rest, reveal crisply on hover/focus; hidden on touch phones where swipe takes over */
+.home-nav {
+  position: absolute;
+  top: 40%;
+  translate: 0 -50%;
+  z-index: 2;
+  width: var(--space-7);
+  height: var(--space-7);
+  border-radius: var(--radius-pill);
+  display: inline-grid;
+  place-items: center;
+  color: var(--ink-2);
+  opacity: 0.14;
+  transition:
+    opacity var(--dur-3) var(--ease),
+    background var(--dur-2) var(--ease),
+    box-shadow var(--dur-2) var(--ease),
+    color var(--dur-2) var(--ease),
+    scale var(--dur-1) var(--ease);
+}
+.home-nav-prev {
+  left: clamp(var(--space-3), 6cqi, var(--space-7));
+}
+.home-nav-next {
+  right: clamp(var(--space-3), 6cqi, var(--space-7));
+}
+.home-nav svg {
+  width: var(--icon);
+  height: var(--icon);
+  transition: translate var(--dur-3) var(--ease);
+  transition-timing-function: var(--ease-spring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-stage:hover .home-nav {
+    opacity: 0.34;
+  }
+  .home-stage .home-nav:hover {
+    opacity: 1;
+    color: var(--ink);
+    background: var(--surface-2);
+    box-shadow:
+      var(--shadow-1),
+      inset 0 0 0 var(--hairline) var(--line-strong);
+  }
+  .home-nav-prev:hover svg {
+    translate: -2px 0;
+  }
+  .home-nav-next:hover svg {
+    translate: 2px 0;
+  }
+}
+.home-nav:focus-visible {
+  opacity: 1;
+  color: var(--ink);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.home-nav:active {
+  scale: 0.94;
+}
+@media (hover: none), (pointer: coarse) {
+  .home-nav {
+    display: none;
+  }
+}
+.home-mech-index {
+  color: var(--ink-3);
+  opacity: 0.85;
 }
 .home-hairline-svg {
   position: absolute;

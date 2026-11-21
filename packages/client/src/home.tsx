@@ -5,10 +5,10 @@
 // opening "+" starts blank and switching back preserves unfinished words.
 import { createEffect, createSignal, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { DEFAULT_FIGURE } from "./figures/index.ts"
+import { HOME_FIGURES, loadFigureIndex, saveFigureId } from "./figures/index.ts"
 import { HomeMechanism } from "./home-mechanism.tsx"
 import { createMechanicalSound } from "./home-sound.ts"
-import { Card as CardIcon, Change, Send, Sliders } from "./icons.tsx"
+import { Card as CardIcon, Change, Next, Prev, Send, Sliders } from "./icons.tsx"
 import { imeController } from "./ime.ts"
 import { open, startFreeChat } from "./pages.ts"
 import { openSettings } from "./settings.tsx"
@@ -40,8 +40,20 @@ export const Home = () => {
   const sending = () => sendingTabs().has(tabId())
   const [pulse, setPulse] = createSignal(0)
   const [focused, setFocused] = createSignal(false)
+  const [figIndex, setFigIndex] = createSignal(loadFigureIndex())
+  const [figDir, setFigDir] = createSignal<"next" | "prev" | "none">("none")
+  const figure = () => HOME_FIGURES[figIndex()] ?? HOME_FIGURES[0]
   const sound = createMechanicalSound()
   let box: HTMLTextAreaElement | undefined
+
+  const stepFigure = (delta: -1 | 1) => {
+    const n = HOME_FIGURES.length
+    if (n <= 1) return
+    const next = (figIndex() + delta + n) % n
+    setFigDir(delta > 0 ? "next" : "prev")
+    setFigIndex(next)
+    saveFigureId(HOME_FIGURES[next].id)
+  }
 
   // Desktop: entering home or opening "+" focuses the composer so the player can type right away (touch devices stay
   // unfocused so the virtual keyboard does not cover the stage unexpectedly).
@@ -81,10 +93,34 @@ export const Home = () => {
       {/* Whisper-quiet architectural hairline grid & pointer-reactive radial sheen */}
       <div class="home-backdrop" aria-hidden="true" />
       <div class="home-stage">
+        <Show when={HOME_FIGURES.length > 1}>
+          <button
+            type="button"
+            class="home-nav home-nav-prev"
+            aria-label={t("home.prevFigure")}
+            onPointerEnter={onCardHover}
+            onClick={() => stepFigure(-1)}
+          >
+            <Prev aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            class="home-nav home-nav-next"
+            aria-label={t("home.nextFigure")}
+            onPointerEnter={onCardHover}
+            onClick={() => stepFigure(1)}
+          >
+            <Next aria-hidden="true" />
+          </button>
+        </Show>
         <div class="home-mark">
           <div class="home-reveal home-reveal-1">
             <HomeMechanism
-              figure={DEFAULT_FIGURE}
+              figure={figure()}
+              index={figIndex()}
+              total={HOME_FIGURES.length}
+              dir={figDir()}
+              onStep={stepFigure}
               pulse={pulse()}
               focused={focused()}
               dark={theme() === "dark"}

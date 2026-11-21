@@ -24,6 +24,13 @@ const defaultReadout = (s: StageState) => {
 export const HomeMechanism = (props: {
   /** Active mechanical figure definition (artwork + hairline spec + kinematics rig). */
   figure: HomeFigure
+  /** Current figure index (0-based) and total count for subtle telemetry orientation. */
+  index: number
+  total: number
+  /** Switch direction for directional entrance animation ("next" | "prev" | "none"). */
+  dir: "next" | "prev" | "none"
+  /** Called on touch horizontal swipe to switch figures. */
+  onStep: (delta: -1 | 1) => void
   /** Incremented on each keystroke in the home composer to nudge the mechanism forward. */
   pulse: number
   /** True while the home composer has focus (gently opens the aperture/iris). */
@@ -37,6 +44,7 @@ export const HomeMechanism = (props: {
   const [soundOn, setSoundOn] = createSignal(false)
 
   let rootEl: HTMLDivElement | undefined
+  let stageEl: HTMLDivElement | undefined
   let frameEl: HTMLDivElement | undefined
   let reticleSvg: SVGSVGElement | undefined
   let vernierArc: SVGGElement | undefined
@@ -82,9 +90,10 @@ export const HomeMechanism = (props: {
   // Re-bind the figure rig & musical theme whenever props.figure switches (after Show mounts the new SVG subtree)
   createEffect(
     () => props.figure,
-    (fig) => {
+    (fig, prev) => {
       activeFigure = fig
       props.sound.setProfile(fig.sound ?? DEFAULT_SOUND_PROFILE)
+      if (prev && prev !== fig) props.sound.detent("engage")
       queueMicrotask(() => {
         if (activeFigure === fig) bindFigure?.(fig)
       })
@@ -302,6 +311,51 @@ export const HomeMechanism = (props: {
     setPaused((v) => !v)
   }
 
+  // Touch horizontal swipe gesture on the figure stage: tracks gentle rubber-band drag, switches figure on release
+  const swipe = { id: -1, x0: 0, y0: 0, dx: 0, locked: "" as "" | "x" | "y" }
+  const resetSwipe = () => {
+    swipe.id = -1
+    swipe.dx = 0
+    swipe.locked = ""
+    if (stageEl) {
+      stageEl.style.transition = ""
+      stageEl.style.transform = ""
+    }
+  }
+  const onStagePointerDown = (e: PointerEvent) => {
+    if (e.pointerType === "mouse" || swipe.id !== -1) return
+    swipe.id = e.pointerId
+    swipe.x0 = e.clientX
+    swipe.y0 = e.clientY
+    swipe.dx = 0
+    swipe.locked = ""
+    if (stageEl) stageEl.style.transition = "none"
+  }
+  const onStagePointerMove = (e: PointerEvent) => {
+    if (e.pointerId !== swipe.id) return
+    const dx = e.clientX - swipe.x0
+    const dy = e.clientY - swipe.y0
+    if (!swipe.locked) {
+      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+      swipe.locked = Math.abs(dx) > Math.abs(dy) * 1.25 ? "x" : "y"
+    }
+    if (swipe.locked !== "x") return
+    swipe.dx = dx
+    const damped = Math.sign(dx) * Math.min(42, Math.abs(dx) * 0.32)
+    if (stageEl) stageEl.style.transform = `translate3d(${damped.toFixed(1)}px, 0, 0)`
+  }
+  const onStagePointerEnd = (e: PointerEvent) => {
+    if (e.pointerId !== swipe.id) return
+    const dx = swipe.dx
+    const wasX = swipe.locked === "x"
+    resetSwipe()
+    if (wasX && Math.abs(dx) >= 36) {
+      props.onStep(dx < 0 ? 1 : -1)
+    }
+  }
+
+  const counterText = () => `${String(props.index + 1).padStart(2, "0")}/${String(props.total).padStart(2, "0")}`
+
   return (
     <div
       ref={(el) => (rootEl = el)}
@@ -319,7 +373,15 @@ export const HomeMechanism = (props: {
     >
       <Show when={props.figure} keyed>
         {(fig) => (
-          <div class="home-mech-stage">
+          <div
+            ref={(el) => (stageEl = el)}
+            class="home-mech-stage"
+            data-dir={props.dir}
+            onPointerDown={onStagePointerDown}
+            onPointerMove={onStagePointerMove}
+            onPointerUp={onStagePointerEnd}
+            onPointerCancel={resetSwipe}
+          >
             <HairlineFrame spec={fig.frame} ref={(el) => (reticleSvg = el)} onVernier={(el) => (vernierArc = el)}>
               {fig.ExtraHairline?.()}
             </HairlineFrame>
@@ -332,6 +394,12 @@ export const HomeMechanism = (props: {
 
       {/* Subtle hairline telemetry + Web Audio sound toggle + WCAG 2.2.2 pause/play control */}
       <div class="home-mech-bar">
+        <Show when={props.total > 1}>
+          <span class="home-mech-index" aria-hidden="true">
+            {counterText()}
+          </span>
+          <span class="home-mech-sep" aria-hidden="true" />
+        </Show>
         <span class="home-mech-readout" ref={(el) => (readoutEl = el)} aria-hidden="true">
           000.0° · 1.00×
         </span>

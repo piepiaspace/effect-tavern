@@ -130,16 +130,33 @@ void (async () => {
   try {
     await quiet()
 
-    // 1. Finalized rosette-04 interactive mechanism, no dev brand picker, empty-shelf onboarding visible, auto-focused on desktop.
+    // 1. Finalized rosette-04 interactive mechanism, figure switcher, no dev brand picker, empty-shelf onboarding visible, auto-focused on desktop.
     check(!document.querySelector(".home-Direction-picker"), "dev brand picker should be removed")
-    const emblem = document.querySelector<SVGSVGElement>(".home-emblem")
+    const emblem = () => document.querySelector<SVGSVGElement>(".home-emblem")
     check(
-      emblem?.getAttribute("data-brand") === "projector-rosette-04" &&
-        emblem.querySelector("#upper-five-spoke-wheel") !== null &&
-        emblem.querySelector("#four-spoke-center-reel") !== null &&
-        emblem.querySelector("#lower-five-spoke-wheel") !== null,
+      emblem()?.getAttribute("data-brand") === "projector-rosette-04" &&
+        emblem()?.querySelector("#upper-five-spoke-wheel") !== null &&
+        emblem()?.querySelector("#four-spoke-center-reel") !== null &&
+        emblem()?.querySelector("#lower-five-spoke-wheel") !== null,
       "interactive rosette-04 mechanism should render with coupled wheel assemblies",
     )
+    const nextFig = document.querySelector<HTMLButtonElement>(".home-nav-next")
+    const prevFig = document.querySelector<HTMLButtonElement>(".home-nav-prev")
+    check(nextFig !== null && prevFig !== null, "figure switcher buttons should render on desktop")
+    if (nextFig && prevFig) {
+      nextFig.click()
+      await quiet()
+      check(
+        emblem()?.getAttribute("data-brand") === "cinema-astrolabe-01",
+        "clicking next figure switches to cinema-astrolabe-01",
+      )
+      prevFig.click()
+      await quiet()
+      check(
+        emblem()?.getAttribute("data-brand") === "projector-rosette-04",
+        "clicking prev figure switches back to projector-rosette-04",
+      )
+    }
     const soundToggle = document.querySelector<HTMLButtonElement>(".home-mech-sound")
     check(soundToggle !== null, "mechanical sound toggle should render")
     if (soundToggle) {
