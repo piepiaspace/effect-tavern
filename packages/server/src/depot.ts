@@ -12,6 +12,8 @@
 // pull over the card, asked for by the player; nothing here checks or fetches on its own.
 // The registry (`depots`) is the install's list of locations (data.ts `depot`). A directory is named from the CLI
 // only: the wire takes https alone, so a browser never points the server at a path.
+import { sha1 } from "@noble/hashes/legacy.js"
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js"
 import {
   CARD_BYTES,
   type CardRow,
@@ -144,7 +146,7 @@ export const depots = ({ data, shelf, fetch }: { data: Data; shelf: Shelf; fetch
             throw new Refused("depot-is-card", `${at} is a card, not a card library`)
           throw e
         })
-      const r = { id: new Bun.CryptoHasher("sha1").update(at).digest("hex").slice(0, 10), name, location: at }
+      const r = { id: bytesToHex(sha1(utf8ToBytes(at))).slice(0, 10), name, location: at }
       data.depots.put(r)
       return r
     },

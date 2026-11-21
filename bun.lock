@@ -83,6 +83,7 @@
         "@effect-tavern/provider": "workspace:*",
         "@effect-tavern/runtime": "workspace:*",
         "@effect/platform-bun": "4.1.4",
+        "@noble/hashes": "2.4.0",
         "effect": "4.1.4",
       },
       "devDependencies": {

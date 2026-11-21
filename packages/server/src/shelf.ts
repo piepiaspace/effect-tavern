@@ -13,6 +13,8 @@
 // from its first save on. A save names the revision it was written from: the workshop holds a card while its author
 // types, and a card that changed under it meanwhile (an install from a terminal, another window) is `card-changed`,
 // never overwritten by a page that has not seen it.
+import { sha1 } from "@noble/hashes/legacy.js"
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js"
 import { validateCard } from "@effect-tavern/runtime/src/author.ts"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
 import { FREE_CHAT_ID, type CardRow, type Origin } from "@effect-tavern/runtime/src/library.ts"
@@ -71,8 +73,7 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
     return card
   }
   /** A card's revision: a digest of it as stored, so it moves with every write and with nothing else. */
-  const rev = (id: string): string =>
-    new Bun.CryptoHasher("sha1").update(JSON.stringify(data.cards.get(id))).digest("hex")
+  const rev = (id: string): string => bytesToHex(sha1(utf8ToBytes(JSON.stringify(data.cards.get(id)))))
   const put = (card: Card, origin: Origin): CardRow => {
     data.cards.put(card, facets(card), origin)
     changed(card.id)
