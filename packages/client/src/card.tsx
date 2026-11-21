@@ -192,6 +192,7 @@ export const CardPage = () => {
                     <Clue aria-hidden="true" />
                     <input
                       type="search"
+                      enterkeyhint="search"
                       placeholder={t("card.searchOpenings")}
                       aria-label={t("card.searchOpenings")}
                       value={oq()}
@@ -287,6 +288,7 @@ export const CardPage = () => {
                           <Clue aria-hidden="true" />
                           <input
                             type="search"
+                            enterkeyhint="search"
                             placeholder={t("card.searchOpenings")}
                             aria-label={t("card.searchOpenings")}
                             value={oq()}

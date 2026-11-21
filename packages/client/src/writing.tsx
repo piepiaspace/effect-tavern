@@ -68,6 +68,7 @@ const UserChip = (props: { cardId: string; unfilled: boolean }) => {
         when={persona()}
         fallback={
           <input
+            enterkeyhint="done"
             value={view()?.local.names?.user ?? view()?.layer.names.user ?? ""}
             placeholder={t("packs.unfilled")}
             aria-label="user"
@@ -207,6 +208,7 @@ export const WritingPage = () => {
                       <label class="name-chip" data-unfilled={layer()?.holes.includes(k()) ? "true" : "false"}>
                         <span class="hole-key mono">{`{{${k()}}}`}</span>
                         <input
+                          enterkeyhint="done"
                           value={loc()?.names?.[k()] ?? layer()?.names[k()] ?? ""}
                           placeholder={t("packs.unfilled")}
                           aria-label={k()}

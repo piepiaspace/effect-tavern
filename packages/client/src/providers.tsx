@@ -161,6 +161,7 @@ export const Providers = (props: Pane) => {
             <Clue aria-hidden="true" />
             <input
               type="search"
+              enterkeyhint="search"
               placeholder={t("providers.searchProviders")}
               value={search()}
               onInput={(e) => setSearch(e.currentTarget.value)}
@@ -308,6 +309,9 @@ const DecisionDetail = (props: { onBack: () => void; onVault: () => void }) => {
                 type="text"
                 class="mono"
                 autocomplete="off"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
                 value={c().model}
                 placeholder={DRIVERS[c().driver].model}
                 aria-label={t("decision.model")}
@@ -344,6 +348,10 @@ const DecisionDetail = (props: { onBack: () => void; onVault: () => void }) => {
           <div class="input-box">
             <input
               type="url"
+              inputmode="url"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
               class="mono"
               value={c().url ?? ""}
               placeholder={DRIVERS[c().driver].url}
@@ -379,6 +387,10 @@ const DecisionDetail = (props: { onBack: () => void; onVault: () => void }) => {
             <div class="input-box sm">
               <input
                 type="url"
+                inputmode="url"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
                 class="mono"
                 placeholder="http://127.0.0.1:7890"
                 aria-label={t("providers.proxyUrl")}
@@ -553,6 +565,10 @@ const ProviderDetail = (props: { id: string; onBack: () => void; onVault: () => 
                     type={reveal() ? "text" : "password"}
                     class="mono"
                     autocomplete="off"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    enterkeyhint="done"
                     value={shownKey(x())}
                     placeholder={vault().find((s) => s.id === x().secret)?.hint ?? t("providers.keyPlaceholder")}
                     aria-label={t("providers.apiKey")}
@@ -625,6 +641,10 @@ const ProviderDetail = (props: { id: string; onBack: () => void; onVault: () => 
                 <div class="input-box grow">
                   <input
                     type="url"
+                    inputmode="url"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
                     class="mono"
                     value={x().endpoints[x().defaultFormat]?.url ?? ""}
                     placeholder="https://api.example.com"
@@ -661,6 +681,7 @@ const ProviderDetail = (props: { id: string; onBack: () => void; onVault: () => 
                   <Clue aria-hidden="true" />
                   <input
                     type="search"
+                    enterkeyhint="search"
                     placeholder={t("providers.searchModels")}
                     aria-label={t("providers.searchModelsLabel")}
                     value={mq()}
@@ -865,6 +886,10 @@ const RequestDrawer = (props: { id: string; ready: () => Promise<void>; onClose:
                   <div class="input-box">
                     <input
                       type="url"
+                      inputmode="url"
+                      autocapitalize="none"
+                      autocorrect="off"
+                      spellcheck="false"
                       class="mono"
                       value={d().endpoints[f()].url}
                       placeholder={t("providers.baseUrlExample")}
@@ -916,6 +941,10 @@ const RequestDrawer = (props: { id: string; ready: () => Promise<void>; onClose:
                 <div class="input-box sm">
                   <input
                     type="url"
+                    inputmode="url"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
                     class="mono"
                     placeholder="http://127.0.0.1:7890"
                     aria-label={t("providers.proxyUrl")}
@@ -936,6 +965,9 @@ const RequestDrawer = (props: { id: string; ready: () => Promise<void>; onClose:
                         <input
                           type="text"
                           class="mono"
+                          autocapitalize="none"
+                          autocorrect="off"
+                          spellcheck="false"
                           placeholder={t("providers.headerName")}
                           aria-label={t("providers.headerNameLabel")}
                           value={h()[0]}
@@ -949,6 +981,9 @@ const RequestDrawer = (props: { id: string; ready: () => Promise<void>; onClose:
                         <input
                           type="text"
                           class="mono"
+                          autocapitalize="none"
+                          autocorrect="off"
+                          spellcheck="false"
                           placeholder={t("providers.headerValue")}
                           aria-label={t("providers.headerValueLabel")}
                           value={h()[1]}
@@ -1045,6 +1080,7 @@ const SyncDrawer = (props: { id: string; ready: () => Promise<void>; onClose: ()
               <Clue aria-hidden="true" />
               <input
                 type="search"
+                enterkeyhint="search"
                 placeholder={t("providers.searchModels")}
                 aria-label={t("providers.searchModelsLabel")}
                 value={q()}
@@ -1194,6 +1230,9 @@ const AddProviderDialog = (props: { opener: Opener<undefined>; onAdded: (id: str
                 class="field mono"
                 type="password"
                 autocomplete="off"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
                 placeholder={t("providers.enterKey")}
                 value={draft().key}
                 onInput={(e) => {
@@ -1224,6 +1263,10 @@ const AddProviderDialog = (props: { opener: Opener<undefined>; onAdded: (id: str
                   <input
                     class="field mono"
                     type="url"
+                    inputmode="url"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
                     placeholder={t("providers.baseUrlOf", { url: BASE_URL[f()] })}
                     aria-label={t("providers.urlOf", { name: FORMAT[f()] })}
                     value={draft().urls[f()] ?? ""}

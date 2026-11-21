@@ -262,6 +262,7 @@ export const Packs = (props: Pane) => {
                           <label class="name-chip">
                             <span class="hole-key mono">{`{{${k()}}}`}</span>
                             <input
+                              enterkeyhint="done"
                               value={p().names?.[k()] ?? ""}
                               placeholder={t("packs.defaultValue")}
                               aria-label={k()}
@@ -561,6 +562,7 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
             <Clue aria-hidden="true" />
             <input
               type="search"
+              enterkeyhint="search"
               placeholder={t("writing.searchEntries")}
               aria-label={t("writing.searchEntriesLabel")}
               value={q()}
@@ -598,6 +600,10 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                 <div class="frag-bar">
                   <input
                     class="field sm mono"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    enterkeyhint="done"
                     placeholder={t("writing.name")}
                     aria-label={t("writing.name")}
                     value={d().id}
@@ -633,6 +639,10 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                 <div class="frag-bar">
                   <input
                     class="field sm mono"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    enterkeyhint="done"
                     aria-label={t("writing.name")}
                     value={x().e.id}
                     onChange={(e) => updateEntry(x().i, { id: e.currentTarget.value })}
@@ -782,6 +792,7 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
           <Clue aria-hidden="true" />
           <input
             type="search"
+            enterkeyhint="search"
             placeholder={t("writing.searchEntries")}
             aria-label={t("writing.searchLexicon")}
             value={q()}
@@ -859,6 +870,10 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
                 >
                   <input
                     class="field"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    enterkeyhint="done"
                     placeholder={t("writing.patternPlaceholder")}
                     aria-label={t("writing.pattern")}
                     value={d().pattern}
@@ -868,6 +883,7 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
                   />
                   <input
                     class="field"
+                    enterkeyhint="done"
                     placeholder={t("writing.hintPlaceholder")}
                     aria-label={t("writing.hint")}
                     value={d().hint}
@@ -890,6 +906,10 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
                 <div class="lex-row">
                   <input
                     class="field"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    enterkeyhint="done"
                     aria-label={t("writing.pattern")}
                     value={x().e.pattern}
                     onChange={(e) => edit(x().i, { pattern: e.currentTarget.value })}
@@ -897,6 +917,7 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
                   />
                   <input
                     class="field"
+                    enterkeyhint="done"
                     placeholder={t("writing.hintPlaceholder")}
                     aria-label={t("writing.hint")}
                     value={x().e.hint ?? ""}
@@ -1311,6 +1332,9 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
                     <span>{e().draft.between ? t("writing.beforeCaret") : t("writing.insertText")}</span>
                     <input
                       class="field mono"
+                      autocapitalize="none"
+                      autocorrect="off"
+                      spellcheck="false"
                       placeholder={e().draft.between ? t("writing.exampleOpenQuote") : t("writing.exampleEllipsis")}
                       value={e().draft.text}
                       onInput={(ev) => patch({ text: ev.currentTarget.value })}
@@ -1321,6 +1345,9 @@ const InputsTab = (props: { pack: Layer; onSave: Save }) => {
                       <span>{t("writing.afterCaret")}</span>
                       <input
                         class="field mono"
+                        autocapitalize="none"
+                        autocorrect="off"
+                        spellcheck="false"
                         placeholder={t("writing.exampleCloseQuote")}
                         value={e().draft.after}
                         onInput={(ev) => patch({ after: ev.currentTarget.value })}

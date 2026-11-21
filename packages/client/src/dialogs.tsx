@@ -141,6 +141,7 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
         <form method="dialog" onSubmit={commitRename}>
           <input
             class="field"
+            enterkeyhint="done"
             value={renaming()?.title ?? ""}
             ref={(el) => {
               name = el
@@ -250,6 +251,7 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
                     >
                       <input
                         class="field"
+                        enterkeyhint="done"
                         value={row()[0]}
                         size={Math.max(row()[0].length + 2, 4)}
                         aria-label={t("tags.rename")}

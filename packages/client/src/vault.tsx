@@ -70,6 +70,10 @@ export const VaultDrawer = (props: { for: string | undefined; onClose: () => voi
                 type="password"
                 class="mono"
                 autocomplete="off"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="done"
                 placeholder={t("vault.key")}
                 aria-label={t("vault.key")}
                 value={draft().value}
@@ -101,6 +105,7 @@ export const VaultDrawer = (props: { for: string | undefined; onClose: () => voi
                   <div class="input-box sm grow">
                     <input
                       type="text"
+                      enterkeyhint="done"
                       value={s().name}
                       aria-label={t("vault.keyName")}
                       onChange={(e) => {
