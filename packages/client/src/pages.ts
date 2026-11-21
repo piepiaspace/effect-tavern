@@ -65,6 +65,12 @@ export const close = (): void => {
   const { under } = tab()
   if (!under.length) return toReader()
   const to = under.at(-1)!
+  if (typeof to === "object" && "story" in to) {
+    const story = registry.get(stories)?.stories.some((row) => row.id === to.story) ? to.story : null
+    edit({ page: to.page, card: to.card, story, under: under.slice(0, -1) })
+    void navigate(restoreReading)
+    return
+  }
   if (to === "home") return void toHome()
   edit({ page: to, under: under.slice(0, -1) })
 }
@@ -108,7 +114,7 @@ export const toReader = (): void => {
   const cur = registry.get(stories)?.stories.find((s) => s.id === t.story) // the tab can change before its reads finish
   if (t.story === null || !cur) return
   // its view was the card's default's (showCard), or the card was written under it (the workshop's manuscript)
-  const browsed = (p: Page) => p === "card" || p === "manuscript"
+  const browsed = (p: Tab["under"][number]) => p === "card" || p === "manuscript"
   const fromCard = browsed(t.page) || t.under.some(browsed)
   edit({ page: "reader", under: [], card: cur.card })
   void navigate(async (valid) => {
@@ -269,6 +275,30 @@ export const openStory = (id: number): Promise<void> =>
     await reading.activate(id) // its own PUT answers the listing
     if (valid()) await arrive(valid)
   })
+/** Bring the reading slots back in line with the current tab after a source jump or its cancellation. */
+const restoreReading = async (valid: () => boolean): Promise<void> => {
+  const dest = tab()
+  await reading.activate(dest.story)
+  if (valid() && (registry.get(card)?.id !== dest.card || wire.begun(dest))) await wire.fetchTabCard(dest, valid)
+}
+
+/** Open a story source over its preview, retaining the original tab's story and card in the return stack. */
+export const openStoryPage = async (id: number, page: "timeline" | { inspect: number }): Promise<void> => {
+  const origin = tab()
+  if (origin.story === id) return open(page)
+  await navigate(async (valid) => {
+    await reading.activate(id)
+    if (!valid()) return
+    const dest = current()
+    if (tab() !== origin || dest?.id !== id) return restoreReading(valid)
+    edit({
+      story: id,
+      card: dest.card,
+      page: typeof page === "object" && !registry.get(log).nodes.has(page.inspect) ? "timeline" : page,
+      under: [...origin.under, { page: "prompt-tree", story: origin.story, card: origin.card }],
+    })
+  })
+}
 /** False means the player left while creation was pending: its caller must not greet another story. */
 export const newStory = async (card: string): Promise<boolean> => {
   let landed = false

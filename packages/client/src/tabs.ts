@@ -196,8 +196,18 @@ const PAGES = new Set([
 const isPage = (p: unknown): p is Page =>
   (typeof p === "string" && PAGES.has(p)) ||
   (typeof p === "object" && p !== null && typeof (p as { inspect?: unknown }).inspect === "number")
-const stackOf = (u: unknown, allowHome: boolean): Page[] =>
-  Array.isArray(u) ? u.filter((p): p is Page => isPage(p) && p !== "reader" && (allowHome || p !== "home")) : []
+const stackOf = (u: unknown, allowHome: boolean): Tab["under"] => {
+  if (!Array.isArray(u)) return []
+  const stack: Tab["under"] = u.filter((p) => {
+    if (isPage(p)) return p !== "reader"
+    return p?.page === "prompt-tree" && (p.story === null || typeof p.story === "number") &&
+      (p.card === null || typeof p.card === "string")
+  })
+  // A source opened from a story-less preview can have Home underneath it.
+  return allowHome || stack.some((p) => typeof p === "object" && "story" in p && p.story === null)
+    ? stack
+    : stack.filter((p) => p !== "home")
+}
 
 /** The list as the device hands it back: a story the listing does not name, or a story-less tab on a card the shelf
  *  does not have, is dropped; eight at most; the active one by index, the first when it was dropped. Each tab keeps
@@ -244,7 +254,7 @@ export const restore = (
           list.push({ id, story: null, card: null, page: "home", under: [] })
         } else {
           const rawUnder = stackOf(x.under, true)
-          const under: Page[] = rawUnder[0] === "home" ? rawUnder : page === "card" ? ["home"] : ["home", "card"]
+          const under: Tab["under"] = rawUnder[0] === "home" ? rawUnder : page === "card" ? ["home"] : ["home", "card"]
           list.push({ id, story: null, card: x.card as string, page, under })
         }
       } else return

@@ -760,6 +760,7 @@ const en: Dict = {
     inputPlaceholder: "Type a test line to preview the next request…",
     notePlaceholder: "Director note (optional)…",
     events: "Simulated events",
+    eventPlaceholder: "Type event name and press Enter…",
     storySelect: "Story",
     branchNode: "Branch node (preview next narrate after this node)",
     beforeFirstTurn: "Before first turn (empty history)",

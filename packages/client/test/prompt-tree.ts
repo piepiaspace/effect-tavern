@@ -100,6 +100,16 @@ const sample = "你好，世界！Hello"
 assert.equal(sliceSpanText(sample, { start: 0, end: 6 }), "你好，世界！")
 assert.equal(sliceSpanText(sample, { start: 6, end: 11 }), "Hello")
 
+// 6. Clearing candidateCard / candidateHat drops stale candidate from subsequent preview request
+patchPromptTreeMemory(10, { candidateHat: undefined, events: ["试探:对质"] })
+const reqAfterClear = buildPreviewRequest(getPromptTreeMemory(10)!)
+assert.equal(reqAfterClear.candidateHat, undefined)
+assert.equal(reqAfterClear.hatId, draftHat.id)
+assert.deepEqual(reqAfterClear.events, ["试探:对质"])
+assert.equal(buildPreviewRequest(patchPromptTreeMemory(10, { mode: "story", storyId: 1 })).hatId, draftHat.id)
+openPromptTree()
+assert.equal(buildPreviewRequest(getPromptTreeMemory(10)!).hatId, undefined)
+
 clearPromptTreeMemory(10)
 assert.equal(getPromptTreeMemory(10), undefined)
 console.log("prompt-tree ok")

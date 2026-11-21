@@ -759,6 +759,7 @@ const zh = {
     inputPlaceholder: "输入一句台词预览下一次请求…",
     notePlaceholder: "场外指导（可选）…",
     events: "模拟触发事件",
+    eventPlaceholder: "输入事件名后按回车添加…",
     storySelect: "选择故事",
     branchNode: "分支节点（预览该节点之后的下一次请求）",
     beforeFirstTurn: "起点之前（无历史）",

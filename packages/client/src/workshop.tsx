@@ -14,7 +14,7 @@
 // untouched (manuscript.ts `cardOf`).
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import type { JSX } from "@solidjs/web"
-import { createEffect, createSignal, For, onSettled, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { ask, Confirm, dialogHandle, Modal } from "./controls.tsx"
 import { Back, Plus, Stack, Trash } from "./icons.tsx"
@@ -70,6 +70,11 @@ const desk = (
   let paused = false // paused for read-only Prompt Tree preview: do not flush or write on unmount
   let running = 0 // saves queued or under way
   const told = () => busy(timer !== undefined || running > 0)
+  // If restored from a paused Prompt Tree preview with unsaved edits, re-arm autosave so changes aren't stranded.
+  if (initial && !same(cardOf(read, manuscript), shelf)) {
+    timer = setTimeout(() => void save(), DELAY)
+    told()
+  }
   /** Now, not after the delay; true when the shelf holds what the page shows. `last`: on the way out of the window. */
   const save = (last = false): Promise<boolean> => {
     clearTimeout(timer)
@@ -128,12 +133,17 @@ const desk = (
       } while (edited !== manuscript)
       return true
     },
-    /** Pauses autosave so navigating to Prompt Tree never triggers PUT /cards/:id/whole. */
-    pause: () => {
-      paused = true
+    /** Wait for the shelf revision. An edit, a new save, or leaving the desk cancels this handoff. */
+    async preview(current: () => boolean, open: () => void) {
+      const draft = manuscript
+      const saving = queue
       clearTimeout(timer)
       timer = undefined
       told()
+      await saving
+      if (!current() || manuscript !== draft || queue !== saving) return
+      paused = true
+      open()
     },
     /** The page's text given up: what is on the shelf stands, and a save still waiting writes nothing. */
     letGo: () => {
@@ -242,6 +252,8 @@ const EMPTY: Manuscript = { title: "", summary: "", chapters: [], openings: [], 
 
 export const ManuscriptPage = () => {
   const at = read(focus)
+  const strip = read(tabs)
+  const activeId = createMemo(() => strip().active)
   // the card on the desk, once read: `desk` is none when the shelf has no such card to read
   const [opened, setOpened] = createSignal<{ id: string; desk: Desk | null } | null>(null)
   const [manuscript, setManuscript] = createSignal<Manuscript>(EMPTY)
@@ -250,12 +262,11 @@ export const ManuscriptPage = () => {
   const [reads, setReads] = createSignal(0) // moved to read the card again (the notice's way out)
   // the page is on a card (the tab's): read it whole; leaving it, for another card or another page, saves what is left
   createEffect(
-    () => [at(), reads()] as const,
-    ([id]) => {
+    () => [at(), activeId(), reads()] as const,
+    ([id, tabId]) => {
       if (id === null) return
       let left = false
       let mine: Desk | undefined
-      const tabId = activeOf(registry.get(tabs)).id
       const stashed = takeManuscriptStash(tabId, id)
       if (stashed) {
         mine = desk(
@@ -360,21 +371,25 @@ export const ManuscriptPage = () => {
     setOpened(null)
     setReads((n) => n + 1)
   }
-  /** Preview unsaved manuscript in Prompt Tree without saving to the shelf (0 PUT /cards/:id/whole). */
-  const preview = () => {
+  /** Preview unsaved manuscript in Prompt Tree without saving to the shelf (0 new PUT /cards/:id/whole). */
+  const preview = async () => {
     const o = here()
     if (!o?.desk) return
     const d = o.desk
-    d.pause()
-    const tabId = activeOf(registry.get(tabs)).id
-    stashManuscript(tabId, {
-      cardId: o.id,
-      read: d.read,
-      shelf: d.shelf(),
-      rev: d.rev(),
-      manuscript: d.manuscript(),
-    })
-    openPromptTree({ cardId: o.id, candidateCard: cardOf(d.read, d.manuscript()) })
+    const origin = activeOf(registry.get(tabs))
+    await d.preview(
+      () => here() === o && activeOf(registry.get(tabs)) === origin,
+      () => {
+        stashManuscript(origin.id, {
+          cardId: o.id,
+          read: d.read,
+          shelf: d.shelf(),
+          rev: d.rev(),
+          manuscript: d.manuscript(),
+        })
+        openPromptTree({ cardId: o.id, candidateCard: cardOf(d.read, d.manuscript()) })
+      },
+    )
   }
   const notice = () => {
     const s = standing()
@@ -391,7 +406,7 @@ export const ManuscriptPage = () => {
           <span class="workshop-standing" role="status" aria-busy={busy() ? "true" : "false"}>
             {standing().is === "saving" ? t("workshop.saving") : standing().is === "saved" ? t("workshop.saved") : ""}
           </span>
-          <button type="button" class="btn" disabled={!here()?.desk} onClick={preview}>
+          <button type="button" class="btn" disabled={!here()?.desk} onClick={() => void preview()}>
             <Stack aria-hidden="true" />
             <span>{t("promptTree.preview")}</span>
           </button>

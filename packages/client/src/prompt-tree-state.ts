@@ -23,6 +23,7 @@ export interface PromptTreeMemory {
   nodeId?: number | null
   candidateCard?: Card
   candidateHat?: Hat
+  hatId?: string
   selectedKey: string | null
   expandedMessages: number[]
   showOmitted: boolean
@@ -150,6 +151,7 @@ export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
     mode,
     candidateCard: opts.candidateCard,
     candidateHat: opts.candidateHat,
+    hatId: opts.candidateHat?.id,
     storyId: opts.storyId ?? base.storyId ?? activeStory?.id,
     nodeId: opts.nodeId !== undefined ? opts.nodeId : base.nodeId,
   }
@@ -168,12 +170,13 @@ export const buildPreviewRequest = (mem: PromptTreeMemory): PreviewRequest => {
       }
     : undefined
 
+  const hat = mem.candidateHat ? { candidateHat: mem.candidateHat } : { hatId: mem.hatId }
   if (mem.mode === "story" && mem.storyId !== undefined) {
     return {
       mode: "story",
       storyId: mem.storyId,
       ...(mem.nodeId !== undefined ? { nodeId: mem.nodeId } : {}),
-      ...(mem.candidateHat ? { candidateHat: mem.candidateHat } : {}),
+      ...hat,
       ...(input ? { input } : {}),
       ...(mem.assumedReads.length ? { assumedReads: mem.assumedReads } : {}),
     }
@@ -188,7 +191,7 @@ export const buildPreviewRequest = (mem: PromptTreeMemory): PreviewRequest => {
     mode: "sandbox",
     ...(mem.cardId ? { cardId: mem.cardId } : {}),
     ...(mem.candidateCard ? { candidateCard: mem.candidateCard } : {}),
-    ...(mem.candidateHat ? { candidateHat: mem.candidateHat } : {}),
+    ...hat,
     ...(mem.greetingIndex !== undefined ? { greetingIndex: mem.greetingIndex } : {}),
     ...(Object.keys(fields).length ? { fields } : {}),
     ...(mem.events.length ? { events: mem.events } : {}),

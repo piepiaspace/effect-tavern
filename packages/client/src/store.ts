@@ -174,6 +174,8 @@ export type Page =
   | "status"
   | "prompt-tree"
   | { inspect: Id }
+/** A preview can inspect a different story on the same tab. Back restores the address the preview covered. */
+export type PromptReturn = { page: "prompt-tree"; story: Id | null; card: string | null }
 /** A tab on the top strip (docs/shell-brief-2.md, #123): an address, not data. The story it reads (none: a card's
  *  page, home), the card it is on (its story's card when it has one), its page and the pages under it, and the
  *  reader's scroll as it was left. Every tab reads the one Reading in the slots (reading.ts); tabs.ts is the one
@@ -183,7 +185,7 @@ export interface Tab {
   story: Id | null
   card: string | null
   page: Page
-  under: Page[]
+  under: (Page | PromptReturn)[]
   scroll?: number
 }
 export type Tabs = { list: readonly Tab[]; active: number }

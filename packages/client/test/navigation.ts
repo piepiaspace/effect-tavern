@@ -1,6 +1,6 @@
 // Delay real wire reads across page/tab entry points; stale completions must not claim another destination.
 import assert from "node:assert/strict"
-import { newStory, open, openStory, showCard, toHome } from "../src/pages.ts"
+import { close, newStory, open, openStory, openStoryPage, showCard, toHome } from "../src/pages.ts"
 import { activeOf, card, log, page, registry, stories, tabs, type CardView, type StoryRow } from "../src/store.ts"
 import { add, select } from "../src/tabs.ts"
 import { fetchCardOf } from "../src/wire.ts"
@@ -91,6 +91,27 @@ const back = select(first)
 gate.release()
 await Promise.all([otherStory, away, back])
 assert.deepEqual([at().story, registry.get(stories)?.current, registry.get(card)?.id], [1, 1, "c1"])
+
+// Following a preview source keeps its original story, browsed card and page stack for Back.
+await showCard("browse")
+open("prompt-tree")
+const preview = at()
+await openStoryPage(2, { inspect: 2 })
+assert.deepEqual([at().story, at().page, registry.get(stories)?.current], [2, { inspect: 2 }, 2])
+close()
+await select(first) // the active tab waits for its queued reads
+assert.deepEqual(at(), preview)
+assert.deepEqual([registry.get(stories)?.current, registry.get(card)?.id], [1, "browse"])
+
+gate = hold("/api/stories/2")
+const source = openStoryPage(2, "timeline")
+await gate.seen
+const switchTab = add()
+gate.release()
+await Promise.all([source, switchTab])
+assert.deepEqual([at().page, at().story], ["home", null])
+await select(first)
+assert.deepEqual([at().page, at().story], ["prompt-tree", 1])
 
 // Browsing a card while a story opens preserves the tab's original story and restores its Reading.
 gate = hold("/api/stories/2")

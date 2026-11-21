@@ -12,7 +12,7 @@ import { Menu, Switch } from "./controls.tsx"
 import { Family } from "./family.tsx"
 import { Back, EyeOff, Fold, Minus, Next, Plugs, Plus, Swipe, Warning } from "./icons.tsx"
 import { t } from "./i18n.ts"
-import { close, editCard, open } from "./pages.ts"
+import { close, editCard, openStoryPage } from "./pages.ts"
 import {
   buildPreviewRequest,
   defaultMemory,
@@ -184,8 +184,15 @@ export const PromptTreePage = () => {
   )
 
   const result = createMemo<PreviewNarrateResult | null>(() => {
+    if (errMsg() !== null) return null
     const { key } = requestEntry()
-    return previewCache.get(key) ?? fetched()?.value ?? null
+    const last = fetched()
+    return last?.key === key ? last.value : previewCache.get(key) ?? null
+  })
+  // Keep the current card's field inputs mounted while typing. Only the outline needs the exact request.
+  const sandboxControls = createMemo(() => {
+    const r = result() ?? fetched()?.value
+    return r?.mode === "sandbox" && r.card.id === mem().cardId ? r.sandbox : undefined
   })
 
   createEffect(
@@ -199,6 +206,7 @@ export const PromptTreePage = () => {
         return
       }
       const ac = new AbortController()
+      if (untrack(errMsg) !== null) setErrMsg(null)
       setLoading(true)
       const run = () => {
         void fetchPreview(body, ac.signal).then(
@@ -241,26 +249,30 @@ export const PromptTreePage = () => {
   }
 
   const resolveDest = (source: SourceRef) => {
-    const cid = mem().cardId
+    const m = mem()
+    const cid = m.cardId
     return sourceDestination(source, {
       cardId: cid,
       isFreeChatCard: isFreeChat(cid, shelf()),
-      hasStory: tab().story !== null,
-      hasNode: (nodeId) => activeLog().nodes.has(nodeId),
+      hasStory: m.mode === "story" && m.storyId !== undefined,
+      hasNode: (nodeId) => storyNodes().some((n) => n.id === nodeId),
     })
   }
 
   const jumpTo = (source: SourceRef) => {
     const dest = resolveDest(source)
     if (!dest.ok || !dest.target) return
+    const m = mem()
     switch (dest.target.kind) {
       case "workshop":
+        if (m.candidateCard) update({ candidateCard: undefined })
         void editCard(dest.target.cardId)
         break
       case "pack":
         openSettings("packs", dest.target.packId)
         break
       case "hat":
+        if (m.candidateHat) update({ candidateHat: undefined })
         openSettings("templates", dest.target.hatId)
         break
       case "persona":
@@ -270,10 +282,9 @@ export const PromptTreePage = () => {
         openWriting()
         break
       case "inspect":
-        open({ inspect: dest.target.nodeId })
-        break
       case "timeline":
-        open("timeline")
+        if (m.storyId !== undefined)
+          void openStoryPage(m.storyId, dest.target.kind === "timeline" ? "timeline" : { inspect: dest.target.nodeId })
         break
     }
   }
@@ -345,14 +356,20 @@ export const PromptTreePage = () => {
   }
 
   const modifiedFieldCount = () => {
-    const r = result()
-    if (!r) return 0
-    return r.sandbox.fields.filter((f) => f.value !== f.initial).length
+    return sandboxControls()?.fields.filter((f) => f.value !== f.initial).length ?? 0
   }
 
   const sampleCards = createMemo(() => characterCards(shelf()))
 
   const [selectedOmitted, setSelectedOmitted] = createSignal<string | null>(null)
+  const [eventDraft, setEventDraft] = createSignal("")
+  const [eventsOpen, setEventsOpen] = createSignal(false)
+  const addCustomEvent = () => {
+    const ev = eventDraft().trim()
+    if (!ev) return
+    if (!mem().events.includes(ev)) update({ events: [...mem().events, ev] })
+    setEventDraft("")
+  }
 
   return (
     <div class="status-page pt-page" data-pane={pane()}>
@@ -448,6 +465,9 @@ export const PromptTreePage = () => {
 
       <div class="pt-body">
         <section class="pt-main scroller" aria-label={t("promptTree.paneOutline")}>
+          <Show when={loading()}>
+            <span class="pt-meta-item muted" role="status">{t("promptTree.updating")}</span>
+          </Show>
           <Show when={errMsg()}>
             {(msg) => (
               <div class="pt-alert bad" role="alert">
@@ -480,9 +500,6 @@ export const PromptTreePage = () => {
                         ? t("promptTree.upstreamSimulated", { n: r().upstream.lookup.assumedReads.length })
                         : t("promptTree.upstreamSkipped")}
                     </span>
-                  </Show>
-                  <Show when={loading()}>
-                    <span class="pt-meta-item muted">{t("promptTree.updating")}</span>
                   </Show>
                   <span class="rv-spacer" />
                   <Show when={r().traces.length > 0}>
@@ -651,7 +668,7 @@ export const PromptTreePage = () => {
                                 </Show>
                               </div>
                               <div class="pt-res-actions">
-                                <Show when={res().modelSelectable}>
+                                <Show when={res().modelSelectable || mem().assumedReads.includes(res().resourceId)}>
                                   <label class="pt-check">
                                     <input
                                       type="checkbox"
@@ -661,7 +678,7 @@ export const PromptTreePage = () => {
                                     <span>{t("promptTree.simulateModelRead")}</span>
                                   </label>
                                 </Show>
-                                <Show when={res().playerSelectable}>
+                                <Show when={res().playerSelectable || mem().inputInvoke.includes(res().resourceId)}>
                                   <label class="pt-check">
                                     <input
                                       type="checkbox"
@@ -676,17 +693,19 @@ export const PromptTreePage = () => {
                                 <div class="pt-res-sections">
                                   <For each={res().sections} keyed={(s) => s.resourceId}>
                                     {(sec) => (
-                                      <label class="pt-check sm">
-                                        <input
-                                          type="checkbox"
-                                          checked={mem().assumedReads.includes(sec().resourceId)}
-                                          onChange={() => toggleAssumedRead(sec().resourceId)}
-                                        />
-                                        <span>{sec().title}</span>
-                                        <Show when={sec().resident}>
-                                          <span class="pt-badge mono">{t("promptTree.resWindow")}</span>
-                                        </Show>
-                                      </label>
+                                      <Show when={sec().inCatalog || mem().assumedReads.includes(sec().resourceId)}>
+                                        <label class="pt-check sm">
+                                          <input
+                                            type="checkbox"
+                                            checked={mem().assumedReads.includes(sec().resourceId)}
+                                            onChange={() => toggleAssumedRead(sec().resourceId)}
+                                          />
+                                          <span>{sec().title}</span>
+                                          <Show when={sec().resident}>
+                                            <span class="pt-badge mono">{t("promptTree.resWindow")}</span>
+                                          </Show>
+                                        </label>
+                                      </Show>
                                     )}
                                   </For>
                                 </div>
@@ -698,6 +717,58 @@ export const PromptTreePage = () => {
                     </Show>
                   </div>
                 </details>
+
+                {/* Secondary section 3: Sandbox events (collapsed by default, supports custom readout events) */}
+                <Show when={r().mode === "sandbox"}>
+                  <details class="pt-fold" open={eventsOpen()} onToggle={(e) => setEventsOpen(e.currentTarget.open)}>
+                    <summary>
+                      <Next class="pt-chev" aria-hidden="true" />
+                      <span>{t("promptTree.events")}</span>
+                      <Show when={mem().events.length > 0}>
+                        <span class="pt-count mono">{mem().events.length}</span>
+                      </Show>
+                    </summary>
+                    <div class="pt-fold-body pt-events">
+                      <For each={r().upstream.decide.availableActions} keyed={false}>
+                        {(ev) => (
+                          <label class="pt-check sm">
+                            <input
+                              type="checkbox"
+                              checked={mem().events.includes(ev())}
+                              onChange={() => toggleEvent(ev())}
+                            />
+                            <span class="mono">{ev()}</span>
+                          </label>
+                        )}
+                      </For>
+                      <For
+                        each={mem().events.filter((ev) => !r().upstream.decide.availableActions.includes(ev))}
+                        keyed={false}
+                      >
+                        {(ev) => (
+                          <label class="pt-check sm">
+                            <input type="checkbox" checked onChange={() => toggleEvent(ev())} />
+                            <span class="mono">{ev()}</span>
+                          </label>
+                        )}
+                      </For>
+                      <input
+                        type="text"
+                        class="pt-input"
+                        aria-label={t("promptTree.events")}
+                        placeholder={t("promptTree.eventPlaceholder")}
+                        value={eventDraft()}
+                        onInput={(e) => setEventDraft(e.currentTarget.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.isComposing) {
+                            e.preventDefault()
+                            addCustomEvent()
+                          }
+                        }}
+                      />
+                    </div>
+                  </details>
+                </Show>
               </>
             )}
           </Show>
@@ -717,6 +788,9 @@ export const PromptTreePage = () => {
                 onPick={(id) =>
                   update({
                     cardId: id,
+                    mode: "sandbox",
+                    storyId: undefined,
+                    nodeId: undefined,
                     fields: {},
                     greetingIndex: undefined,
                     assumedReads: [],
@@ -828,7 +902,7 @@ export const PromptTreePage = () => {
             }
           >
             {/* Sandbox mode controls */}
-            <Show when={result()?.sandbox.greetings.length}>
+            <Show when={sandboxControls()?.greetings.length}>
               <div class="pt-group">
                 <span class="pt-label">{t("card.opening")}</span>
                 <Menu
@@ -836,13 +910,13 @@ export const PromptTreePage = () => {
                   small
                   label={t("card.opening")}
                   value={
-                    result()?.sandbox.greetingIndex === null
+                    sandboxControls()?.greetingIndex === null
                       ? "__none__"
-                      : String(result()?.sandbox.greetingIndex ?? 0)
+                      : String(sandboxControls()?.greetingIndex ?? 0)
                   }
                   options={[
                     { value: "__none__", label: t("card.noOpening") },
-                    ...(result()?.sandbox.greetings ?? []).map((g) => ({
+                    ...(sandboxControls()?.greetings ?? []).map((g) => ({
                       value: String(g.index),
                       label: `${g.index + 1}. ${g.label}`,
                     })),
@@ -852,7 +926,7 @@ export const PromptTreePage = () => {
               </div>
             </Show>
 
-            <Show when={result()?.sandbox.fields.length}>
+            <Show when={sandboxControls()?.fields.length}>
               <div class="pt-group">
                 <div class="pt-group-head">
                   <span class="pt-label">{t("promptTree.fields")}</span>
@@ -869,7 +943,7 @@ export const PromptTreePage = () => {
                   </Show>
                 </div>
                 <div class="pt-fields">
-                  <For each={result()?.sandbox.fields ?? []} keyed={(f) => f.path}>
+                  <For each={sandboxControls()?.fields ?? []} keyed={(f) => f.path}>
                     {(f) => {
                       const localVal = () => (Object.hasOwn(mem().fields, f().path) ? mem().fields[f().path] : f().value)
                       const changed = () => localVal() !== f().initial
@@ -996,32 +1070,6 @@ export const PromptTreePage = () => {
                 onInput={(e) => update({ inputNote: e.currentTarget.value }, true)}
               />
             </div>
-
-            <Show when={result()?.upstream.decide.availableActions.length}>
-              <details class="pt-fold sm">
-                <summary>
-                  <Next class="pt-chev" aria-hidden="true" />
-                  <span>{t("promptTree.events")}</span>
-                  <Show when={mem().events.length > 0}>
-                    <span class="pt-count mono">{mem().events.length}</span>
-                  </Show>
-                </summary>
-                <div class="pt-fold-body pt-events">
-                  <For each={result()?.upstream.decide.availableActions ?? []} keyed={false}>
-                    {(ev) => (
-                      <label class="pt-check sm">
-                        <input
-                          type="checkbox"
-                          checked={mem().events.includes(ev())}
-                          onChange={() => toggleEvent(ev())}
-                        />
-                        <span class="mono">{ev()}</span>
-                      </label>
-                    )}
-                  </For>
-                </div>
-              </details>
-            </Show>
           </Show>
         </aside>
       </div>

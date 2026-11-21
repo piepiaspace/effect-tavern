@@ -9,7 +9,7 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { Show } from "solid-js"
 import { read } from "../src/bridge.ts"
 import { flip, locale } from "../src/i18n.ts"
-import { open } from "../src/pages.ts"
+import { close, open } from "../src/pages.ts"
 import { page, type ShelfCard } from "../src/store.ts"
 import { ManuscriptPage, Workshop } from "../src/workshop.tsx"
 import { quiet, tracked, until } from "./settle.ts"
@@ -333,6 +333,28 @@ const run = async () => {
     "Play stays when the edit made during its save is refused",
   )
   await press("重新读取")
+  // Typing while Preview waits for the shelf revision cancels navigation and saves the newer text.
+  const delayed = Promise.withResolvers<void>()
+  pendingSave = delayed.promise
+  await type("一句话简介", "预览前")
+  check(await until(() => last().summary === "预览前"), "an autosave is in flight")
+  key("请求预览")?.click()
+  const field = fields("一句话简介")[0]
+  field.value = "继续写稿"
+  field.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  delayed.resolve()
+  pendingSave = undefined
+  await settled()
+  check(pg() === "manuscript" && last().summary === "继续写稿", "the newer edit remains on the desk and saves")
+
+  // Preview before debounce stashes the edit; Back resumes autosave against the settled revision.
+  await type("一句话简介", "预览中的草稿")
+  await press("请求预览")
+  check(pg() === "prompt-tree" && last().summary === "继续写稿", "preview opens without writing the pending edit")
+  close()
+  await quiet()
+  await settled()
+  check(last().summary === "预览中的草稿" && !document.querySelector(".workshop-notice"), "Back resumes autosave")
   // leaving with a keystroke not yet saved writes it on the way out
   await type("一句话简介", "一条盐道")
   await press("返回")
