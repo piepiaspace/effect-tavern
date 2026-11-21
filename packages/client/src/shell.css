@@ -790,10 +790,6 @@
   gap: var(--space-4);
   margin-bottom: 2vh; /* optical centre sits slightly above the box's */
 }
-.home-mark svg {
-  width: 40px;
-  height: 40px;
-}
 .home-emblem {
   width: auto;
   height: 10.5rem;
@@ -827,33 +823,64 @@
 .shell-tab[aria-current="page"] .brand-glyph {
   opacity: 0.92;
 }
+/* Home's own bottom input, decoupled from Reader's .composer so DOM queries and CSS anchors never collide */
 .home-composer {
+  position: relative;
   flex: none;
+  height: calc(var(--control) + 2 * var(--space-1) + var(--composer-foot));
 }
-.home-composer .box {
-  anchor-name: none; /* reader's composer owns --composer while mounted underneath */
+.home-composer .home-box {
+  position: absolute;
+  inset: auto var(--composer-side) var(--composer-foot);
+  max-width: var(--measure);
+  margin: 0 auto;
+  background: var(--surface-3);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-composer);
+  padding: var(--space-1);
+  display: flex;
+  flex-direction: column;
+  transition: box-shadow var(--dur-3) var(--ease);
 }
-.home-composer .home-attach {
-  align-items: center;
-  padding: 0 var(--space-1) 0 var(--space-2);
+.home-composer .home-box:focus-within {
+  box-shadow: var(--shadow-composer-focus);
 }
-.home-composer .home-mode {
+.home-composer .home-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+.home-composer textarea {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   min-height: var(--control);
-  display: inline-flex;
-  align-items: center;
-  color: var(--ink-3);
-}
-.home-composer .attach .bare.home-pick {
-  padding: 0 var(--space-2);
-  border-radius: var(--radius);
-  color: var(--ink-2);
-  transition:
-    background var(--dur-2) var(--ease),
-    color var(--dur-2) var(--ease);
-}
-.home-composer .attach .bare.home-pick:hover {
-  background: var(--ghost-hover);
+  max-height: 35dvh;
+  padding: calc((var(--control) - 1lh) / 2) var(--space-2);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-field);
+  line-height: 20px;
   color: var(--ink);
+  resize: none;
+  outline: none;
+  field-sizing: content;
+  overflow-wrap: anywhere;
+  scrollbar-width: thin;
+  scrollbar-color: var(--alpha-3) transparent;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--space-1),
+    #000 calc(100% - var(--space-1)),
+    transparent
+  );
+}
+.home-composer textarea::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
 }
 .home-mark h1 {
   margin: 0;
@@ -1272,7 +1299,8 @@
     max-width: clamp(var(--measure), 65%, var(--measure-max));
     padding-inline: var(--space-6);
   }
-  .composer {
+  .composer,
+  .home-composer {
     --composer-side: var(--space-6);
     --composer-foot: var(--space-5);
   }
@@ -1292,9 +1320,16 @@
 }
 .home-mark .btn {
   margin-top: var(--space-2);
+  color: var(--ink);
 }
-/* an empty shelf's two ways to a first card, side by side */
-.home-first {
+/* home stage actions under the emblem: empty-shelf onboarding or workshop + card management */
+.home-first,
+.home-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: var(--space-2);
+}
+.home-actions .btn svg {
+  color: var(--ink-2);
 }

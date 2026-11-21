@@ -205,10 +205,6 @@ export const focus = Atom.make((get) => activeOf(get(tabs)).card).pipe(Atom.keep
 export const layer = Atom.make<"shelf" | "workspace">((get) => (get(focus) === null ? "shelf" : "workspace")).pipe(
   Atom.keepAlive,
 )
-/** Whether the sidebar shelf is currently hidden from view (collapsed on desktop or inside the phone drawer). */
-export const shelfHidden = Atom.make(false).pipe(Atom.keepAlive)
-/** Opens the shelf sidebar or phone drawer from pages inside the shell (wired by shell.tsx on mount). */
-export const shelfOpener = { open: (): void => {} }
 
 /** The reading line: root → head. */
 const emptyPath: Node[] = []

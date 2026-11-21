@@ -13,24 +13,9 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
-import {
-  Archive,
-  Card as CardIcon,
-  Clue,
-  Close,
-  Next,
-  Prev,
-  Settings,
-  Shade,
-  Sliders,
-  Snippets,
-  Tag,
-  Translate,
-  User,
-  Write,
-} from "./icons.tsx"
+import { Archive, Clue, Close, Next, Prev, Settings, Shade, Snippets, Tag, Translate, User, Write } from "./icons.tsx"
 import { openSettings } from "./settings.tsx"
-import { browse, close, editCard, open, openStory, showCard, toHome } from "./pages.ts"
+import { browse, close, editCard, openStory, showCard, toHome } from "./pages.ts"
 import {
   admits,
   facetCounts,
@@ -304,11 +289,6 @@ export const Sidebar = (props: {
     props.onLeave?.()
     void editCard(id)
   }
-  /** The workshop itself, from the shelf: its list of every card, and New. */
-  const toWorkshop = () => {
-    props.onLeave?.()
-    open("workshop")
-  }
   return (
     <div class="sidebar" data-layer={which()}>
       <div class="side-top">
@@ -322,14 +302,6 @@ export const Sidebar = (props: {
           </button>
         </Show>
         <span class="side-top-end">
-          <Show when={which() === "shelf"}>
-            <button type="button" class="icon sm" aria-label={t("side.workshop")} onClick={toWorkshop}>
-              <Sliders />
-            </button>
-            <button type="button" class="icon sm" aria-label={t("side.manageCards")} onClick={toCards}>
-              <CardIcon />
-            </button>
-          </Show>
           <Show when={which() === "workspace"}>
             <button
               type="button"

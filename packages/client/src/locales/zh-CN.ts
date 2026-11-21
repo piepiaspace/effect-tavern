@@ -140,7 +140,6 @@ const zh = {
   },
   home: {
     freeChat: "自由对话",
-    pickCard: "选择卡片",
     placeholder: "写下第一句话，开始自由对话…",
     tab: "主页",
     title: "effect-tavern",

@@ -1,24 +1,15 @@
-// Home (#209): where a fresh start and "+" land — a quiet stage with the finalized emblem and a bottom composer ready
-// to start a free chat on the first line sent. Empty-shelf onboarding ("Add cards · Card workshop") stays visible until
-// the player has at least one character card (excluding the built-in free-chat container). Drafts are stored per home tab
-// so opening "+" starts blank and switching back preserves unfinished words. When the sidebar shelf is collapsed on
-// desktop or hidden in the phone drawer, a faint attachment strip on the composer's top edge opens it.
+// Home (#209): where a fresh start and "+" land — a quiet stage with the finalized emblem, direct Workshop and Card
+// management actions, and a self-contained bottom input ready to start a free chat on the first line sent. Empty-shelf
+// onboarding ("Add cards · Card workshop") stays visible until the player has at least one character card (excluding
+// the built-in free-chat container). Drafts are stored per home tab so opening "+" starts blank and switching back
+// preserves unfinished words.
 import { createEffect, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { Card as CardIcon, Send } from "./icons.tsx"
+import { Card as CardIcon, Send, Sliders } from "./icons.tsx"
 import { imeController } from "./ime.ts"
 import { open, startFreeChat } from "./pages.ts"
 import { openSettings } from "./settings.tsx"
-import {
-  cards,
-  characterCards,
-  homeDrafts,
-  homeSending,
-  setHomeDraft,
-  shelfHidden,
-  shelfOpener,
-  tabs,
-} from "./store.ts"
+import { cards, characterCards, homeDrafts, homeSending, setHomeDraft, tabs } from "./store.ts"
 import { theme } from "./theme.ts"
 import { t } from "./i18n.ts"
 
@@ -36,17 +27,14 @@ export const BrandGlyph = () => (
   />
 )
 
-export const Home = (props: { shelfHidden?: boolean; onOpenShelf?: () => void }) => {
+export const Home = () => {
   const shelf = read(cards)
-  const hidden = read(shelfHidden)
   const strip = read(tabs)
   const drafts = read(homeDrafts)
   const sendingTabs = read(homeSending)
   const tabId = () => strip().active
   const text = () => drafts()[tabId()] ?? ""
   const sending = () => sendingTabs().has(tabId())
-  const showPick = () => props.shelfHidden ?? hidden()
-  const openShelf = () => (props.onOpenShelf ?? shelfOpener.open)()
   let box: HTMLTextAreaElement | undefined
 
   // Desktop: entering home or opening "+" focuses the composer so the player can type right away (touch devices stay
@@ -80,8 +68,23 @@ export const Home = (props: { shelfHidden?: boolean; onOpenShelf?: () => void })
         <div class="home-mark">
           <img class="home-emblem tall" src={BRAND_SRC} alt="" aria-hidden="true" />
           <h1>{t("home.title")}</h1>
-          {/* a new install has no character card: keep onboarding visible even after a first free chat */}
-          <Show when={!characterCards(shelf()).length}>
+          {/* a new install has no character card: keep onboarding visible even after a first free chat;
+              once cards exist, surface workshop and card management directly on the home stage */}
+          <Show
+            when={!characterCards(shelf()).length}
+            fallback={
+              <div class="home-actions">
+                <button type="button" class="btn" onClick={() => open("workshop")}>
+                  <Sliders aria-hidden="true" />
+                  <span>{t("side.workshop")}</span>
+                </button>
+                <button type="button" class="btn" onClick={() => openSettings("cards")}>
+                  <CardIcon aria-hidden="true" />
+                  <span>{t("side.manageCards")}</span>
+                </button>
+              </div>
+            }
+          >
             <p>{t("side.noCards")}</p>
             <div class="home-first">
               <button type="button" class="btn" onClick={() => openSettings("cards")}>
@@ -95,14 +98,14 @@ export const Home = (props: { shelfHidden?: boolean; onOpenShelf?: () => void })
         </div>
       </div>
       <form
-        class="composer home-composer"
+        class="home-composer"
         onSubmit={(e) => {
           e.preventDefault()
           submit()
         }}
       >
         <div
-          class="box"
+          class="home-box"
           onPointerDown={(e) => {
             const target = e.target as HTMLElement
             if (target.closest("button, textarea")) return
@@ -110,15 +113,7 @@ export const Home = (props: { shelfHidden?: boolean; onOpenShelf?: () => void })
             box?.focus()
           }}
         >
-          <div class={{ attach: true, "home-attach": true, closed: !showPick() }} inert={!showPick()}>
-            <span class="home-mode">{t("home.freeChat")}</span>
-            <span class="spacer" />
-            <button type="button" class="bare home-pick" onPointerDown={keep} onClick={openShelf}>
-              <CardIcon aria-hidden="true" />
-              <span>{t("home.pickCard")}</span>
-            </button>
-          </div>
-          <div class="row">
+          <div class="home-row">
             <textarea
               ref={(el) => (box = el)}
               value={text()}

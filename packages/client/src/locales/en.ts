@@ -141,7 +141,6 @@ const en: Dict = {
   },
   home: {
     freeChat: "Free chat",
-    pickCard: "Pick a card",
     placeholder: "Write a first line to start a free chat…",
     tab: "Home",
     title: "effect-tavern",

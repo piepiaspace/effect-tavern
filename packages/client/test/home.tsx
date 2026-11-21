@@ -1,9 +1,9 @@
 // Home page & free-chat UI surfaces in a real browser (#209): finalized rosette-04 emblem with no dev picker,
-// empty-shelf onboarding excludes the built-in free-chat container, real Shell wiring opens the shelf from the attach
-// strip when hidden, per-tab drafts stay isolated across home tabs and survive switching away and back, desktop "+"
-// auto-focuses the composer, submitting from home lazily creates the free-chat card and starts a story directly in
-// reader, Workshop and Settings -> Cards hide the built-in card while preserving any legacy user card with the same id,
-// and WritingPage labels its scope as free chat.
+// empty-shelf onboarding excludes the built-in free-chat container, home input is decoupled from Reader's .composer,
+// mobile surfaces Workshop & Manage cards on the home stage instead of inside the drawer, per-tab drafts stay isolated
+// across home tabs and survive switching away and back, desktop "+" auto-focuses the composer, submitting from home
+// lazily creates the free-chat card and starts a story directly in reader, Workshop and Settings -> Cards hide the
+// built-in card while preserving any legacy user card with the same id, and WritingPage labels its scope as free chat.
 import { render } from "@solidjs/web"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import { cardView } from "@effect-tavern/runtime/src/session.ts"
@@ -20,7 +20,6 @@ import {
   FREE_CHAT_ID,
   page,
   registry,
-  shelfHidden,
   stories,
   tabs,
   type ShelfCard,
@@ -142,17 +141,25 @@ void (async () => {
     const box = () => document.querySelector<HTMLTextAreaElement>(".home-composer textarea")!
     check(document.activeElement === box(), "home composer should auto-focus on desktop entry")
 
-    // 2. Real Shell wiring: in the headless 800px viewport Shell hides the sidebar into its drawer, so .home-attach is
-    // active automatically and clicking .home-pick opens the real Shell drawer (no injected props).
-    const attach = () => document.querySelector<HTMLElement>(".home-attach")!
-    check(registry.get(shelfHidden) === true, "Shell reports shelf hidden on narrow viewport")
-    check(!attach().hasAttribute("inert") && !attach().classList.contains("closed"), "attach strip shown via Shell")
-    document.querySelector<HTMLButtonElement>(".home-pick")!.click()
+    // 2. Decoupled home input & mobile home actions: home input does not reuse Reader's .composer/.attach classes,
+    // and in the headless 800px (mobile) viewport the drawer omits Workshop & Manage cards while Home surfaces them
+    // once a character card exists.
+    const homeForm = document.querySelector<HTMLFormElement>(".home-composer")!
+    check(!homeForm.classList.contains("composer"), "home input should not share Reader's .composer class")
+    check(document.querySelector(".home-attach") === null, "composer attach strip should be removed from home")
+    document.querySelector<HTMLButtonElement>(`.strip button[aria-label="${t("side.navigation")}"]`)!.click()
     check(
       await until(() => document.querySelector(".drawer .sidebar") !== null),
-      "clicking pick card opens Shell's real sidebar drawer",
+      "mobile strip button opens Shell's sidebar drawer",
     )
-    // Close drawer before continuing.
+    check(
+      document.querySelector(`.drawer .side-top-end button[aria-label="${t("side.workshop")}"]`) === null,
+      "mobile drawer should not show workshop button in its top bar",
+    )
+    check(
+      document.querySelector(`.drawer .side-top-end button[aria-label="${t("side.manageCards")}"]`) === null,
+      "mobile drawer should not show manage-cards button in its top bar",
+    )
     document.querySelector<HTMLButtonElement>(`.drawer button[aria-label="${t("common.close")}"]`)!.click()
     await until(() => document.querySelector(".drawer") === null)
 
@@ -181,6 +188,13 @@ void (async () => {
     registry.set(cards, [fcAlt, legacy])
     await quiet()
     check(document.querySelector(".home-first") === null, "onboarding hides when a legacy character card exists")
+    const homeActions = [...document.querySelectorAll<HTMLButtonElement>(".home-actions button")].map((b) =>
+      b.textContent?.trim(),
+    )
+    check(
+      homeActions.includes(t("side.workshop")) && homeActions.includes(t("side.manageCards")),
+      `home actions should expose workshop and manage-cards (got [${homeActions.join(", ")}])`,
+    )
 
     // 5. Starting a fresh free chat from home: submits text, lazily creates card + story in reader, sends act.
     registry.set(cards, [])
