@@ -1,0 +1,112 @@
+name: App
+
+on:
+  push:
+    tags: ["app-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# The standalone app (packages/app), after MyGo's docs/github-actions.md. Its releases are tagged app-v<mygo.json
+# version> and never the latest, which stays the tavern command's (install.sh, install.ps1 and `tavern update` read
+# it); the app's own updater finds them by the prefix (mygo.json updates.tagPrefix). A tag makes a draft, every row
+# uploads to it, and the last job publishes it. A run by hand builds every row into artifacts and publishes nothing.
+# Unsigned: macOS apps are signed ad hoc, Windows ones not at all. Secrets: MYGO_UPDATER_PRIVATE_KEY signs updates,
+# ANDROID_KEYSTORE (base64) and ANDROID_KEYSTORE_PASSWORD sign the APK.
+jobs:
+  draft:
+    if: github.ref_type == 'tag'
+    runs-on: blacksmith-2vcpu-ubuntu-2604
+    steps:
+      - uses: useblacksmith/checkout@v1
+      - name: The tag names mygo.json's version
+        run: test "$GITHUB_REF_NAME" = "app-v$(jq -r .version packages/app/mygo.json)"
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1 ||
+            gh release create "$GITHUB_REF_NAME" --draft --verify-tag --latest=false --title "$GITHUB_REF_NAME" --generate-notes
+
+  build:
+    needs: draft
+    if: ${{ !cancelled() && needs.draft.result != 'failure' }}
+    name: build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos, runner: blacksmith-6vcpu-macos-latest, platform: darwin/universal }
+          - { name: windows, runner: blacksmith-2vcpu-ubuntu-2604, platform: "windows/amd64,windows/arm64" }
+          - { name: linux, runner: blacksmith-2vcpu-ubuntu-2604, platform: "linux/amd64,linux/arm64" }
+          - { name: android, runner: blacksmith-2vcpu-ubuntu-2604, platform: android/arm64 }
+    defaults:
+      run:
+        working-directory: packages/app
+    steps:
+      - uses: useblacksmith/checkout@v1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: packages/app/go.mod
+          cache-dependency-path: packages/app/go.sum
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+      - run: bun install --frozen-lockfile
+      # web/build.ts runs vp in packages/client
+      - run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
+      - name: NSIS, for the Windows installers
+        if: matrix.name == 'windows'
+        run: sudo apt-get update && sudo apt-get install -y nsis
+      - if: matrix.name == 'android'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 17
+      - if: matrix.name == 'android'
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools platforms;android-36 build-tools;36.0.0 ndk;28.2.13676358
+      - name: The upload key
+        if: matrix.name == 'android'
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+        run: echo "$ANDROID_KEYSTORE" | base64 --decode > upload.jks
+      - name: Build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+          MYGO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        # desktops upload installers and signed updates to the draft themselves; the phone has no updater, its APK goes
+        # up alone (the .aab is Google Play's)
+        run: |
+          upload=
+          [ "$GITHUB_REF_TYPE" = tag ] && [ ${{ matrix.name }} != android ] && upload=-upload
+          go tool mygo build -platform "${{ matrix.platform }}" $upload
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ ${{ matrix.name }} = android ]; then
+            gh release upload "$GITHUB_REF_NAME" build/android/*.apk --clobber
+          fi
+      - uses: actions/upload-artifact@v7
+        if: github.ref_type != 'tag'
+        with:
+          name: app-${{ matrix.name }}
+          path: |
+            packages/app/build/*/*.dmg
+            packages/app/build/*/*-setup-*.exe
+            packages/app/build/*/*.tar.gz
+            packages/app/build/*/*.deb
+            packages/app/build/*/*.rpm
+            packages/app/build/*/*.apk
+            packages/app/build/*/*.json
+          retention-days: 7
+
+  publish:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: blacksmith-2vcpu-ubuntu-2604
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --draft=false --latest=false

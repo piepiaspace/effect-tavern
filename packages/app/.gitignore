@@ -1,4 +1,6 @@
 dist/
 build/
+# the Android upload key: a secret of CI, and ~/Library/Application Support/effect-tavern/keys here
+upload.jks
 .mygo/
 icon/.*

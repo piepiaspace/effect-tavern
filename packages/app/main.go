@@ -14,6 +14,7 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/fetch"
+	"github.com/egoist/mygo/plugins/updater"
 )
 
 //go:embed all:dist
@@ -43,6 +44,8 @@ func main() {
 		}
 	})
 	mygo.Use(fetch.Plugin)
+	// checks the app-v* releases in the background; installs only what the key in mygo.json signed
+	mygo.Use(updater.Plugin)
 	openDB()
 	mygo.App.OnQuit(closeDB)
 	mygo.App.WhenReady(func() {

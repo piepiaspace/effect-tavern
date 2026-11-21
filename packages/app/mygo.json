@@ -11,6 +11,8 @@
     "team": "4PG5LBH388"
   },
   "android": {
+    "keystore": "upload.jks",
+    "keyAlias": "upload",
     "adaptiveIcon": {
       "foreground": "icon/foreground.png",
       "background": "#fcfcfb"
@@ -20,5 +22,10 @@
   "macos": {
     "minimumSystemVersion": "14.5",
     "icon": "icon/AppIcon.icns"
+  },
+  "updates": {
+    "publicKey": "Bksyszg4I/PeK8SDznGN8IOUT/e5uTEt/H4Ro2JI5AY=",
+    "github": "piepiaspace/effect-tavern",
+    "tagPrefix": "app-v"
   }
 }
