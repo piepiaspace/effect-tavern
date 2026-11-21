@@ -842,6 +842,8 @@
   z-index: 1;
   flex: 1;
   min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
   place-items: center;
   padding: var(--space-6) var(--space-5) var(--space-4);
@@ -971,9 +973,36 @@
 .home-nav:active {
   scale: 0.94;
 }
+/* On touch devices keep the buttons visually hidden until keyboard/screen-reader focus so swipe stays uncluttered
+   while tablets with keyboards and assistive tech still reach both named controls */
 @media (hover: none), (pointer: coarse) {
   .home-nav {
-    display: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+  .home-nav:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+/* Compact layout for short / landscape phone viewports so the emblem, title, and primary action cards stay reachable */
+@media (max-height: 36rem) {
+  .home-stage {
+    padding: var(--space-3) var(--space-4) var(--space-2);
+  }
+  .home-mark {
+    gap: var(--space-3);
+    margin-bottom: 0;
+  }
+  .home-mech {
+    gap: var(--space-2);
+  }
+  .home-mech-stage {
+    width: clamp(8.5rem, 32svh, 11.5rem);
+    height: clamp(8rem, 30svh, 11rem);
+  }
+  .home-mark h1 {
+    font-size: var(--text-title);
   }
 }
 .home-mech-index {

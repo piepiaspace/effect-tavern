@@ -3,8 +3,6 @@
 // echo, decay) so each visual theme carries its own musical identity while sharing the same always-consonant,
 // rate-limited, zero-noise Web Audio pipeline. Zero external assets; 0% CPU when muted, paused, or hidden.
 
-const STORAGE_KEY = "tavern.home.sound"
-
 export interface SoundProfile {
   /** Consonant note frequencies (Hz) defining this figure's musical key/mode. */
   readonly scale: readonly number[]
@@ -56,6 +54,8 @@ export const DEFAULT_SOUND_PROFILE: SoundProfile = {
 export interface MechanicalSound {
   /** Whether sound is currently enabled. */
   enabled(): boolean
+  /** Current AudioContext state ("uninitialized" before first opt-in). */
+  state(): AudioContextState | "uninitialized"
   /** Enable or disable sound (called from a user gesture to unlock AudioContext). */
   setEnabled(on: boolean): void
   /** Switch musical theme/timbre smoothly for the active HomeFigure. */
@@ -220,13 +220,9 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
 
   const api: MechanicalSound = {
     enabled: () => on,
+    state: () => ctx?.state ?? "uninitialized",
     setEnabled: (next: boolean) => {
       on = next
-      try {
-        localStorage.setItem(STORAGE_KEY, next ? "1" : "0")
-      } catch {
-        // ignore private-mode storage errors
-      }
       if (next) {
         const c = ensureContext()
         if (!c) return

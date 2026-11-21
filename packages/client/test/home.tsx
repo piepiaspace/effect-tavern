@@ -145,36 +145,38 @@ void (async () => {
     check(nextFig !== null && prevFig !== null, "figure switcher buttons should render on desktop")
     if (nextFig && prevFig) {
       nextFig.click()
-      await quiet()
       check(
-        emblem()?.getAttribute("data-brand") === "cinema-astrolabe-01",
-        "clicking next figure switches to cinema-astrolabe-01",
+        await until(() => emblem()?.getAttribute("data-brand") === "cinema-astrolabe-01"),
+        "clicking next figure lazily loads and switches to cinema-astrolabe-01",
       )
       prevFig.click()
-      await quiet()
       check(
-        emblem()?.getAttribute("data-brand") === "projector-rosette-04",
+        await until(() => emblem()?.getAttribute("data-brand") === "projector-rosette-04"),
         "clicking prev figure switches back to projector-rosette-04",
       )
     }
     const soundToggle = document.querySelector<HTMLButtonElement>(".home-mech-sound")
     check(soundToggle !== null, "mechanical sound toggle should render")
-    if (soundToggle) {
-      const before = soundToggle.getAttribute("aria-label")
-      soundToggle.click()
-      await quiet()
-      check(soundToggle.getAttribute("aria-label") !== before, "sound toggle should flip between enable and mute")
-      soundToggle.click()
-      await quiet()
-    }
     const toggle = document.querySelector<HTMLButtonElement>(".home-mech-toggle:not(.home-mech-sound)")
     check(toggle !== null, "motion pause/play toggle should render")
-    if (toggle) {
-      const before = toggle.getAttribute("aria-label")
+    if (soundToggle && toggle) {
+      const beforeSound = soundToggle.getAttribute("aria-label")
+      soundToggle.click()
+      await quiet()
+      check(soundToggle.getAttribute("aria-label") !== beforeSound, "sound toggle should flip between enable and mute")
+      const beforeMotion = toggle.getAttribute("aria-label")
       toggle.click()
       await quiet()
-      check(toggle.getAttribute("aria-label") !== before, "motion toggle should flip between pause and play")
+      check(toggle.getAttribute("aria-label") !== beforeMotion, "motion toggle should flip between pause and play")
+      // Returning from a background tab while paused must keep motion paused
+      document.dispatchEvent(new Event("visibilitychange"))
+      await quiet()
+      check(
+        document.querySelector(".home-mech")?.getAttribute("data-paused") === "true",
+        "visibilitychange while paused keeps mechanism paused",
+      )
       toggle.click()
+      soundToggle.click()
       await quiet()
     }
     check(document.querySelector(".home-first") !== null, "empty-shelf onboarding should render when shelf is empty")

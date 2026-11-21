@@ -5,7 +5,8 @@
 // opening "+" starts blank and switching back preserves unfinished words.
 import { createEffect, createSignal, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { HOME_FIGURES, loadFigureIndex, saveFigureId } from "./figures/index.ts"
+import { FIGURE_COUNT, FIGURE_ENTRIES, loadFigure, loadFigureIndex, peekFigure, saveFigureId } from "./figures/index.ts"
+import type { HomeFigure } from "./home-figure.tsx"
 import { HomeMechanism } from "./home-mechanism.tsx"
 import { createMechanicalSound } from "./home-sound.ts"
 import { Card as CardIcon, Change, Next, Prev, Send, Sliders } from "./icons.tsx"
@@ -40,19 +41,35 @@ export const Home = () => {
   const sending = () => sendingTabs().has(tabId())
   const [pulse, setPulse] = createSignal(0)
   const [focused, setFocused] = createSignal(false)
-  const [figIndex, setFigIndex] = createSignal(loadFigureIndex())
+  const initialIndex = loadFigureIndex()
+  const [figIndex, setFigIndex] = createSignal(initialIndex)
   const [figDir, setFigDir] = createSignal<"next" | "prev" | "none">("none")
-  const figure = () => HOME_FIGURES[figIndex()] ?? HOME_FIGURES[0]
+  const [figure, setFigure] = createSignal<HomeFigure | null>(peekFigure(initialIndex) ?? null)
   const sound = createMechanicalSound()
   let box: HTMLTextAreaElement | undefined
+  let loadSeq = 0
+
+  createEffect(
+    () => figIndex(),
+    (idx) => {
+      const cached = peekFigure(idx)
+      if (cached) {
+        setFigure(cached)
+        return
+      }
+      const seq = ++loadSeq
+      void loadFigure(idx).then((loaded) => {
+        if (seq === loadSeq) setFigure(loaded)
+      })
+    },
+  )
 
   const stepFigure = (delta: -1 | 1) => {
-    const n = HOME_FIGURES.length
-    if (n <= 1) return
-    const next = (figIndex() + delta + n) % n
+    if (FIGURE_COUNT <= 1) return
+    const next = (figIndex() + delta + FIGURE_COUNT) % FIGURE_COUNT
     setFigDir(delta > 0 ? "next" : "prev")
     setFigIndex(next)
-    saveFigureId(HOME_FIGURES[next].id)
+    saveFigureId(FIGURE_ENTRIES[next].id)
   }
 
   // Desktop: entering home or opening "+" focuses the composer so the player can type right away (touch devices stay
@@ -93,7 +110,7 @@ export const Home = () => {
       {/* Whisper-quiet architectural hairline grid & pointer-reactive radial sheen */}
       <div class="home-backdrop" aria-hidden="true" />
       <div class="home-stage">
-        <Show when={HOME_FIGURES.length > 1}>
+        <Show when={FIGURE_COUNT > 1}>
           <button
             type="button"
             class="home-nav home-nav-prev"
@@ -118,7 +135,7 @@ export const Home = () => {
             <HomeMechanism
               figure={figure()}
               index={figIndex()}
-              total={HOME_FIGURES.length}
+              total={FIGURE_COUNT}
               dir={figDir()}
               onStep={stepFigure}
               pulse={pulse()}

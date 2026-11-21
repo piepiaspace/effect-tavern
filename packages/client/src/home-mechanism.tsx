@@ -22,8 +22,8 @@ const defaultReadout = (s: StageState) => {
 }
 
 export const HomeMechanism = (props: {
-  /** Active mechanical figure definition (artwork + hairline spec + kinematics rig). */
-  figure: HomeFigure
+  /** Active mechanical figure definition (null briefly while a saved non-default figure chunk loads). */
+  figure: HomeFigure | null
   /** Current figure index (0-based) and total count for subtle telemetry orientation. */
   index: number
   total: number
@@ -65,6 +65,7 @@ export const HomeMechanism = (props: {
   const phys: StageState & {
     targetPx: number
     targetPy: number
+    lastMove: number
     paused: boolean
     lastDetent: number
   } = {
@@ -80,20 +81,29 @@ export const HomeMechanism = (props: {
     hasPointer: false,
     targetPx: 0,
     targetPy: 0,
+    lastMove: -Infinity,
     paused: reducedMotion(),
     lastDetent: 0,
   }
 
   let wake: (() => void) | undefined
-  let bindFigure: ((fig: HomeFigure) => void) | undefined
+  let bindFigure: ((fig: HomeFigure | null) => void) | undefined
+
+  const shouldRun = () => !phys.paused && !document.hidden
+  const syncAudio = () => {
+    if (shouldRun()) props.sound.resume()
+    else props.sound.suspend()
+  }
 
   // Re-bind the figure rig & musical theme whenever props.figure switches (after Show mounts the new SVG subtree)
   createEffect(
     () => props.figure,
     (fig, prev) => {
       activeFigure = fig
-      props.sound.setProfile(fig.sound ?? DEFAULT_SOUND_PROFILE)
-      if (prev && prev !== fig) props.sound.detent("engage")
+      if (fig) {
+        props.sound.setProfile(fig.sound ?? DEFAULT_SOUND_PROFILE)
+        if (prev && prev !== fig && shouldRun()) props.sound.detent("engage")
+      }
       queueMicrotask(() => {
         if (activeFigure === fig) bindFigure?.(fig)
       })
@@ -115,7 +125,7 @@ export const HomeMechanism = (props: {
     (f, prev) => {
       phys.focused = f
       if (prev !== undefined && f !== prev) {
-        props.sound.iris(f)
+        if (shouldRun()) props.sound.iris(f)
         wake?.()
       }
     },
@@ -125,11 +135,8 @@ export const HomeMechanism = (props: {
     () => paused(),
     (p) => {
       phys.paused = p
-      if (p) props.sound.suspend()
-      else {
-        props.sound.resume()
-        wake?.()
-      }
+      syncAudio()
+      if (!p) wake?.()
     },
   )
 
@@ -159,8 +166,12 @@ export const HomeMechanism = (props: {
 
     const formatReadout = () => (activeRig?.readout ? activeRig.readout(phys) : defaultReadout(phys))
 
-    bindFigure = (fig: HomeFigure) => {
+    bindFigure = (fig: HomeFigure | null) => {
       dirtyCache.clear()
+      if (!fig) {
+        activeRig = null
+        return
+      }
       const svg = frameEl?.querySelector<SVGSVGElement>("svg.home-emblem")
       activeRig = svg && reticleSvg ? fig.createRig(svg, reticleSvg) : null
       applyStage()
@@ -175,7 +186,7 @@ export const HomeMechanism = (props: {
     }
 
     const startLoop = () => {
-      if (raf || phys.paused || document.hidden) return
+      if (raf || !shouldRun()) return
       last = performance.now()
       raf = requestAnimationFrame(step)
     }
@@ -184,14 +195,25 @@ export const HomeMechanism = (props: {
 
     const step = (now: number) => {
       raf = 0
-      if (phys.paused || document.hidden) return
+      if (!shouldRun()) return
 
+      const breath = (Math.sin(now * 0.0011) + 1) * 0.12
+      const irisTarget = (phys.focused ? 0.65 : 0) + (phys.hovered ? 0.35 : 0) + breath
+      const targetVernier = phys.hasPointer
+        ? (Math.atan2(phys.targetPy, phys.targetPx) * 180) / Math.PI
+        : -35 + Math.sin(now * 0.00045) * 28
+      const vernierDiff = ((targetVernier - phys.vernier + 540) % 360) - 180
+      const dialTarget = phys.hasPointer ? phys.px * 10 : Math.sin(now * 0.0005) * 3
+
+      // Boost to 60fps only while pointer recently moved, typing impulse is decaying, or springs are still settling;
+      // once settled, drop back to calm 24fps cinema idle even if the pointer remains stationary on the page.
       const interacting =
-        phys.hovered ||
-        phys.hasPointer ||
+        now - phys.lastMove < 450 ||
         phys.vel > 0.4 ||
-        Math.abs(phys.targetPx - phys.px) > 0.01 ||
-        Math.abs(phys.targetPy - phys.py) > 0.01
+        Math.abs(phys.targetPx - phys.px) > 0.008 ||
+        Math.abs(phys.targetPy - phys.py) > 0.008 ||
+        Math.abs(vernierDiff) > 0.25 ||
+        Math.abs(dialTarget - phys.dial) > 0.12
       const minInterval = !fine ? TOUCH_INTERVAL_MS : interacting ? 0 : IDLE_INTERVAL_MS
       if (minInterval > 0 && now - lastDraw < minInterval) {
         raf = requestAnimationFrame(step)
@@ -218,18 +240,8 @@ export const HomeMechanism = (props: {
       const k = 1 - Math.exp(-6.5 * dt)
       phys.px += (phys.targetPx - phys.px) * k
       phys.py += (phys.targetPy - phys.py) * k
-
-      const breath = (Math.sin(now * 0.0011) + 1) * 0.12
-      const irisTarget = (phys.focused ? 0.65 : 0) + (phys.hovered ? 0.35 : 0) + breath
       phys.iris += (irisTarget - phys.iris) * (1 - Math.exp(-5.2 * dt))
-
-      const targetVernier = phys.hasPointer
-        ? (Math.atan2(phys.targetPy, phys.targetPx) * 180) / Math.PI
-        : -35 + Math.sin(now * 0.00045) * 28
-      const diff = ((targetVernier - phys.vernier + 540) % 360) - 180
-      phys.vernier += diff * (1 - Math.exp(-5.0 * dt))
-
-      const dialTarget = phys.hasPointer ? phys.px * 10 : Math.sin(now * 0.0005) * 3
+      phys.vernier += vernierDiff * (1 - Math.exp(-5.0 * dt))
       phys.dial += (dialTarget - phys.dial) * (1 - Math.exp(-4.8 * dt))
 
       applyStage()
@@ -251,6 +263,7 @@ export const HomeMechanism = (props: {
       phys.targetPx = Math.max(-1, Math.min(1, (rx - 0.5) * 2))
       phys.targetPy = Math.max(-1, Math.min(1, (ry - 0.44) * 2))
       phys.hasPointer = true
+      phys.lastMove = performance.now()
       props.sound.setWarmth(phys.targetPx)
       page.style.setProperty("--home-px", `${(rx * 100).toFixed(1)}%`)
       page.style.setProperty("--home-py", `${(ry * 100).toFixed(1)}%`)
@@ -260,17 +273,14 @@ export const HomeMechanism = (props: {
       phys.targetPx = 0
       phys.targetPy = 0
       phys.hasPointer = false
+      phys.lastMove = performance.now()
       props.sound.setWarmth(0)
       page?.style.setProperty("--home-spot", "0")
     }
     const onVisibility = () => {
-      if (document.hidden) {
-        stopLoop()
-        props.sound.suspend()
-      } else {
-        props.sound.resume()
-        startLoop()
-      }
+      syncAudio()
+      if (shouldRun()) startLoop()
+      else stopLoop()
     }
 
     if (page && fine) {
@@ -353,6 +363,10 @@ export const HomeMechanism = (props: {
       props.onStep(dx < 0 ? 1 : -1)
     }
   }
+  const onStagePointerCancel = (e: PointerEvent) => {
+    if (e.pointerId !== swipe.id) return
+    resetSwipe()
+  }
 
   const counterText = () => `${String(props.index + 1).padStart(2, "0")}/${String(props.total).padStart(2, "0")}`
 
@@ -361,17 +375,17 @@ export const HomeMechanism = (props: {
       ref={(el) => (rootEl = el)}
       class="home-mech"
       data-paused={paused() ? "true" : "false"}
-      data-shape={props.figure.shape}
+      data-shape={props.figure?.shape ?? "tall"}
       onPointerEnter={() => {
         phys.hovered = true
-        props.sound.iris(true)
+        if (shouldRun()) props.sound.iris(true)
       }}
       onPointerLeave={() => {
         phys.hovered = false
-        props.sound.iris(false)
+        if (shouldRun()) props.sound.iris(false)
       }}
     >
-      <Show when={props.figure} keyed>
+      <Show when={props.figure} keyed fallback={<div class="home-mech-stage" />}>
         {(fig) => (
           <div
             ref={(el) => (stageEl = el)}
@@ -380,7 +394,7 @@ export const HomeMechanism = (props: {
             onPointerDown={onStagePointerDown}
             onPointerMove={onStagePointerMove}
             onPointerUp={onStagePointerEnd}
-            onPointerCancel={resetSwipe}
+            onPointerCancel={onStagePointerCancel}
           >
             <HairlineFrame spec={fig.frame} ref={(el) => (reticleSvg = el)} onVernier={(el) => (vernierArc = el)}>
               {fig.ExtraHairline?.()}
