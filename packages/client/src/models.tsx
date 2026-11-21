@@ -171,7 +171,8 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
   )
 }
 
-/** Token ceiling field with inline preset chips (pressing an active preset clears back to default). */
+/** Token ceiling field with inline preset chips (pressing an active preset clears back to default).
+ *  Keeps a local draft while typing so partial/below-min numbers never commit to the model entry. */
 const TokenField = (props: {
   label: string
   hint: string
@@ -179,46 +180,57 @@ const TokenField = (props: {
   min: number
   value: number | undefined
   onChange: (v: number | undefined) => void
-}) => (
-  <div class="field-group">
-    <div class="label-row token-head">
-      <span class="label">{props.label}</span>
-      <div class="token-presets">
-        <For each={props.presets} keyed={false}>
-          {(p) => (
-            <button
-              type="button"
-              class="preset-chip"
-              aria-pressed={props.value === p()[1] ? "true" : "false"}
-              onClick={() => props.onChange(props.value === p()[1] ? undefined : p()[1])}
-            >
-              {p()[0]}
-            </button>
-          )}
-        </For>
+}) => {
+  const [draft, setDraft] = createSignal<string | null>(null)
+  const shown = () => draft() ?? (props.value === undefined ? "" : String(props.value))
+  return (
+    <div class="field-group">
+      <div class="label-row token-head">
+        <span class="label">{props.label}</span>
+        <div class="token-presets">
+          <For each={props.presets} keyed={false}>
+            {(p) => (
+              <button
+                type="button"
+                class="preset-chip"
+                aria-pressed={props.value === p()[1] ? "true" : "false"}
+                onClick={() => {
+                  setDraft(null)
+                  props.onChange(props.value === p()[1] ? undefined : p()[1])
+                }}
+              >
+                {p()[0]}
+              </button>
+            )}
+          </For>
+        </div>
       </div>
+      <input
+        class="field token-input"
+        type="number"
+        inputmode="numeric"
+        min={props.min}
+        placeholder={t("common.default")}
+        aria-label={props.label}
+        value={shown()}
+        onInput={(e) => {
+          const text = e.currentTarget.value
+          const trimmed = text.trim()
+          if (!trimmed) {
+            setDraft(null)
+            props.onChange(undefined)
+            return
+          }
+          setDraft(text)
+          const n = Number(trimmed)
+          if (Number.isInteger(n) && n >= props.min) props.onChange(n)
+        }}
+        onBlur={() => setDraft(null)}
+      />
+      <p class="field-hint">{props.hint}</p>
     </div>
-    <input
-      class="field token-input"
-      type="number"
-      inputmode="numeric"
-      min={props.min}
-      placeholder={t("common.default")}
-      aria-label={props.label}
-      value={props.value ?? ""}
-      onInput={(e) => {
-        const raw = e.currentTarget.value.trim()
-        if (!raw) {
-          props.onChange(undefined)
-          return
-        }
-        const n = parseInt(raw, 10)
-        if (n > 0) props.onChange(n)
-      }}
-    />
-    <p class="field-hint">{props.hint}</p>
-  </div>
-)
+  )
+}
 
 /** Effort horizontal slider built on @ui-sdk/solid/slider: five bounded levels on one rail; unset leaves the rail neutral. */
 const Effort = (props: { value: Effort | undefined; onPick: (v: Effort | undefined) => void }) => {
@@ -245,7 +257,7 @@ const Effort = (props: { value: Effort | undefined; onPick: (v: Effort | undefin
         step={1}
         largeStep={1}
         value={index() ?? 0}
-        format={(n) => t(EFFORTS[n]?.[1] ?? "models.effortOff")}
+        format={(n) => (index() === undefined ? t("common.default") : t(EFFORTS[n]?.[1] ?? "models.effortOff"))}
         onValueChange={(v) => {
           const i = typeof v === "number" ? v : (v[0] ?? 0)
           props.onPick(EFFORTS[i]?.[0])
@@ -253,7 +265,8 @@ const Effort = (props: { value: Effort | undefined; onPick: (v: Effort | undefin
       >
         <SliderControl
           class="effort-control"
-          onPointerDown={(e) => {
+          style={{ "touch-action": "pan-y" }}
+          onClick={(e) => {
             if (props.value !== undefined) return
             const rect = e.currentTarget.getBoundingClientRect()
             const pct = rect.width > 0 ? Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) : 0

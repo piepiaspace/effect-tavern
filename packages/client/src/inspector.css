@@ -74,7 +74,7 @@
   flex: none;
   box-sizing: border-box;
   height: calc(var(--topbar) + var(--safe-top));
-  padding: var(--safe-top) var(--space-3) 0 var(--space-2);
+  padding: var(--safe-top) max(var(--space-3), var(--safe-right)) 0 max(var(--space-2), var(--safe-left));
   display: flex;
   align-items: center;
   gap: var(--space-2);
