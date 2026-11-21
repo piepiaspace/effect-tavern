@@ -118,6 +118,8 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctor) return null
     if (!ctx) {
+      const { audioSession } = navigator as Navigator & { audioSession?: { type: string } }
+      if (audioSession) audioSession.type = "ambient"
       ctx = new Ctor()
 
       bus = ctx.createGain()
@@ -304,7 +306,9 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       if (ctx && ctx.state === "running") void ctx.suspend().catch(() => {})
     },
     resume: () => {
-      if (on && ctx && ctx.state === "suspended" && !document.hidden) void ctx.resume().catch(() => {})
+      // WebKit can also interrupt the context while another app has the audio session.
+      if (on && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
+        void ctx.resume().catch(() => {})
     },
     dispose: () => {
       on = false

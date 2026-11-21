@@ -1035,24 +1035,29 @@ const ProductsTab = (props: { pack: Layer; onSave: Save }) => {
         <div class="frag-list scroller fade">
           <For each={products()} keyed={(p) => p.id}>
             {(p) => (
-              <div class="pack-row" onClick={() => openEdit(p())}>
-                <span class="d-name">{p().label ?? p().id}</span>
+              <div class="pack-row">
+                <button
+                  type="button"
+                  class="edit-product d-name"
+                  aria-label={t("packs.editTheater", { name: p().label ?? p().id })}
+                  onClick={() => openEdit(p())}
+                >
+                  {p().label ?? p().id}
+                </button>
                 <span class="tag mono">{p().id}</span>
                 <Show when={canTrigger(p().id)}>
                   <span class="tag">{p().trigger === "demand" ? t("packs.onDemand") : t("packs.everyTurn")}</span>
                 </Show>
                 <span class="row-text">{p().text ?? ""}</span>
 
-                <span onClick={(e) => e.stopPropagation()}>
-                  <Switch
-                    on={!!p().on}
-                    label={p().label ?? p().id}
-                    onFlip={() => {
-                      const flip = { id: p().id, on: !p().on }
-                      void props.onSave((x) => ({ ...x, products: withProductPatch(x.products, flip) }))
-                    }}
-                  />
-                </span>
+                <Switch
+                  on={!!p().on}
+                  label={p().label ?? p().id}
+                  onFlip={() => {
+                    const flip = { id: p().id, on: !p().on }
+                    void props.onSave((x) => ({ ...x, products: withProductPatch(x.products, flip) }))
+                  }}
+                />
               </div>
             )}
           </For>

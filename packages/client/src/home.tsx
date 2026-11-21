@@ -12,7 +12,7 @@ import { createMechanicalSound } from "./home-sound.ts"
 import { Card as CardIcon, Change, Next, Prev, Send, Sliders } from "./icons.tsx"
 import { imeController } from "./ime.ts"
 import { open, startFreeChat } from "./pages.ts"
-import { openSettings } from "./settings.tsx"
+import { openSettings } from "./settings-navigation.ts"
 import { cards, characterCards, homeDrafts, homeSending, setHomeDraft, tabs } from "./store.ts"
 import { theme } from "./theme.ts"
 import { t } from "./i18n.ts"
@@ -99,7 +99,9 @@ export const Home = () => {
     sound.dispose()
   })
   const keep = (e: Event) => e.preventDefault()
-  const onCardHover = () => sound.detent("hover")
+  const onCardHover = (e: PointerEvent) => {
+    if (e.pointerType === "mouse") sound.detent("hover")
+  }
   const runCard = (fn: () => void) => () => {
     sound.detent("click")
     fn()

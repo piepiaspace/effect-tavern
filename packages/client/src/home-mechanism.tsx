@@ -376,11 +376,13 @@ export const HomeMechanism = (props: {
       class="home-mech"
       data-paused={paused() ? "true" : "false"}
       data-shape={props.figure?.shape ?? "tall"}
-      onPointerEnter={() => {
+      onPointerEnter={(e) => {
+        if (e.pointerType !== "mouse") return
         phys.hovered = true
         if (shouldRun()) props.sound.iris(true)
       }}
-      onPointerLeave={() => {
+      onPointerLeave={(e) => {
+        if (e.pointerType !== "mouse") return
         phys.hovered = false
         if (shouldRun()) props.sound.iris(false)
       }}

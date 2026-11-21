@@ -55,8 +55,7 @@ export const flip = () => {
   setTheme(pick ?? system())
 }
 
-// at load, before the first paint (main.tsx imports this first): the pick, if any, on :root; a system that changes
-// while nothing is pinned is followed by the CSS, the signal only keeps the button honest
+// The HTML head applies the pick before paint. Keep the DOM in sync when this module loads and the system changes.
 if (dark) {
   const pick = stored()
   if (pick) document.documentElement.dataset["theme"] = pick

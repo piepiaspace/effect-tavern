@@ -72,7 +72,7 @@
   --radius: 8px; /* buttons, inputs, menu rows */
   --radius-card: calc(var(--radius) + 4px);
   /* the composer's slot: the box's side gutters and its foot (the room under it); chrome.css widens both on a wide screen */
-  --composer-side: var(--space-3);
+  --composer-side: max(var(--space-3), var(--safe-left), var(--safe-right));
   --composer-foot: calc(var(--space-4) + var(--safe-bottom));
   --radius-dialog: 16px;
   --radius-pill: 999px;

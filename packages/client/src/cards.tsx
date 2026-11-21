@@ -191,10 +191,14 @@ export const Cards = (props: Pane) => {
                 id="card-library-address"
                 type="url"
                 inputmode="url"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="go"
                 placeholder="https://…"
                 value={url()}
                 onInput={(e) => (setUrl(e.currentTarget.value), setRefusedUrl(null))}
-                onKeyDown={(e) => e.key === "Enter" && void add()}
+                onKeyDown={(e) => e.key === "Enter" && !e.isComposing && e.keyCode !== 229 && void add()}
               />
             </div>
             <button type="button" class="btn sm" disabled={!url().trim()} onClick={() => void add()}>
@@ -385,10 +389,14 @@ export const Cards = (props: Pane) => {
                   id="card-link"
                   type="url"
                   inputmode="url"
+                  autocapitalize="none"
+                  autocorrect="off"
+                  spellcheck="false"
+                  enterkeyhint="go"
                   placeholder="https://…"
                   value={link()}
                   onInput={(e) => (setLink(e.currentTarget.value), settle())}
-                  onKeyDown={(e) => e.key === "Enter" && fromLink()}
+                  onKeyDown={(e) => e.key === "Enter" && !e.isComposing && e.keyCode !== 229 && fromLink()}
                 />
               </div>
               <button type="button" class="btn sm" disabled={!link().trim() || writing()} onClick={() => fromLink()}>

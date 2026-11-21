@@ -14,22 +14,15 @@ import type { TimelineNode as Node, InvocationToken } from "@effect-tavern/runti
 // Record's pieces, composer.tsx the box, inspector.tsx the Inspect page, bridge.ts the atom → accessor read they all use.
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { Phase } from "@effect-tavern/runtime/src/session.ts"
-import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, lazy, Loading, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { CardPage } from "./card.tsx"
 import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
 import { Home } from "./home.tsx"
 import { imeController } from "./ime.ts"
 import { Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
-import { Inspect } from "./inspector.tsx"
 import { blocks } from "./markdown.ts"
 import { plain, Prose } from "./prose.tsx"
-import { PromptTreePage } from "./prompt-tree.tsx"
-import { Settings } from "./settings.tsx"
-import { ManuscriptPage, Workshop } from "./workshop.tsx"
-import { Timeline } from "./timeline.tsx"
-import { WritingPage } from "./writing.tsx"
 import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
 import { apart, lineOf, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
@@ -61,6 +54,15 @@ import { leadKind, settleKind, TurnStatus } from "./turn-status.tsx"
 import { onKey } from "./pages.ts"
 import { scroll } from "./tabs.ts"
 import { t } from "./i18n.ts"
+
+const CardPage = lazy(() => import("./card.tsx"), { export: "CardPage" })
+const Inspect = lazy(() => import("./inspector.tsx"), { export: "Inspect" })
+const PromptTreePage = lazy(() => import("./prompt-tree.tsx"), { export: "PromptTreePage" })
+const Settings = lazy(() => import("./settings.tsx"), { export: "Settings" })
+const ManuscriptPage = lazy(() => import("./workshop.tsx"), { export: "ManuscriptPage" })
+const Workshop = lazy(() => import("./workshop.tsx"), { export: "Workshop" })
+const Timeline = lazy(() => import("./timeline.tsx"), { export: "Timeline" })
+const WritingPage = lazy(() => import("./writing.tsx"), { export: "WritingPage" })
 
 const paragraphs = blocks // the reader's own cut, so the editor opens on the paragraphs the reader drew
 
@@ -611,34 +613,38 @@ export const App = () => {
         <Show when={pg() === "home"}>
           <Home />
         </Show>
-        <Show when={pg() === "card"}>
-          <CardPage />
-        </Show>
-        <Show when={pg() === "workshop"}>
-          <Workshop />
-        </Show>
-        <Show when={pg() === "manuscript"}>
-          <ManuscriptPage />
-        </Show>
-        <Show when={pg() === "timeline"}>
-          <Timeline />
-        </Show>
-        <Show when={pg() === "writing"}>
-          <WritingPage />
-        </Show>
-        <Show when={pg() === "status"}>
-          <StatusPage />
-        </Show>
-        <Show when={pg() === "prompt-tree"}>
-          <PromptTreePage />
-        </Show>
-        <Show when={typeof pg() === "object"}>
-          <Inspect id={(pg() as { inspect: Id }).inspect} />
-        </Show>
+        <Loading>
+          <Show when={pg() === "card"}>
+            <CardPage />
+          </Show>
+          <Show when={pg() === "workshop"}>
+            <Workshop />
+          </Show>
+          <Show when={pg() === "manuscript"}>
+            <ManuscriptPage />
+          </Show>
+          <Show when={pg() === "timeline"}>
+            <Timeline />
+          </Show>
+          <Show when={pg() === "writing"}>
+            <WritingPage />
+          </Show>
+          <Show when={pg() === "status"}>
+            <StatusPage />
+          </Show>
+          <Show when={pg() === "prompt-tree"}>
+            <PromptTreePage />
+          </Show>
+          <Show when={typeof pg() === "object"}>
+            <Inspect id={(pg() as { inspect: Id }).inspect} />
+          </Show>
+        </Loading>
       </Shell>
       {/* the settings stand on their own three-column skeleton over the canvas, under .shell-top */}
       <Show when={pg() === "settings"}>
-        <Settings />
+        <Loading>
+          <Settings />
+        </Loading>
       </Show>
       {/* an agent's tab (a driven browser) told apart from the player's at a glance */}
       <Show when={navigator.webdriver}>

@@ -26,7 +26,8 @@
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
   transition: scrollbar-color var(--dur-3) var(--ease);
-  padding: var(--space-3) var(--space-5) calc(var(--space-6) + var(--safe-bottom));
+  padding: var(--space-3) max(var(--space-5), var(--safe-right)) calc(var(--space-6) + var(--safe-bottom))
+    max(var(--space-5), var(--safe-left));
 }
 @media (hover: hover) and (pointer: fine) {
   .workshop-body:hover {
@@ -268,6 +269,6 @@
 }
 @media (max-width: 40rem) {
   .workshop-body {
-    padding-inline: var(--space-3);
+    padding-inline: max(var(--space-3), var(--safe-left)) max(var(--space-3), var(--safe-right));
   }
 }

@@ -23,8 +23,8 @@ import {
 } from "./pack.ts"
 import { AsksTab, ProseTab } from "./packs.tsx"
 import { EXTRA, atOf, extraOf, withExtra } from "./requirements.ts"
-import { openSettings } from "./settings.tsx"
-import { close, open } from "./pages.ts"
+import { openSettings } from "./settings-navigation.ts"
+import { close } from "./pages.ts"
 import { activeOf, tabs, registry, card, cardTitle, isFreeChat, packs, page, personas, stories } from "./store.ts"
 import { personaOn } from "./stories.ts"
 import { openPicker } from "./dialogs.tsx"
@@ -33,8 +33,6 @@ import { moot, pressing, sentence, SWITCHES, takenBy, type SwitchKey } from "./s
 import { previewFromPlay } from "./prompt-tree-state.ts"
 import { pendingLocalWrite, putLocal, refreshActiveCard } from "./wire.ts"
 import { type Key, t } from "./i18n.ts"
-
-export const openWriting = () => open("writing")
 
 const putLocalAndRefresh = async (cardId: string, edit: (l: Local) => Local) => {
   if (!cardId) return
@@ -511,26 +509,23 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     const textOf = () => (p() as { text?: string }).text
     const missing = () => unfilled(textOf() ?? "", layer()?.names ?? {})
     return (
-      <div
-        class="tile prod-item"
-        data-editable="true"
-        onClick={() => openEditProduct({ id: p().id, label: p().label, text: textOf(), trigger: p().trigger })}
-      >
+      <div class="tile prod-item">
         <div class="prod-top">
-          <span class={{ pname: true, pid: !p().label }}>{p().label ?? p().id}</span>
+          <button
+            type="button"
+            class={{ "edit-product": true, pname: true, pid: !p().label }}
+            aria-label={t("packs.editTheater", { name: p().label ?? p().id })}
+            onClick={() => openEditProduct({ id: p().id, label: p().label, text: textOf(), trigger: p().trigger })}
+          >
+            {p().label ?? p().id}
+          </button>
           <For each={missing()}>{(m) => <span class="tag warn mono">{`{{${m}}}`}</span>}</For>
           <span class="tag">{props.fromLabel(p().from)}</span>
           <Show when={p().role === "theater" && p().id !== "options"}>
             <span class="tag">{p().trigger === "demand" ? t("packs.onDemand") : t("packs.everyTurn")}</span>
           </Show>
 
-          <span onClick={(e) => e.stopPropagation()}>
-            <Switch
-              on={!!p().on}
-              label={p().label ?? p().id}
-              onFlip={() => flipProduct({ id: p().id, on: !!p().on })}
-            />
-          </span>
+          <Switch on={!!p().on} label={p().label ?? p().id} onFlip={() => flipProduct({ id: p().id, on: !!p().on })} />
         </div>
         <span class="prod-preview">{textOf() ?? t("writing.cardPrompt")}</span>
       </div>

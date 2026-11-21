@@ -29,8 +29,8 @@ import {
   Write,
 } from "./icons.tsx"
 import { openPromptTree } from "./prompt-tree-state.ts"
-import { openSettings } from "./settings.tsx"
-import { browse, close, editCard, openStory, showCard, toHome } from "./pages.ts"
+import { openSettings } from "./settings-navigation.ts"
+import { browse, close, editCard, open, openStory, showCard, toHome } from "./pages.ts"
 import {
   admits,
   facetCounts,
@@ -73,7 +73,6 @@ import {
 import { chosen, takenBy } from "./switches.ts"
 import { flip, theme } from "./theme.ts"
 import { fetchStories, putLocal, searchStories } from "./wire.ts"
-import { openWriting } from "./writing.tsx"
 import { flip as flipLocale, t } from "./i18n.ts"
 
 /** The install's keys: settings, the theme (a flip, pressed while the dark side holds) and the interface's language
@@ -599,7 +598,7 @@ export const Sidebar = (props: {
                 class="tile row"
                 disabled={at() === null}
                 aria-label={freeChat() ? t("writing.freeChatTitle") : undefined}
-                onClick={() => leaveFor(openWriting)}
+                onClick={() => leaveFor(() => open("writing"))}
               >
                 <span class="lbl">
                   <Write aria-hidden="true" />

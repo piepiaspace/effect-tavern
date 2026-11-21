@@ -1531,6 +1531,9 @@
   box-shadow: var(--shadow-pop);
   outline: none;
 }
+.drawer .sidebar {
+  padding-right: var(--safe-right);
+}
 /* a card's stories in the drawer: one screen, the list as tall as it gets, 新建故事 at the thumb's foot (no install
    keys under it: the shelf's foot holds them) */
 .drawer .workspace {

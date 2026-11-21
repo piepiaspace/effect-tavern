@@ -101,6 +101,10 @@ export const InvocationMenu = (props: {
         </div>
       </Show>
       <CommandInput
+        autocapitalize="none"
+        autocorrect="off"
+        spellcheck="false"
+        enterkeyhint="search"
         aria-label={t("writing.searchEntriesLabel")}
         placeholder={t("writing.searchEntries")}
         ref={(el) => (field = el)}

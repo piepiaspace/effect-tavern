@@ -23,7 +23,7 @@ import {
   type PromptTreeMemory,
 } from "./prompt-tree-state.ts"
 import { RequestView, SourceDetailCard } from "./request-view.tsx"
-import { openSettings } from "./settings.tsx"
+import { openSettings } from "./settings-navigation.ts"
 import { activeOf, cards, cardTitle, characterCards, FREE_CHAT_ID, isFreeChat, log, stories, tabs } from "./store.ts"
 import { fetchPreview, fetchStoryNodes } from "./wire.ts"
 

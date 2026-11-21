@@ -60,7 +60,7 @@ main {
      with room to spare, so empty foot padding alone never makes an opening scroll): the turn's 26px action row sits
      clear of a two-row box (32..34px) and hides whole under a three-row box (66px), with the last prose line untouched */
   /* 24px a side: a reading margin, wider than the 16px chrome edge (Material compact, iOS layout margin) */
-  padding: var(--head) var(--space-5) var(--foot);
+  padding: var(--head) max(var(--space-5), var(--safe-right)) var(--foot) max(var(--space-5), var(--safe-left));
   display: flex;
   flex-direction: column;
   gap: var(--gap-turn);
@@ -649,7 +649,6 @@ main > section:focus-within > :is(.actions, .theater) .acts {
   text-decoration: underline;
   text-underline-offset: 2px;
   white-space: nowrap;
-  cursor: pointer;
 }
 .failure-raw {
   display: block;

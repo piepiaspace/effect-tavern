@@ -488,6 +488,10 @@ export const ManuscriptPage = () => {
                 {(x) => (
                   <input
                     class="workshop-name"
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
+                    enterkeyhint="done"
                     aria-label={t("workshop.entryName")}
                     placeholder={t("workshop.entryName")}
                     value={x().name}

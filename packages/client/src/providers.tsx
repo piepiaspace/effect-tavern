@@ -678,6 +678,9 @@ const ProviderDetail = (props: { id: string; onBack: () => void; onVault: () => 
                     type="search"
                     enterkeyhint="search"
                     placeholder={t("providers.searchModels")}
+                    autocapitalize="none"
+                    autocorrect="off"
+                    spellcheck="false"
                     aria-label={t("providers.searchModelsLabel")}
                     value={mq()}
                     onFocus={() => setSearching(true)}
@@ -1077,6 +1080,9 @@ const SyncDrawer = (props: { id: string; ready: () => Promise<void>; onClose: ()
                 type="search"
                 enterkeyhint="search"
                 placeholder={t("providers.searchModels")}
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
                 aria-label={t("providers.searchModelsLabel")}
                 value={q()}
                 onInput={(e) => setQ(e.currentTarget.value)}

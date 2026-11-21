@@ -187,6 +187,12 @@ export const Name = (props: { value: string; label: string; onCommit: (v: string
   <div class="input-box name">
     <input
       type="text"
+      enterkeyhint="done"
+      onKeyDown={(e) => {
+        if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return
+        e.preventDefault()
+        e.currentTarget.blur()
+      }}
       value={props.value}
       aria-label={props.label}
       onChange={(e) => e.currentTarget.value.trim() && props.onCommit(e.currentTarget.value.trim())}

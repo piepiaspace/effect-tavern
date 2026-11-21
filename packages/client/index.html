@@ -9,6 +9,19 @@
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#fcfcfb" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#151515" />
     <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        const theme = localStorage.getItem("theme")
+        if (theme === "light" || theme === "dark") {
+          document.documentElement.dataset.theme = theme
+          const metas = document.querySelectorAll('meta[name="theme-color"]')
+          const color = Array.from(metas).find((meta) => meta.media.includes(theme)).content
+          for (const meta of metas) meta.content = color
+        }
+      } catch {
+        // Storage can be unavailable. The media queries follow the system.
+      }
+    </script>
     <title>effect-tavern</title>
   </head>
   <body>

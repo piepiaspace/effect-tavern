@@ -1,4 +1,4 @@
-import "./theme.ts" // the pinned side on :root before anything paints
+import "./theme.ts"
 import { render } from "@solidjs/web"
 import { App } from "./App.tsx"
 import { boot } from "./pages.ts"

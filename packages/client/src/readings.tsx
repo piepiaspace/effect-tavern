@@ -13,7 +13,7 @@ import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/solid/menu"
 import { type DialogHandle, dialogHandle } from "./controls.tsx"
 import { Back, Change, Close, Clue, Die, Edit, Record, Reword, Swipe, Warning } from "./icons.tsx"
 import { close } from "./pages.ts"
-import { openSettings, type Section } from "./settings.tsx"
+import { openSettings, type Section } from "./settings-navigation.ts"
 import { demandable, fresh, heading, kindOf, marked, record, status, theater, whens, type Element } from "./record.ts"
 import {
   card,

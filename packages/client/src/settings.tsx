@@ -32,9 +32,9 @@ import { capOf, pairKey, pairOf, stalePair } from "./connections.ts"
 import { Cards } from "./cards.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
-import { close, openSource } from "./pages.ts"
+import { close } from "./pages.ts"
 import { forgetPreviewHat, openPromptTree } from "./prompt-tree-state.ts"
-import * as Atom from "./atom.ts"
+import { section, pane, setPane, pickedAtom, type Section } from "./settings-navigation.ts"
 import {
   activeOf,
   cards,
@@ -52,20 +52,6 @@ import {
 } from "./store.ts"
 import { type Key, t } from "./i18n.ts"
 import { deleteHat, deletePersona, putDecision, putHat, putPersona, putRouting, refreshActiveCard } from "./wire.ts"
-
-export type Section = "providers" | "routing" | "templates" | "personas" | "packs" | "cards"
-/** The section shown: written by every way in, so the settings layer moves to the section asked for. */
-const section = Atom.make<Section>("providers").pipe(Atom.keepAlive)
-const [pane, setPane] = createSignal<"list" | "detail">("list")
-const pickedAtom = Atom.make<Partial<Record<Section, string>>>({}).pipe(Atom.keepAlive)
-/** The settings layer on a section, 模型服务 when none is named: a missing model opens it on 默认模型 (the draft's
- *  error, the card page); Back or Escape returns to the page that opened it. Optional `id` pre-selects a record. */
-export const openSettings = (at: Section = "providers", id?: string) => {
-  setPane(id ? "detail" : "list")
-  registry.set(section, at)
-  if (id) registry.update(pickedAtom, (p) => ({ ...p, [at]: id }))
-  openSource("settings")
-}
 
 const SECTIONS: [Section, Key, (p: JSX.SvgSVGAttributes<SVGSVGElement>) => JSX.Element][] = [
   ["providers", "settings.providers", Plugs],

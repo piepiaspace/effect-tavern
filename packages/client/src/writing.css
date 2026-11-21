@@ -223,9 +223,10 @@
   color: var(--ink-3);
   margin-right: var(--space-1);
 }
-.wmount .name-chip {
-  height: 28px;
-  padding: 0 var(--space-2);
+@media (hover: hover) and (pointer: fine) {
+  .wmount .name-chip {
+    height: 28px;
+  }
 }
 
 .wpanel {
@@ -501,9 +502,6 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.prod-item[data-editable="true"] {
-  cursor: default;
 }
 .tag.warn {
   background: var(--warn-soft);

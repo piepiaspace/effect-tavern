@@ -48,6 +48,10 @@ export const VaultDrawer = (props: { for: string | undefined; onClose: () => voi
               <input
                 type="text"
                 placeholder={t("vault.keyName")}
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="next"
                 aria-label={t("vault.keyName")}
                 value={draft().name}
                 onInput={(e) => {

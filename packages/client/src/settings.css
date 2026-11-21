@@ -1639,6 +1639,25 @@
   margin-right: calc((var(--control) - var(--control-sm)) / 2 - var(--space-2));
   border-radius: var(--radius-sm); /* concentric with the chip */
 }
+/* The edit button covers the row around the independently focusable switch. */
+.pack-row,
+.prod-item {
+  position: relative;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.edit-product {
+  text-align: start;
+}
+.edit-product::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.pack-row .switch,
+.prod-item .switch {
+  position: relative;
+}
 .pack-row {
   display: flex;
   align-items: center;
@@ -1874,6 +1893,10 @@
 .card-row {
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
+}
+.card-row a[download] {
+  text-decoration: none;
+  -webkit-touch-callout: none;
 }
 .card-row .row {
   flex-wrap: wrap;

@@ -35,14 +35,12 @@ import {
   Tree,
   Write,
 } from "./icons.tsx"
-import { openInspector } from "./inspector.tsx"
 import { Edge } from "./edge.tsx"
 import { remembered, SIDE } from "./fold.ts"
 import { hasReadings } from "./readings.tsx"
 import { InstallKeys, Sidebar } from "./side.tsx"
 import { card, cards, cardTitle, isHome, page, type Page, path, stories, tabs } from "./store.ts"
 import { add, remove, unread } from "./tabs.ts"
-import { openTimeline } from "./timeline.tsx"
 import { close, open, pick } from "./pages.ts"
 import { t } from "./i18n.ts"
 
@@ -156,7 +154,12 @@ export const Shell = (props: { children: JSX.Element }) => {
    *  them: no key of the three has a pressed state. */
   const Keys = () => (
     <>
-      <button type="button" class={{ icon: true, sm: wide() }} aria-label={t("common.timeline")} onClick={openTimeline}>
+      <button
+        type="button"
+        class={{ icon: true, sm: wide() }}
+        aria-label={t("common.timeline")}
+        onClick={() => open("timeline")}
+      >
         <Tree />
       </button>
       <button
@@ -164,7 +167,10 @@ export const Shell = (props: { children: JSX.Element }) => {
         class={{ icon: true, sm: wide() }}
         aria-label={t("side.inspector")}
         disabled={line().length === 0}
-        onClick={openInspector}
+        onClick={() => {
+          const id = line().at(-1)?.id
+          if (id !== undefined) open({ inspect: id })
+        }}
       >
         <Probe />
       </button>

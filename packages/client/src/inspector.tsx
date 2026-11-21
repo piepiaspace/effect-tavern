@@ -33,10 +33,9 @@ import { KeyValues, Reading, Shaped } from "./readings.tsx"
 import { RequestView } from "./request-view.tsx"
 import { previewFromPlay, sourceDestination } from "./prompt-tree-state.ts"
 import { channelOf, fields, lineOf, versions, whens } from "./record.ts"
-import { openSettings } from "./settings.tsx"
+import { openSettings } from "./settings-navigation.ts"
 import { activeOf, card, cards, isFreeChat, log, path, registry, tabs, type Id } from "./store.ts"
 import { close, editCard, open } from "./pages.ts"
-import { openWriting } from "./writing.tsx"
 import { t } from "./i18n.ts"
 import { failureText } from "./failure.ts"
 
@@ -52,10 +51,6 @@ const CHANNEL = { act: "act", note: "note", both: "act + note", invoke: "invoke"
 // products by their declared shape. Without `inspect` on the server no call carries a request body: the rows keep
 // their heads and numbers, open to their results (the brief stays closed), and no prompt view. Opens on the path's
 // last node; prev / next walk the path, `[` `]` too, Escape goes back (pages.ts). src/inspect.ts projects; this draws.
-export const openInspector = () => {
-  const id = registry.get(path).at(-1)?.id
-  if (id !== undefined) open({ inspect: id })
-}
 const fmt = (n: number) => n.toLocaleString("en-US")
 const secs = (ms: number) => `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`
 
@@ -363,7 +358,7 @@ const Step = (props: {
                           openSettings("personas", dest.target.personaId)
                           break
                         case "writing":
-                          openWriting()
+                          open("writing")
                           break
                         case "inspect":
                           open({ inspect: dest.target.nodeId })

@@ -123,6 +123,13 @@ button.record-pill:active {
   box-shadow: 0 calc(-1 * var(--hairline)) 0 var(--line);
 }
 
+@media (width < 72rem) {
+  .sheet {
+    box-sizing: border-box;
+    padding-inline: var(--safe-left) var(--safe-right);
+  }
+}
+
 /* the readings: one element per data shape, all on the gray ramp; green only for a hit */
 .record {
   display: flex;
@@ -967,17 +974,31 @@ button.record-pill:active {
     pointer-events: auto;
   }
 }
+.manager .card .acts .icon {
+  width: 24px;
+  height: 24px;
+  color: var(--ink-3);
+}
 @media (hover: none), (pointer: coarse) {
+  .manager .card .top {
+    flex-wrap: wrap;
+  }
+  .manager .card .name {
+    flex-basis: 6rem;
+  }
+  .manager .card .acts {
+    margin-left: auto;
+    gap: var(--space-2);
+  }
+  .manager .card .acts .icon {
+    width: 44px;
+    height: 44px;
+  }
   .manager:not([data-selecting]) .card .acts {
     opacity: 1;
     translate: 0 0;
     pointer-events: auto;
   }
-}
-.manager .card .acts .icon {
-  width: 24px;
-  height: 24px;
-  color: var(--ink-3);
 }
 .manager .card .acts .icon svg {
   width: 14px;

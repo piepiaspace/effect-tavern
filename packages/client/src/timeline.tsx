@@ -35,7 +35,6 @@ const BAND = 32
 const THREAD_GAP = 14
 const KNOT = { x: 7, y: 14 }
 
-export const openTimeline = () => open("timeline")
 const textOf = (n: Node) => lineOf(n) || plain(prose(n))
 
 export const Timeline = () => {
