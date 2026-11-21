@@ -33,11 +33,15 @@ const depth = (): number => {
   return layers + pages
 }
 
+const stateBack = (): number => {
+  const state = history.state as { back?: unknown } | null
+  return typeof state?.back === "number" && state.back > 0 ? state.back : 0
+}
+
 export const mountBack = (): (() => void) => {
   // A reload keeps the browser's session history while resetting the page stack: start from what it still holds so
   // `sync` unwinds stale `{ back: k }` entries instead of leaving dead backs at the root.
-  const state = history.state as { back?: unknown } | null
-  let held = typeof state?.back === "number" && state.back > 0 ? state.back : 0
+  let held = stateBack()
   let leaving = 0 // our own history.go(-n), whose popstate is no press
   let settling = 0 // a back's close still on its way (an exit animation): no entry is added meanwhile
   const sync = () => {
@@ -65,7 +69,13 @@ export const mountBack = (): (() => void) => {
       leaving = 0
       return later()
     }
-    held = Math.max(0, held - 1)
+    const at = stateBack()
+    if (at >= held) {
+      // Browser Forward onto a popped `{ back: k }` entry (or a non-back pop at root): unwind without firing Escape.
+      held = at
+      return later()
+    }
+    held = at
     settling = performance.now() + 1000
     setTimeout(later, 1000) // a close that ends without an event of its own
     const layers = openLayers()

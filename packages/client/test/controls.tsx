@@ -480,11 +480,40 @@ const run = async () => {
     await until(() => (history.state as { back?: number } | null)?.back === 1),
     "a page over home pushes a back entry",
   )
+  nativePop.showPopover()
+  check(
+    await until(() => (history.state as { back?: number } | null)?.back === 2),
+    "popover over a page pushes a second back entry",
+  )
+  history.back()
+  check(
+    await until(() => !nativePop.matches(":popover-open") && (history.state as { back?: number } | null)?.back === 1),
+    "back closes the popover while keeping the page open",
+  )
+  const forwardOverPage = new Promise<void>((r) => addEventListener("popstate", () => r(), { once: true }))
+  history.forward()
+  await forwardOverPage
+  check(
+    await until(() => registry.get(page) === "settings" && (history.state as { back?: number } | null)?.back === 1),
+    `browser forward onto a popped entry unwinds without closing the open page (${JSON.stringify(registry.get(page))})`,
+  )
   line.focus()
   history.back()
   check(
-    await until(() => registry.get(page) === "home" && document.activeElement !== line),
+    await until(
+      () =>
+        registry.get(page) === "home" &&
+        document.activeElement !== line &&
+        (history.state as { back?: number } | null)?.back === undefined,
+    ),
     `system back with a focused field blurs it and closes the page (${JSON.stringify(registry.get(page))})`,
+  )
+  const forwardAtHome = new Promise<void>((r) => addEventListener("popstate", () => r(), { once: true }))
+  history.forward()
+  await forwardAtHome
+  check(
+    await until(() => registry.get(page) === "home" && (history.state as { back?: number } | null)?.back === undefined),
+    "browser forward from home unwinds the popped entry instead of stranding back=1",
   )
   unmountBack()
   removeEventListener("keydown", onKey)
