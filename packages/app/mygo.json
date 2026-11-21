@@ -8,5 +8,15 @@
   "buildCommand": "bun web/build.ts",
   "ios": {
     "team": "4PG5LBH388"
+  },
+  "android": {
+    "adaptiveIcon": {
+      "foreground": "icon/foreground.png",
+      "background": "#fcfcfb"
+    },
+    "splash": "#fcfcfb"
+  },
+  "macos": {
+    "icon": "icon/AppIcon.icns"
   }
 }
