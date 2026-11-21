@@ -10,14 +10,14 @@ import { bundleServer } from "../web/bundle.ts"
 const built = await bundleServer({ version: "test" })
 assert.ok(built.success, built.logs.map((l) => l.message).join("\n"))
 // run as a script, import.meta as a module in the page has it (no `main`)
-const code = (await built.outputs[0]!.text()).replaceAll("import.meta", "({ url: location.href })")
+const code = (await built.outputs[0].text()).replaceAll("import.meta", "({ url: location.href })")
 
 // Bun APIs the bundle names at all: each must be one host.ts supplies, or one only the CLI's paths reach (Bun.file:
 // static files and a card library's directory, neither of which the app serves).
 const named = new Set([...code.matchAll(/\bBun\.([A-Za-z]+)/g)].map((m) => m[1]))
 const known = new Set(["YAML", "env", "stringWidth", "file"])
 assert.deepEqual(
-  [...named].filter((n) => !known.has(n!)),
+  [...named].filter((n) => !known.has(n)),
   [],
   "a Bun API the page bundle names",
 )
