@@ -10,7 +10,7 @@ import { unfilled } from "@effect-tavern/runtime/src/names.ts"
 import { createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Modal, newId, Switch, dialogHandle } from "./controls.tsx"
-import { Back, Next, Prev, Snippets as Plus, User } from "./icons.tsx"
+import { Back, Next, Prev, Stack, Snippets as Plus, User } from "./icons.tsx"
 import {
   cardNameKeys,
   orderedPacks,
@@ -25,12 +25,13 @@ import { AsksTab, ProseTab } from "./packs.tsx"
 import { EXTRA, atOf, extraOf, withExtra } from "./requirements.ts"
 import { openSettings } from "./settings.tsx"
 import { close, open } from "./pages.ts"
-import { card, cardTitle, isFreeChat, packs, page, personas, stories } from "./store.ts"
+import { activeOf, tabs, registry, card, cardTitle, isFreeChat, packs, page, personas, stories } from "./store.ts"
 import { personaOn } from "./stories.ts"
 import { openPicker } from "./dialogs.tsx"
 import { kindOf } from "./record.ts"
 import { moot, pressing, sentence, SWITCHES, takenBy, type SwitchKey } from "./switches.ts"
-import { putLocal, refreshActiveCard } from "./wire.ts"
+import { previewFromPlay } from "./prompt-tree-state.ts"
+import { pendingLocalWrite, putLocal, refreshActiveCard } from "./wire.ts"
 import { type Key, t } from "./i18n.ts"
 
 export const openWriting = () => open("writing")
@@ -109,6 +110,21 @@ export const WritingPage = () => {
   const view = read(card)
   const allPacks = read(packs)
   const cardId = () => view()?.id ?? ""
+  const [previewError, setPreviewError] = createSignal("")
+  const preview = async () => {
+    const origin = activeOf(registry.get(tabs))
+    const id = cardId()
+    // Some touch browsers leave the text field focused when a button is tapped.
+    const field = document.activeElement
+    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.blur()
+    try {
+      await pendingLocalWrite()
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : String(error))
+      return
+    }
+    if (id && activeOf(registry.get(tabs)) === origin) previewFromPlay({ cardId: id })
+  }
   const title = () => cardTitle(view())
   const freeChat = () => isFreeChat(view())
   const loc = () => view()?.local
@@ -149,7 +165,25 @@ export const WritingPage = () => {
             <Show when={freeChat()} fallback={<Show when={title()}>{(c) => <span class="tag clip">{c()}</span>}</Show>}>
               <span class="tag">{t("writing.freeChatScope")}</span>
             </Show>
+            <button
+              type="button"
+              class="icon"
+              disabled={!cardId()}
+              aria-label={t("promptTree.preview")}
+              title={t("promptTree.preview")}
+              onClick={() => void preview()}
+            >
+              <Stack aria-hidden="true" />
+            </button>
           </header>
+
+          <Show when={previewError()}>
+            {(message) => (
+              <p class="warn" role="alert">
+                {message()}
+              </p>
+            )}
+          </Show>
 
           <Show when={dropped().length > 0}>
             <div class="dropped-strip">

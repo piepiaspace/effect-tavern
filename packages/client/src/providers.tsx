@@ -139,7 +139,6 @@ const ProbeError = (props: { probe: Probe }) => {
     </div>
   )
 }
-const DRAWER_OUT = 250 // ms: past the drawer's --dur-3 slide, so its content leaves with it
 
 export const Providers = (props: Pane) => {
   const list = read(providers)
@@ -424,14 +423,10 @@ const ProviderDetail = (props: { id: string; onBack: () => void; onVault: () => 
   const [mq, setMq] = createSignal("")
   const [searching, setSearching] = createSignal(false)
   const [folded, setFolded] = createSignal(false)
-  const [drawer, setDrawer] = createSignal<"endpoint" | "sync" | null>(null)
-  // what the drawer shows: set as it opens, kept while it slides out (DRAWER_OUT)
-  const [shown, setShown] = createSignal<"endpoint" | "sync" | null>(null)
-  const open = (d: "endpoint" | "sync") => (setShown(d), setDrawer(d))
-  const shut = () => {
-    setDrawer(null)
-    setTimeout(() => drawer() || setShown(null), DRAWER_OUT)
-  }
+  const [drawerOpen, setDrawerOpen] = createSignal(false)
+  const [shown, setShown] = createSignal<"endpoint" | "sync">("endpoint")
+  const open = (d: "endpoint" | "sync") => (setShown(d), setDrawerOpen(true))
+  const shut = () => setDrawerOpen(false)
   let openModel: (m: ModelEntry) => void = () => {}
   let openAddModel: () => void = () => {}
 
@@ -806,7 +801,7 @@ const ProviderDetail = (props: { id: string; onBack: () => void; onVault: () => 
           </div>
 
           <Drawer
-            open={!!drawer()}
+            open={drawerOpen()}
             label={shown() === "sync" ? t("providers.sync") : t("providers.requestConfig")}
             onClose={shut}
           >

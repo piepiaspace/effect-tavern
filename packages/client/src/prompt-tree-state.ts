@@ -4,7 +4,18 @@ import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Message } from "@effect-tavern/provider/src/call.ts"
 import type { MessageTrace, SourceRef, Span } from "@effect-tavern/runtime/src/trace.ts"
 import type { PreviewRequest } from "./wire.ts"
-import { activeOf, cards, characterCards, focus, FREE_CHAT_ID, isFreeChat, registry, stories, tabs } from "./store.ts"
+import {
+  activeOf,
+  cards,
+  characterCards,
+  focus,
+  FREE_CHAT_ID,
+  isFreeChat,
+  log,
+  registry,
+  stories,
+  tabs,
+} from "./store.ts"
 import { open } from "./pages.ts"
 
 export interface PromptTreeMemory {
@@ -80,7 +91,7 @@ export interface OpenPromptTreeOptions {
 /** Opens the Prompt Tree page on the active tab, preserving return memory for the same card when appropriate,
  *  and falling back to a sample card when opened from Settings → Templates with no active card. */
 export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
-  if (opts.play && opts.storyId === undefined) return
+  if (opts.play && opts.storyId === undefined && !(opts.cardId && opts.nodeId === null)) return
   const tab = activeOf(registry.get(tabs))
   const shelf = registry.get(cards)
   const existing = memories.get(tab.id)
@@ -95,7 +106,9 @@ export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
 
   const sameCard = existing && existing.cardId === cardId
   const sameContext =
-    sameCard && !!existing.play === !!opts.play && (opts.storyId === undefined || opts.storyId === existing.storyId)
+    sameCard &&
+    !!existing.play === !!opts.play &&
+    (opts.play ? opts.storyId === existing.storyId : opts.storyId === undefined || opts.storyId === existing.storyId)
   const base = sameContext ? existing : defaultMemory(cardId)
 
   const lib = registry.get(stories)
@@ -115,11 +128,23 @@ export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
     candidateCard: opts.candidateCard,
     candidateHat: opts.candidateHat,
     hatId: opts.candidateHat?.id ?? opts.hatId,
-    storyId: opts.storyId ?? base.storyId ?? activeStory?.id,
+    storyId: opts.play ? opts.storyId : (opts.storyId ?? base.storyId ?? activeStory?.id),
     nodeId: opts.nodeId !== undefined ? opts.nodeId : base.nodeId,
   }
   memories.set(tab.id, next)
   open("prompt-tree")
+}
+
+/** From Writing preview the open story's head, or the card before its first turn. Node tools name their branch. */
+export const previewFromPlay = (target: { cardId: string } | { nodeId: number }): void => {
+  const tab = activeOf(registry.get(tabs))
+  const story = registry.get(stories)?.stories.find((s) => s.id === tab.story)
+  if ("nodeId" in target) {
+    if (story) openPromptTree({ cardId: story.card, storyId: story.id, nodeId: target.nodeId, play: true })
+    return
+  }
+  const own = story?.card === target.cardId ? story : undefined
+  openPromptTree({ cardId: target.cardId, storyId: own?.id, nodeId: own ? registry.get(log).head : null, play: true })
 }
 
 /** Pure builder for POST /api/preview payload from PromptTreeMemory. */
@@ -134,10 +159,10 @@ export const buildPreviewRequest = (mem: PromptTreeMemory): PreviewRequest => {
     : undefined
 
   const hat = mem.candidateHat ? { candidateHat: mem.candidateHat } : { hatId: mem.hatId }
-  if (mem.mode === "story" && mem.storyId !== undefined) {
+  if (mem.mode === "story" && (mem.play || mem.storyId !== undefined)) {
     return {
       mode: "story",
-      storyId: mem.storyId,
+      ...(mem.storyId !== undefined ? { storyId: mem.storyId } : { cardId: mem.cardId ?? undefined }),
       ...(mem.nodeId !== undefined ? { nodeId: mem.nodeId } : {}),
       ...hat,
       ...(input ? { input } : {}),

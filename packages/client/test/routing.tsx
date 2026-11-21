@@ -169,6 +169,7 @@ const run = async () => {
   // The text change and preview click can arrive together. The editor stays until the PUT succeeds.
   openSettings("templates", "hat-gemini")
   await quiet()
+  check(document.querySelector(".settings")?.getAttribute("data-pane") === "detail", "a template link opens its detail")
   const field = document.querySelector<HTMLTextAreaElement>(".msg-card textarea.field")!
   const preview = [...document.querySelectorAll<HTMLButtonElement>(".detail-header .btn")].find((b) =>
     b.textContent?.includes("请求预览"),
@@ -199,6 +200,21 @@ const run = async () => {
   check(
     hatWrites.length === 2 && hatWrites[1]?.narrate?.head?.[0]?.text === field.value,
     "retry persists the edited text",
+  )
+
+  // A touch/Safari section change can unmount the text field without dispatching change.
+  field.focus()
+  field.value = "卸载前最后一次输入"
+  field.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  await quiet()
+  hatResponse = Promise.resolve(
+    Response.json([{ ...hatWrites[1], narrate: { head: [{ role: "system", text: field.value }] } }]),
+  )
+  openSettings("routing")
+  await quiet()
+  check(
+    hatWrites.length === 3 && hatWrites[2]?.narrate?.head?.[0]?.text === "卸载前最后一次输入",
+    "unmount flushes the unblurred template once",
   )
 
   const diagnostics = bridge.end().diagnostics

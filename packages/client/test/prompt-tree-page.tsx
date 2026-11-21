@@ -9,6 +9,8 @@ import { SourceDetailCard } from "../src/request-view.tsx"
 import { registry, stories, tabs, type Tab } from "../src/store.ts"
 import { quiet, tracked, until } from "./settle.ts"
 
+import "../src/app.css"
+
 const post = globalThis.fetch
 const failures: string[] = []
 const card = {
@@ -70,6 +72,20 @@ async function run() {
     const root = document.getElementById("root")!
     const dispose = render(() => <PromptTreePage />, root)
     if (!(await until(() => root.querySelector(".pt-events")))) throw Error("Missing sandbox events")
+    const outline = root.querySelector<HTMLElement>(".pane.pipeline")!
+    const controls = root.querySelector<HTMLElement>(".pane.node")!
+    const paneSwitch = root.querySelector<HTMLElement>(".pt-header-end > .seg:last-child")!
+    if (window.matchMedia("(min-width: 64rem)").matches) {
+      if (getComputedStyle(paneSwitch).display !== "none" || !outline.offsetWidth || !controls.offsetWidth)
+        throw Error("Wide prompt tree should show both panes")
+    } else {
+      if (!outline.offsetWidth || controls.offsetWidth) throw Error("Narrow prompt tree should start on the outline")
+      paneSwitch.querySelectorAll("button")[1].click()
+      flush()
+      if (outline.offsetWidth || !controls.offsetWidth) throw Error("Narrow prompt tree should switch to controls")
+      paneSwitch.querySelector("button")!.click()
+      flush()
+    }
     if (!root.textContent?.includes("Locked vault")) throw Error("Missing author resource")
     const event = root.querySelector<HTMLInputElement>(".pt-events input[type=text]")!
     event.closest("details")!.open = true
@@ -106,6 +122,13 @@ async function run() {
       throw Error("Missing folded history detail")
     if (root.querySelector(".pt-omitted-detail .rv-jump")?.textContent !== t("promptTree.jumpTimeline"))
       throw Error("Folded history should open the timeline")
+    // A page restored from disk has its tab address but no per-tab preview memory.
+    registry.set(tabs, { active: 3, list: [{ ...author, id: 3, under: ["writing"] }] })
+    flush()
+    await quiet()
+    if (root.querySelector(".pt-mode, #pt-sandbox-input") || root.textContent?.includes("Locked vault"))
+      throw Error("Restored storyless Writing preview showed author controls or resources")
+    if (!root.querySelector("#pt-story-input")) throw Error("Restored Writing preview lost its story controls")
     dispose()
 
     const [raw, setRaw] = createSignal<string | undefined>("{{char}}")

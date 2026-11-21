@@ -2,8 +2,9 @@ import { render } from "@solidjs/web"
 import { flush } from "solid-js"
 import type { Local } from "@effect-tavern/runtime/src/layer.ts"
 import { cardView } from "@effect-tavern/runtime/src/session.ts"
-import { card, registry } from "../src/store.ts"
+import { card, registry, tabs, page, activeOf } from "../src/store.ts"
 import { t } from "../src/i18n.ts"
+import { getPromptTreeMemory } from "../src/prompt-tree-state.ts"
 import { WritingPage } from "../src/writing.tsx"
 import { AsksTab, ProseTab } from "../src/packs.tsx"
 import { until, tracked } from "./settle.ts"
@@ -53,8 +54,10 @@ const refresh = (row: Local) => {
 }
 refresh(local)
 let saved = local
+let pending: Promise<void> | undefined
 globalThis.fetch = tracked(async (_, init) => {
   if (typeof init?.body !== "string") throw Error("Expected local row JSON")
+  await pending
   saved = JSON.parse(init.body)
   refresh(saved)
   return Response.json(saved)
@@ -125,6 +128,19 @@ async function run() {
     button(row(), t("packs.restoreInheritance"))!.click()
     if (!(await until(() => !saved.asks?.length && area()?.placeholder === "Pack narrator")))
       throw Error("Restore lost the inherited wording")
+    const gate = Promise.withResolvers<void>()
+    pending = gate.promise
+    const supplement = root.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t("switches.cardExtra")}"]`)!
+    supplement.value = "New writing for preview"
+    supplement.dispatchEvent(new Event("change", { bubbles: true }))
+    root.querySelector<HTMLButtonElement>(`button[aria-label="${t("promptTree.preview")}"]`)!.click()
+    await Promise.resolve()
+    if (registry.get(page) === "prompt-tree") throw Error("Writing preview opened before its local write settled")
+    gate.resolve()
+    if (!(await until(() => registry.get(page) === "prompt-tree"))) throw Error("Missing Writing preview")
+    const memory = getPromptTreeMemory(activeOf(registry.get(tabs)).id)
+    if (!memory?.play || memory.nodeId !== null || memory.cardId !== "blank")
+      throw Error("Missing pre-story player preview")
     dispose()
     const custom = { id: "custom", name: "Custom", fragments: [{ id: "req-123", text: "Write clearly." }] }
     render(

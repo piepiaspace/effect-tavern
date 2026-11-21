@@ -678,6 +678,7 @@ const zh = {
   },
   promptTree: {
     title: "提示词树",
+    afterNode: "推演此节点之后的请求",
     preview: "请求预览",
     toggleExpandAll: "全部展开 / 收起原文",
     sampleCard: "样例卡",

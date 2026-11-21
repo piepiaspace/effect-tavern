@@ -98,10 +98,13 @@ export interface ResourceEntryView {
 export interface PreviewDiagnostic {
   level: "info" | "warn" | "error"
   code:
+    | "passage_pending"
+    | "terminal_node"
     | "settlement_pending"
     | "folded_without_summary"
     | "prefill_disallowed"
     | "invalid_invoke"
+    | "connection_unavailable"
     | "invalid_read"
     | "unfilled_holes"
     | "layer_dropped"
@@ -169,6 +172,7 @@ export interface PreviewNarrateResult {
     }
   }
   sandbox: {
+    eventOptions: readonly string[]
     greetings: readonly { index: number; label: string; noteOnly: boolean }[]
     greetingIndex: number | null
     fields: readonly {
@@ -447,6 +451,7 @@ export const sourceForDelivery = (
   cardId: string,
   d: Pick<DeliverySnapshot, "resourceId" | "title" | "text" | "source">,
   packNames?: Readonly<Record<string, string>>,
+  rawText?: string,
 ): SourceRef => {
   if (d.resourceId.startsWith("card:")) {
     const body = d.resourceId.slice("card:".length)
@@ -461,7 +466,7 @@ export const sourceForDelivery = (
       resourceId: d.resourceId,
       label: d.title,
       path: sectionId ? `lore.${entryId}.sections` : `lore.${entryId}`,
-      rawText: d.text,
+      ...(rawText !== undefined && { rawText }),
     }
   }
   if (d.resourceId.startsWith("pack:")) {
@@ -478,7 +483,7 @@ export const sourceForDelivery = (
       resourceId: d.resourceId,
       label: d.title,
       path: `entries.${entry}`,
-      rawText: d.text,
+      ...(rawText !== undefined && { rawText }),
     }
   }
   const body = d.resourceId.startsWith("memory:") ? d.resourceId.slice("memory:".length) : d.resourceId
@@ -489,18 +494,17 @@ export const sourceForDelivery = (
     resourceId: d.resourceId,
     label: d.title,
     path: `products.${product}`,
-    rawText: d.text,
   }
 }
 
-export const sourceForDisclosure = (cardId: string, d: Disclosure & { text?: string }): SourceRef => ({
+export const sourceForDisclosure = (cardId: string, d: Disclosure, rawText?: string): SourceRef => ({
   kind: "card",
   cardId,
   entryId: d.id,
   layer: d.layer,
   label: d.id,
   path: `lore.${d.id}.layers[${d.layer - 1}]`,
-  ...(d.text !== undefined && { rawText: d.text }),
+  ...(rawText !== undefined && { rawText }),
 })
 
 /** Shared narrate assembly used identically by live sessions and design-time preview. */
@@ -584,6 +588,41 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   const keptFiction = enrichKept(evalFiction.kept)
 
   const wording = (id: string) => R.asks[id].text
+  // Only attach a template when it reproduces the frozen delivery. A resident snapshot may predate an editor change.
+  const lore = new Map(card.lore.map((entry) => [entry.id, entry]))
+  const rawDelivery = (d: DeliverySnapshot) => {
+    if (d.source === "memory") return undefined
+    const id = d.resourceId.slice(d.source.length + 1)
+    if (d.source === "pack") {
+      const source = RT.sources.entries[id]
+      const raw = source?.rawText
+      return raw && raw !== d.text && expand(raw, R.names, source.from ?? "local") === d.text ? raw : undefined
+    }
+    const [entryId, section] = id.split("#")
+    const entry = lore.get(entryId)
+    if (!entry) return undefined
+    if (section) {
+      const raw = entry.sections?.find((s) => s.id === section)?.text
+      return raw && raw !== d.text && expand(raw, R.names, "card") === d.text ? raw : undefined
+    }
+    let offset = 0
+    for (const [i, raw] of entry.layers.entries()) {
+      const expanded = expand(raw, R.names, "card")!
+      if (!d.text.startsWith(expanded, offset)) return undefined
+      offset += expanded.length
+      if (offset === d.text.length) {
+        const template = entry.layers.slice(0, i + 1).join("\n\n")
+        return template !== d.text ? template : undefined
+      }
+      if (!d.text.startsWith("\n\n", offset)) return undefined
+      offset += 2
+    }
+    return undefined
+  }
+  const disclosure = (d: Disclosure & { text: string }) => {
+    const raw = lore.get(d.id)?.layers[d.layer - 1]
+    return { ...d, source: sourceForDisclosure(cardId, d, raw !== d.text ? raw : undefined) }
+  }
   const ask: Ask = {
     stage: "narrate",
     fiction: keptFiction,
@@ -592,13 +631,13 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     told: o.told.map((d) => ({
       title: d.title,
       text: d.text,
-      sourceRef: sourceForDelivery(cardId, d, o.packNames),
+      sourceRef: sourceForDelivery(cardId, d, o.packNames, rawDelivery(d)),
     })),
     known: o.known,
     outcome: o.outcome,
     current: o.current,
-    must: o.must.map((d) => ({ id: d.id, text: d.text, source: sourceForDisclosure(cardId, d) })),
-    may: o.may.map((d) => ({ id: d.id, text: d.text, source: sourceForDisclosure(cardId, d) })),
+    must: o.must.map(disclosure),
+    may: o.may.map(disclosure),
     tone: o.tone,
     correction: o.correction,
     blocks: o.blocks,
@@ -665,6 +704,25 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
 }
 
 const summarizePolicy = (contextTokens?: number): Policy => policyFor(contextTokens)
+
+/** An action may emit different tokens on each roll. Evaluate each effect sequence as the rules engine would. */
+const eventOptions = (card: Card, rpg: ReturnType<typeof makeCard>, state: State): string[] => {
+  const events = new Set<string>()
+  const collectEffects = (effects: Card["rules"]["actions"][number]["do"]) => {
+    if (!effects?.some((e) => "event" in e)) return
+    for (const token of rpg.apply(state, effects).events) events.add(token)
+  }
+  for (const action of card.rules.actions) {
+    for (const effects of action.roll === undefined ? [action.do] : [action.hit, action.miss]) collectEffects(effects)
+  }
+  for (const readout of card.rules.readouts ?? []) for (const option of readout.options) collectEffects(option.do)
+  const collect = (c: Cond) => {
+    if ("event" in c) events.add(c.event)
+    else for (const [, child] of conditionChildren("", c)) collect(child)
+  }
+  for (const entry of card.lore) collect(entry.offer)
+  return [...events]
+}
 
 const staticGreetingTurn = (
   card: Card,
@@ -744,7 +802,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   const greetingsMeta = card.greetings.map((g, index) => ({
     index,
     label: shownGreeting(g).text.split("\n")[0]?.slice(0, 60) || `Opening ${index + 1}`,
-    noteOnly: !g.text?.trim() && !!g.note?.trim(),
+    noteOnly: !!g.note?.trim(),
   }))
   const greetingIndex =
     opts.mode === "sandbox"
@@ -770,10 +828,9 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   }
 
   const rawInput: Input = opts.input ?? { text: "" }
-  const input: Input =
-    opts.mode === "sandbox" && greetingNote && !rawInput.text && !rawInput.note
-      ? { ...rawInput, note: greetingNote }
-      : rawInput
+  const input: Input = greetingNote
+    ? { ...rawInput, note: [greetingNote, rawInput.note?.trim() && rawInput.note].filter(Boolean).join("\n\n") }
+    : rawInput
 
   const here = derived.at(basePath)
   const opened = openingEffects ? rpg.apply(here.state, openingEffects) : { s: here.state, events: [] as string[] }
@@ -816,6 +873,15 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
         "Branch contains turn(s) whose settlement is pending or failed; predicted state reflects committed records.",
     })
   }
+
+  if (opts.mode === "story" && basePath.some((t) => t.passageStatus === "pending" || t.passageStatus === "failed"))
+    diagnostics.push({
+      level: "warn",
+      code: "passage_pending",
+      message: "Parent passage must be completed before continuing.",
+    })
+  if (opts.mode === "story" && basePath.at(-1)?.end === "over")
+    diagnostics.push({ level: "warn", code: "terminal_node", message: "Terminal node cannot accept children." })
 
   const foldStart = opts.mode === "story" ? here.fold() : 0
   const sum = opts.mode === "story" ? here.summary() : undefined
@@ -891,27 +957,18 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   const lookupCtx = contextLookup(resources, preInjected)
   const catalogBefore = lookupCtx.catalog(input.text || input.note || "")
   const readableBefore = lookupCtx.readable().map((r) => r.resourceId)
-  const assumedReads = [...new Set(opts.assumedReads ?? [])]
+  const assumedReads: string[] = []
   const rejectedReads: { resourceId: string; message: string }[] = []
-  if (assumedReads.length) {
-    // Evaluate in chunks of 8 or validate single batch identically to runtime
-    const res = lookupCtx.read(assumedReads)
-    if (!res.ok) {
-      for (const id of assumedReads) {
-        const single = contextLookup(resources, latest([...resident, ...currentRes, ...deliveries])).read([id])
-        if (!single.ok) rejectedReads.push({ resourceId: id, message: single.message })
-      }
-      if (!rejectedReads.length) rejectedReads.push({ resourceId: assumedReads.join(","), message: res.message })
-      diagnostics.push({
-        level: "warn",
-        code: "invalid_read",
-        message: res.message,
-      })
-    } else {
-      deliveries.push(...lookupCtx.delivered)
-      preDisclosures.push(...lookupCtx.disclosures)
+  for (const resourceId of new Set(opts.assumedReads)) {
+    const result = lookupCtx.read([resourceId])
+    if (result.ok) assumedReads.push(resourceId)
+    else {
+      rejectedReads.push({ resourceId, message: result.message })
+      diagnostics.push({ level: "warn", code: "invalid_read", message: result.message })
     }
   }
+  deliveries.push(...lookupCtx.delivered)
+  preDisclosures.push(...lookupCtx.disclosures)
 
   // 4. Gate + disclosures + open windows
   const gate = here.gate({ state: overriddenState, events: turnEvents, before: preDisclosures })
@@ -977,20 +1034,17 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     })
   }
 
-  const assembledText = prepped.messages
-    .map((m) =>
-      typeof m.content === "string"
-        ? m.content
-        : Array.isArray(m.content)
-          ? m.content
-              .map((p) =>
-                typeof p === "object" && p !== null && "text" in p && typeof p.text === "string" ? p.text : "",
-              )
-              .join("\n")
-          : "",
-    )
+  const assembledText = prepped.traces
+    .filter((tr) => tr.zone !== "history" && tr.zone !== "input")
+    .flatMap((tr) => {
+      const text = plainText(prepped.messages[tr.index])
+      if (!tr.spans.length) return [text]
+      return tr.spans
+        .filter((s) => s.source.label !== "input.note" || s.source.kind !== "runtime")
+        .map((s) => text.slice(s.start, s.end))
+    })
     .join("\n")
-  const messageHoles = unfilled(assembledText, R.names)
+  const messageHoles = unfilled([assembledText, greetingNote].join("\n"), R.names)
   if (messageHoles.length) {
     diagnostics.push({
       level: "warn",
@@ -1067,7 +1121,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       const ev = evaluateCondition(c, s1Context, by, gateEvents)
       return { path: unlockPath(e, idx), expr: ev.expr, passed: ev.passed, details: ev.details }
     })
-    const offerEv = evaluateCondition(e.offer, s1Context, by, gateEvents)
+    const offerEv = evaluateCondition(e.offer, gate.context, by, gateEvents)
     const constantOffer = ("all" in e.offer && !e.offer.all.length) || ("any" in e.offer && !e.offer.any.length)
 
     resourceViews.push({
@@ -1203,7 +1257,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     ...(f.max !== undefined && { max: f.max }),
     ...(f.options !== undefined && { options: f.options }),
     value: lookup({ fields: overriddenState }, f.path),
-    initial: lookup({ fields: rpg.initial }, f.path),
+    initial: lookup({ fields: opened.s }, f.path),
   }))
 
   return {
@@ -1243,6 +1297,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       },
     },
     sandbox: {
+      eventOptions: opts.mode === "sandbox" ? eventOptions(card, rpg, overriddenState) : [],
       greetings: greetingsMeta,
       greetingIndex,
       fields: sandboxFields,

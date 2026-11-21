@@ -12,11 +12,12 @@ import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection
 import { createMemo, createSignal, For, Match, onSettled, Show, Switch } from "solid-js"
 import { read } from "./bridge.ts"
 import { dialogHandle, Prompt } from "./controls.tsx"
-import { Back, Checkout, Clue, Notes, Trash } from "./icons.tsx"
+import { Back, Checkout, Clue, Notes, Stack, Trash } from "./icons.tsx"
 import { type Cell, DRAFT, layout } from "./lanes.ts"
 import { plain, Prose } from "./prose.tsx"
 import { SiblingKind } from "./readings.tsx"
 import { apart, heading, lineOf, sceneOf, versions } from "./record.ts"
+import { previewFromPlay } from "./prompt-tree-state.ts"
 import { close, open } from "./pages.ts"
 import { card, draft, type Id, log, path, prose, registry, working } from "./store.ts"
 import { turn } from "./turn.ts"
@@ -348,6 +349,15 @@ export const Timeline = () => {
                         onClick={() => inspect(n().id)}
                       >
                         <Clue />
+                      </button>
+                      <button
+                        type="button"
+                        class="icon"
+                        aria-label={t("promptTree.afterNode")}
+                        title={t("promptTree.afterNode")}
+                        onClick={() => previewFromPlay({ nodeId: n().id })}
+                      >
+                        <Stack aria-hidden="true" />
                       </button>
                       <button
                         type="button"

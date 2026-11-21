@@ -1518,6 +1518,11 @@
 /* ── the phone's drawer: the sidebar sliding in from the left ── */
 /* @ui-sdk's drawer places it, slides it under the hand and fades the scrim: the size and the surface are ours */
 .drawer {
+  box-sizing: border-box;
+  max-width: none;
+  padding: 0;
+  gap: 0;
+  border: 0;
   display: flex;
   width: 100%;
   height: 100%;
@@ -1745,6 +1750,7 @@
     gap: var(--space-1);
   }
   .canvas {
+    --safe-top: 0px;
     padding: 0 var(--space-2) var(--space-2) 0;
   }
   /* the screen's left edge, live only while the sidebar is folded and not yet floating */

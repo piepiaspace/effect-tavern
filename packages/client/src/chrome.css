@@ -31,13 +31,13 @@ button.record-pill:active {
 /* the sheet: a modal dialog (@ui-sdk), its backdrop the scrim, a full-page panel rising from the bottom to 56px under the
    top; the prose never moves (the page does not scroll while one is open) */
 .sheet {
-  position: fixed;
-  inset: calc(56px + var(--safe-top)) 0 0;
+  gap: 0;
   width: 100%;
   max-width: var(--measure);
-  height: auto;
-  max-height: none;
-  margin: 0 auto;
+  align-self: center;
+  height: calc(100dvh - 56px - var(--safe-top));
+  max-height: 100%;
+  margin: 0;
   padding: 0;
   border: 0;
   flex-direction: column;
@@ -49,24 +49,8 @@ button.record-pill:active {
   box-shadow: var(--shadow-pop);
   outline: none;
   display: flex;
-  transition: transform var(--dur-4) var(--ease);
 }
-/* entering and leaving: the first frame and the way out, which the library keeps on the page until it ends; data-closed
-   too, since the library drops data-ending-style a frame before it unmounts and the panel would blink back */
-.sheet:is([data-starting-style], [data-ending-style], [data-closed]) {
-  transform: translateY(100%);
-}
-.sheet::backdrop {
-  background: var(--scrim);
-  transition: opacity var(--dur-4) var(--ease);
-}
-.sheet:is([data-starting-style], [data-ending-style], [data-closed])::backdrop {
-  opacity: 0;
-}
-.sheet[data-dragging] {
-  transition: none;
-  will-change: transform;
-}
+
 .sheet header {
   position: relative;
   display: flex;
@@ -75,7 +59,6 @@ button.record-pill:active {
   padding: var(--space-3) var(--space-3) var(--space-2) var(--space-4);
   font-size: var(--text-heading);
   font-weight: 600;
-  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -90,9 +73,6 @@ button.record-pill:active {
   border-radius: var(--radius-pill);
   background: var(--alpha-3);
   pointer-events: none;
-}
-.sheet header :is(button, a, input, select, textarea, [role="button"]) {
-  touch-action: auto;
 }
 .sheet header h2 {
   flex: 1;
@@ -1240,6 +1220,7 @@ button.record-pill:active {
    every side, as tall as its content up to most of the viewport, fading in where the phone's panel rose */
 @media (min-width: 72rem) {
   .sheet {
+    position: fixed;
     inset: 0;
     width: min(36rem, calc(100% - 2 * var(--space-5)));
     height: fit-content;
@@ -1253,10 +1234,11 @@ button.record-pill:active {
     opacity: 0;
   }
   .sheet::backdrop {
-    transition-duration: var(--dur-3);
+    background: var(--scrim);
+    transition: opacity var(--dur-3) var(--ease);
   }
-  .sheet header {
-    touch-action: auto;
+  .sheet:is([data-starting-style], [data-ending-style], [data-closed])::backdrop {
+    opacity: 0;
   }
   .sheet header::before {
     display: none;
@@ -1282,13 +1264,13 @@ button.record-pill:active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sheet,
+  .sheet[data-presentation="dialog"],
   .snippets,
   .popup-list,
   .confirm {
     transition: opacity 150ms ease;
   }
-  .sheet:is([data-starting-style], [data-ending-style], [data-closed]),
+  .sheet[data-presentation="dialog"]:is([data-starting-style], [data-ending-style], [data-closed]),
   .snippets:is([data-starting-style], [data-ending-style], [data-closed]),
   .popup-list:not([data-presentation="sheet"]):is([data-starting-style], [data-ending-style], [data-closed]),
   .confirm:is([data-starting-style], [data-ending-style], [data-closed]) {
@@ -1302,7 +1284,7 @@ button.record-pill:active {
   .confirm:is([data-ending-style], [data-closed]) {
     transition: opacity 150ms ease;
   }
-  .sheet::backdrop,
+  .sheet[data-presentation="dialog"]::backdrop,
   .confirm::backdrop {
     transition: opacity 150ms ease;
   }

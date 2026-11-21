@@ -384,25 +384,6 @@
 }
 
 /* ───────── Prompt Tree Page ───────── */
-.pt-page {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-  min-height: 0;
-  overflow: hidden;
-}
-.pt-page > .pt-header {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  height: calc(var(--topbar) + var(--safe-top));
-  padding: var(--safe-top) max(var(--space-4), var(--safe-right)) 0 max(var(--space-3), var(--safe-left));
-  min-height: calc(var(--topbar) + var(--safe-top));
-  box-sizing: border-box;
-  user-select: none;
-  -webkit-user-select: none;
-}
 .pt-title-wrap {
   display: flex;
   align-items: center;
@@ -410,11 +391,8 @@
   min-width: 0;
   flex: 1;
 }
-.pt-title-wrap h1 {
-  margin: 0;
-  font-size: var(--text-heading);
-  font-weight: 600;
-  white-space: nowrap;
+.pt-page .top h1 {
+  display: block;
 }
 .pt-card-chip {
   display: none;
@@ -429,48 +407,6 @@
   align-items: center;
   gap: var(--space-2);
   flex: none;
-}
-.pt-seg {
-  display: inline-flex;
-  padding: var(--space-half);
-  border-radius: var(--radius-pill);
-  background: var(--alpha-1);
-}
-.pt-seg button {
-  height: var(--control-sm);
-  padding: 0 var(--space-3);
-  border-radius: var(--radius-pill);
-  color: var(--ink-2);
-  font-size: var(--text-footnote);
-  white-space: nowrap;
-  cursor: default;
-  transition:
-    background var(--dur-2) var(--ease),
-    color var(--dur-2) var(--ease),
-    scale var(--dur-1) var(--ease);
-}
-@media (hover: hover) and (pointer: fine) {
-  .pt-seg button:hover:not(:disabled):not([aria-selected="true"]) {
-    background: var(--ghost-hover);
-    color: var(--ink);
-  }
-}
-.pt-seg button:active:not(:disabled) {
-  scale: 0.98;
-}
-.pt-seg button:active:not(:disabled):not([aria-selected="true"]) {
-  background: var(--ghost-active);
-  color: var(--ink);
-}
-.pt-seg button[aria-selected="true"] {
-  background: var(--surface-3);
-  color: var(--ink);
-  font-weight: 600;
-  box-shadow: var(--shadow-1);
-}
-.pt-seg button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 .pt-conn {
   display: none;
@@ -515,63 +451,6 @@
   background: var(--warn-soft);
   color: var(--warn);
   font-weight: 600;
-}
-.pt-badge {
-  display: inline-flex;
-  align-items: center;
-  flex: none;
-  padding: var(--space-half) var(--space-2);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-caption);
-  background: var(--alpha-1);
-  color: var(--ink-2);
-  white-space: nowrap;
-}
-.pt-badge.soft {
-  background: transparent;
-  box-shadow: inset 0 0 0 var(--hairline) var(--line);
-  color: var(--ink-3);
-}
-.pt-badge.ok {
-  background: var(--ok-wash);
-  color: var(--ok);
-}
-.pt-badge.warn {
-  background: var(--warn-soft);
-  color: var(--warn);
-  font-weight: 600;
-}
-.pt-body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  padding: var(--space-1) max(var(--space-4), var(--safe-right)) var(--space-4) max(var(--space-4), var(--safe-left));
-  gap: var(--space-4);
-}
-.pt-main,
-.pt-side {
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  overscroll-behavior: contain;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.pt-main {
-  padding: var(--space-3) var(--space-1) calc(var(--fade) + var(--safe-bottom));
-  mask-image: linear-gradient(to bottom, transparent, #000 var(--space-3), #000 calc(100% - var(--fade)), transparent);
-}
-.pt-side {
-  padding: var(--space-3) var(--space-3) calc(var(--space-3) + var(--safe-bottom));
-  border-radius: var(--radius-card);
-  background: var(--surface-0);
-  box-shadow: inset 0 0 0 var(--hairline) var(--line);
-}
-.pt-page[data-pane="outline"] .pt-side,
-.pt-page[data-pane="controls"] .pt-main {
-  display: none;
 }
 .pt-meta-strip {
   display: flex;
@@ -975,14 +854,7 @@
   .pt-conn {
     display: inline-flex;
   }
-  .pt-pane-seg {
-    display: none;
-  }
-  .pt-body {
-    grid-template-columns: minmax(0, 1fr) minmax(18rem, 21rem);
-  }
-  .pt-page[data-pane] .pt-main,
-  .pt-page[data-pane] .pt-side {
-    display: flex;
+  .inspect .pt-mode {
+    display: inline-flex;
   }
 }

@@ -165,7 +165,8 @@
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
-  padding: var(--fade) var(--space-4) calc(var(--fade) + var(--safe-bottom));
+  padding: var(--fade) max(var(--space-4), var(--safe-right)) calc(var(--fade) + var(--safe-bottom))
+    max(var(--space-4), var(--safe-left));
   display: flex;
   flex-direction: column;
   gap: var(--space-3);

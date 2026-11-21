@@ -370,7 +370,7 @@ export const escaping = (
 export const onKey = (e: KeyboardEvent): void => {
   const at = registry.get(page)
   if (e.key !== "Escape" || at === "reader" || at === "home") return
-  const covered = !!document.querySelector(":popover-open, dialog[open], .side-drawer[data-open='true']")
+  const covered = !!document.querySelector(":popover-open, dialog[open]")
   const what = escaping(e, covered)
   if (what === "blur") (e.target as HTMLElement).blur()
   else if (what === "close") close()

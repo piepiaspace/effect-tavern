@@ -5,9 +5,8 @@ import { AsyncView } from "./async-view.tsx"
 import type { Shape } from "@effect-tavern/runtime/src/product.ts"
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import { type JSX } from "@solidjs/web"
-import { type ComponentProps, createMemo, For, Match, onCleanup, Show, Switch } from "solid-js"
-import { bindDrag, dragThreshold } from "@ui-sdk/core"
-import { createVelocityTracker, projectDistance, rubberBand, solveSpring } from "@ui-sdk/core/gesture"
+import { type ComponentProps, createMemo, For, Match, Show, Switch } from "solid-js"
+import { wide } from "./viewport.ts"
 import { read } from "./bridge.ts"
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/solid/menu"
@@ -417,15 +416,7 @@ export const Reading = (props: { el: Element }) => (
 
 export { demandable }
 
-const desktopSheet = typeof window === "undefined" ? undefined : window.matchMedia("(min-width: 72rem)")
-const reducedMotion = typeof window === "undefined" ? undefined : window.matchMedia("(prefers-reduced-motion: reduce)")
-const SHEET_UP_LIMIT = 48
-const SHEET_GLIDE = 0.994
-
-/** The full-page sheet: a modal dialog (@ui-sdk/solid/dialog: scrim, focus, Escape and inertness are its), a titled
- *  panel with a close, the body, an optional footer, all drawn only while it is open. Scrim click and Escape close it.
- *  On mobile viewports (< 72rem), dragging `<header>` follows the pointer 1:1 downward, rubber-bands upward, and
- *  projects release velocity to either dismiss or spring back (interruptible mid-flight). */
+/** A reading opens as a draggable sheet on a narrow canvas, a centered dialog on desktop. */
 export const Sheet = (props: {
   controller: DialogHandle
   heading: JSX.Element
@@ -435,149 +426,10 @@ export const Sheet = (props: {
   focus?: string
   onOpenChange?: ComponentProps<typeof Dialog>["onOpenChange"]
 }) => {
-  let stopDrag: (() => void) | undefined
-  let frame = 0
-  let offset = 0
-  let activePanel: HTMLElement | undefined
-
-  const clearPanel = () => {
-    if (!activePanel) return
-    activePanel.removeAttribute("data-dragging")
-    activePanel.style.transform = ""
-    activePanel = undefined
-  }
-
-  const cancelGesture = () => {
-    stopDrag?.()
-    stopDrag = undefined
-    cancelAnimationFrame(frame)
-    frame = 0
-    offset = 0
-    clearPanel()
-  }
-
-  onCleanup(cancelGesture)
-
-  const animateTo = (panel: HTMLElement, target: number, velocity: number, onDone: () => void) => {
-    cancelAnimationFrame(frame)
-    if (reducedMotion?.matches || Math.abs(offset - target) < 0.5) {
-      offset = target
-      panel.style.transform = target === 0 ? "" : `translateY(${target}px)`
-      onDone()
-      return
-    }
-    const spring = solveSpring(target === 0 ? 0.3 : 0.26, 1, offset - target, velocity)
-    const start = performance.now()
-    const tick = () => {
-      const t = performance.now() - start
-      const delta = spring.position(t)
-      offset = target + delta
-      if (
-        t > 600 ||
-        (target > 0 && offset >= target - 1) ||
-        (Math.abs(delta) < 0.5 && Math.abs(spring.velocity(t)) < 0.05)
-      ) {
-        frame = 0
-        offset = target
-        panel.style.transform = target === 0 ? "" : `translateY(${target}px)`
-        onDone()
-        return
-      }
-      panel.style.transform = `translateY(${offset}px)`
-      frame = requestAnimationFrame(tick)
-    }
-    frame = requestAnimationFrame(tick)
-  }
-
-  const onHeaderPointerDown = (event: PointerEvent & { currentTarget: HTMLElement }) => {
-    if (desktopSheet?.matches || event.button !== 0) return
-    if ((event.target as HTMLElement | null)?.closest("button, a, input, select, textarea, [role='button']")) return
-    const panel = event.currentTarget.closest<HTMLElement>(".sheet")
-    if (!panel) return
-    const controller = props.controller
-    stopDrag?.()
-    cancelAnimationFrame(frame)
-    frame = 0
-    activePanel = panel
-    const startY = event.clientY
-    const startOffset = offset
-    const speed = createVelocityTracker()
-    let rawY = startOffset
-    let moved = false
-    stopDrag = bindDrag(event.currentTarget, event, {
-      threshold: dragThreshold,
-      cancelOnEscape: true,
-      onStart: () => {
-        panel.setAttribute("data-dragging", "")
-      },
-      onMove: (sample) => {
-        moved = true
-        rawY = startOffset + (sample.y - startY)
-        speed.add(sample.event.timeStamp, rawY)
-        offset = rawY < 0 ? -rubberBand(-rawY, SHEET_UP_LIMIT) : rawY
-        panel.style.transform = `translateY(${offset}px)`
-      },
-      onEnd: (end, canceled) => {
-        stopDrag = undefined
-        if (!moved) {
-          // caught mid-flight without dragging further: spring back to rest
-          if (offset !== 0) {
-            animateTo(panel, 0, 0, () => {
-              offset = 0
-              clearPanel()
-            })
-          }
-          return
-        }
-        if (canceled) {
-          animateTo(panel, 0, 0, () => {
-            offset = 0
-            clearPanel()
-          })
-          return
-        }
-        const v = speed.velocity(end.timeStamp)
-        const height = panel.offsetHeight || window.innerHeight
-        const threshold = Math.min(height * 0.35, 180)
-        const projected = offset + projectDistance(v, SHEET_GLIDE)
-        const shouldDismiss = (offset >= threshold && v >= -0.2) || (v > 0.25 && projected >= threshold)
-        if (shouldDismiss) {
-          if (reducedMotion?.matches) {
-            offset = 0
-            clearPanel()
-            void controller.close()
-            return
-          }
-          animateTo(panel, height, v, () => {
-            void controller.close()
-          })
-        } else {
-          animateTo(panel, 0, v, () => {
-            offset = 0
-            clearPanel()
-          })
-        }
-      },
-    })
-  }
-
   return (
-    <Dialog
-      controller={props.controller}
-      onOpenChange={(open, details) => {
-        props.onOpenChange?.(open, details)
-        if (open) {
-          cancelGesture()
-        } else if (!details.canceled) {
-          stopDrag?.()
-          stopDrag = undefined
-          cancelAnimationFrame(frame)
-          frame = 0
-        }
-      }}
-    >
+    <Dialog controller={props.controller} presentation={wide() ? "dialog" : "sheet"} onOpenChange={props.onOpenChange}>
       <DialogContent class="sheet" initialFocus={props.focus}>
-        <header onPointerDown={onHeaderPointerDown}>
+        <header>
           <DialogTitle>{props.heading}</DialogTitle>
           {props.tools}
           <DialogClose class="icon" aria-label={t("common.close")}>

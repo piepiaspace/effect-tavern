@@ -20,7 +20,7 @@ import { ContextPolicy, checkContextPolicies } from "./lore.ts"
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
-import { expand, fill, nameOk, Names, unfilled } from "./names.ts"
+import { expand, nameOk, Names, unfilled } from "./names.ts"
 import { Entry as LexiconEntry } from "./polish.ts"
 import { decodeProducts, ProductPatch, validate, type Product } from "./product.ts"
 import { sourceKindFrom, type OmittedItem, type SourceRef } from "./trace.ts"
@@ -833,7 +833,7 @@ export const resolveWithTrace = (
     return text === undefined ? { ...p, unasked: true as const } : { ...p, text }
   })
   const productSources = Object.fromEntries(
-    asked.map((p) => [p.id, sourceOf(p.from, `products.${p.id}`, { label: p.label ?? p.id, rawText: p.text })]),
+    raw.map((p) => [p.id, sourceOf(p.from, `products.${p.id}`, { label: p.label ?? p.id, rawText: p.text })]),
   )
 
   // ───────── entries, the quick inputs, the format keys, the lexicon ─────────
@@ -855,9 +855,9 @@ export const resolveWithTrace = (
       return []
     }),
   )
-  const entries = fill([...new Map(written.map((e) => [e.id, e])).values()], names)
+  const declared = [...new Map(written.map((e) => [e.id, e])).values()]
   const entrySources = Object.fromEntries(
-    entries.map((e) => [
+    declared.map((e) => [
       e.id,
       sourceOf(e.from, `entries.${e.id.slice(e.from.length + 1)}`, {
         entryId: e.id,
@@ -866,6 +866,19 @@ export const resolveWithTrace = (
       }),
     ]),
   )
+  const entries = declared.flatMap((e) => {
+    const text = expand(e.text, names, e.from)
+    if (text !== undefined) return [{ ...e, text }]
+    omitted.push({
+      category: "entry",
+      id: e.id,
+      reason: "unfilled_hole",
+      missingHoles: unfilled(e.text, names),
+      preview: e.text,
+      source: entrySources[e.id],
+    })
+    return []
+  })
   /** Keyed, the highest rank first and its copy standing: what a menu shows. */
   const menu = <T>(pick: (r: Partial<Layer>) => readonly T[] | undefined, key: (x: T) => string) => {
     const m = new Map<string, Item<T>>()

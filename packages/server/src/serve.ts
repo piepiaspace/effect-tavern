@@ -215,8 +215,13 @@ const PullBody = Schema.decodeUnknownSync(
 )
 
 const encoder = new TextEncoder()
-const json = (status: number, v: unknown) =>
-  new Response(JSON.stringify(v), { status, headers: { "content-type": "application/json" } })
+const json = (status: number, v: unknown) => {
+  const body = encoder.encode(JSON.stringify(v))
+  return new Response(body, {
+    status,
+    headers: { "content-type": "application/json", "content-length": String(body.byteLength) },
+  })
+}
 
 export interface HandleOptions {
   /** A local directory may be added as a card library: only where the caller is the person at the terminal (a
@@ -429,8 +434,10 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
       } catch (e) {
         return bad(e, 404)
       }
-      return new Response(text, {
+      const body = encoder.encode(text)
+      return new Response(body, {
         headers: {
+          "content-length": String(body.byteLength),
           "content-type": "application/yaml; charset=utf-8",
           "content-disposition": attachment(`${id}.yaml`),
         },
@@ -535,6 +542,20 @@ const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown]) =
   })
   return new Response(body, { headers: { "content-type": "text/event-stream", "cache-control": "no-cache" } })
 }
+const MIN_GZIP_BYTES = 1024
+/** An explicit gzip preference takes precedence over the wildcard. */
+const acceptsGzip = (value: string): boolean => {
+  let wildcard = false
+  for (const entry of value.toLowerCase().split(",")) {
+    const [name, weight] = entry.trim().split(/\s*;\s*/)
+    const accepted =
+      weight === undefined ||
+      (/^q\s*=\s*(0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/.test(weight) && Number(weight.split("=")[1]) > 0)
+    if (name === "gzip") return accepted
+    if (name === "*") wildcard = accepted
+  }
+  return wildcard
+}
 /** Text bodies go out gzipped to a client that takes it: a preview or a client chunk is a quarter of its size, which
  *  a phone on another machine's Wi-Fi feels and loopback does not. The turn stream stays raw: gzip would hold its
  *  events back until a block fills. */
@@ -544,22 +565,47 @@ const gzipped =
     const response = await fetch(request)
     const type = response.headers.get("content-type") ?? ""
     if (
-      request.method === "HEAD" ||
-      !response.body ||
-      response.headers.has("content-encoding") ||
-      !/^(text\/(?!event-stream)|application\/json|image\/svg)/.test(type) ||
-      !/\bgzip\b/.test(request.headers.get("accept-encoding") ?? "")
+      !/^(text\/(?!event-stream)|application\/(?:json|yaml|javascript)\b|image\/svg\+xml\b)/i.test(type) ||
+      response.headers.has("content-encoding")
     )
       return response
+
     const headers = new Headers(response.headers)
+    if (
+      !headers
+        .get("vary")
+        ?.split(",")
+        .some((token) => ["*", "accept-encoding"].includes(token.trim().toLowerCase()))
+    )
+      headers.append("vary", "Accept-Encoding")
+    const init = { status: response.status, statusText: response.statusText, headers }
+    if (request.method === "HEAD" || response.status === 204 || response.status === 304) {
+      void response.body?.cancel()
+      return new Response(null, init)
+    }
+    const body = response.body
+    if (!body || !acceptsGzip(request.headers.get("accept-encoding") ?? "")) return new Response(body, init)
+
+    const length = headers.get("content-length")
+    if (length !== null) {
+      if (Number(length) < MIN_GZIP_BYTES) return new Response(body, init)
+    } else {
+      // Probe only the prefix for responses without a known byte length.
+      const probe = response.clone().body!.getReader()
+      let bytes = 0
+      try {
+        while (bytes < MIN_GZIP_BYTES) {
+          const next = await probe.read()
+          if (next.done) return new Response(response.body, init)
+          bytes += next.value.byteLength
+        }
+      } finally {
+        void probe.cancel()
+      }
+    }
     headers.set("content-encoding", "gzip")
-    headers.append("vary", "accept-encoding")
     headers.delete("content-length")
-    return new Response(response.body.pipeThrough(new CompressionStream("gzip")), {
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-    })
+    return new Response(response.body.pipeThrough(new CompressionStream("gzip")), init)
   }
 /** A turn can spend longer than the default HTTP idle timeout waiting for the model. */
 export const listen = (fetch: Wire, hostname: string, port: number) =>
@@ -618,6 +664,7 @@ export const app = (api: Wire, dist?: string): Wire => {
     if (await content.exists()) {
       return new Response(content, {
         headers: {
+          "content-length": String(content.size),
           "content-type": types[extname(asset).slice(1)] ?? "application/octet-stream",
           "cache-control": page ? "no-cache" : "public, max-age=31536000, immutable",
         },

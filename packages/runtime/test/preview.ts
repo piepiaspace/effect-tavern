@@ -50,10 +50,15 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
     lore: [
       {
         id: "harbor",
-        layers: ["Harbor lore hook. Deep layer 1.", "Secret layer 2."],
-        sections: [{ id: "dock", text: "Dock section hook. Hidden wharf details." }],
+        layers: ["Harbor lore hook. Hi {{user}}.", "Secret for {{char}}."],
+        sections: [{ id: "dock", text: "Dock section for {{user}}." }],
         unlock: { all: [] },
-        offer: { path: "hp", op: "gte", value: 3 },
+        offer: {
+          all: [
+            { path: "hp", op: "gte", value: 3 },
+            { path: "lore.harbor.shown", is: 1 },
+          ],
+        },
         access: { model: true, player: false },
       },
       {
@@ -87,7 +92,11 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
           { id: "setting", mode: "override", text: "Pack override setting" },
           { id: "extra-tail", at: "tail", text: "Pack tail with {{missingHole}}" },
         ],
-        entries: [{ id: "world-note", text: "Pack note hook. Pack details." }],
+        entries: [
+          { id: "world-note", text: "Pack note for {{user}}." },
+          { id: "missing", text: "{{unnamed}}" },
+        ],
+        products: [{ id: "scrap", text: "Write to {{char}}.", on: true }],
       },
     ],
     local: {
@@ -134,7 +143,7 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
     connection: { format: "anthropic", prefill: false, reasoningBack: false, ttl: "1h", modelId: "claude-test" },
     mode: "sandbox",
     input: { text: "Look around" },
-    assumedReads: ["card:harbor#dock"],
+    assumedReads: ["card:missing", "card:harbor#dock", "pack:pack-a/world-note"],
   })
 
   assert.equal(res.wireError?.code, "prefill_disallowed")
@@ -143,6 +152,31 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
   assert.equal(res.wireError?.source?.hatIndex, 0)
   assert.equal(res.wireError?.source?.rawText, undefined)
 
+  assert.deepEqual(
+    res.upstream.lookup.rejectedReads.map((r) => r.resourceId),
+    ["card:missing"],
+  )
+  assert.ok(
+    res.omitted.some((o) => o.category === "entry" && o.id === "pack-a/missing" && o.reason === "unfilled_hole"),
+  )
+  const spans = res.traces.flatMap((t) => t.spans)
+  assert.equal(
+    spans.find((s) => s.source.resourceId === "pack:pack-a/world-note")?.source.rawText,
+    "Pack note for {{user}}.",
+  )
+  assert.equal(
+    spans.find((s) => s.source.resourceId === "card:harbor#dock")?.source.rawText,
+    "Dock section for {{user}}.",
+  )
+  assert.equal(
+    spans.find((s) => s.source.resourceId === "card:harbor")?.source.rawText,
+    "Harbor lore hook. Hi {{user}}.\n\nSecret for {{char}}.",
+  )
+  assert.equal(
+    spans.find((s) => s.source.entryId === "harbor" && s.source.layer === 2)?.source.rawText,
+    "Secret for {{char}}.",
+  )
+  assert.equal(spans.find((s) => s.source.path === "products.scrap")?.source.rawText, "Write to {{char}}.")
   // Every Span slice [start, end) matches exact substring in msg.content!
   for (const tr of res.traces) {
     const msg = res.messages[tr.index]
@@ -180,6 +214,7 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
   // Section read in sandbox auto-pulled parent face AND left nothing unread
   const harborView = res.resources.find((r) => r.resourceId === "card:harbor")!
   assert.equal(harborView.residencyStatus, "delivered_this_turn")
+  assert.equal(harborView.offerGate?.passed, true)
   assert.equal(harborView.windowOpen, true)
   assert.equal(harborView.windowNextLayer, 2)
   assert.equal(harborView.sections[0]?.deliveredThisTurn, true)
@@ -205,6 +240,34 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
   })
   assert.equal(badRead.upstream.lookup.rejectedReads.length, 1)
   assert.ok(badRead.diagnostics.some((d) => d.code === "invalid_read"))
+
+  // One failed selection and a ninth valid selection still leave all nine readable entries delivered.
+  const entries = Array.from({ length: 9 }, (_, i) => ({
+    id: `entry-${i}`,
+    layers: ["Plain."],
+    unlock: { all: [] },
+    offer: { any: [] },
+  }))
+  const ids = entries.map((e) => `card:${e.id}`)
+  const multiple = previewNarrate({
+    card: { ...card, lore: entries },
+    rows: {},
+    mode: "sandbox",
+    connection: res.connection,
+    assumedReads: ["card:missing", ...ids],
+  })
+  assert.deepEqual(multiple.upstream.lookup.assumedReads, ids)
+  assert.deepEqual(
+    multiple.upstream.lookup.rejectedReads.map((r) => r.resourceId),
+    ["card:missing"],
+  )
+  assert.ok(multiple.resources.every((r) => r.simulatedRead && r.residencyStatus === "delivered_this_turn"))
+  assert.ok(
+    multiple.traces
+      .flatMap((t) => t.spans)
+      .filter((s) => s.kind === "context")
+      .every((s) => s.source.rawText === undefined),
+  )
 }
 
 // 2. Life of Pi acceptance (zero turns, zero LLM calls): changing 裂隙 2 -> 3 switches <fiction> band!
@@ -555,6 +618,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     mode: "sandbox",
     greetingIndex: null,
     events: ["alarm"],
+    input: { text: "literal {{player}}", note: "literal {{playerNote}}" },
   })
   // No format configured -> wire() is not applied and wiredRole stays undefined
   assert.equal(pv.connection.format, undefined)
@@ -657,7 +721,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   // The opening unlocks the entry after this call's automatic deliveries have been selected.
   const openingCard: Card = {
     ...scCard,
-    greetings: [{ note: "Begin.", do: [{ path: "depth", set: 2 }] }],
+    greetings: [{ text: "Title", note: "Begin.", do: [{ path: "depth", set: 2 }] }],
     lore: [
       {
         id: "new-entry",
@@ -669,6 +733,35 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     ],
   }
   const opening = previewNarrate({ card: openingCard, rows: {}, mode: "sandbox", connection: scPreview.connection })
+  assert.equal(opening.sandbox.greetings[0]?.noteOnly, true)
+  const depth = opening.sandbox.fields.find((f) => f.path === "depth")!
+  assert.deepEqual([depth.value, depth.initial], [2, 2])
+  const trial = previewNarrate({
+    card: {
+      ...openingCard,
+      rules: {
+        ...openingCard.rules,
+        actions: [
+          {
+            id: "strike",
+            text: "Strike",
+            roll: 0.5,
+            do: [{ event: "unused" }],
+            hit: [{ event: "hit:{depth}" }],
+            miss: [{ event: "miss" }],
+          },
+        ],
+        readouts: [{ id: "look", text: "Look", options: [{ id: "yes", text: "Yes", do: [{ event: "seen" }] }] }],
+      },
+      lore: [{ ...openingCard.lore[0], offer: { not: { event: "night" } } }],
+    },
+    rows: {},
+    mode: "sandbox",
+    connection: scPreview.connection,
+    input: { text: "trial", note: "aside" },
+  })
+  assert.deepEqual(trial.sandbox.eventOptions, ["hit:2", "miss", "seen", "night"])
+  assert.ok(trial.messages.some((m) => typeof m.content === "string" && m.content.includes("Begin.\n\naside")))
   const session = makeSession({ card: openingCard, rows: () => ({}), model: () => fake(() => ({ text: "ok" })) })
   const openingCalls = await Effect.runPromise(Stream.runCollect(session.begin({ greeting: 0 })))
   const narrator = Array.from(openingCalls).find((e) => e.kind === "call" && e.phase === "narrate")
@@ -686,7 +779,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
       {
         id: 1,
         parent: null,
-        input: { text: "Turn 1" },
+        input: { text: "Turn 1 {{literal}}" },
         read: [{ id: "archive", layer: 1 }],
         deliveries: [
           {
@@ -701,7 +794,8 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
         opportunities: [],
         beats: [],
         answers: {},
-        end: "end",
+        end: "over",
+        passageStatus: "failed",
         brief: { must: [], may: [] },
         reply: [{ type: "text", text: "Reply 1." }],
         fired: [],
@@ -716,6 +810,9 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     fields: { depth: 2 },
     input: { text: "Turn 2" },
   })
+  assert.ok(supersededPv.diagnostics.some((d) => d.code === "terminal_node"))
+  assert.ok(supersededPv.diagnostics.some((d) => d.code === "passage_pending"))
+  assert.ok(!supersededPv.diagnostics.some((d) => d.code === "unfilled_holes"))
   const secRes = supersededPv.resources.find((r) => r.resourceId === "card:archive")!
   assert.equal(secRes.unlockedLayer, 2)
   assert.equal(secRes.residencyStatus, "resident_in_window")

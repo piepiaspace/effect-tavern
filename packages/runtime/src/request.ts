@@ -612,7 +612,11 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           const id = colon > 0 ? line.slice(0, colon) : line
           const src = a.blocks!.sources?.[i] ??
             c.productSources?.[id] ?? { kind: "card", label: id, path: `products.${id}` }
-          bw.push(line, "block", src)
+          bw.push(
+            line,
+            "block",
+            src.rawText === line.slice(colon + 1).trimStart() ? { ...src, rawText: undefined } : src,
+          )
         })
         pushMsg("turn", "blocks", sys(bw.text()), bw.spans)
       }

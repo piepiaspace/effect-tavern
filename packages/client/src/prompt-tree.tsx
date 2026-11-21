@@ -82,7 +82,16 @@ export const PromptTreePage = () => {
     const existing = getPromptTreeMemory(tabId())
     if (existing) return existing
     const fallbackCard = tab().card ?? characterCards(shelf())[0]?.id ?? FREE_CHAT_ID
-    return defaultMemory(fallbackCard)
+    const origin = tab().under.at(-1)
+    if (origin === "settings" || origin === "manuscript") return defaultMemory(fallbackCard)
+    const storyId = lib()?.stories.find((s) => s.id === tab().story && s.card === fallbackCard)?.id
+    return {
+      ...defaultMemory(fallbackCard),
+      mode: "story",
+      play: true,
+      storyId,
+      nodeId: storyId === undefined ? null : undefined,
+    }
   })
   const [pane, setPane] = createSignal<"outline" | "controls">("outline")
   const [fetched, setFetched] = createSignal<{ context: string; value: PreviewNarrateResult } | null>(null)
@@ -399,8 +408,8 @@ export const PromptTreePage = () => {
   }
 
   return (
-    <div class="status-page pt-page" data-pane={pane()}>
-      <header class="pt-header">
+    <div class="inspect pt-page" data-pane={pane() === "outline" ? "pipeline" : "node"}>
+      <header class="top">
         <button type="button" class="icon" aria-label={t("common.back")} onClick={close}>
           <Back />
         </button>
@@ -410,16 +419,16 @@ export const PromptTreePage = () => {
             <span class="pt-card-chip">{currentCardTitle()}</span>
           </Show>
           <Show when={mem().sampleCard}>
-            <span class="pt-badge soft">{t("promptTree.sampleCard")}</span>
+            <span class="pill soft">{t("promptTree.sampleCard")}</span>
           </Show>
           <Show when={mem().candidateCard || mem().candidateHat}>
-            <span class="pt-badge warn">{t("promptTree.unsavedDraft")}</span>
+            <span class="pill warn">{t("promptTree.unsavedDraft")}</span>
           </Show>
         </div>
 
         <div class="pt-header-end">
           <Show when={!mem().play}>
-            <div class="pt-seg" role="tablist" aria-label={t("promptTree.mode")}>
+            <div class="seg pt-mode" role="tablist" aria-label={t("promptTree.mode")}>
               <button
                 type="button"
                 role="tab"
@@ -471,7 +480,7 @@ export const PromptTreePage = () => {
             }}
           </Show>
 
-          <div class="pt-seg pt-pane-seg" role="tablist" aria-label={t("promptTree.view")}>
+          <div class="seg" role="tablist" aria-label={t("promptTree.view")}>
             <button
               type="button"
               role="tab"
@@ -492,8 +501,8 @@ export const PromptTreePage = () => {
         </div>
       </header>
 
-      <div class="pt-body">
-        <section class="pt-main scroller" aria-label={t("promptTree.paneOutline")}>
+      <div class="cols">
+        <section class="pane pipeline pt-main" aria-label={t("promptTree.paneOutline")}>
           <Show when={loading()}>
             <span class="pt-meta-item muted" role="status">
               {t("promptTree.updating")}
@@ -613,9 +622,9 @@ export const PromptTreePage = () => {
                                   onClick={() => setSelectedOmitted(open() ? null : key())}
                                 >
                                   <Next class="rv-chev" aria-hidden="true" />
-                                  <span class="pt-badge mono">{item().category}</span>
+                                  <span class="pill mono">{item().category}</span>
                                   <span class="pt-omitted-label">{item().label ?? item().id}</span>
-                                  <span class="pt-badge soft">{omittedReasonLabel(item().reason)}</span>
+                                  <span class="pill soft">{omittedReasonLabel(item().reason)}</span>
                                   <Show when={item().source.whenText}>
                                     {(w) => (
                                       <span class="pt-omitted-cond mono" title={w()}>
@@ -669,9 +678,7 @@ export const PromptTreePage = () => {
                     <span>{t("promptTree.resourcesTitle")}</span>
                     <span class="pt-count mono">{r().resources.length}</span>
                     <Show when={mem().assumedReads.length > 0}>
-                      <span class="pt-badge ok">
-                        {t("promptTree.simulatedCount", { n: mem().assumedReads.length })}
-                      </span>
+                      <span class="pill ok">{t("promptTree.simulatedCount", { n: mem().assumedReads.length })}</span>
                     </Show>
                   </summary>
                   <div class="pt-fold-body">
@@ -685,15 +692,15 @@ export const PromptTreePage = () => {
                             <div class="pt-res-card">
                               <div class="pt-res-head">
                                 <span class="pt-res-title">{res().title}</span>
-                                <span class="pt-badge mono">{residencyLabel(res().residencyStatus)}</span>
+                                <span class="pill mono">{residencyLabel(res().residencyStatus)}</span>
                                 <Show when={res().access.model}>
-                                  <span class="pt-badge soft">{t("promptTree.accessModel")}</span>
+                                  <span class="pill soft">{t("promptTree.accessModel")}</span>
                                 </Show>
                                 <Show when={res().access.player}>
-                                  <span class="pt-badge soft">{t("promptTree.accessPlayer")}</span>
+                                  <span class="pill soft">{t("promptTree.accessPlayer")}</span>
                                 </Show>
                                 <Show when={res().totalLayers > 1}>
-                                  <span class="pt-badge mono">
+                                  <span class="pill mono">
                                     {t("promptTree.layerRatio", {
                                       unlocked: res().unlockedLayer,
                                       total: res().totalLayers,
@@ -736,7 +743,7 @@ export const PromptTreePage = () => {
                                           />
                                           <span>{sec().title}</span>
                                           <Show when={sec().resident}>
-                                            <span class="pt-badge mono">{t("promptTree.resWindow")}</span>
+                                            <span class="pill mono">{t("promptTree.resWindow")}</span>
                                           </Show>
                                         </label>
                                       </Show>
@@ -763,7 +770,7 @@ export const PromptTreePage = () => {
                       </Show>
                     </summary>
                     <div class="pt-fold-body pt-events">
-                      <For each={r().upstream.decide.availableActions} keyed={false}>
+                      <For each={r().sandbox.eventOptions} keyed={false}>
                         {(ev) => (
                           <label class="pt-check sm">
                             <input
@@ -775,10 +782,7 @@ export const PromptTreePage = () => {
                           </label>
                         )}
                       </For>
-                      <For
-                        each={mem().events.filter((ev) => !r().upstream.decide.availableActions.includes(ev))}
-                        keyed={false}
-                      >
+                      <For each={mem().events.filter((ev) => !r().sandbox.eventOptions.includes(ev))} keyed={false}>
                         {(ev) => (
                           <label class="pt-check sm">
                             <input type="checkbox" checked onChange={() => toggleEvent(ev())} />
@@ -812,7 +816,7 @@ export const PromptTreePage = () => {
           </Show>
         </section>
 
-        <aside class="pt-side scroller" aria-label={t("promptTree.paneControls")}>
+        <aside class="pane node" aria-label={t("promptTree.paneControls")}>
           {/* Sample card selector when opened from Settings → Templates with no active card */}
           <Show when={mem().sampleCard && sampleCards().length > 1}>
             <div class="pt-group">
@@ -844,30 +848,31 @@ export const PromptTreePage = () => {
             fallback={
               /* Story branch mode controls */
               <>
-                <div class="pt-group">
-                  <span class="pt-label">{t("promptTree.storySelect")}</span>
-                  <Menu
-                    fit
-                    small
-                    label={t("promptTree.storySelect")}
-                    value={mem().storyId !== undefined ? String(mem().storyId) : undefined}
-                    options={cardStories().map((s) => ({
-                      value: String(s.id),
-                      label: `${s.title ?? t("stories.newStory")} (#${s.turns})`,
-                    }))}
-                    onPick={(v) => {
-                      const sid = Number(v)
-                      if (Number.isFinite(sid)) update({ storyId: sid, nodeId: undefined })
-                    }}
-                  />
-                </div>
-
+                <Show when={cardStories().length}>
+                  <div class="pt-group">
+                    <span class="pt-label">{t("promptTree.storySelect")}</span>
+                    <Menu
+                      fit
+                      small
+                      label={t("promptTree.storySelect")}
+                      value={mem().storyId !== undefined ? String(mem().storyId) : undefined}
+                      options={cardStories().map((s) => ({
+                        value: String(s.id),
+                        label: `${s.title ?? t("stories.newStory")} (#${s.turns})`,
+                      }))}
+                      onPick={(v) => {
+                        const sid = Number(v)
+                        if (Number.isFinite(sid)) update({ storyId: sid, nodeId: undefined })
+                      }}
+                    />
+                  </div>
+                </Show>
                 <Show when={result()?.story}>
                   {(st) => (
                     <div class="pt-story-status">
-                      <span class="pt-badge mono">{t("promptTree.turnCount", { n: st().turnCount })}</span>
+                      <span class="pill mono">{t("promptTree.turnCount", { n: st().turnCount })}</span>
                       <Show when={st().summarized && st().summaryRange}>
-                        <span class="pt-badge ok">
+                        <span class="pill ok">
                           {t("promptTree.summarizedRange", {
                             from: st().summaryRange!.from,
                             to: st().summaryRange!.to,
@@ -875,10 +880,10 @@ export const PromptTreePage = () => {
                         </span>
                       </Show>
                       <Show when={st().foldStart > 0 && !st().summarized}>
-                        <span class="pt-badge warn">{t("promptTree.missingSummary")}</span>
+                        <span class="pill warn">{t("promptTree.missingSummary")}</span>
                       </Show>
                       <Show when={st().settlementPending}>
-                        <span class="pt-badge warn">{t("promptTree.settlementPending")}</span>
+                        <span class="pill warn">{t("promptTree.settlementPending")}</span>
                       </Show>
                     </div>
                   )}
@@ -915,7 +920,7 @@ export const PromptTreePage = () => {
                             <span class="mono">#{n().id}</span>
                             <span class="pt-node-snip">{snippet() || t("promptTree.emptyTurn")}</span>
                             <Show when={storyHead() === n().id}>
-                              <span class="pt-badge ok">{t("promptTree.head")}</span>
+                              <span class="pill ok">{t("promptTree.head")}</span>
                             </Show>
                           </button>
                         )

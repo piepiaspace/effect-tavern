@@ -12,7 +12,8 @@
 // the reader's strip is ☰ (the sidebar as a drawer, whose workspace holds the persona and writing), `card › story`
 // as plain text, and the same three keys.
 import { type JSX } from "@solidjs/web"
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
+import { wide } from "./viewport.ts"
+import { createMemo, createSignal, For, Show } from "solid-js"
 import { createDrawerController, Drawer, DrawerBackdrop, DrawerContent } from "@ui-sdk/solid/drawer"
 import { read } from "./bridge.ts"
 import { StoryDialogs } from "./dialogs.tsx"
@@ -61,8 +62,6 @@ const store = (key: string, value: string) => {
     // a browser without storage keeps the state for the page's life
   }
 }
-const media = typeof window === "undefined" ? undefined : window.matchMedia("(min-width: 72rem)")
-
 export const Shell = (props: { children: JSX.Element }) => {
   const pg = read(page)
   const view = read(card)
@@ -71,13 +70,6 @@ export const Shell = (props: { children: JSX.Element }) => {
   const line = read(path)
   const strip = read(tabs)
   const marked = read(unread)
-  // ── the width class: the canvas with its sidebar, or the phone ──
-  const [wide, setWide] = createSignal(media?.matches ?? true)
-  onSettled(() => {
-    const on = (e: MediaQueryListEvent) => setWide(e.matches)
-    media?.addEventListener("change", on)
-    return () => media?.removeEventListener("change", on)
-  })
   // ── the sidebar's fold, float and width (fold.ts for the arithmetic) ──
   const wasFolded = stored(FOLDED) === "true"
   const [folded, setFolded] = createSignal(wasFolded)

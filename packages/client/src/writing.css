@@ -31,7 +31,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
-  padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
+  padding: calc(var(--space-4) + var(--safe-top)) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
 }
 .wsheet > * {
   min-height: 0;
@@ -51,7 +51,7 @@
   user-select: none;
   -webkit-user-select: none;
 }
-.whead .icon {
+.whead > .icon:first-child {
   margin-left: calc((var(--icon) - var(--control)) / 2);
 }
 .whead h1 {
@@ -946,7 +946,7 @@
     grid-template-rows: minmax(0, 1fr);
     gap: var(--space-5);
     column-gap: var(--space-6);
-    padding: var(--space-6);
+    padding: calc(var(--space-6) + var(--safe-top)) var(--space-6) var(--space-6);
   }
   .wcol {
     height: 100%;

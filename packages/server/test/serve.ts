@@ -952,10 +952,14 @@ const sse = (text: string) =>
   // listen gzips a text body for a client that takes it; the turn stream and a client that does not stay raw
   const body = JSON.stringify({ prose: "她".repeat(4000) })
   const server = listen(
-    async (r) =>
-      new URL(r.url).pathname === "/sse"
-        ? new Response("data: 1\n\n", { headers: { "content-type": "text/event-stream" } })
-        : new Response(body, { headers: { "content-type": "application/json" } }),
+    async (r) => {
+      const path = new URL(r.url).pathname
+      if (path === "/sse") return new Response("data: 1\n\n", { headers: { "content-type": "text/event-stream" } })
+      if (path === "/204" || path === "/304") return new Response(null, { status: Number(path.slice(1)) })
+      return new Response(path === "/tiny" ? "[]" : body, {
+        headers: { "content-type": path === "/export.yaml" ? "application/yaml" : "application/json", vary: "Origin" },
+      })
+    },
     "127.0.0.1",
     0,
   )
@@ -967,10 +971,26 @@ const sse = (text: string) =>
     const bytes = new Uint8Array(await zipped.arrayBuffer())
     assert.ok(bytes.length < body.length / 10)
     assert.equal(new TextDecoder().decode(Bun.gunzipSync(bytes)), body)
-    assert.equal(
-      (await fetch(at, { headers: { "accept-encoding": "identity" } })).headers.get("content-encoding"),
-      null,
-    )
+    for (const encoding of ["identity", "*;q=1, gzip;q=0", "x-gzip"]) {
+      const plain = await fetch(at, { headers: { "accept-encoding": encoding }, decompress: false })
+      assert.equal(plain.headers.get("content-encoding"), null)
+      assert.match(plain.headers.get("vary")!, /origin, accept-encoding/i)
+      assert.equal(await plain.text(), body)
+    }
+    const head = await fetch(at, { method: "HEAD", headers: gz })
+    assert.match(head.headers.get("vary")!, /accept-encoding/i)
+    assert.equal(await head.text(), "")
+    const small = await fetch(at + "/tiny", { headers: gz, decompress: false })
+    assert.equal(small.headers.get("content-encoding"), null)
+    assert.equal(await small.text(), "[]")
+    for (const status of [204, 304]) {
+      const empty = await fetch(at + "/" + status, { headers: gz })
+      assert.equal(empty.status, status)
+      assert.equal(empty.headers.get("content-encoding"), null)
+    }
+    const yaml = await fetch(at + "/export.yaml", { headers: { "accept-encoding": "GZip;q=0.5" } })
+    assert.equal(yaml.headers.get("content-encoding"), "gzip")
+    assert.equal(await yaml.text(), body)
     const sse = await fetch(`${at}/sse`, { headers: gz, decompress: false })
     assert.equal(sse.headers.get("content-encoding"), null)
     assert.equal(await sse.text(), "data: 1\n\n")

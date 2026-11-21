@@ -679,6 +679,7 @@ const en: Dict = {
   },
   promptTree: {
     title: "Prompt Tree",
+    afterNode: "Preview the request after this node",
     preview: "Prompt Tree",
     toggleExpandAll: "Expand or collapse all",
     sampleCard: "Sample card",

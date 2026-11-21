@@ -7,7 +7,7 @@ import { createAgent } from "@ui-sdk/solid/agent"
 import { createSignal } from "solid-js"
 import { Composer } from "../src/composer.tsx"
 import { composition } from "../src/store.ts"
-import { ask, Confirm, dialogHandle, Menu, Modal, Prompt, Stepper, Switch } from "../src/controls.tsx"
+import { ask, Confirm, Drawer, dialogHandle, Menu, Modal, Prompt, Stepper, Switch } from "../src/controls.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
 import { Demand, Sheet } from "../src/readings.tsx"
@@ -80,6 +80,7 @@ let flipped = false
 const sheet = dialogHandle()
 const prompt = dialogHandle()
 const modal = dialogHandle()
+const [drawerOpen, setDrawerOpen] = createSignal(false)
 let left = 0 // the modal's onClose
 // the stage's edge over a canvas at the window's left: what the shell would keep, and every width the track showed
 const [sideWidth, setSideWidth] = createSignal<number>(SIDE.default)
@@ -104,7 +105,9 @@ const pull = async (xs: number[], gap: number) => {
 }
 let held = false // the sheet refuses Escape while this is set, as the manager does with stories checked
 const escape = () =>
-  document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+  document.activeElement?.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+  )
 /** The time between two moves of a hand: the input itself, which a gesture's speed is read from. */
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 /** Whether the one element of this class shows with its centre on the window's vertical axis, inside the window. */
@@ -135,6 +138,14 @@ render(
       <div style={{ height: "200vh" }} />
       <Composer />
       <Confirm />
+      <button id="drawer-trigger" onClick={() => setDrawerOpen(true)}>
+        设置抽屉
+      </button>
+      <Drawer open={drawerOpen()} label="服务设置" onClose={() => setDrawerOpen(false)}>
+        <button id="drawer-confirm" onClick={() => ask("确认删除", () => {})}>
+          删除
+        </button>
+      </Drawer>
       <div class="canvas" style={{ position: "fixed", inset: "0 auto auto 0", width: "100px", height: "80px" }}>
         <Edge
           class="resizer"
@@ -353,7 +364,7 @@ const run = async () => {
   await wait(40)
   hand("pointermove", 150)
   await wait(40)
-  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))
   check(
     await until(() => side.track.at(-1) === null && side.width === SIDE.max),
     `Escape puts the track back (${side.track.join(" ")})`,
@@ -379,6 +390,11 @@ const run = async () => {
   void sheet.open()
   await quiet()
   check(shows(".sheet"), "the sheet shows in the window")
+  check(
+    document.querySelector(".sheet")?.getAttribute("data-presentation") ===
+      (matchMedia("(min-width: 72rem)").matches ? "dialog" : "sheet"),
+    "reading presentation follows the shell breakpoint",
+  )
   check(document.activeElement?.getAttribute("aria-label") === "搜索故事", "the sheet's focus lands on its search")
   check(
     agent.snapshot().some((e) => e.label === "全部故事" && e.open),
@@ -408,6 +424,27 @@ const run = async () => {
   modal.close()
   await quiet()
   check(!document.querySelector(".modal") && left === 1, `the modal's onClose runs once it has left (${left})`)
+
+  const trigger = document.getElementById("drawer-trigger")!
+  trigger.focus()
+  trigger.click()
+  await quiet()
+  const inner = document.getElementById("drawer-confirm")!
+  check(inner.closest('[aria-modal="true"]'), "the settings drawer is modal")
+  inner.focus()
+  inner.click()
+  await quiet()
+  check(document.querySelector(".confirm")?.contains(document.activeElement), "the confirmation holds focus")
+  escape()
+  await quiet()
+  check(
+    !document.querySelector(".confirm") && !!document.querySelector(".side-drawer"),
+    "Escape dismisses the confirmation before the drawer",
+  )
+  check(document.activeElement === inner, "confirmation returns focus inside the drawer")
+  escape()
+  await quiet()
+  check(!document.querySelector(".side-drawer") && document.activeElement === trigger, "drawer restores its opener")
 
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)

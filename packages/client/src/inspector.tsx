@@ -31,7 +31,7 @@ import {
 } from "./inspect.ts"
 import { KeyValues, Reading, Shaped } from "./readings.tsx"
 import { RequestView } from "./request-view.tsx"
-import { sourceDestination } from "./prompt-tree-state.ts"
+import { previewFromPlay, sourceDestination } from "./prompt-tree-state.ts"
 import { channelOf, fields, lineOf, versions, whens } from "./record.ts"
 import { openSettings } from "./settings.tsx"
 import { activeOf, card, cards, isFreeChat, log, path, registry, tabs, type Id } from "./store.ts"
@@ -677,6 +677,9 @@ const InspectBody = (props: { id: Id }) => {
               <div class="sechead">
                 <span class="lbl">{t("inspector.input")}</span>
                 <span class="meta">{CHANNEL[channelOf(x())]}</span>
+                <button type="button" class="btn sm" onClick={() => previewFromPlay({ nodeId: x().id })}>
+                  {t("promptTree.afterNode")}
+                </button>
               </div>
               <div class="inwell">
                 <p class="line">{lineOf(x())}</p>

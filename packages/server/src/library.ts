@@ -731,8 +731,9 @@ export const library = ({
       let branchHead: number | null | undefined
       let targetNodeId: number | null | undefined
 
-      if (mode === "story") {
-        if (req.storyId === undefined) throw new PreviewError(400, "storyId is required in story mode")
+      if (mode === "story" && req.storyId === undefined && (req.nodeId !== null || !req.cardId))
+        throw new PreviewError(400, "an existing story or a card before its first turn is required")
+      if (mode === "story" && req.storyId !== undefined) {
         storyRow = row(req.storyId)
         if (!storyRow) throw new PreviewError(404, `no story ${req.storyId}`)
         const cached = sessions.get(req.storyId)
@@ -764,8 +765,8 @@ export const library = ({
           )
         card = checked
         effectiveCardId = req.cardId ?? card.id
-      } else if (mode === "story") {
-        effectiveCardId = storyRow!.card
+      } else if (storyRow) {
+        effectiveCardId = storyRow.card
         card = readCard(effectiveCardId)
       } else if (req.cardId !== undefined) {
         effectiveCardId = req.cardId
@@ -775,17 +776,25 @@ export const library = ({
         card = FREE_CHAT_CARD
       }
 
-      const on =
-        mode === "story"
-          ? { id: storyRow!.persona, yields: storyRow!.yields }
-          : personaFor(card, data.locals.get(effectiveCardId)?.persona)
+      const on = storyRow
+        ? { id: storyRow.persona, yields: storyRow.yields }
+        : personaFor(card, data.locals.get(effectiveCardId)?.persona)
       const personaPick = personaOf(on.id, on.yields)
       const rows = rowsOf(effectiveCardId, personaPick ? { ...personaPick, id: personaPick.id } : undefined)
       const packNames = Object.fromEntries((rows.packs ?? []).map((p) => [p.id, p.name]))
 
       const r = pinned ? {} : routing()
       const pair = r.stages?.narrate ?? r.default
-      const entry = pair && routedEntry(pair)
+      let entry: ReturnType<typeof routedEntry> | undefined
+      let routeError: ConnectionError | undefined
+      if (pair) {
+        try {
+          entry = routedEntry(pair)
+        } catch (error) {
+          if (!(error instanceof ConnectionError)) throw error
+          routeError = error
+        }
+      }
       const envModel = pair ? undefined : env?.("narrate")
 
       let wornHat: Hat | undefined
@@ -832,7 +841,7 @@ export const library = ({
       } else {
         connection = { prefill: true, reasoningBack: true, routingSource: "none" }
       }
-      return previewNarrate({
+      const preview = previewNarrate({
         card,
         cardId: effectiveCardId,
         rows,
@@ -855,6 +864,14 @@ export const library = ({
         ...(req.assumedMay !== undefined && { assumedMay: req.assumedMay }),
         ...(req.assumedTone !== undefined && { assumedTone: req.assumedTone }),
       })
+      if (!routeError) return preview
+      return {
+        ...preview,
+        diagnostics: [
+          ...preview.diagnostics,
+          { level: "warn", code: "connection_unavailable", message: routeError.message },
+        ],
+      }
     },
     personas: {
       /** By name, the install's default marked. */

@@ -202,6 +202,21 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     assert.equal(forcedNoHat.connection.hatId, undefined)
     assert.equal(JSON.stringify(forcedNoHat.messages).includes("SAVED-HAT-TAIL"), false)
 
+    const firstTurn = await postPreview({ mode: "story", cardId: lifeOfPi.id, nodeId: null })
+    assert.equal(firstTurn.status, 200)
+    const first = (await firstTurn.json()) as PreviewNarrateResult
+    assert.equal(first.mode, "story")
+    assert.equal(first.story?.nodeId, null)
+    assert.equal(first.card.id, lifeOfPi.id)
+    assert.equal(lib.stories.list().length, 0)
+    assert.equal((await postPreview({ mode: "story", cardId: lifeOfPi.id, nodeId: 1 })).status, 400)
+    lib.routing.write({ default: { provider: "anthropic-nosecret", model: "removed" } })
+    const stale = await postPreview({ cardId: lifeOfPi.id })
+    assert.equal(stale.status, 200)
+    const body = (await stale.json()) as PreviewNarrateResult
+    assert.ok(body.messages.length)
+    assert.ok(body.diagnostics.some((d) => d.code === "connection_unavailable" && d.message.includes("removed")))
+
     // Clean 400 and 404 error mappings
     assert.equal((await postPreview("{")).status, 400)
     assert.equal((await postPreview({ mode: "story" })).status, 400)
@@ -420,7 +435,12 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   envLibrary.routing.write({ hat: "routing-only" })
   assert.equal(envLibrary.preview({}).connection.hatId, undefined)
   envLibrary.routing.write({ default: { provider: "missing", model: "missing" } })
-  assert.throws(() => envLibrary.preview({}), /no provider missing/)
+  const stale = envLibrary.preview({})
+  assert.equal(stale.connection.routingSource, "none")
+  assert.ok(stale.messages.length)
+  assert.ok(
+    stale.diagnostics.some((d) => d.code === "connection_unavailable" && d.message.includes("no provider missing")),
+  )
   const server = listen(handle(lib), "127.0.0.1", 0)
   const base = `http://127.0.0.1:${server.port}`
   try {

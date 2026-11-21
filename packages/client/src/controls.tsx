@@ -1,3 +1,4 @@
+import { Drawer as SdkDrawer, DrawerBackdrop, DrawerContent } from "@ui-sdk/solid/drawer"
 // The settings page's shared pieces (settings.tsx, providers.tsx and its parts): the controls the prototype draws (a
 // menu instead of <select>, a switch, a letter avatar, a name edited in place), the shells (a side drawer over the
 // detail card, a modal, the one delete confirm), and the small pure helpers the sections share. No state of a section
@@ -5,7 +6,7 @@
 import { lookup } from "@effect-tavern/provider/src/names.ts"
 import { normalize, plan, UrlError, type Format, type UrlCode } from "@effect-tavern/provider/src/url.ts"
 import type { JSX } from "@solidjs/web"
-import { createSignal, For, onSettled, Show } from "solid-js"
+import { createSignal, For, Show } from "solid-js"
 import {
   AlertDialog,
   AlertDialogClose,
@@ -207,32 +208,15 @@ export interface Pane {
 }
 
 // ───────── Shells ─────────
-/** A card sliding in over the detail card's right side, its scrim and Escape closing it; the content is the caller's.
- *  A popover or a dialog over it takes the Escape instead, and the page's Escape (settings.tsx) leaves an open
- *  drawer to this. */
-export const Drawer = (props: { open: boolean; label: string; onClose: () => void; children: JSX.Element }) => {
-  onSettled(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (
-        e.key === "Escape" &&
-        !e.defaultPrevented &&
-        props.open &&
-        !document.querySelector(":popover-open, dialog[open]")
-      )
-        props.onClose()
-    }
-    addEventListener("keydown", onKey)
-    return () => removeEventListener("keydown", onKey)
-  })
-  return (
-    <>
-      <div class="drawer-scrim" data-open={props.open ? "true" : "false"} onClick={() => props.onClose()} />
-      <aside class="side-drawer" data-open={props.open ? "true" : "false"} aria-label={props.label}>
-        {props.children}
-      </aside>
-    </>
-  )
-}
+/** A modal drawer for the settings detail, with the same focus and dismissal rules on phones and desktop. */
+export const Drawer = (props: { open: boolean; label: string; onClose: () => void; children: JSX.Element }) => (
+  <SdkDrawer side="right" modal={true} open={props.open} onOpenChange={(open) => !open && props.onClose()}>
+    <DrawerBackdrop class="drawer-scrim" />
+    <DrawerContent class="side-drawer" aria-label={props.label}>
+      {props.children}
+    </DrawerContent>
+  </SdkDrawer>
+)
 /** Opens a dialog component from its parent: the dialog hands its open function up through `opener`. */
 export type Opener<A> = (open: (a: A) => void) => void
 /** What an opener keeps of a dialog, in place of its element: `open()` and `close()`. The owner makes one and passes

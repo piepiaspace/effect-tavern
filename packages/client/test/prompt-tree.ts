@@ -7,10 +7,11 @@ import {
   getPromptTreeMemory,
   openPromptTree,
   patchPromptTreeMemory,
+  previewFromPlay,
   sliceSpanText,
   sourceDestination,
 } from "../src/prompt-tree-state.ts"
-import { activeOf, cards, FREE_CHAT_ID, page, registry, tabs } from "../src/store.ts"
+import { activeOf, cards, FREE_CHAT_ID, page, registry, stories, tabs, type StoryRow } from "../src/store.ts"
 
 // 1. Sample card fallback when opened from Settings → Templates with no active card
 registry.set(cards, [{ id: "life-of-pi", title: "Life of Pi", origin: { via: "file" } }])
@@ -107,6 +108,20 @@ assert.equal(getPromptTreeMemory(10), before)
 openPromptTree({ candidateHat: draftHat })
 assert.equal(getPromptTreeMemory(10)!.play, false)
 assert.equal(getPromptTreeMemory(10)!.mode, "sandbox")
+
+// Writing on a card before play uses the read-only root of that card with the player visibility rules.
+previewFromPlay({ cardId: "life-of-pi" })
+let play = getPromptTreeMemory(10)!
+assert.equal(play.play, true)
+assert.deepEqual(buildPreviewRequest(play), { mode: "story", cardId: "life-of-pi", nodeId: null, hatId: undefined })
+registry.set(tabs, { active: 10, list: [{ ...activeOf(registry.get(tabs)), story: 7 }] })
+registry.set(stories, { current: 7, stories: [{ id: 7, card: "life-of-pi" } as StoryRow] })
+previewFromPlay({ nodeId: 42 })
+play = getPromptTreeMemory(10)!
+assert.equal(play.play, true)
+assert.deepEqual(buildPreviewRequest(play), { mode: "story", storyId: 7, nodeId: 42, hatId: undefined })
+previewFromPlay({ cardId: "another-card" })
+assert.equal(getPromptTreeMemory(10)!.storyId, undefined)
 
 // Returning to a preview after deleting its Hat uses the route's current Hat on every affected tab.
 patchPromptTreeMemory(10, { candidateHat: undefined, hatId: draftHat.id })

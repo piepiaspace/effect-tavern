@@ -902,38 +902,25 @@
 
 /* the drawer: a card sliding in over the detail card's right side, with its own head, scroller and foot */
 .drawer-scrim {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 3;
   background: var(--scrim);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-3) var(--ease);
-}
-.drawer-scrim[data-open="true"] {
-  opacity: 1;
-  pointer-events: auto;
 }
 .side-drawer {
-  position: absolute;
-  inset: var(--space-3) var(--space-3) var(--space-3) auto;
-  z-index: 4;
-  width: min(29rem, calc(100% - 2 * var(--space-3)));
+  box-sizing: border-box;
+  max-width: none;
+  gap: 0;
+  border: 0;
   display: flex;
   flex-direction: column;
+  width: min(29rem, 100%);
+  height: 100%;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) 0;
   overflow: hidden;
-  border-radius: var(--radius-dialog);
+  border-radius: var(--radius-dialog) 0 0 var(--radius-dialog);
   background: var(--surface-3);
   box-shadow: var(--shadow-pop);
-  translate: calc(100% + var(--space-4)) 0;
-  visibility: hidden;
-  transition:
-    translate var(--dur-3) var(--ease),
-    visibility var(--dur-3) allow-discrete;
-}
-.side-drawer[data-open="true"] {
-  translate: 0 0;
-  visibility: visible;
+  outline: none;
 }
 .drawer-head,
 .modal-head {
@@ -1914,16 +1901,4 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-size: var(--text-caption);
-}
-@media (prefers-reduced-motion: reduce) {
-  .side-drawer {
-    translate: 0 0;
-    opacity: 0;
-    transition:
-      opacity var(--dur-3) var(--ease),
-      visibility var(--dur-3) allow-discrete;
-  }
-  .side-drawer[data-open="true"] {
-    opacity: 1;
-  }
 }

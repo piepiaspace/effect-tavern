@@ -211,6 +211,7 @@ export const deletePersona = async (id: string): Promise<void> => {
   await Promise.all([fetchLocals(), fetchStories()]) // the pick on any card or story it held is gone with it
 }
 let localWrite: Promise<void> = Promise.resolve()
+export const pendingLocalWrite = () => localWrite
 /** Apply each edit to the last acknowledged local row for `cardId`, including edits queued in the same blur/click sequence. */
 export const putLocal = (cardId: string, edit: (l: Local) => Local): Promise<void> =>
   (localWrite = localWrite

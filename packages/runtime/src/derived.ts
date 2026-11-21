@@ -343,7 +343,7 @@ export const makeDerived = ({
         // count as a new reveal; the caller freezes the full offered context and reuses it on a reword.
         const disclosures = once([...before, ...offered.flatMap((d) => I.read(g1, ds1, ds1, d.id) ?? [])])
         const open: Disclosure[] = offered
-        return { offered, disclosures, open }
+        return { offered, disclosures, open, context: g1 }
       },
     }
   }
