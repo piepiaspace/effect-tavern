@@ -97,6 +97,7 @@
   --text-prose: 1rem; /* 16: the story */
   --text-field: var(--text-body); /* a UI input; prose on touch, where iOS zooms anything smaller (below) */
   --text-title: 1.25rem; /* 20: page title */
+  --text-hero: 1.5rem; /* 24: home stage title */
   --leading-tight: 1.25;
   --leading-body: 1.45;
   --leading-prose: 1.75;
@@ -109,6 +110,7 @@
   --space-4: 16px;
   --space-5: 24px;
   --space-6: 32px;
+  --space-7: 48px;
   --line-prose: calc(var(--text-prose) * var(--leading-prose));
   /* the flow reads by turns: what one turn holds (the line, the paragraphs, its row) sits close, and a clear blank,
      three times that, parts one turn from the next */
@@ -145,8 +147,28 @@
   --dur-4: 300ms; /* sheet */
   --dur-5: 450ms; /* page-level */
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: linear(
+    0,
+    0.012,
+    0.048 2.8%,
+    0.185 5.9%,
+    0.562 12.1%,
+    0.806 17.5%,
+    0.946 22.8%,
+    1.015 28.4%,
+    1.036 33.6%,
+    1.032 39.2%,
+    1.012 48.5%,
+    0.998 59.1%,
+    0.996 68.4%,
+    1
+  );
   interpolate-size: allow-keywords; /* a height may transition to and from auto (the composer's strips and keys row) */
   --ease-pulse: cubic-bezier(0.4, 0, 0.2, 1);
+  /* home stage pointer spotlight coordinates (updated on pointermove) */
+  --home-px: 50%;
+  --home-py: 42%;
+  --home-spot: 0;
 }
 :root[data-theme="light"] {
   color-scheme: light;

@@ -59,3 +59,7 @@ export { default as Export } from "~icons/ph/download-simple"
 export { default as Jump } from "~icons/ph/arrow-up-right"
 export { default as Star } from "~icons/ph/star" // a story the player keeps first
 export { default as StarFill } from "~icons/ph/star-fill"
+export { default as Play } from "~icons/ph/play"
+export { default as Pause } from "~icons/ph/pause"
+export { default as SoundOn } from "~icons/ph/speaker-high"
+export { default as SoundOff } from "~icons/ph/speaker-slash"

@@ -140,7 +140,12 @@ const zh = {
   },
   home: {
     freeChat: "自由对话",
+    pauseMotion: "暂停动效",
     placeholder: "写下第一句话，开始自由对话…",
+    playMotion: "播放动效",
+    soundOff: "关闭机械音效",
+    soundOn: "开启机械音效",
+    subtitle: "互动故事与角色工坊",
     tab: "主页",
     title: "effect-tavern",
   },

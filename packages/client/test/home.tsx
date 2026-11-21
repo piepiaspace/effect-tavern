@@ -130,13 +130,36 @@ void (async () => {
   try {
     await quiet()
 
-    // 1. Finalized rosette-04 emblem, no dev brand picker, empty-shelf onboarding visible, auto-focused on desktop.
+    // 1. Finalized rosette-04 interactive mechanism, no dev brand picker, empty-shelf onboarding visible, auto-focused on desktop.
     check(!document.querySelector(".home-Direction-picker"), "dev brand picker should be removed")
+    const emblem = document.querySelector<SVGSVGElement>(".home-emblem")
     check(
-      document.querySelector<HTMLImageElement>(".home-emblem")?.getAttribute("src") ===
-        "/brand/projector-rosette-04.svg",
-      "finalized rosette-04 emblem should render",
+      emblem?.getAttribute("data-brand") === "projector-rosette-04" &&
+        emblem.querySelector("#upper-five-spoke-wheel") !== null &&
+        emblem.querySelector("#four-spoke-center-reel") !== null &&
+        emblem.querySelector("#lower-five-spoke-wheel") !== null,
+      "interactive rosette-04 mechanism should render with coupled wheel assemblies",
     )
+    const soundToggle = document.querySelector<HTMLButtonElement>(".home-mech-sound")
+    check(soundToggle !== null, "mechanical sound toggle should render")
+    if (soundToggle) {
+      const before = soundToggle.getAttribute("aria-label")
+      soundToggle.click()
+      await quiet()
+      check(soundToggle.getAttribute("aria-label") !== before, "sound toggle should flip between enable and mute")
+      soundToggle.click()
+      await quiet()
+    }
+    const toggle = document.querySelector<HTMLButtonElement>(".home-mech-toggle:not(.home-mech-sound)")
+    check(toggle !== null, "motion pause/play toggle should render")
+    if (toggle) {
+      const before = toggle.getAttribute("aria-label")
+      toggle.click()
+      await quiet()
+      check(toggle.getAttribute("aria-label") !== before, "motion toggle should flip between pause and play")
+      toggle.click()
+      await quiet()
+    }
     check(document.querySelector(".home-first") !== null, "empty-shelf onboarding should render when shelf is empty")
     const box = () => document.querySelector<HTMLTextAreaElement>(".home-composer textarea")!
     check(document.activeElement === box(), "home composer should auto-focus on desktop entry")
