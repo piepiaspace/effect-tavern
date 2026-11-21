@@ -167,6 +167,12 @@ export const Sidebar = (props: {
     props.onLeave?.()
     go()
   }
+  /** A sheet opened from the sidebar (persona picker, tag manager, story manager): keep the phone's drawer open under
+   *  it so the sheet rises over the workspace instead of flashing the reader behind it; still fold a desktop peek. */
+  const openSheet = (go: () => void) => {
+    if (!props.inDrawer) props.onLeave?.()
+    go()
+  }
   // the shelf's search (query.ts): plain words over title, summary and the player's words on the card, `#` on one of
   // those words or a facet, `-` negates; picked chips stay out of the input box as atomic tokens below it
   const [cq, setCq] = createSignal("")
@@ -308,7 +314,7 @@ export const Sidebar = (props: {
               class="icon sm"
               aria-label={t("side.manager")}
               disabled={!card()}
-              onClick={openManager}
+              onClick={() => openSheet(openManager)}
             >
               <Archive />
             </button>
@@ -553,7 +559,7 @@ export const Sidebar = (props: {
                     class="btn sm ghost manage"
                     popovertarget={tagPop()}
                     popovertargetaction="hide"
-                    onClick={() => leaveFor(openTagManager)}
+                    onClick={() => openSheet(openTagManager)}
                   >
                     {t("tags.manage")}
                   </button>
@@ -561,7 +567,7 @@ export const Sidebar = (props: {
               </div>
             </Show>
             <div class="workspace-tools">
-              <button type="button" class="tile row" disabled={at() === null} onClick={() => leaveFor(openPicker)}>
+              <button type="button" class="tile row" disabled={at() === null} onClick={() => openSheet(openPicker)}>
                 <span class="lbl">
                   <User aria-hidden="true" />
                   <span>{t("common.persona")}</span>

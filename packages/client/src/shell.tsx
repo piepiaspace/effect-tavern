@@ -387,7 +387,7 @@ export const Shell = (props: { children: JSX.Element }) => {
           </DrawerContent>
         </Drawer>
       </Show>
-      <StoryDialogs />
+      <StoryDialogs onLeave={leaveDrawer} />
     </>
   )
 }

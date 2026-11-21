@@ -43,7 +43,7 @@ export const openExport = (s: StoryRow): void => (setExporting(s), void exportDi
 /** Every word the player files cards under: its count, a rename, a delete. */
 export const openTagManager = (): void => void tagman.open()
 
-export const StoryDialogs = () => {
+export const StoryDialogs = (props: { onLeave?: () => void }) => {
   const lib = read(stories)
   const people = read(personas)
   const allLocals = read(locals)
@@ -73,9 +73,10 @@ export const StoryDialogs = () => {
   const showFollow = () =>
     !story() && !(view()?.id === cardId() && view()?.input === "note") && named(t("side.followDefault"))
   const showNone = () => named(t("side.noPersona"))
-  /** The settings page's personas: the picker closes (a page is a leave). */
+  /** The settings page's personas: the picker and any open phone drawer close (a page is a leave). */
   const manage = () => {
     picker.close()
+    props.onLeave?.()
     openSettings("personas")
   }
   /** A persona's id, null for none, undefined to follow the install's default (the card's pick only). */
@@ -111,9 +112,10 @@ export const StoryDialogs = () => {
     else if (rows.length) void deleteStories(rows.map((s) => s.id))
   }
   // the export: the two formats of #75 as links the browser downloads, the server naming the file by the title
-  // the manager: this card's stories; a card opens its story and closes the sheet
+  // the manager: this card's stories; a card opens its story and closes both the sheet and the phone's drawer
   const openFromManager = (s: StoryRow) => {
     manager.close()
+    props.onLeave?.()
     if (s.id !== lib()?.current) void openStory(s.id)
   }
   // the tag manager: one fixed order (most cards, then the word); a click on a word edits it in place, Enter renames it
