@@ -10,6 +10,7 @@ import "../src/app.css"
 const failures: string[] = []
 try {
   registry.set(log, L.of({ nodes: [timelineNode(1, null, "正文")], head: 1 }))
+  flush() // a write shows after Solid's flush, and the Timeline's body reads the log under an owner, where get does not flush
   render(() => <Timeline />, document.getElementById("root")!)
   flush()
   const nodeTab = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((tab) =>
