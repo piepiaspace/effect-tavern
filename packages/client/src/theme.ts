@@ -23,9 +23,20 @@ export const flipped = (current: Theme, system: Theme): Theme | undefined => {
   return next === system ? undefined : next
 }
 
+const THEME_COLOR: Record<Theme, string> = { light: "#fcfcfb", dark: "#151515" }
+
+const syncThemeColor = (pick: Theme | undefined) => {
+  if (typeof document === "undefined") return
+  const light = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][media*="light"]')
+  const darkMeta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"][media*="dark"]')
+  if (light) light.content = THEME_COLOR[pick ?? "light"]
+  if (darkMeta) darkMeta.content = THEME_COLOR[pick ?? "dark"]
+}
+
 const pin = (pick: Theme | undefined) => {
   if (pick) document.documentElement.dataset["theme"] = pick
   else delete document.documentElement.dataset["theme"]
+  syncThemeColor(pick)
   try {
     if (pick) localStorage.setItem(KEY, pick)
     else localStorage.removeItem(KEY)
@@ -49,6 +60,7 @@ export const flip = () => {
 if (dark) {
   const pick = stored()
   if (pick) document.documentElement.dataset["theme"] = pick
+  syncThemeColor(pick)
   dark.addEventListener("change", () => {
     if (!stored()) setTheme(system())
   })

@@ -10,6 +10,7 @@
 .timeline .pane.graph {
   padding: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   mask-image: none;
 }
 .timeline .plot {
@@ -121,8 +122,14 @@
   gap: var(--space-half);
   text-align: left;
 }
-button.cell:hover {
-  background: var(--alpha-1);
+@media (hover: hover) and (pointer: fine) {
+  button.cell:hover {
+    background: var(--alpha-1);
+    color: var(--ink);
+  }
+}
+button.cell:active {
+  background: var(--alpha-2);
   color: var(--ink);
 }
 .timeline .cell.lit {
@@ -276,7 +283,13 @@ button.cell:hover {
   width: 15px;
   height: 15px;
 }
-.timeline .acts .icon.danger:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .timeline .acts .icon.danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+    color: var(--danger);
+  }
+}
+.timeline .acts .icon.danger:active:not(:disabled) {
   background: color-mix(in srgb, var(--danger) 12%, transparent);
   color: var(--danger);
 }
@@ -318,6 +331,7 @@ button.cell:hover {
   gap: var(--space-half);
   max-height: 16rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
 }
 .timeline .vrow {
@@ -335,8 +349,14 @@ button.cell:hover {
   flex: none;
   width: 11px;
 }
-.timeline .vrow:hover {
-  background: var(--alpha-1);
+@media (hover: hover) and (pointer: fine) {
+  .timeline .vrow:hover {
+    background: var(--alpha-1);
+    color: var(--ink);
+  }
+}
+.timeline .vrow:active {
+  background: var(--alpha-2);
   color: var(--ink);
 }
 .timeline .vrow[aria-current="true"] {

@@ -137,6 +137,7 @@ export const Manager = (props: {
             <Clue aria-hidden="true" />
             <input
               type="search"
+              enterkeyhint="search"
               ref={(el) => (search = el)}
               placeholder={t("manager.searchPlaceholder")}
               aria-label={t("manager.searchLabel")}

@@ -162,7 +162,8 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: var(--fade) var(--space-4);
+  overscroll-behavior: contain;
+  padding: var(--fade) var(--space-4) calc(var(--fade) + var(--safe-bottom));
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -175,9 +176,11 @@
   transition: scrollbar-color var(--dur-3) var(--ease);
   mask-image: linear-gradient(to bottom, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
 }
-.inspect .pane:hover,
-.inspect .wscroll:hover {
-  scrollbar-color: var(--alpha-2) transparent;
+@media (hover: hover) and (pointer: fine) {
+  .inspect .pane:hover,
+  .inspect .wscroll:hover {
+    scrollbar-color: var(--alpha-2) transparent;
+  }
 }
 .inspect[data-pane="pipeline"] .pane.node,
 .inspect[data-pane="node"] .pane.pipeline {
@@ -232,6 +235,7 @@
   background: none;
   color: var(--ink);
   font: inherit;
+  font-size: var(--text-field);
 }
 
 /* the spine: one line down the left, a knot per top-level step or tray, colored by status */
@@ -353,8 +357,13 @@
 .inspect .step > summary::-webkit-details-marker {
   display: none;
 }
-.inspect .step:not([open]) > summary:hover {
-  background: var(--ghost-hover);
+@media (hover: hover) and (pointer: fine) {
+  .inspect .step:not([open]) > summary:hover {
+    background: var(--ghost-hover);
+  }
+}
+.inspect .step:not([open]) > summary:active {
+  background: var(--ghost-active);
 }
 .inspect .step[open] > summary {
   position: sticky;
@@ -484,8 +493,14 @@
   font-size: var(--text-caption);
   white-space: nowrap;
 }
-.inspect .wbar button:hover {
-  background: var(--ghost-hover);
+@media (hover: hover) and (pointer: fine) {
+  .inspect .wbar button:hover {
+    background: var(--ghost-hover);
+    color: var(--ink);
+  }
+}
+.inspect .wbar button:active {
+  background: var(--ghost-active);
   color: var(--ink);
 }
 .inspect .wbar button[aria-selected="true"] {
@@ -506,6 +521,7 @@
   contain: size;
   min-height: 8lh;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--fade) var(--space-3);
   display: flex;
   flex-direction: column;
@@ -752,9 +768,11 @@
   color: var(--ink-3);
   border-radius: var(--radius-sm);
 }
-.inspect .hook .icon:hover {
-  background: var(--ghost-hover);
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .inspect .hook .icon:hover {
+    background: var(--ghost-hover);
+    color: var(--ink);
+  }
 }
 .inspect .hook .icon[aria-pressed="true"] {
   color: var(--ink);

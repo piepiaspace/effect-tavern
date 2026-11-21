@@ -334,6 +334,7 @@ export const Sidebar = (props: {
                 <Clue aria-hidden="true" />
                 <input
                   type="search"
+                  enterkeyhint="search"
                   ref={(el) => (shelfSearch = el)}
                   placeholder={t("side.searchCards")}
                   aria-label={t("side.searchCards")}
@@ -585,6 +586,7 @@ export const Sidebar = (props: {
               <Clue aria-hidden="true" />
               <input
                 type="search"
+                enterkeyhint="search"
                 value={sq()}
                 placeholder={t("side.searchStories")}
                 aria-label={t("side.searchStories")}

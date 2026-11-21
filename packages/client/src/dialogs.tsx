@@ -306,6 +306,7 @@ export const StoryDialogs = () => {
             <Clue aria-hidden="true" />
             <input
               type="search"
+              enterkeyhint="search"
               placeholder={t("side.searchPersonas")}
               aria-label={t("side.searchPersonasLabel")}
               onInput={(e) => setQ(e.currentTarget.value)}

@@ -21,14 +21,17 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
   transition: scrollbar-color var(--dur-3) var(--ease);
   padding: var(--space-3) var(--space-5) calc(var(--space-6) + var(--safe-bottom));
 }
-.workshop-body:hover {
-  scrollbar-color: var(--alpha-2) transparent;
+@media (hover: hover) and (pointer: fine) {
+  .workshop-body:hover {
+    scrollbar-color: var(--alpha-2) transparent;
+  }
 }
 .workshop-body > * {
   box-sizing: border-box;
@@ -67,8 +70,13 @@
   gap: var(--space-half);
   transition: background var(--dur-2) var(--ease);
 }
-.workshop-card:hover {
-  background: var(--ghost-hover);
+@media (hover: hover) and (pointer: fine) {
+  .workshop-card:hover {
+    background: var(--ghost-hover);
+  }
+}
+.workshop-card:active {
+  background: var(--ghost-active);
 }
 .workshop-card .title {
   font-weight: 600;
@@ -147,8 +155,13 @@
 .workshop-block + .workshop-block {
   box-shadow: inset 0 var(--hairline) 0 var(--line);
 }
-.workshop-block:hover {
-  background: var(--ghost-hover);
+@media (hover: hover) and (pointer: fine) {
+  .workshop-block:hover {
+    background: var(--ghost-hover);
+  }
+}
+.workshop-block:active {
+  background: var(--ghost-active);
 }
 .workshop-open {
   flex: 1;
@@ -188,10 +201,15 @@
   opacity: 0;
   transition: opacity var(--dur-2) var(--ease);
 }
-.workshop-block:is(:hover, :focus-within) .icon.sm {
+.workshop-block:focus-within .icon.sm {
   opacity: 1;
 }
-@media (hover: none) {
+@media (hover: hover) and (pointer: fine) {
+  .workshop-block:hover .icon.sm {
+    opacity: 1;
+  }
+}
+@media (hover: none), (pointer: coarse) {
   .workshop-block .icon.sm {
     opacity: 1;
   }
@@ -224,6 +242,7 @@
   width: min(44rem, calc(100% - 2 * var(--space-5)));
   max-height: 30%;
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin: 0 auto var(--space-2);
   padding: var(--space-3);
   border-radius: var(--radius);

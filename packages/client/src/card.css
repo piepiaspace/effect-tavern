@@ -7,6 +7,7 @@
    are a stepper with a sheet. Nothing on the page wraps but the two proses. */
 .manifest {
   overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: var(--text-body);
 }
 .cardsheet {
@@ -15,7 +16,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
 }
 .cardsheet > * {
   min-height: 0;
@@ -171,7 +172,13 @@
   padding: var(--space-half) var(--space-2);
   border-radius: inherit;
 }
-.manifest .chips li > button:hover {
+@media (hover: hover) and (pointer: fine) {
+  .manifest .chips li > button:hover {
+    background: var(--alpha-2);
+    color: var(--ink);
+  }
+}
+.manifest .chips li > button:active {
   background: var(--alpha-2);
   color: var(--ink);
 }
@@ -185,6 +192,7 @@
   max-width: min(20rem, calc(100vw - 2 * var(--space-4)));
   max-height: 16rem;
   overflow-y: auto;
+  overscroll-behavior: contain;
   margin: var(--space-1) 0;
   padding: var(--space-2) var(--space-3);
   border: 0;
@@ -284,6 +292,7 @@
   gap: var(--space-2);
   overflow-x: hidden;
   overflow-y: auto;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   outline: none;
 }
@@ -309,8 +318,14 @@
 .manifest .openings .version {
   box-shadow: inset 0 0 0 var(--hairline) var(--line);
 }
-.manifest .openings .version:hover {
-  background: var(--ghost-hover);
+@media (hover: hover) and (pointer: fine) {
+  .manifest .openings .version:hover {
+    background: var(--ghost-hover);
+    color: var(--ink);
+  }
+}
+.manifest .openings .version:active {
+  background: var(--ghost-active);
   color: var(--ink);
 }
 .manifest .openings .version[aria-selected="true"] {
@@ -435,8 +450,10 @@
   color: var(--primary-ink);
   box-shadow: var(--shadow-1);
 }
-.manifest .begin:hover {
-  opacity: 0.88;
+@media (hover: hover) and (pointer: fine) {
+  .manifest .begin:hover {
+    opacity: 0.88;
+  }
 }
 .manifest .begin:active {
   transform: scale(0.98);

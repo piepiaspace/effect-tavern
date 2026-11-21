@@ -595,6 +595,7 @@ const InspectBody = (props: { id: Id }) => {
                     <Clue aria-hidden="true" />
                     <input
                       type="search"
+                      enterkeyhint="search"
                       aria-label={t("inspector.searchLabel")}
                       placeholder={t("inspector.searchPlaceholder")}
                       autocomplete="off"

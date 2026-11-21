@@ -201,6 +201,7 @@ const TokenField = (props: {
     <input
       class="field token-input"
       type="number"
+      inputmode="numeric"
       min={props.min}
       placeholder={t("common.default")}
       aria-label={props.label}
@@ -317,6 +318,9 @@ export const AddModelDialog = (props: { id: string; opener: Opener<undefined> })
             <input
               class="field mono"
               type="text"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
               required
               placeholder={t("models.modelIdExample")}
               value={id()}

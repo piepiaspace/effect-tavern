@@ -129,6 +129,8 @@
   --peek-dim: light-dark(rgb(15 15 15 / 0.14), rgb(0 0 0 / 0.42)); /* the stage under a floating sidebar */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
   --fade: 24px; /* the column's vertical padding, over which its two ends fade out */
   --head: var(--fade); /* the column's top padding and fade; on the canvas the sidebar's top row (shell.css) */
   --foot: calc(
@@ -152,7 +154,7 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 }
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   :root {
     --text-field: var(--text-prose);
   }

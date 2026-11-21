@@ -7,6 +7,7 @@
    6-tab pack editor in settings (packs.tsx). */
 .wpage {
   overflow-y: auto;
+  overscroll-behavior: contain;
   font-size: var(--text-body);
 }
 .wpage :is(h1, h2, h3, h4, p) {
@@ -30,7 +31,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
-  padding: var(--space-4);
+  padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
 }
 .wsheet > * {
   min-height: 0;
@@ -112,9 +113,16 @@
     background var(--dur-2) var(--ease),
     color var(--dur-2) var(--ease);
 }
-.pack-chip:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .pack-chip:hover:not(:disabled) {
+    background: var(--alpha-2);
+    color: var(--ink);
+  }
+}
+.pack-chip:active:not(:disabled) {
   background: var(--alpha-2);
   color: var(--ink);
+  scale: 0.97;
 }
 .pack-chip[aria-pressed="true"] {
   background: var(--primary);
@@ -165,7 +173,12 @@
     padding-inline: var(--space-1);
   }
 }
-.wtabs button:hover {
+@media (hover: hover) and (pointer: fine) {
+  .wtabs button:hover {
+    color: var(--ink);
+  }
+}
+.wtabs button:active {
   color: var(--ink);
 }
 .wtabs button[aria-selected="true"] {
@@ -285,9 +298,16 @@
     background var(--dur-2) var(--ease),
     color var(--dur-2) var(--ease);
 }
-.sw-card .sw-pills button:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .sw-card .sw-pills button:hover:not(:disabled) {
+    background: var(--alpha-2);
+    color: var(--ink);
+  }
+}
+.sw-card .sw-pills button:active:not(:disabled) {
   background: var(--alpha-2);
   color: var(--ink);
+  scale: 0.97;
 }
 .sw-card .sw-pills button[aria-pressed="true"] {
   background: var(--primary);
@@ -310,11 +330,14 @@
   gap: var(--space-3);
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: transparent transparent;
 }
-.prod-body:hover {
-  scrollbar-color: var(--alpha-2) transparent;
+@media (hover: hover) and (pointer: fine) {
+  .prod-body:hover {
+    scrollbar-color: var(--alpha-2) transparent;
+  }
 }
 .prod-group {
   flex: none;
@@ -406,7 +429,12 @@
   cursor: pointer;
   transition: background var(--dur-2) var(--ease);
 }
-.prod-item[data-editable="true"]:hover {
+@media (hover: hover) and (pointer: fine) {
+  .prod-item[data-editable="true"]:hover {
+    background: var(--surface-3);
+  }
+}
+.prod-item[data-editable="true"]:active {
   background: var(--surface-3);
 }
 .tag.warn {
@@ -470,9 +498,13 @@
   transition: scrollbar-color var(--dur-3) var(--ease);
   mask-image: linear-gradient(to bottom, transparent, #000 12px, #000 calc(100% - 12px), transparent);
 }
-.field-well textarea:hover,
 .field-well textarea:focus {
   scrollbar-color: var(--alpha-2) transparent;
+}
+@media (hover: hover) and (pointer: fine) {
+  .field-well textarea:hover {
+    scrollbar-color: var(--alpha-2) transparent;
+  }
 }
 .field-well textarea:disabled {
   opacity: 0.5;
@@ -548,7 +580,12 @@
   font-weight: 550;
   white-space: nowrap;
 }
-.at-toggle button:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .at-toggle button:hover:not(:disabled) {
+    color: var(--ink);
+  }
+}
+.at-toggle button:active:not(:disabled) {
   color: var(--ink);
 }
 .at-toggle button[aria-pressed="true"] {
@@ -659,8 +696,14 @@
   color: var(--ink);
   font-size: var(--text-body);
 }
-.fmt-btn:hover:not(.builtin) {
+@media (hover: hover) and (pointer: fine) {
+  .fmt-btn:hover:not(.builtin) {
+    background: var(--alpha-2);
+  }
+}
+.fmt-btn:active:not(.builtin) {
   background: var(--alpha-2);
+  scale: 0.97;
 }
 .fmt-btn .glyph {
   font-family: var(--font-mono);
@@ -705,7 +748,12 @@
   text-overflow: ellipsis;
   transition: background var(--dur-2) var(--ease);
 }
-.snip-row:hover:not(.builtin) .snip-cell {
+@media (hover: hover) and (pointer: fine) {
+  .snip-row:hover:not(.builtin) .snip-cell {
+    background: var(--alpha-2);
+  }
+}
+.snip-row:active:not(.builtin) .snip-cell {
   background: var(--alpha-2);
 }
 .snip-row .sname {
@@ -728,11 +776,21 @@
     border-radius: var(--radius);
     background: var(--alpha-1);
   }
-  .snip-cell,
-  .snip-row:hover:not(.builtin) .snip-cell {
+  .snip-cell {
     height: auto;
     padding: 0;
     background: none;
+  }
+  .snip-row:active:not(.builtin) {
+    background: var(--alpha-2);
+  }
+  .snip-row:active:not(.builtin) .snip-cell {
+    background: none;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .snip-row:hover:not(.builtin) .snip-cell {
+      background: none;
+    }
   }
   .snip-row .sname {
     grid-area: name;
@@ -776,6 +834,7 @@
 }
 .wpage .modal-body {
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .wpage .modal-body > .wtabs {
   flex: none;

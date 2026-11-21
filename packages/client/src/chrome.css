@@ -14,8 +14,14 @@
   font-size: var(--text-footnote);
   color: var(--ink-2);
 }
-button.record-pill:hover {
+@media (hover: hover) and (pointer: fine) {
+  button.record-pill:hover {
+    background: var(--ghost-active);
+  }
+}
+button.record-pill:active {
   background: var(--ghost-active);
+  scale: 0.96;
 }
 .record-pill svg {
   width: var(--icon-sm);
@@ -92,13 +98,22 @@ button.record-pill:hover {
 .sheet header > .picked-bar .icon.danger {
   color: var(--danger);
 }
-.sheet header > .picked-bar .icon.danger:hover:not(:disabled) {
+@media (hover: hover) and (pointer: fine) {
+  .sheet header > .picked-bar .icon.danger:hover:not(:disabled) {
+    background: var(--danger-soft);
+  }
+}
+.sheet header > .picked-bar .icon.danger:active:not(:disabled) {
   background: var(--danger-soft);
 }
 .sheet .record {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-2) var(--space-4) var(--space-4);
+  overscroll-behavior: contain;
+  padding: var(--space-2) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
+}
+.sheet:has(> footer) .record {
+  padding-bottom: var(--space-4);
 }
 .sheet footer {
   padding: var(--space-1) var(--space-2) calc(var(--space-2) + var(--safe-bottom));
@@ -439,8 +454,13 @@ button.record-pill:hover {
 .option + .option {
   box-shadow: inset 0 var(--hairline) 0 var(--line);
 }
-.option:hover {
-  background: var(--ghost-hover);
+@media (hover: hover) and (pointer: fine) {
+  .option:hover {
+    background: var(--ghost-hover);
+  }
+}
+.option:active {
+  background: var(--ghost-active);
 }
 .option .n {
   color: var(--ink-3);
@@ -566,6 +586,7 @@ button.record-pill:hover {
     var(--shadow-pop),
     inset 0 0 0 var(--hairline) var(--line);
   overflow-y: auto;
+  overscroll-behavior: contain;
   outline: none;
   transition: opacity var(--dur-3) ease-out;
 }
@@ -699,7 +720,7 @@ button.record-pill:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-1) var(--space-4) var(--space-4);
+  padding: var(--space-1) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
 }
 .manager .search {
   flex: none;
@@ -728,7 +749,12 @@ button.record-pill:hover {
   font-weight: 550;
   white-space: nowrap;
 }
-.manager .filter button:hover {
+@media (hover: hover) and (pointer: fine) {
+  .manager .filter button:hover {
+    color: var(--ink);
+  }
+}
+.manager .filter button:active {
   color: var(--ink);
 }
 .manager .filter button[aria-pressed="true"] {
@@ -741,6 +767,7 @@ button.record-pill:hover {
   min-height: 0;
   max-height: calc(7 * 40px + 6 * var(--space-2));
   overflow-y: auto;
+  overscroll-behavior: contain;
   scroll-snap-type: y proximity;
   display: flex;
   flex-direction: column;
@@ -777,9 +804,14 @@ button.record-pill:hover {
   align-items: start;
   padding-block: var(--space-3);
 }
-.manager .card:hover {
-  background: var(--ghost-hover);
-  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+@media (hover: hover) and (pointer: fine) {
+  .manager .card:hover {
+    background: var(--ghost-hover);
+    box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+  }
+}
+.manager .card:active {
+  background: var(--ghost-active);
 }
 .manager .card[aria-current] {
   background: var(--alpha-1);
@@ -864,12 +896,19 @@ button.record-pill:hover {
     opacity var(--dur-3) var(--ease),
     translate var(--dur-3) var(--ease);
 }
-.manager:not([data-selecting]) .card:is(:hover, :focus-within) .acts {
+.manager:not([data-selecting]) .card:focus-within .acts {
   opacity: 1;
   translate: 0 0;
   pointer-events: auto;
 }
-@media (hover: none) {
+@media (hover: hover) and (pointer: fine) {
+  .manager:not([data-selecting]) .card:hover .acts {
+    opacity: 1;
+    translate: 0 0;
+    pointer-events: auto;
+  }
+}
+@media (hover: none), (pointer: coarse) {
   .manager:not([data-selecting]) .card .acts {
     opacity: 1;
     translate: 0 0;
@@ -885,14 +924,16 @@ button.record-pill:hover {
   width: 14px;
   height: 14px;
 }
-.manager .card .acts .icon:hover:not(:disabled) {
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  .manager .card .acts .icon:hover:not(:disabled) {
+    color: var(--ink);
+  }
+  .manager .card .acts .icon.danger:hover:not(:disabled) {
+    color: var(--danger);
+  }
 }
 .manager .card .acts .icon.star[aria-pressed="true"] {
   color: var(--warn);
-}
-.manager .card .acts .icon.danger:hover:not(:disabled) {
-  color: var(--danger);
 }
 /* the second line: the last line written, or the turn the search hit with its place, two rows at most */
 .manager .card .preview {
@@ -975,15 +1016,22 @@ button.record-pill:hover {
   color: var(--ink);
   font-weight: 500;
 }
-.tagman .chip .word:hover {
-  text-decoration: underline;
-  text-underline-offset: 3px;
+@media (hover: hover) and (pointer: fine) {
+  .tagman .chip .word:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
 }
 .tagman .chip .field {
   min-width: 3rem;
   max-width: 10rem;
   padding: var(--space-half) var(--space-1);
   font-size: var(--text-footnote);
+}
+@media (hover: none), (pointer: coarse) {
+  .tagman .chip .field {
+    font-size: var(--text-prose);
+  }
 }
 .tagman .chip .count {
   font-family: var(--font-mono);
@@ -997,7 +1045,13 @@ button.record-pill:hover {
   border-radius: var(--radius-pill);
   color: var(--ink-3);
 }
-.tagman .chip .del:hover {
+@media (hover: hover) and (pointer: fine) {
+  .tagman .chip .del:hover {
+    background: var(--alpha-2);
+    color: var(--danger);
+  }
+}
+.tagman .chip .del:active {
   background: var(--alpha-2);
   color: var(--danger);
 }
@@ -1018,12 +1072,13 @@ button.record-pill:hover {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-1) var(--space-4) var(--space-4);
+  padding: var(--space-1) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
 }
 .picker .list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -1053,11 +1108,17 @@ button.record-pill:hover {
     background var(--dur-2) var(--ease),
     box-shadow var(--dur-2) var(--ease);
 }
-.picker .item:hover,
-.picker .item:focus-visible {
+.picker .item:focus-visible,
+.picker .item:active {
   background: var(--ghost-hover);
   box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
   outline: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .picker .item:hover {
+    background: var(--ghost-hover);
+    box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+  }
 }
 .picker .item[aria-checked="true"] {
   background: var(--alpha-1);
@@ -1120,7 +1181,7 @@ button.record-pill:hover {
     inset: 0;
     width: min(36rem, calc(100% - 2 * var(--space-5)));
     height: fit-content;
-    max-height: 80vh;
+    max-height: 80dvh;
     margin: auto;
     border-radius: var(--radius-dialog);
     transition: opacity var(--dur-3) var(--ease);

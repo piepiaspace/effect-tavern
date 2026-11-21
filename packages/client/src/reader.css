@@ -5,9 +5,13 @@
   line-height: var(--leading-prose);
   color: var(--ink);
   background: var(--surface-0);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
 }
 body {
   margin: 0;
+  overscroll-behavior: none;
 }
 /* the frame holds still: the strip, the column and the composer fill the stage card (shell.css), and only the
    column scrolls */
@@ -22,6 +26,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden; /* dust in flight (dust.ts) must not raise a horizontal scrollbar */
+  overscroll-behavior: contain;
   scrollbar-gutter: stable; /* a classic scrollbar's width is reserved whether or not the story overflows: the column never shifts between stories */
   container-type: size;
   /* a thin thumb at the column's edge, only while the pointer is over it (the mask fades its ends) */
@@ -42,8 +47,10 @@ body {
     transparent calc(100% - var(--lift))
   );
 }
-.scroll:hover {
-  scrollbar-color: var(--alpha-2) transparent;
+@media (hover: hover) and (pointer: fine) {
+  .scroll:hover {
+    scrollbar-color: var(--alpha-2) transparent;
+  }
 }
 main {
   max-width: var(--measure);
@@ -406,11 +413,19 @@ section:has(> .editor) > .actions {
     opacity var(--dur-3) var(--ease),
     translate var(--dur-3) var(--ease);
 }
-.spoke:is(:hover, :focus-within) .acts,
-.group > summary:is(:hover, :focus-within) .acts,
-main > section:is(:hover, :focus-within) > :is(.actions, .theater) .acts {
+.spoke:focus-within .acts,
+.group > summary:focus-within .acts,
+main > section:focus-within > :is(.actions, .theater) .acts {
   opacity: 1;
   translate: 0 0;
+}
+@media (hover: hover) and (pointer: fine) {
+  .spoke:hover .acts,
+  .group > summary:hover .acts,
+  main > section:hover > :is(.actions, .theater) .acts {
+    opacity: 1;
+    translate: 0 0;
+  }
 }
 /* the keys: matched to the stage keys' ink-2 weight and 26px box so they read as interactive controls, brightening to
    ink on hover with a subtle press scale. The line's row sits close under its bubble and ends on the bubble's own text
@@ -425,11 +440,15 @@ main > section:is(:hover, :focus-within) > :is(.actions, .theater) .acts {
     color var(--dur-2) var(--ease),
     scale var(--dur-1) var(--ease);
 }
-:is(.spoke .acts, .actions, .theater, .editkeys) .icon:hover:not(:disabled) {
-  background: var(--ghost-hover);
-  color: var(--ink);
+@media (hover: hover) and (pointer: fine) {
+  :is(.spoke .acts, .actions, .theater, .editkeys) .icon:hover:not(:disabled) {
+    background: var(--ghost-hover);
+    color: var(--ink);
+  }
 }
 :is(.spoke .acts, .actions, .theater, .editkeys) .icon:active:not(:disabled) {
+  background: var(--ghost-active);
+  color: var(--ink);
   scale: 0.94;
 }
 :is(.spoke .acts, .actions, .theater, .editkeys) .icon svg {
@@ -448,7 +467,7 @@ main > section:is(:hover, :focus-within) > :is(.actions, .theater) .acts {
 :is(.spoke, .actions, .theater, .group > summary) .acts .icon:disabled {
   visibility: hidden;
 }
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   :is(.spoke, .actions, .theater, .group > summary) .acts {
     opacity: 1;
     translate: 0 0;
@@ -501,9 +520,14 @@ main > section:is(:hover, :focus-within) > :is(.actions, .theater) .acts {
   font: inherit;
   font-variant-numeric: tabular-nums;
 }
-.siblings .count:hover:not(:disabled),
-.siblings .count:has(+ .versions:popover-open) {
+.siblings .count:has(+ .versions:popover-open),
+.siblings .count:active:not(:disabled) {
   background: var(--ghost-hover);
+}
+@media (hover: hover) and (pointer: fine) {
+  .siblings .count:hover:not(:disabled) {
+    background: var(--ghost-hover);
+  }
 }
 /* the version list: a menu under the counter (its invoker is the implicit anchor); a row is the action that made
    the version, its opening on one line, and the count of nodes that follow it */
@@ -537,10 +561,15 @@ main > section:is(:hover, :focus-within) > :is(.actions, .theater) .acts {
   font: inherit;
   text-align: start;
 }
-.version:hover,
-.version:focus-visible {
+.version:focus-visible,
+.version:active {
   background: var(--ghost-hover);
   outline: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .version:hover {
+    background: var(--ghost-hover);
+  }
 }
 .version[aria-current] {
   font-weight: 600;
@@ -625,6 +654,20 @@ main > section:is(:hover, :focus-within) > :is(.actions, .theater) .acts {
   overflow-wrap: anywhere;
 }
 
+button,
+a,
+[role="button"],
+summary {
+  touch-action: manipulation;
+}
+button,
+[role="button"],
+summary,
+a.chip {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
 button {
   font: inherit;
   color: inherit;
@@ -633,7 +676,9 @@ button {
   border-radius: var(--radius);
   padding: 0;
   cursor: pointer;
-  transition: background var(--dur-3) var(--ease);
+  transition:
+    background var(--dur-2) var(--ease),
+    scale var(--dur-1) var(--ease);
 }
 button:disabled {
   opacity: 0.35;
@@ -652,13 +697,14 @@ button:focus-visible {
 }
 /* hover only where a pointer hovers: a touch screen keeps :hover on the last key tapped until the next tap elsewhere;
    there the press shows instead */
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   .icon:hover:not(:disabled) {
     background: var(--ghost-hover);
   }
 }
 .icon:active:not(:disabled) {
-  background: var(--ghost-hover);
+  background: var(--ghost-active);
+  scale: 0.94;
 }
 .icon svg {
   width: var(--icon);
@@ -745,6 +791,7 @@ button:focus-visible {
   outline: none;
   field-sizing: content;
   overflow-wrap: anywhere; /* the reader's rule, so a line wraps here as it will in its bubble: a word or a number stays whole, a URL breaks at its slashes */
+  overscroll-behavior: contain;
   /* a thin thumb on no track: the mask below fades the element's ends, and a track would look cut there */
   scrollbar-width: thin;
   scrollbar-color: var(--alpha-3) transparent;
@@ -861,6 +908,11 @@ button:focus-visible {
   letter-spacing: 0.2em; /* air between the two halves of a pair: it reads as a container */
   text-indent: 0.2em;
 }
+button.chip:active:not(:disabled),
+a.chip:active {
+  background: var(--alpha-2);
+  scale: 0.97;
+}
 .send {
   flex: none;
   width: var(--control);
@@ -870,6 +922,9 @@ button:focus-visible {
   color: var(--primary-ink);
   display: grid;
   place-items: center;
+}
+.send:active:not(:disabled) {
+  scale: 0.94;
 }
 .send:disabled {
   opacity: 1;
@@ -962,8 +1017,14 @@ button:focus-visible {
   border-radius: var(--radius-sm);
   color: var(--ink-2);
 }
-.invocation-menu .menu-heading button:hover {
-  background: var(--ghost-hover);
+@media (hover: hover) and (pointer: fine) {
+  .invocation-menu .menu-heading button:hover {
+    background: var(--ghost-hover);
+    color: var(--ink);
+  }
+}
+.invocation-menu .menu-heading button:active {
+  background: var(--ghost-active);
   color: var(--ink);
 }
 /* the field is a row among the rows: their width and their radius (the menu's own less its padding), its words on
