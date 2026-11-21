@@ -42,7 +42,8 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 // The client's way to save a file (wire.ts saveFile): Go has the user pick where (save.go).
 g["tavernHost"] = {
   save: async (file: Blob, name: string) => {
-    const r = await page(`/__save?name=${encodeURIComponent(name)}`, { method: "POST", body: file })
+    // as bytes: WebKit hands a custom scheme's handler no body at all for a Blob
+    const r = await page(`/__save?name=${encodeURIComponent(name)}`, { method: "POST", body: await file.arrayBuffer() })
     if (!r.ok) throw new Error(await r.text())
   },
 }

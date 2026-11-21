@@ -26,14 +26,19 @@ func serveSave(w http.ResponseWriter, r *http.Request) {
 	defer os.RemoveAll(dir)
 	path := filepath.Join(dir, name)
 	f, err := os.Create(path)
+	var n int64
 	if err == nil {
-		_, err = io.Copy(f, r.Body)
+		n, err = io.Copy(f, r.Body)
 		if cerr := f.Close(); err == nil {
 			err = cerr
 		}
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if n == 0 { // an export is never empty: a body lost on the way, which must not land as an empty file
+		http.Error(w, "empty body", http.StatusBadRequest)
 		return
 	}
 	saved, err := mygo.Dialog.SaveCopy(path, name)
