@@ -451,7 +451,6 @@
 /* the card's tags right under its head: real wrapping chips on the sidebar surface (no outer card box, no middle-dot
    truncation). Clicking the word filters the shelf by `#word`, × removes it in place, + opens the popover */
 .workspace-tags {
-  anchor-name: --tags-side;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -460,9 +459,6 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   flex: none;
-}
-.workspace-tags:has(#tags-drawer) {
-  anchor-name: --tags-drawer;
 }
 .workspace-tags > .chip {
   height: 24px;
@@ -506,13 +502,8 @@
 }
 /* its adder floats under `.workspace-tags`: the field, the player's other words to tap on, and the way to the manager */
 .tag-pop {
-  position-anchor: --tags-side;
-  position-area: bottom span-right;
-  position-try-fallbacks: flip-block;
-  inset: auto;
   box-sizing: border-box;
-  width: anchor-size(width);
-  margin: var(--space-1) 0;
+  width: var(--anchor-width);
   padding: var(--space-2);
   border: 0;
   border-radius: var(--radius-card);
@@ -521,9 +512,7 @@
   box-shadow:
     var(--shadow-pop),
     inset 0 0 0 var(--hairline) var(--line);
-}
-#tags-drawer {
-  position-anchor: --tags-drawer;
+  outline: none;
 }
 .tag-pop:popover-open {
   display: flex;
@@ -559,10 +548,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  anchor-name: --facets-side;
-}
-.shelf-filter:has(#facets-drawer) {
-  anchor-name: --facets-drawer;
 }
 .shelf-picked {
   display: flex;
@@ -593,16 +578,11 @@
   }
 }
 .facet-pop {
-  position-anchor: --facets-side;
-  position-area: bottom span-right;
-  position-try-fallbacks: flip-block;
-  inset: auto;
   box-sizing: border-box;
-  width: anchor-size(width);
-  max-height: 13rem;
+  width: var(--anchor-width);
+  max-height: min(13rem, var(--available-height));
   overflow-y: auto;
   overscroll-behavior: contain;
-  margin: var(--space-1) 0;
   padding: var(--space-2);
   border: 0;
   border-radius: var(--radius-card);
@@ -611,17 +591,12 @@
   box-shadow:
     var(--shadow-pop),
     inset 0 0 0 var(--hairline) var(--line);
-}
-#facets-drawer {
-  position-anchor: --facets-drawer;
+  outline: none;
 }
 .facet-pop:popover-open {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-.facet-pop.none {
-  display: none;
 }
 .facet-group {
   display: flex;

@@ -9,7 +9,7 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { Show } from "solid-js"
 import { read } from "../src/bridge.ts"
 import { flip, locale } from "../src/i18n.ts"
-import { close, open } from "../src/pages.ts"
+import { close, editCard, onKey, open } from "../src/pages.ts"
 import { page, type ShelfCard } from "../src/store.ts"
 import { ManuscriptPage, Workshop } from "../src/workshop.tsx"
 import { quiet, tracked, until } from "./settle.ts"
@@ -18,6 +18,7 @@ import "../src/app.css"
 const bridge = installDiagnosticsBridge()
 bridge.begin()
 if (locale() !== "zh-CN") flip()
+addEventListener("keydown", onKey)
 
 // ── the server's side, as far as these pages ask ──
 const blank = (id: string, title?: string): Card => ({
@@ -361,12 +362,70 @@ const run = async () => {
   check(pg() === "prompt-tree" && last().summary === "预览前的最后一笔", "preview flushes the pending edit")
   close()
   await quiet()
-  // leaving with a keystroke not yet saved writes it on the way out
+  // leaving with a keystroke not yet saved writes it on the way out; both Back and Escape wait for a delayed PUT
+  // so the shelf list shows the new summary immediately on arrival
+  const holdBack = Promise.withResolvers<void>()
+  pendingSave = holdBack.promise
   await type("一句话简介", "一条盐道")
+  key("返回")?.click()
+  await quiet()
+  check(pg() === "manuscript", "Back waits on ManuscriptPage while PUT /whole is in flight")
+  holdBack.resolve()
+  pendingSave = undefined
+  check(
+    await until(() => pg() === "workshop" && words().includes("一条盐道")),
+    `Back arrives on Workshop with the new summary already on the shelf: ${words()}`,
+  )
+
+  const escape = async () => {
+    ;(document.activeElement ?? document.body).dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    )
+    await quiet()
+  }
+  await editCard("made")
+  await quiet()
+  await settled()
+  const holdEsc = Promise.withResolvers<void>()
+  pendingSave = holdEsc.promise
+  await type("一句话简介", "按退格键保存的简介")
+  await escape() // first Escape blurs the focused summary input
+  check(
+    pg() === "manuscript" && document.activeElement !== fields("一句话简介")[0],
+    "first Escape blurs the focused input",
+  )
+  await escape() // second Escape flushes and closes through leave(close)
+  check(pg() === "manuscript", "Escape waits on ManuscriptPage while PUT /whole is in flight")
+  holdEsc.resolve()
+  pendingSave = undefined
+  check(
+    await until(() => pg() === "workshop" && words().includes("按退格键保存的简介")),
+    `Escape arrives on Workshop with the new summary already on the shelf: ${words()}`,
+  )
+
+  // 409 card-changed on immediate Back and Escape: both stay on ManuscriptPage with the conflict notice visible
+  await editCard("made")
+  await quiet()
+  await settled()
+  put({ ...held.get("made")!, title: "别处先改了一版" })
+  await type("一句话简介", "返回时撞上冲突")
   await press("返回")
   check(
-    await until(() => last().summary === "一条盐道"),
-    `leaving saves what was left: ${JSON.stringify(last().summary)}`,
+    pg() === "manuscript" && words().includes("在别处被改过了"),
+    `Back stays on ManuscriptPage showing 409 conflict notice: ${words()}`,
+  )
+  await press("重新读取")
+  check(
+    await until(() => fields("卡片名")[0]?.value === "别处先改了一版" && !document.querySelector(".workshop-notice")),
+    "reread clears conflict before Escape test",
+  )
+  put({ ...held.get("made")!, title: "别处又改了一版" })
+  await type("一句话简介", "Escape时撞上冲突")
+  fields("一句话简介")[0]?.blur()
+  await escape()
+  check(
+    pg() === "manuscript" && words().includes("在别处被改过了"),
+    `Escape stays on ManuscriptPage showing 409 conflict notice: ${words()}`,
   )
 
   const diagnostics = bridge.end().diagnostics
@@ -375,6 +434,7 @@ const run = async () => {
 run()
   .catch((e) => failures.push(`threw: ${e instanceof Error ? (e.stack ?? e.message) : String(e)}`))
   .finally(() => {
+    removeEventListener("keydown", onKey)
     const result = { failures, snapshot: requests }
     Object.assign(globalThis, { fixture: { result } })
     if (location.protocol !== "file:") void post("/result", { method: "POST", body: JSON.stringify(result) })

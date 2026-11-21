@@ -200,4 +200,59 @@ const scrubbed = scrubPlayPreview(withHidden)
 assert.equal(scrubbed.traces[0].spans[0], fixed)
 assert.equal(scrubbed.traces[0].spans[1].source.whenText, undefined)
 assert.equal(scrubbed.traces[0].spans[1].source.whenDetails, undefined)
+
+// Explicit `fields.<name>` condition paths also match hidden fields and strip spans + filter omitted items.
+const explicitFieldSpan: Span = {
+  ...gated,
+  source: {
+    ...gated.source,
+    when: { path: "fields.裂隙", op: "gte", value: 1 },
+    whenText: "fields.裂隙 >= 1",
+    whenResult: true,
+    whenDetails: [{ path: "fields.裂隙", label: "裂隙", expr: "fields.裂隙 >= 1", passed: true, actual: 1 }],
+  },
+}
+const explicitOmitted = {
+  category: "fiction" as const,
+  id: "rift-secret",
+  reason: "when_false" as const,
+  source: {
+    kind: "card" as const,
+    entryId: "rift-secret",
+    when: { path: "fields.裂隙", op: "gte", value: 3 },
+    whenText: "fields.裂隙 >= 3",
+    whenResult: false,
+    whenDetails: [{ path: "fields.裂隙", label: "裂隙", expr: "fields.裂隙 >= 3", passed: false, actual: 1 }],
+  },
+}
+const publicOmitted = {
+  category: "fiction" as const,
+  id: "open-gate",
+  reason: "when_false" as const,
+  source: {
+    kind: "card" as const,
+    entryId: "open-gate",
+    whenText: "fields.公开 >= 2",
+    whenResult: false,
+    whenDetails: [{ path: "fields.公开", label: "公开", expr: "fields.公开 >= 2", passed: false, actual: 0 }],
+  },
+}
+const scrubbedExplicit = scrubPlayPreview({
+  ...outline,
+  sandbox: {
+    ...outline.sandbox,
+    fields: [
+      { path: "裂隙", label: "裂隙", type: "int" as const, initial: 0, value: 1, hidden: true, start: false },
+      { path: "公开", label: "公开", type: "int" as const, initial: 0, value: 0, hidden: false, start: false },
+    ],
+  },
+  traces: [{ ...outline.traces[0], spans: [fixed, explicitFieldSpan] }],
+  omitted: [explicitOmitted, publicOmitted],
+})
+assert.equal(scrubbedExplicit.traces[0].spans[0], fixed)
+assert.equal(scrubbedExplicit.traces[0].spans[1].source.when, undefined)
+assert.equal(scrubbedExplicit.traces[0].spans[1].source.whenText, undefined)
+assert.equal(scrubbedExplicit.traces[0].spans[1].source.whenResult, undefined)
+assert.equal(scrubbedExplicit.traces[0].spans[1].source.whenDetails, undefined)
+assert.deepEqual(scrubbedExplicit.omitted, [publicOmitted])
 console.log("prompt-tree ok")

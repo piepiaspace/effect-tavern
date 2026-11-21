@@ -10,6 +10,7 @@
 // are the install's (`InstallKeys`): the canvas's top strip holds them, the phone's drawer its foot. On the desktop
 // it stands in the canvas's left space; under 72rem the same component is the phone's drawer. A row only switches
 // the story: the rename, star, export and delete live in the manager (manager.tsx, dialogs.tsx).
+import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
@@ -175,6 +176,8 @@ export const Sidebar = (props: {
   const attach = (w: string) => tagsOf((ws) => [...ws, w])
   let tagBox: HTMLInputElement | undefined
   let shelfSearch: HTMLInputElement | undefined
+  const [tagsRow, setTagsRow] = createSignal<HTMLDivElement>()
+  const tagsMenu = createPopoverController()
   // after a word lands (Enter or a tap on an offered chip) the box empties and keeps the focus: the next word follows
   const clear = () => {
     if (tagBox) tagBox.value = ""
@@ -247,8 +250,9 @@ export const Sidebar = (props: {
     if (kept !== cq()) setQuery(kept)
     setPicked((ws) => (on ? ws.filter((x) => fold(x) !== f) : [...ws, w]))
   }
-  let facetPop: HTMLDivElement | undefined
-  const peek = (on: boolean) => void facetPop?.togglePopover(on)
+  const [filterRow, setFilterRow] = createSignal<HTMLDivElement>()
+  const [facetsOpen, setFacetsOpen] = createSignal(false)
+  const hasCapsules = () => capsules().facets.length > 0 || capsules().tags.length > 0
   const facetId = () => (props.inDrawer ? "facets-drawer" : "facets-side") // as `tagPop`: both may be mounted
   // the workspace's search: the title here, the turns on the server after a pause in the typing (the manager's
   // way: an answer to an older query than the one typed is dropped); a hit shows its line under the row
@@ -351,8 +355,10 @@ export const Sidebar = (props: {
           <section class="pane shelf" aria-label={t("side.allCards")} inert={which() !== "shelf"}>
             <div
               class="shelf-filter"
+              ref={setFilterRow}
               onFocusOut={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) peek(false)
+                const next = e.relatedTarget as HTMLElement | null
+                if (!e.currentTarget.contains(next) && !next?.closest(".facet-pop")) setFacetsOpen(false)
               }}
             >
               <div class="input-box sm shelf-search">
@@ -363,14 +369,13 @@ export const Sidebar = (props: {
                   ref={(el) => (shelfSearch = el)}
                   placeholder={t("side.searchCards")}
                   aria-label={t("side.searchCards")}
-                  onFocus={(e) => peek(facetsWanted(e.currentTarget.value))}
+                  onFocus={(e) => setFacetsOpen(facetsWanted(e.currentTarget.value))}
                   onInput={(e) => {
                     setCq(e.currentTarget.value)
-                    peek(facetsWanted(e.currentTarget.value))
+                    setFacetsOpen(facetsWanted(e.currentTarget.value))
                   }}
                   onKeyDown={(e) => {
-                    if (e.key === "Escape") peek(false)
-                    else if (e.key === "Backspace" && !e.currentTarget.value && picked().length)
+                    if (e.key === "Backspace" && !e.currentTarget.value && picked().length)
                       setPicked((ws) => ws.slice(0, -1))
                   }}
                 />
@@ -388,48 +393,69 @@ export const Sidebar = (props: {
                 </div>
               </Show>
               {/* a press keeps the focus in the box, so a capsule's click lands and the panel stays open */}
-              <div
-                id={facetId()}
-                ref={(el) => (facetPop = el)}
-                class={{ "facet-pop": true, none: !capsules().facets.length && !capsules().tags.length }}
-                popover="manual"
-                onMouseDown={(e) => e.preventDefault()}
+              <Popover
+                open={facetsOpen() && hasCapsules()}
+                onOpenChange={(next, details) => {
+                  const target = details.event?.target
+                  if (
+                    !next &&
+                    details.reason === "outside-press" &&
+                    target instanceof Node &&
+                    filterRow()?.contains(target)
+                  )
+                    return details.cancel()
+                  setFacetsOpen(next)
+                }}
               >
-                <Show when={capsules().facets.length}>
-                  <div class="facet-group">
-                    <For each={capsules().facets} keyed={false}>
-                      {(c) => (
-                        <button
-                          type="button"
-                          class="chip facet"
-                          aria-pressed={isOn(c()[0]) ? "true" : "false"}
-                          onClick={() => pick(c()[0])}
-                        >
-                          <span>{c()[0]}</span>
-                          <span class="count">{c()[1]}</span>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </Show>
-                <Show when={capsules().tags.length}>
-                  <div class="facet-group">
-                    <For each={capsules().tags} keyed={false}>
-                      {(c) => (
-                        <button
-                          type="button"
-                          class="chip"
-                          aria-pressed={isOn(c()[0]) ? "true" : "false"}
-                          onClick={() => pick(c()[0])}
-                        >
-                          <span>{c()[0]}</span>
-                          <span class="count">{c()[1]}</span>
-                        </button>
-                      )}
-                    </For>
-                  </div>
-                </Show>
-              </div>
+                <PopoverContent
+                  id={facetId()}
+                  class="facet-pop"
+                  aria-label={t("side.searchCards")}
+                  anchor={filterRow()}
+                  side="bottom"
+                  align="start"
+                  sideOffset={4}
+                  initialFocus="none"
+                  finalFocus="none"
+                  onPointerDown={(e) => e.preventDefault()}
+                  onMouseDown={(e) => e.preventDefault()}
+                >
+                  <Show when={capsules().facets.length}>
+                    <div class="facet-group">
+                      <For each={capsules().facets} keyed={false}>
+                        {(c) => (
+                          <button
+                            type="button"
+                            class="chip facet"
+                            aria-pressed={isOn(c()[0]) ? "true" : "false"}
+                            onClick={() => pick(c()[0])}
+                          >
+                            <span>{c()[0]}</span>
+                            <span class="count">{c()[1]}</span>
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                  <Show when={capsules().tags.length}>
+                    <div class="facet-group">
+                      <For each={capsules().tags} keyed={false}>
+                        {(c) => (
+                          <button
+                            type="button"
+                            class="chip"
+                            aria-pressed={isOn(c()[0]) ? "true" : "false"}
+                            onClick={() => pick(c()[0])}
+                          >
+                            <span>{c()[0]}</span>
+                            <span class="count">{c()[1]}</span>
+                          </button>
+                        )}
+                      </For>
+                    </div>
+                  </Show>
+                </PopoverContent>
+              </Popover>
             </div>
             <ul class="shelf-list scroller">
               <For each={shown()} keyed={(c) => c.id}>
@@ -491,7 +517,7 @@ export const Sidebar = (props: {
               </button>
             </Show>
             <Show when={!freeChat()}>
-              <div class="workspace-tags scroller">
+              <div class="workspace-tags scroller" ref={setTagsRow}>
                 <For each={words()} keyed={false}>
                   {(w) => (
                     <span class="chip">
@@ -509,80 +535,88 @@ export const Sidebar = (props: {
                     </span>
                   )}
                 </For>
-                <button
-                  type="button"
-                  class={{ chip: true, add: true, empty: !words().length }}
-                  disabled={at() === null}
-                  aria-label={t("side.addTag")}
-                  popovertarget={tagPop()}
-                >
-                  <Show
-                    when={words().length}
-                    fallback={
-                      <>
-                        <Tag aria-hidden="true" />
-                        <span>{t("side.addTag")}</span>
-                      </>
+                <Popover
+                  controller={tagsMenu}
+                  onOpenChange={(open) => {
+                    if (!open) {
+                      setTq("")
+                      if (tagBox) tagBox.value = ""
                     }
-                  >
-                    <Snippets aria-hidden="true" />
-                  </Show>
-                </button>
-                <div
-                  id={tagPop()}
-                  class="tag-pop"
-                  popover
-                  onToggle={(e) => {
-                    if (e.newState === "open") return tagBox?.focus()
-                    setTq("")
-                    if (tagBox) tagBox.value = ""
                   }}
                 >
-                  <div class="input-box sm">
-                    <input
-                      type="text"
-                      ref={(el) => (tagBox = el)}
-                      disabled={words().length >= MAX_TAGS}
-                      placeholder={t("side.addTag")}
-                      aria-label={t("side.addTag")}
-                      onInput={(e) => setTq(e.currentTarget.value)}
-                      onKeyDown={(e) => {
-                        if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return // an IME's confirming Enter is not a tag
-                        e.preventDefault()
-                        const w = e.currentTarget.value.trim()
-                        if (w && !words().includes(w)) attach(w)
-                        clear()
-                      }}
-                    />
-                  </div>
-                  <Show when={offered().length}>
-                    <div class="tag-chips scroller">
-                      <For each={offered()} keyed={false}>
-                        {(w) => (
-                          <button
-                            type="button"
-                            class="chip"
-                            onClick={() => {
-                              attach(w())
-                              clear()
-                            }}
-                          >
-                            {w()}
-                          </button>
-                        )}
-                      </For>
-                    </div>
-                  </Show>
-                  <button
-                    type="button"
-                    class="btn sm ghost manage"
-                    popovertarget={tagPop()}
-                    popovertargetaction="hide"
-                    onClick={() => openSheet(openTagManager)}
+                  <PopoverTrigger
+                    class={{ chip: true, add: true, empty: !words().length }}
+                    disabled={at() === null}
+                    aria-label={t("side.addTag")}
                   >
-                    {t("tags.manage")}
-                  </button>
-                </div>
+                    <Show
+                      when={words().length}
+                      fallback={
+                        <>
+                          <Tag aria-hidden="true" />
+                          <span>{t("side.addTag")}</span>
+                        </>
+                      }
+                    >
+                      <Snippets aria-hidden="true" />
+                    </Show>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    id={tagPop()}
+                    class="tag-pop"
+                    aria-label={t("side.addTag")}
+                    anchor={tagsRow()}
+                    side="bottom"
+                    align="start"
+                    sideOffset={4}
+                  >
+                    <div class="input-box sm">
+                      <input
+                        type="text"
+                        ref={(el) => (tagBox = el)}
+                        disabled={words().length >= MAX_TAGS}
+                        placeholder={t("side.addTag")}
+                        aria-label={t("side.addTag")}
+                        onInput={(e) => setTq(e.currentTarget.value)}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter" || e.isComposing || e.keyCode === 229) return // an IME's confirming Enter is not a tag
+                          e.preventDefault()
+                          const w = e.currentTarget.value.trim()
+                          if (w && !words().includes(w)) attach(w)
+                          clear()
+                        }}
+                      />
+                    </div>
+                    <Show when={offered().length}>
+                      <div class="tag-chips scroller">
+                        <For each={offered()} keyed={false}>
+                          {(w) => (
+                            <button
+                              type="button"
+                              class="chip"
+                              onClick={() => {
+                                attach(w())
+                                clear()
+                              }}
+                            >
+                              {w()}
+                            </button>
+                          )}
+                        </For>
+                      </div>
+                    </Show>
+                    <button
+                      type="button"
+                      class="btn sm ghost manage"
+                      onClick={() => {
+                        tagsMenu.close()
+                        openSheet(openTagManager)
+                      }}
+                    >
+                      {t("tags.manage")}
+                    </button>
+                  </PopoverContent>
+                </Popover>
               </div>
             </Show>
             <div class="workspace-tools">

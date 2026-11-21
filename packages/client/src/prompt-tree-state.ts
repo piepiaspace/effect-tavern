@@ -358,8 +358,9 @@ export const reusePreviewOutline = (
 
 /** Filter author-only hidden-field conditions and locked resources for play-entry previews while preserving unchanged references. */
 export const scrubPlayPreview = (r: PreviewNarrateResult): PreviewNarrateResult => {
-  const hidden = new Set(r.sandbox.fields.filter((f) => f.hidden).map((f) => f.path))
-  const secret = (s: SourceRef | undefined) => hidden.size > 0 && !!s?.whenDetails?.some((d) => hidden.has(d.path))
+  const hidden = new Set(r.sandbox.fields.filter((f) => f.hidden).map((f) => f.path.replace(/^fields\./, "")))
+  const secret = (s: SourceRef | undefined) =>
+    hidden.size > 0 && !!s?.whenDetails?.some((d) => hidden.has(d.path.replace(/^fields\./, "")))
   const scrub = <S extends SourceRef | undefined>(s: S): S => {
     if (!s || !secret(s)) return s
     const { when: _w, whenText: _t, whenResult: _r, whenDetails: _d, ...rest } = s

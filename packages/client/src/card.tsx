@@ -7,6 +7,7 @@
 // pick starts a new story beside the old one. A card with no opening begins on an empty line,
 // the player's first words start it.
 import { tokens } from "@effect-tavern/runtime/src/tokens.ts"
+import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Back, Change, Clue, Next, Prev, Up } from "./icons.tsx"
@@ -64,6 +65,7 @@ export const CardPage = () => {
   const [oq, setOq] = createSignal(() => (id(), ""))
   const [searching, setSearching] = createSignal(false)
   const [starting, setStarting] = createSignal(false)
+  const openingsPop = createPopoverController()
   const inStory = () => all().nodes.size > 0
   /** Begin lands in the open story: it is empty and of this card. Otherwise (a story in progress, none yet, an empty
    *  story of another card: this one was browsed from the shelf) Begin makes a new story of this card first. */
@@ -158,18 +160,23 @@ export const CardPage = () => {
                       {/* a tap lists what the chip stands for (a phone has no hover title) */}
                       <Show when={chip().items} fallback={chip().label}>
                         {(items) => (
-                          <>
-                            <button type="button" popovertarget={`spec-${i}`}>
-                              {chip().label}
-                            </button>
-                            <div id={`spec-${i}`} class="spec-pop scroller" popover>
+                          <Popover>
+                            <PopoverTrigger>{chip().label}</PopoverTrigger>
+                            <PopoverContent
+                              id={`spec-${i}`}
+                              class="spec-pop scroller"
+                              aria-label={chip().label}
+                              side="bottom"
+                              align="start"
+                              sideOffset={4}
+                            >
                               <ul>
                                 <For each={items()} keyed={false}>
                                   {(x) => <li>{x()}</li>}
                                 </For>
                               </ul>
-                            </div>
-                          </>
+                            </PopoverContent>
+                          </Popover>
                         )}
                       </Show>
                     </li>
@@ -268,65 +275,64 @@ export const CardPage = () => {
                     >
                       <Prev />
                     </button>
-                    <button class="count" popovertarget="openings" aria-label={t("card.pickOpening")}>
-                      {at() + 1} / {openings().length}
-                      <Up />
-                    </button>
-                    <div
-                      id="openings"
-                      class="versions"
-                      popover
-                      role="menu"
-                      onFocusOut={(e) =>
-                        !e.currentTarget.contains(e.relatedTarget as HTMLElement | null) &&
-                        e.currentTarget.hidePopover()
-                      }
-                    >
-                      <div class="openings-head">
-                        <span>{t("card.opening")}</span>
-                        <label class="inline-search" data-open={searching() || !!oq() ? "true" : "false"}>
-                          <Clue aria-hidden="true" />
-                          <input
-                            type="search"
-                            enterkeyhint="search"
-                            placeholder={t("card.searchOpenings")}
-                            aria-label={t("card.searchOpenings")}
-                            value={oq()}
-                            onFocus={() => setSearching(true)}
-                            onBlur={() => setSearching(false)}
-                            onInput={(e) => setOq(e.currentTarget.value)}
-                            onKeyDown={(e) => {
-                              if (e.key !== "Escape") return
-                              e.preventDefault()
-                              setOq("")
-                              e.currentTarget.blur()
-                            }}
-                          />
-                        </label>
-                        <span class="mono">
-                          {at() + 1} / {openings().length}
-                        </span>
-                      </div>
-                      <For each={listed()} keyed={(x) => x.i}>
-                        {(x) => (
-                          <button
-                            type="button"
-                            role="menuitem"
-                            class="version"
-                            aria-current={x().i === at() ? "true" : undefined}
-                            onClick={(e) => {
-                              setAt(x().i)
-                              e.currentTarget.closest<HTMLElement>("[popover]")?.hidePopover()
-                            }}
-                          >
-                            <Line c={c()} g={x().g} i={x().i} />
-                          </button>
-                        )}
-                      </For>
-                      <Show when={!listed().length}>
-                        <div class="none">{t("card.noOpeningMatch")}</div>
-                      </Show>
-                    </div>
+                    <Popover controller={openingsPop}>
+                      <PopoverTrigger class="count" aria-label={t("card.pickOpening")}>
+                        {at() + 1} / {openings().length}
+                        <Up />
+                      </PopoverTrigger>
+                      <PopoverContent
+                        id="openings"
+                        class="versions"
+                        aria-label={t("card.pickOpening")}
+                        side="top"
+                        align="start"
+                        sideOffset={8}
+                      >
+                        <div class="openings-head">
+                          <span>{t("card.opening")}</span>
+                          <label class="inline-search" data-open={searching() || !!oq() ? "true" : "false"}>
+                            <Clue aria-hidden="true" />
+                            <input
+                              type="search"
+                              enterkeyhint="search"
+                              placeholder={t("card.searchOpenings")}
+                              aria-label={t("card.searchOpenings")}
+                              value={oq()}
+                              onFocus={() => setSearching(true)}
+                              onBlur={() => setSearching(false)}
+                              onInput={(e) => setOq(e.currentTarget.value)}
+                              onKeyDown={(e) => {
+                                if (e.key !== "Escape" || !oq()) return
+                                e.preventDefault()
+                                e.stopPropagation()
+                                setOq("")
+                              }}
+                            />
+                          </label>
+                          <span class="mono">
+                            {at() + 1} / {openings().length}
+                          </span>
+                        </div>
+                        <For each={listed()} keyed={(x) => x.i}>
+                          {(x) => (
+                            <button
+                              type="button"
+                              class="version"
+                              aria-current={x().i === at() ? "true" : undefined}
+                              onClick={() => {
+                                setAt(x().i)
+                                openingsPop.close()
+                              }}
+                            >
+                              <Line c={c()} g={x().g} i={x().i} />
+                            </button>
+                          )}
+                        </For>
+                        <Show when={!listed().length}>
+                          <div class="none">{t("card.noOpeningMatch")}</div>
+                        </Show>
+                      </PopoverContent>
+                    </Popover>
                     <button
                       class="icon"
                       aria-label={t("card.nextOpening")}

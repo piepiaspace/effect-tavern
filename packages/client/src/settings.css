@@ -1059,7 +1059,7 @@
 }
 
 /* the dialogs: the confirm's surface and width rule, a head, a body that scrolls, a foot */
-:is(.settings, .workshop-page) .modal {
+:is(.settings, .workshop-page, .wpage) .modal {
   position: fixed;
   inset: 0;
   height: fit-content;
@@ -1078,28 +1078,28 @@
   outline: none;
   overflow: hidden;
 }
-:is(.settings, .workshop-page) .modal.narrow {
+:is(.settings, .workshop-page, .wpage) .modal.narrow {
   width: min(24rem, calc(100% - 2 * var(--space-4)));
 }
 /* a text read and written at length (controls.tsx Well): a tall sheet, the whole screen on a phone */
-:is(.settings, .workshop-page) .modal.full {
+:is(.settings, .workshop-page, .wpage) .modal.full {
   width: min(48rem, calc(100% - 2 * var(--space-4)));
   height: calc(100dvh - 2 * var(--space-4));
 }
 @media (width < 72rem) {
-  :is(.settings, .workshop-page) .modal.full {
+  :is(.settings, .workshop-page, .wpage) .modal.full {
     width: 100%;
     height: 100dvh;
     max-height: 100dvh;
     border-radius: 0;
   }
-  :is(.settings, .workshop-page) .modal.full .modal-head {
+  :is(.settings, .workshop-page, .wpage) .modal.full .modal-head {
     padding-top: var(--safe-top);
   }
-  :is(.settings, .workshop-page) .modal.full .modal-foot {
+  :is(.settings, .workshop-page, .wpage) .modal.full .modal-foot {
     padding-bottom: calc(var(--space-3) + var(--safe-bottom));
   }
-  :is(.settings, .workshop-page) .modal.full .well-full {
+  :is(.settings, .workshop-page, .wpage) .modal.full .well-full {
     padding-bottom: calc(var(--space-4) + var(--safe-bottom));
   }
 }
@@ -1118,8 +1118,20 @@
   outline: none;
   overflow-wrap: anywhere;
 }
-:is(.settings, .workshop-page) .modal::backdrop {
+:is(.settings, .workshop-page, .wpage) .modal::backdrop {
   background: var(--scrim);
+}
+.settings-fallback {
+  position: fixed;
+  z-index: 30;
+}
+@media (min-width: 72rem) {
+  .settings-fallback {
+    top: calc(var(--shell-top) + var(--safe-top));
+  }
+  .settings-fallback > header {
+    display: none;
+  }
 }
 .settings .modal form {
   display: flex;

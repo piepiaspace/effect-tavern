@@ -9,7 +9,7 @@
 // it changed (wire.ts), text committing on change (blur or Enter). The shared controls and shells are controls.tsx.
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Dynamic, type JSX } from "@solidjs/web"
-import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js"
 import { read } from "./bridge.ts"
 import { ask, Avatar, Confirm, Menu, Name, newId, Switch, ToList, type Pane } from "./controls.tsx"
 import {
@@ -404,9 +404,9 @@ const Templates = (props: Pane) => {
     })
     return saving
   }
-  onCleanup(() => {
+  onSettled(() => () => {
     mounted = false
-    const pending = draft()
+    const pending = untrack(draft)
     if (pending) void save(pending)
   })
   const editSlot = (s: Slot, f: (said: Said[]) => Said[], commit = true) => {

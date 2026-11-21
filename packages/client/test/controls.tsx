@@ -4,9 +4,12 @@
 import { render } from "@solidjs/web"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import { createAgent } from "@ui-sdk/solid/agent"
-import { createSignal } from "solid-js"
+import { createSignal, flush } from "solid-js"
+import { cardView } from "@effect-tavern/runtime/src/session.ts"
 import { Composer } from "../src/composer.tsx"
-import { composition } from "../src/store.ts"
+import { CardPage } from "../src/card.tsx"
+import { Sidebar } from "../src/side.tsx"
+import { cards, composition, locals, stories, tabs } from "../src/store.ts"
 import { ask, Confirm, Drawer, dialogHandle, Menu, Modal, Prompt, Stepper, Switch } from "../src/controls.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
@@ -517,6 +520,140 @@ const run = async () => {
   )
   unmountBack()
   removeEventListener("keydown", onKey)
+
+  // migrated @ui-sdk popovers: CardPage (.spec-pop, #openings) and Sidebar (.facet-pop `#` search UX, .tag-pop)
+  const localRow = { id: "local", name: "测试卡", card: "fixture", tags: ["悬疑"] }
+  const { meta, ...projection } = cardView(
+    {
+      id: "fixture",
+      title: "测试卡",
+      frame: [],
+      fiction: [],
+      greetings: [{ text: "第一幕开场" }, { text: "第二幕开场" }],
+      lore: [{ id: "note", layers: ["一段线索"], unlock: { all: [] }, offer: { any: [] } }],
+      guard: [],
+      rules: {
+        fields: [{ path: "clue", label: "线索度", type: "int", initial: 0, min: 0, max: 10 }],
+        actions: [],
+      },
+    },
+    { local: localRow },
+  )
+  registry.set(cards, [{ ...meta, origin: { via: "file" } }])
+  registry.set(locals, { fixture: localRow })
+  registry.set(stories, { current: null, stories: [] })
+  registry.set(card, {
+    ...meta,
+    ...projection,
+    local: localRow,
+    origin: { via: "file" },
+    mounts: [],
+    persona: null,
+    follows: null,
+  })
+  flush()
+  const host = Object.assign(document.createElement("div"), {
+    style:
+      "position:fixed;inset:40px auto auto 40px;width:320px;height:560px;z-index:50;display:flex;flex-direction:column",
+  })
+  document.body.append(host)
+  const disposePops = render(
+    () => (
+      <>
+        <div style={{ height: "280px", position: "relative" }}>
+          <Sidebar />
+        </div>
+        <div class="stage-card" style={{ height: "280px" }}>
+          <CardPage />
+        </div>
+      </>
+    ),
+    host,
+  )
+  await quiet()
+  for (const e of agent.snapshot().filter((e) => !e.offPage)) check(e.label, `${e.component} ${e.ref} has no name`)
+
+  // 1. Sidebar .facet-pop tracks `#` search focus without stealing focus, aligns under .shelf-filter, dismisses on Escape
+  const shelfInput = host.querySelector<HTMLInputElement>('input[aria-label="搜索卡片…"]')!
+  const filterBox = () => host.querySelector(".shelf-filter")!.getBoundingClientRect()
+  shelfInput.focus()
+  shelfInput.value = "#"
+  shelfInput.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  await quiet()
+  const facetBox = document.getElementById("facets-side")?.getBoundingClientRect()
+  check(
+    facetBox &&
+      Math.abs(facetBox.left - filterBox().left) < 2 &&
+      Math.abs(facetBox.width - filterBox().width) < 2 &&
+      facetBox.top >= filterBox().bottom,
+    `facet-pop aligns below .shelf-filter: ${JSON.stringify(facetBox)} vs ${JSON.stringify(filterBox())}`,
+  )
+  check(document.activeElement === shelfInput, "opening .facet-pop keeps focus in the shelf search input")
+  const facetChip = document.querySelector<HTMLElement>("#facets-side .chip")!
+  tap(facetChip)
+  await quiet()
+  check(
+    document.activeElement === shelfInput &&
+      !!host.querySelector(".shelf-picked .chip") &&
+      !!document.getElementById("facets-side"),
+    "clicking a facet capsule keeps focus in search and keeps .facet-pop open",
+  )
+  escape()
+  await quiet()
+  check(
+    !document.getElementById("facets-side") && document.activeElement === shelfInput,
+    "Escape dismisses .facet-pop while keeping focus in search",
+  )
+
+  // 2. Sidebar .tag-pop aligns below .workspace-tags and focuses its input
+  shelfInput.blur()
+  registry.set(tabs, { active: 1, list: [{ id: 1, story: null, card: "fixture", page: "card", under: ["home"] }] })
+  flush()
+  await quiet()
+  const openTagRes = await agent.act({ steps: [{ ref: "添加标签", action: "setOpen", args: [true] }] })
+  await quiet()
+  const tagsBox = host.querySelector(".workspace-tags")!.getBoundingClientRect()
+  const tagPopBox = document.getElementById("tags-side")?.getBoundingClientRect()
+  check(
+    openTagRes.ok &&
+      tagPopBox &&
+      Math.abs(tagPopBox.left - tagsBox.left) < 2 &&
+      Math.abs(tagPopBox.width - tagsBox.width) < 2,
+    `tag-pop aligns with .workspace-tags (${openTagRes.error?.message ?? "ok"}, layer=${host.querySelector<HTMLElement>(".sidebar")?.dataset.layer}): ${JSON.stringify(tagPopBox)} vs ${JSON.stringify(tagsBox)}`,
+  )
+  check(!!document.activeElement?.closest("#tags-side"), "opening .tag-pop focuses inside the popover")
+  escape()
+  await quiet()
+
+  // 3. CardPage .spec-pop and #openings .versions position cleanly against their triggers
+  const specBtn = host.querySelector<HTMLButtonElement>(".manifest .chips li > button")!
+  const openSpecRes = await agent.act({
+    steps: [{ ref: specBtn.textContent.trim(), action: "setOpen", args: [true] }],
+  })
+  await quiet()
+  const specBox = document.querySelector(".spec-pop")?.getBoundingClientRect()
+  check(
+    openSpecRes.ok &&
+      specBox &&
+      specBox.width >= specBtn.getBoundingClientRect().width - 1 &&
+      (specBox.left > 0 || specBox.top > 0),
+    `spec-pop positions at its chip trigger (${openSpecRes.error?.message ?? "ok"}): ${JSON.stringify(specBox)}`,
+  )
+  escape()
+  await quiet()
+  const openOpeningsRes = await agent.act({ steps: [{ ref: "选择开场白", action: "setOpen", args: [true] }] })
+  await quiet()
+  const openingsBox = document.getElementById("openings")?.getBoundingClientRect()
+  check(
+    openOpeningsRes.ok && openingsBox && openingsBox.width > 0 && (openingsBox.left > 0 || openingsBox.top > 0),
+    `#openings popover positions cleanly (${openOpeningsRes.error?.message ?? "ok"}): ${JSON.stringify(openingsBox)}`,
+  )
+  document.querySelectorAll<HTMLButtonElement>("#openings .version")[1]?.click()
+  await quiet()
+  check(!document.getElementById("openings"), "picking an opening closes #openings")
+
+  disposePops()
+  host.remove()
 
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)

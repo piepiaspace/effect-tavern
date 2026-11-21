@@ -128,6 +128,33 @@ async function run() {
     button(row(), t("packs.restoreInheritance"))!.click()
     if (!(await until(() => !saved.asks?.length && area()?.placeholder === "Pack narrator")))
       throw Error("Restore lost the inherited wording")
+    // Full-screen Well inside WritingPage (.wpage .modal.full) expands to full sheet height rather than fit-content.
+    button(document, t("writing.tabProse"))!.click()
+    await until(() => button(prose(), t("writing.addRequirement")))
+    button(prose(), t("writing.addRequirement"))!.click()
+    await until(() => prose().querySelector(`button[aria-label="${t("common.expand")}"]`))
+    prose()
+      .querySelector<HTMLButtonElement>(`button[aria-label="${t("common.expand")}"]`)!
+      .click()
+    await until(() => document.querySelector(".modal.full"))
+    const fullBox = document.querySelector(".modal.full")!.getBoundingClientRect()
+    if (fullBox.height < innerHeight - 40)
+      throw Error(`Expected .wpage .modal.full to expand vertically, got ${fullBox.height}px in ${innerHeight}px`)
+    document.querySelector<HTMLButtonElement>(".modal.full .modal-head button")!.click()
+    await until(() => !document.querySelector(".modal.full"))
+    prose()
+      .querySelector<HTMLButtonElement>(`button[aria-label="${t("writing.discard")}"]`)!
+      .click()
+    document.querySelector<HTMLButtonElement>(".modal .modal-head button")!.click()
+    await until(() => !document.querySelector(".modal"))
+    // Tapping Back without blurring an active field blurs it first so iOS WebKit commits onChange.
+    const extraArea = root.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t("switches.cardExtra")}"]`)!
+    extraArea.focus()
+    let blurredOnBack = false
+    extraArea.addEventListener("blur", () => (blurredOnBack = true), { once: true })
+    root.querySelector<HTMLButtonElement>(`button[aria-label="${t("common.backToStory")}"]`)!.click()
+    if (!blurredOnBack || document.activeElement === extraArea)
+      throw Error("Back button did not blur the active WritingPage textarea")
     const gate = Promise.withResolvers<void>()
     pending = gate.promise
     const supplement = root.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t("switches.cardExtra")}"]`)!

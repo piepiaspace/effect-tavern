@@ -60,7 +60,15 @@ const storyFor = (nodeId?: number | null) =>
   })
 const steps: number[] = []
 let hold: Promise<void> | undefined
-globalThis.fetch = tracked(async (_, init) => {
+let nodeAborts = 0
+let holdNodes: Promise<void> | undefined
+globalThis.fetch = tracked(async (input, init) => {
+  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  if (url.endsWith("/stories/9/nodes")) {
+    init?.signal?.addEventListener("abort", () => nodeAborts++, { once: true })
+    await holdNodes
+    return Response.json({ nodes: storyPath, head: 4 })
+  }
   if (typeof init?.body !== "string") throw Error("Expected preview request")
   const req = JSON.parse(init.body)
   if (req.fields?.score !== undefined) steps.push(req.fields.score)
@@ -215,6 +223,26 @@ async function run() {
     flush()
     if (root.querySelector(".rv-msg") !== headMsg || root.querySelector(".pt-conn") !== connBtn)
       throw Error("Cold branch switch remounted unchanged head message or connection pill")
+
+    // Typing or selecting spans while fetching an inactive story's nodes must not abort the in-flight node fetch.
+    const nodesGate = Promise.withResolvers<void>()
+    holdNodes = nodesGate.promise
+    patchPromptTreeMemory(2, { storyId: 9, mode: "story", play: true })
+    selectTab(1)
+    flush()
+    selectTab(2)
+    flush()
+    await Promise.resolve()
+    const storyInput = root.querySelector<HTMLTextAreaElement>("#pt-story-input")!
+    storyInput.value = "Still typing"
+    storyInput.dispatchEvent(new Event("input", { bubbles: true }))
+    flush()
+    root.querySelector<HTMLButtonElement>(".rv-span-row")?.click()
+    flush()
+    if (nodeAborts !== 0) throw Error(`Typing or span selection aborted fetchStoryNodes (${nodeAborts})`)
+    nodesGate.resolve()
+    holdNodes = undefined
+    await quiet()
 
     // A page restored from disk has its tab address but no per-tab preview memory.
     registry.set(tabs, { active: 3, list: [{ ...author, id: 3, under: ["writing"] }] })

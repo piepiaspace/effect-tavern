@@ -219,6 +219,18 @@ main > section:last-of-type {
   background: var(--surface-3);
   box-shadow: var(--shadow-1);
 }
+/* WebKit 17.5 / macOS 14.5 lacks CSS Anchor Positioning: centre over .panel above the composer's raised box */
+@supports not (position-area: top) {
+  .panel {
+    position: relative;
+  }
+  .latest {
+    position: absolute;
+    inset: auto 0 calc(var(--control) + 2 * var(--space-1) + var(--composer-foot) + var(--lift) + var(--space-3)) 0;
+    margin: 0 auto;
+    z-index: 1;
+  }
+}
 /* left-aligned: justified CJK re-spaces the whole line on every character that streams in, then snaps it at the
    wrap; no chat reader justifies */
 p {
@@ -522,7 +534,7 @@ main > section:focus-within > :is(.actions, .theater) .acts {
   font: inherit;
   font-variant-numeric: tabular-nums;
 }
-.siblings .count:has(+ .versions:popover-open),
+.siblings .count[data-open],
 .siblings .count:active:not(:disabled) {
   background: var(--ghost-hover);
 }
@@ -531,13 +543,14 @@ main > section:focus-within > :is(.actions, .theater) .acts {
     background: var(--ghost-hover);
   }
 }
-/* the version list: a menu under the counter (its invoker is the implicit anchor); a row is the action that made
+/* the version list: a popover over the counter (@ui-sdk/solid/popover places it); a row is the action that made
    the version, its opening on one line, and the count of nodes that follow it */
 .versions {
-  position-area: top;
-  inset: auto;
-  margin: 0 0 var(--space-2);
+  box-sizing: border-box;
   width: min(20rem, calc(100vw - 2 * var(--space-4)));
+  max-height: min(18rem, var(--available-height));
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--space-1);
   border: 0;
   border-radius: var(--radius-card);

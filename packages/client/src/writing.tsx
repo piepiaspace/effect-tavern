@@ -104,6 +104,12 @@ const DROPPED: Record<Resolved["dropped"][number]["kind"], Key> = {
   entry: "writing.droppedEntry",
 }
 
+/** Commit any focused field before navigating: iOS WebKit taps a button without blurring the active input. */
+const blurField = () => {
+  const field = document.activeElement
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.blur()
+}
+
 export const WritingPage = () => {
   const view = read(card)
   const allPacks = read(packs)
@@ -112,9 +118,7 @@ export const WritingPage = () => {
   const preview = async () => {
     const origin = activeOf(registry.get(tabs))
     const id = cardId()
-    // Some touch browsers leave the text field focused when a button is tapped.
-    const field = document.activeElement
-    if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.blur()
+    blurField()
     try {
       await pendingLocalWrite()
     } catch (error) {
@@ -156,7 +160,12 @@ export const WritingPage = () => {
         {/* Left column: header, warnings, pack mounts, proper nouns, per-card extra requirement */}
         <section class="wcol wleft" aria-label={t("writing.title")}>
           <header class="whead">
-            <button type="button" class="icon" aria-label={t("common.backToStory")} onClick={close}>
+            <button
+              type="button"
+              class="icon"
+              aria-label={t("common.backToStory")}
+              onClick={() => (blurField(), close())}
+            >
               <Back />
             </button>
             <h1>{freeChat() ? t("writing.freeChatTitle") : t("writing.title")}</h1>
@@ -196,7 +205,7 @@ export const WritingPage = () => {
             <div class="block-title">
               <h3>{t("settings.packs")}</h3>
               <div class="right">
-                <button type="button" class="btn sm ghost" onClick={() => openSettings("packs")}>
+                <button type="button" class="btn sm ghost" onClick={() => (blurField(), openSettings("packs"))}>
                   <span>{t("packs.manage")}</span> <Next />
                 </button>
               </div>
@@ -656,6 +665,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                     <button
                       type="button"
                       class="icon sm"
+                      aria-label={t("common.prev")}
                       disabled={curThPage() <= 0}
                       onClick={() => setThPage(curThPage() - 1)}
                     >
@@ -667,6 +677,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                     <button
                       type="button"
                       class="icon sm"
+                      aria-label={t("common.next")}
                       disabled={curThPage() >= thPages() - 1}
                       onClick={() => setThPage(curThPage() + 1)}
                     >

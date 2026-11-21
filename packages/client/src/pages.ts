@@ -354,6 +354,16 @@ export const deleteStory = async (id: number): Promise<void> => onDelete(await w
 export const deleteStories = async (ids: readonly number[]): Promise<void> =>
   onDelete(await wire.deleteStories(ids), ids)
 
+let closeGuard: { page: Kind; run: () => void } | null = null
+/** Let a mounted page intercept Escape's close (e.g. workshop.tsx `leave`, which flushes edits first). */
+export const guardClose = (forPage: Kind, run: () => void): (() => void) => {
+  const entry = { page: forPage, run }
+  closeGuard = entry
+  return () => {
+    if (closeGuard === entry) closeGuard = null
+  }
+}
+
 /** What an Escape does over a page, in order: a field that wants it prevented it; an open popover, dialog or drawer
  *  takes its own; in a field it leaves the field (the first Escape, the browser's clear of a search box aside); else
  *  the page closes. */
@@ -373,5 +383,8 @@ export const onKey = (e: KeyboardEvent): void => {
   const covered = !!document.querySelector(":popover-open, dialog[open]")
   const what = escaping(e, covered)
   if (what === "blur") (e.target as HTMLElement).blur()
-  else if (what === "close") close()
+  else if (what === "close") {
+    e.preventDefault()
+    ;(closeGuard?.page === kindOf(at) ? closeGuard.run : close)()
+  }
 }

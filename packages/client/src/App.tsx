@@ -14,13 +14,15 @@ import type { TimelineNode as Node, InvocationToken } from "@effect-tavern/runti
 // Record's pieces, composer.tsx the box, inspector.tsx the Inspect page, bridge.ts the atom → accessor read they all use.
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { Phase } from "@effect-tavern/runtime/src/session.ts"
-import { createEffect, createMemo, createSignal, For, lazy, Loading, onSettled, Show } from "solid-js"
+import type { JSX } from "@solidjs/web"
+import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
+import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
 import { Home } from "./home.tsx"
 import { imeController } from "./ime.ts"
-import { Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
+import { Back, Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
 import { blocks } from "./markdown.ts"
 import { plain, Prose } from "./prose.tsx"
 import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
@@ -52,7 +54,7 @@ import {
 import { turn } from "./turn.ts"
 import { leadKind, settleKind, TurnStatus } from "./turn-status.tsx"
 import { mountBack } from "./back.ts"
-import { onKey } from "./pages.ts"
+import { close, onKey } from "./pages.ts"
 import { scroll } from "./tabs.ts"
 import { t } from "./i18n.ts"
 
@@ -158,6 +160,7 @@ const syncLift = () => {
   const bt = box.getBoundingClientRect().top
   const lift = Math.max(0, Math.round(sb - bt))
   s.style.setProperty("--lift", `${lift}px`)
+  s.parentElement?.style.setProperty("--lift", `${lift}px`)
   for (const a of s.querySelectorAll<HTMLElement>("main > section > .actions")) {
     const r = a.getBoundingClientRect()
     a.toggleAttribute("data-covered", lift > 0 && r.bottom > bt - 6 && r.top < sb)
@@ -469,7 +472,7 @@ const Section = (props: { node: Node; n: number; last: boolean }) => {
   const vs = createMemo(() => versions(all(), props.node))
   const siblings = () => vs().list
   const told = createMemo(() => apart(siblings().map((s) => plain(prose(s)))))
-  let list: HTMLDivElement | undefined
+  const versionsPop = createPopoverController()
   const at = () => vs().index
   // the version's whole follow-up comes back: the server moves head to its newest leaf; the turn's top stays put when
   // already in view, or lands at the column's top when a long version had scrolled it past the head
@@ -517,33 +520,38 @@ const Section = (props: { node: Node; n: number; last: boolean }) => {
               <Prev />
             </button>
             {/* the counter opens the list: which action made each version, its opening, how many nodes follow it */}
-            <button class="count" aria-haspopup="menu" disabled={busy()} popovertarget={`versions-${props.node.id}`}>
-              {at() + 1}/{siblings().length}
-            </button>
-            <div
-              id={`versions-${props.node.id}`}
-              class="versions"
-              popover
-              role="menu"
-              ref={(el) => (list = el)}
-              onFocusOut={(e) => !list?.contains(e.relatedTarget as HTMLElement | null) && list?.hidePopover()}
-            >
-              <For each={siblings()} keyed={(s) => s.id}>
-                {(s, i) => (
-                  <button
-                    role="menuitem"
-                    class="version"
-                    disabled={busy()}
-                    aria-current={s().id === props.node.id ? "true" : undefined}
-                    onClick={() => (list?.hidePopover(), go(i()))}
-                  >
-                    <SiblingKind of={s().sibling} class="kind" fallback={<span class="kind" />} />
-                    <span class="first">{vs().varied ? `${lineOf(s())} · ${told()[i()]}` : told()[i()]}</span>
-                    <Show when={L.below(all(), s().id)}>{(n) => <span class="below">{n()}</span>}</Show>
-                  </button>
-                )}
-              </For>
-            </div>
+            <Popover controller={versionsPop}>
+              <PopoverTrigger class="count" disabled={busy()}>
+                {at() + 1}/{siblings().length}
+              </PopoverTrigger>
+              <PopoverContent
+                id={`versions-${props.node.id}`}
+                class="versions"
+                aria-label={t("common.view")}
+                side="top"
+                align="center"
+                sideOffset={8}
+              >
+                <For each={siblings()} keyed={(s) => s.id}>
+                  {(s, i) => (
+                    <button
+                      type="button"
+                      class="version"
+                      disabled={busy()}
+                      aria-current={s().id === props.node.id ? "true" : undefined}
+                      onClick={() => {
+                        versionsPop.close()
+                        go(i())
+                      }}
+                    >
+                      <SiblingKind of={s().sibling} class="kind" fallback={<span class="kind" />} />
+                      <span class="first">{vs().varied ? `${lineOf(s())} · ${told()[i()]}` : told()[i()]}</span>
+                      <Show when={L.below(all(), s().id)}>{(n) => <span class="below">{n()}</span>}</Show>
+                    </button>
+                  )}
+                </For>
+              </PopoverContent>
+            </Popover>
             <button
               class="icon"
               aria-label={t("app.nextVersion")}
@@ -599,6 +607,35 @@ const Reader = () => {
   )
 }
 
+const LazyPage = (props: { settings?: boolean; children: JSX.Element }) => (
+  <Errored
+    fallback={(err, reset) => (
+      <div class={{ "status-page": true, "settings-fallback": !!props.settings }}>
+        <header>
+          <button type="button" class="icon" aria-label={t("common.back")} onClick={close}>
+            <Back />
+          </button>
+        </header>
+        <div class="status-body">
+          <div class="still">
+            <div role="alert" class="error">
+              <Warning aria-hidden="true" />
+              <div class="body">
+                <p>{String(err())}</p>
+              </div>
+              <button type="button" class="btn sm" onClick={reset}>
+                {t("common.retry")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  >
+    <Loading>{props.children}</Loading>
+  </Errored>
+)
+
 export const App = () => {
   const pg = read(page)
   // one Escape rule for every page over the reader, and the system's back as Escape (back.ts)
@@ -618,7 +655,7 @@ export const App = () => {
         <Show when={pg() === "home"}>
           <Home />
         </Show>
-        <Loading>
+        <LazyPage>
           <Show when={pg() === "card"}>
             <CardPage />
           </Show>
@@ -643,13 +680,13 @@ export const App = () => {
           <Show when={typeof pg() === "object"}>
             <Inspect id={(pg() as { inspect: Id }).inspect} />
           </Show>
-        </Loading>
+        </LazyPage>
       </Shell>
       {/* the settings stand on their own three-column skeleton over the canvas, under .shell-top */}
       <Show when={pg() === "settings"}>
-        <Loading>
+        <LazyPage settings>
           <Settings />
-        </Loading>
+        </LazyPage>
       </Show>
       {/* an agent's tab (a driven browser) told apart from the player's at a glance */}
       <Show when={navigator.webdriver}>

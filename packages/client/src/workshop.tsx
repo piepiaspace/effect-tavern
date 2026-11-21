@@ -20,7 +20,7 @@ import { ask, Confirm, dialogHandle, Modal } from "./controls.tsx"
 import { Back, Plus, Stack, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./manuscript.ts"
-import { close, editCard, newCard, showCard } from "./pages.ts"
+import { close, editCard, guardClose, newCard, showCard } from "./pages.ts"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { activeOf, cards, characterCards, focus, registry, tabs } from "./store.ts"
 import { saveCard, wholeCard } from "./wire.ts"
@@ -265,11 +265,16 @@ export const ManuscriptPage = () => {
     const o = opened()
     return o && o.id === at() ? o : null
   }
-  // a window hidden or closed may never come back: write now, in a request that outlives the page
+  // a window hidden or closed may never come back: write now, in a request that outlives the page;
+  // Escape over the manuscript flushes through `leave(close)` just like Back, keeping conflict notices visible
   onSettled(() => {
     const hide = () => void (document.hidden && here()?.desk?.save(true))
     document.addEventListener("visibilitychange", hide)
-    return () => document.removeEventListener("visibilitychange", hide)
+    const offEscape = guardClose("manuscript", () => void leave(close))
+    return () => {
+      document.removeEventListener("visibilitychange", hide)
+      offEscape()
+    }
   })
   /** An edit: the manuscript moved on from the desk's own (the signal's read is one flush behind its write). */
   const write = (f: (m: Manuscript, card: Card) => Manuscript) => {

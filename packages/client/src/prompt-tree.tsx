@@ -6,7 +6,7 @@ import type { PreviewNarrateResult, ResourceEntryView } from "@effect-tavern/run
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import type { OmittedReason, SourceRef } from "@effect-tavern/runtime/src/trace.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Menu, Stepper, Switch } from "./controls.tsx"
 import { Family } from "./family.tsx"
@@ -147,10 +147,15 @@ export const PromptTreePage = () => {
   const storyHead = () => storyView().head
 
   // Fetch story nodes only when not active and not already cached.
+  const inactiveStoryId = createMemo(() => {
+    const m = mem()
+    const sid = m.mode === "story" ? m.storyId : undefined
+    return sid !== undefined && sid !== lib()?.current ? sid : undefined
+  })
   createEffect(
-    () => [mem().mode, mem().storyId, lib()?.current] as const,
-    ([mode, sid, activeStoryId]) => {
-      if (mode !== "story" || sid === undefined || sid === activeStoryId || storyNodesCache.has(sid)) return
+    () => inactiveStoryId(),
+    (sid) => {
+      if (sid === undefined || storyNodesCache.has(sid)) return
       const ac = new AbortController()
       void fetchStoryNodes(sid, ac.signal).then(
         (snap) => {
@@ -195,7 +200,9 @@ export const PromptTreePage = () => {
   // Entered from play (the session card): a condition that reads a hidden field is not shown, and an entry it left out is not listed.
   const play = createMemo(() => !!mem().play)
   const selectedKey = createMemo(() => mem().selectedKey)
-  const expandedMessages = createMemo(() => mem().expandedMessages)
+  const expandedMessages = createMemo(() => mem().expandedMessages, {
+    equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]),
+  })
   const shown = createMemo<PreviewNarrateResult | null>(() => {
     if (errMsg() !== null) return null
     const r = result()
@@ -283,7 +290,7 @@ export const PromptTreePage = () => {
       queueMicrotask(() => void dispatch())
     },
   )
-  onCleanup(() => {
+  onSettled(() => () => {
     pending = undefined
     clearTimeout(wake)
     active?.controller.abort()
@@ -604,7 +611,9 @@ export const PromptTreePage = () => {
                 <details
                   class="pt-fold"
                   open={mem().showOmitted || undefined}
-                  onToggle={(e) => update({ showOmitted: e.currentTarget.open })}
+                  onToggle={(e) => {
+                    if (e.currentTarget.open !== mem().showOmitted) update({ showOmitted: e.currentTarget.open })
+                  }}
                 >
                   <summary>
                     <Next class="pt-chev" aria-hidden="true" />
@@ -688,7 +697,9 @@ export const PromptTreePage = () => {
                 <details
                   class="pt-fold"
                   open={mem().showResources || undefined}
-                  onToggle={(e) => update({ showResources: e.currentTarget.open })}
+                  onToggle={(e) => {
+                    if (e.currentTarget.open !== mem().showResources) update({ showResources: e.currentTarget.open })
+                  }}
                 >
                   <summary>
                     <Next class="pt-chev" aria-hidden="true" />
