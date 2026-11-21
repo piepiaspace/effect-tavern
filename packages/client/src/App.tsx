@@ -25,6 +25,7 @@ import { Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./i
 import { Inspect } from "./inspector.tsx"
 import { blocks } from "./markdown.ts"
 import { plain, Prose } from "./prose.tsx"
+import { PromptTreePage } from "./prompt-tree.tsx"
 import { Settings } from "./settings.tsx"
 import { ManuscriptPage, Workshop } from "./workshop.tsx"
 import { Timeline } from "./timeline.tsx"
@@ -627,6 +628,9 @@ export const App = () => {
         </Show>
         <Show when={pg() === "status"}>
           <StatusPage />
+        </Show>
+        <Show when={pg() === "prompt-tree"}>
+          <PromptTreePage />
         </Show>
         <Show when={typeof pg() === "object"}>
           <Inspect id={(pg() as { inspect: Id }).inspect} />

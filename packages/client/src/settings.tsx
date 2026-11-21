@@ -21,6 +21,7 @@ import {
   Plugs,
   Sliders,
   Snippets as Plus,
+  Stack,
   Star,
   StarFill,
   Template,
@@ -32,6 +33,7 @@ import { Cards } from "./cards.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close, open } from "./pages.ts"
+import { clearHatDraft, getHatDraft, openPromptTree, stashHatDraft } from "./prompt-tree-state.ts"
 import * as Atom from "./atom.ts"
 import {
   cards,
@@ -52,10 +54,12 @@ import { deleteHat, deletePersona, putDecision, putHat, putPersona, putRouting, 
 export type Section = "providers" | "routing" | "templates" | "personas" | "packs" | "cards"
 /** The section shown: written by every way in, so the settings layer moves to the section asked for. */
 const section = Atom.make<Section>("providers").pipe(Atom.keepAlive)
+const pickedAtom = Atom.make<Partial<Record<Section, string>>>({}).pipe(Atom.keepAlive)
 /** The settings layer on a section, 模型服务 when none is named: a missing model opens it on 默认模型 (the draft's
- *  error, the card page); Back or Escape returns to the page that opened it. */
-export const openSettings = (at: Section = "providers") => {
+ *  error, the card page); Back or Escape returns to the page that opened it. Optional `id` pre-selects a record. */
+export const openSettings = (at: Section = "providers", id?: string) => {
   registry.set(section, at)
+  if (id) registry.update(pickedAtom, (p) => ({ ...p, [at]: id }))
   open("settings")
 }
 
@@ -70,13 +74,13 @@ const SECTIONS: [Section, Key, (p: JSX.SvgSVGAttributes<SVGSVGElement>) => JSX.E
 
 export const Settings = () => {
   const at = read(section)
+  const picked = read(pickedAtom)
   const [pane, setPane] = createSignal<"list" | "detail">("list")
-  const [picked, setPicked] = createSignal<Partial<Record<Section, string>>>({})
   const paneOf = (s: Section): Pane => ({
     get picked() {
       return picked()[s]
     },
-    onPick: (id) => (setPicked((p) => ({ ...p, [s]: id })), setPane("detail")),
+    onPick: (id) => (registry.update(pickedAtom, (p) => ({ ...p, [s]: id })), setPane("detail")),
     onBack: () => setPane("list"),
   })
   const switchTo = (s: Section) => (registry.set(section, s), setPane("list"))
@@ -385,10 +389,38 @@ const withSlot = (h: Hat, s: Slot, said: Said[]): Hat =>
 
 const Templates = (props: Pane) => {
   const list = read(hats)
-  const hat = () => list().find((h) => h.id === props.picked) ?? list()[0]
+  const savedHat = () => list().find((h) => h.id === props.picked) ?? list()[0]
+  // Live unsaved draft for the currently selected hat (survives Prompt Tree preview round-trip).
+  const [draft, setDraft] = createSignal<Hat | null>(null)
+  const hat = (): Hat | undefined => {
+    const saved = savedHat()
+    if (!saved) return undefined
+    const d = draft()
+    if (d && d.id === saved.id) return d
+    const stashed = getHatDraft(saved.id)
+    if (stashed && stashed.id === saved.id) return stashed
+    return saved
+  }
+  const stageSlot = (s: Slot, f: (said: Said[]) => Said[]) => {
+    const h = hat()
+    if (!h) return
+    const next = withSlot(h, s, f([...slotOf(h, s)]))
+    setDraft(next)
+    stashHatDraft(next)
+  }
   const editSlot = (s: Slot, f: (said: Said[]) => Said[]) => {
     const h = hat()
-    if (h) void putHat(withSlot(h, s, f([...slotOf(h, s)])))
+    if (!h) return
+    const next = withSlot(h, s, f([...slotOf(h, s)]))
+    setDraft(null)
+    clearHatDraft(h.id)
+    void putHat(next)
+  }
+  const previewHat = () => {
+    const h = hat()
+    if (!h) return
+    stashHatDraft(h)
+    openPromptTree({ candidateHat: h })
   }
   const create = async () => {
     const id = newId("hat")
@@ -428,14 +460,34 @@ const Templates = (props: Pane) => {
                 <Name
                   value={h().name}
                   label={t("settings.hatName")}
-                  onCommit={(name) => void putHat({ ...h(), name })}
+                  onCommit={(name) => {
+                    const next = { ...h(), name }
+                    setDraft(null)
+                    clearHatDraft(h().id)
+                    void putHat(next)
+                  }}
                 />
                 <span class="spacer" />
                 <button
                   type="button"
+                  class="btn sm"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={previewHat}
+                >
+                  <Stack aria-hidden="true" />
+                  <span>{t("promptTree.preview")}</span>
+                </button>
+                <button
+                  type="button"
                   class="icon sm"
                   aria-label={t("settings.deleteHat")}
-                  onClick={() => ask(t("settings.confirmDeleteHat", { name: h().name }), () => void deleteHat(h().id))}
+                  onClick={() =>
+                    ask(t("settings.confirmDeleteHat", { name: h().name }), () => {
+                      clearHatDraft(h().id)
+                      setDraft(null)
+                      void deleteHat(h().id)
+                    })
+                  }
                 >
                   <Trash />
                 </button>
@@ -447,6 +499,7 @@ const Templates = (props: Pane) => {
                       label={t(s()[1])}
                       said={slotOf(h(), s()[0])}
                       tail={s()[0] === "tail"}
+                      onStage={(f) => stageSlot(s()[0], f)}
                       onEdit={(f) => editSlot(s()[0], f)}
                     />
                   )}
@@ -465,6 +518,7 @@ const SlotEditor = (props: {
   label: string
   said: readonly Said[]
   tail: boolean
+  onStage: (f: (said: Said[]) => Said[]) => void
   onEdit: (f: (said: Said[]) => Said[]) => void
 }) => (
   <div class="block">
@@ -500,6 +554,10 @@ const SlotEditor = (props: {
                 rows="2"
                 aria-label={t("settings.messageLabel")}
                 value={m().text}
+                onInput={(e) => {
+                  const text = e.currentTarget.value
+                  props.onStage((l) => l.map((x, j) => (j === i ? { ...x, text } : x)))
+                }}
                 onChange={(e) => {
                   const text = e.currentTarget.value
                   props.onEdit((l) => l.map((x, j) => (j === i ? { ...x, text } : x)))

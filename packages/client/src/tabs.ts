@@ -181,7 +181,18 @@ export const shed = (card: string): void => {
   })
 }
 
-const PAGES = new Set(["home", "reader", "card", "workshop", "manuscript", "timeline", "settings", "writing", "status"])
+const PAGES = new Set([
+  "home",
+  "reader",
+  "card",
+  "workshop",
+  "manuscript",
+  "timeline",
+  "settings",
+  "writing",
+  "status",
+  "prompt-tree",
+])
 const isPage = (p: unknown): p is Page =>
   (typeof p === "string" && PAGES.has(p)) ||
   (typeof p === "object" && p !== null && typeof (p as { inspect?: unknown }).inspect === "number")
@@ -221,7 +232,11 @@ export const restore = (
         list.push({ id, story: null, card: null, page, under: page === "home" ? [] : ["home"] })
       } else if (x?.story === null && shelf.some((c) => c.id === x.card)) {
         const page: Page =
-          x.page === "workshop" || x.page === "manuscript" || x.page === "writing" || x.page === "settings"
+          x.page === "workshop" ||
+          x.page === "manuscript" ||
+          x.page === "writing" ||
+          x.page === "settings" ||
+          x.page === "prompt-tree"
             ? x.page
             : "card"
         const isBuiltin = shelf.find((c) => c.id === x.card)?.origin?.via === "builtin"

@@ -97,6 +97,7 @@ export const Menu = <T extends string>(props: {
   stale?: Option<T> & { reason?: "removed" | "disabled" }
   label?: string
   small?: boolean
+  fit?: boolean
 }) => {
   const live = () => props.options.find((o) => o.value === props.value)
   const current = () => live() ?? props.stale
@@ -117,7 +118,7 @@ export const Menu = <T extends string>(props: {
         </Show>
         <Caret class="caret" />
       </SelectTrigger>
-      <SelectContent class="popup-list scroller" sideOffset={4} align="start">
+      <SelectContent class={{ "popup-list": true, scroller: true, fit: !!props.fit }} sideOffset={4} align="start">
         <For each={props.options} keyed={(o) => o.value}>
           {(o) => (
             <SelectItem value={o().value} class="item">

@@ -29,6 +29,7 @@ import {
   Sidebar as SidebarGlyph,
   Sliders,
   Snippets as Plus,
+  Stack,
   Status,
   Tree,
   Write,
@@ -242,6 +243,8 @@ export const Shell = (props: { children: JSX.Element }) => {
                       return <Status />
                     case "writing":
                       return <Write />
+                    case "prompt-tree":
+                      return <Stack />
                     case "settings":
                       return <Settings />
                   }

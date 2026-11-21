@@ -17,11 +17,12 @@ import type { JSX } from "@solidjs/web"
 import { createEffect, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { ask, Confirm, dialogHandle, Modal } from "./controls.tsx"
-import { Back, Plus, Trash } from "./icons.tsx"
+import { Back, Plus, Stack, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./manuscript.ts"
 import { close, editCard, newCard, showCard } from "./pages.ts"
-import { cards, characterCards, focus } from "./store.ts"
+import { openPromptTree, stashManuscript, takeManuscriptStash } from "./prompt-tree-state.ts"
+import { activeOf, cards, characterCards, focus, registry, tabs } from "./store.ts"
 import { saveCard, wholeCard } from "./wire.ts"
 
 /** How long after the last keystroke the card is written. */
@@ -52,25 +53,36 @@ const standingOf = (e: unknown): Standing => {
  *  from. A write waits `DELAY` for the next one; saves go one after another, each of the manuscript as it is by then.
  *  A save that would change nothing is not sent, so a page nothing was typed on never saves. `busy` hears whether a write
  *  is waiting or under way. */
-const desk = (read: Card, at: string, say: (s: Standing) => void, busy: (on: boolean) => void) => {
-  let manuscript = manuscriptOf(read)
-  let shelf = read
+const desk = (
+  read: Card,
+  at: string,
+  say: (s: Standing) => void,
+  busy: (on: boolean) => void,
+  initial?: { manuscript: Manuscript; shelf: Card },
+) => {
+  let manuscript = initial?.manuscript ?? manuscriptOf(read)
+  let shelf = initial?.shelf ?? read
   let rev = at
   let timer: ReturnType<typeof setTimeout> | undefined
   let queue: Promise<boolean> = Promise.resolve(true)
   let failed = false // the last save did not go through: the page says so until one does, or the text is the card again
   let letGone = false // the author gave this page's text up (the notice's way out): nothing more of it is written
+  let paused = false // paused for read-only Prompt Tree preview: do not flush or write on unmount
   let running = 0 // saves queued or under way
   const told = () => busy(timer !== undefined || running > 0)
   /** Now, not after the delay; true when the shelf holds what the page shows. `last`: on the way out of the window. */
   const save = (last = false): Promise<boolean> => {
     clearTimeout(timer)
     timer = undefined
+    if (letGone || paused) {
+      told()
+      return Promise.resolve(true)
+    }
     running++
     told()
     return (queue = queue
       .then(async () => {
-        if (letGone) return true
+        if (letGone || paused) return true
         const next = cardOf(read, manuscript)
         if (same(next, shelf)) {
           if (failed) say({ is: "saved" }) // text put back as the shelf holds it takes the notice with it
@@ -96,8 +108,11 @@ const desk = (read: Card, at: string, say: (s: Standing) => void, busy: (on: boo
   }
   return {
     read,
+    rev: () => rev,
+    shelf: () => shelf,
     manuscript: () => manuscript,
     write: (next: Manuscript) => {
+      paused = false
       manuscript = next
       clearTimeout(timer)
       timer = setTimeout(() => void save(), DELAY)
@@ -105,12 +120,20 @@ const desk = (read: Card, at: string, say: (s: Standing) => void, busy: (on: boo
     },
     save,
     async flush() {
+      paused = false
       let edited: Manuscript
       do {
         edited = manuscript
         if (!(await save())) return false
       } while (edited !== manuscript)
       return true
+    },
+    /** Pauses autosave so navigating to Prompt Tree never triggers PUT /cards/:id/whole. */
+    pause: () => {
+      paused = true
+      clearTimeout(timer)
+      timer = undefined
+      told()
     },
     /** The page's text given up: what is on the shelf stands, and a save still waiting writes nothing. */
     letGo: () => {
@@ -232,21 +255,36 @@ export const ManuscriptPage = () => {
       if (id === null) return
       let left = false
       let mine: Desk | undefined
-      void wholeCard(id).then(
-        ({ card, rev }) => {
-          if (left) return
-          mine = desk(
-            card,
-            rev,
-            (s) => left || setStanding(s),
-            (on) => left || setBusy(on),
-          )
-          setManuscript(mine.manuscript())
-          setStanding({ is: "clean" })
-          setOpened({ id, desk: mine })
-        },
-        () => left || setOpened({ id, desk: null }),
-      )
+      const tabId = activeOf(registry.get(tabs)).id
+      const stashed = takeManuscriptStash(tabId, id)
+      if (stashed) {
+        mine = desk(
+          stashed.read,
+          stashed.rev,
+          (s) => left || setStanding(s),
+          (on) => left || setBusy(on),
+          { manuscript: stashed.manuscript, shelf: stashed.shelf },
+        )
+        setManuscript(mine.manuscript())
+        setStanding({ is: "clean" })
+        setOpened({ id, desk: mine })
+      } else {
+        void wholeCard(id).then(
+          ({ card, rev }) => {
+            if (left) return
+            mine = desk(
+              card,
+              rev,
+              (s) => left || setStanding(s),
+              (on) => left || setBusy(on),
+            )
+            setManuscript(mine.manuscript())
+            setStanding({ is: "clean" })
+            setOpened({ id, desk: mine })
+          },
+          () => left || setOpened({ id, desk: null }),
+        )
+      }
       return () => {
         left = true
         void mine?.save()
@@ -322,6 +360,22 @@ export const ManuscriptPage = () => {
     setOpened(null)
     setReads((n) => n + 1)
   }
+  /** Preview unsaved manuscript in Prompt Tree without saving to the shelf (0 PUT /cards/:id/whole). */
+  const preview = () => {
+    const o = here()
+    if (!o?.desk) return
+    const d = o.desk
+    d.pause()
+    const tabId = activeOf(registry.get(tabs)).id
+    stashManuscript(tabId, {
+      cardId: o.id,
+      read: d.read,
+      shelf: d.shelf(),
+      rev: d.rev(),
+      manuscript: d.manuscript(),
+    })
+    openPromptTree({ cardId: o.id, candidateCard: cardOf(d.read, d.manuscript()) })
+  }
   const notice = () => {
     const s = standing()
     return unsaved(s) ? s : null
@@ -337,6 +391,10 @@ export const ManuscriptPage = () => {
           <span class="workshop-standing" role="status" aria-busy={busy() ? "true" : "false"}>
             {standing().is === "saving" ? t("workshop.saving") : standing().is === "saved" ? t("workshop.saved") : ""}
           </span>
+          <button type="button" class="btn" disabled={!here()?.desk} onClick={preview}>
+            <Stack aria-hidden="true" />
+            <span>{t("promptTree.preview")}</span>
+          </button>
           <button
             type="button"
             class="btn"

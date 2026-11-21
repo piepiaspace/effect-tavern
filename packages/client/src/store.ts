@@ -172,6 +172,7 @@ export type Page =
   | "settings"
   | "writing"
   | "status"
+  | "prompt-tree"
   | { inspect: Id }
 /** A tab on the top strip (docs/shell-brief-2.md, #123): an address, not data. The story it reads (none: a card's
  *  page, home), the card it is on (its story's card when it has one), its page and the pages under it, and the

@@ -1,3 +1,4 @@
+import type { SourceRef } from "@effect-tavern/runtime/src/trace.ts"
 import { AsyncView } from "./async-view.tsx"
 import { fetchDetail, fetchTrace, fetchContext } from "./wire.ts"
 import { HI, LO, LOOKUP } from "@effect-tavern/runtime/src/decision.ts"
@@ -16,12 +17,10 @@ import {
   pieces,
   polishPairs,
   precheck,
-  regions,
   rowHits,
   rows,
   settledAt,
   stepOps,
-  textOf,
   totals,
   type Call,
   type Facts,
@@ -31,9 +30,13 @@ import {
   type Tray,
 } from "./inspect.ts"
 import { KeyValues, Reading, Shaped } from "./readings.tsx"
+import { RequestView } from "./request-view.tsx"
+import { sourceDestination } from "./prompt-tree-state.ts"
 import { channelOf, fields, lineOf, versions, whens } from "./record.ts"
-import { card, log, path, registry, type Id } from "./store.ts"
-import { close, open } from "./pages.ts"
+import { openSettings } from "./settings.tsx"
+import { activeOf, card, cards, isFreeChat, log, path, registry, tabs, type Id } from "./store.ts"
+import { close, editCard, open } from "./pages.ts"
+import { openWriting } from "./writing.tsx"
 import { t } from "./i18n.ts"
 import { failureText } from "./failure.ts"
 
@@ -322,27 +325,55 @@ const Step = (props: {
             <div class="wscroll" ref={(el) => (well = el)}>
               <Switch>
                 <Match when={view() === "prompt"}>
-                  <For each={regions(c().msgs)} keyed={false}>
-                    {(r) => (
-                      <>
-                        <For each={r().msgs} keyed={false}>
-                          {(m) => (
-                            <div class="msg" data-role={m().role}>
-                              <span class="role">{m().role}</span>
-                              <div class="txt">
-                                <Marked text={textOf(m())} q={props.q} />
-                              </div>
-                            </div>
-                          )}
-                        </For>
-                        <Show when={r().breakpoint}>
-                          <div class="bp" title={t("inspector.breakpoint")}>
-                            {r().name} {fmt(r().chars)}c
-                          </div>
-                        </Show>
-                      </>
-                    )}
-                  </For>
+                  <RequestView
+                    compact
+                    messages={c().msgs}
+                    traces={c().trace}
+                    wireError={c().wireError}
+                    q={props.q}
+                    resolveDestination={(source: SourceRef) => {
+                      const curCard = registry.get(card)?.id ?? activeOf(registry.get(tabs)).card
+                      return sourceDestination(source, {
+                        cardId: curCard,
+                        isFreeChatCard: isFreeChat(curCard, registry.get(cards)),
+                        hasStory: true,
+                        hasNode: (nodeId) => registry.get(log).nodes.has(nodeId),
+                      })
+                    }}
+                    onJump={(source: SourceRef) => {
+                      const curCard = registry.get(card)?.id ?? activeOf(registry.get(tabs)).card
+                      const dest = sourceDestination(source, {
+                        cardId: curCard,
+                        isFreeChatCard: isFreeChat(curCard, registry.get(cards)),
+                        hasStory: true,
+                        hasNode: (nodeId) => registry.get(log).nodes.has(nodeId),
+                      })
+                      if (!dest.ok || !dest.target) return
+                      switch (dest.target.kind) {
+                        case "workshop":
+                          void editCard(dest.target.cardId)
+                          break
+                        case "pack":
+                          openSettings("packs", dest.target.packId)
+                          break
+                        case "hat":
+                          openSettings("templates", dest.target.hatId)
+                          break
+                        case "persona":
+                          openSettings("personas", dest.target.personaId)
+                          break
+                        case "writing":
+                          openWriting()
+                          break
+                        case "inspect":
+                          open({ inspect: dest.target.nodeId })
+                          break
+                        case "timeline":
+                          open("timeline")
+                          break
+                      }
+                    }}
+                  />
                 </Match>
                 <Match when={view() === "json"}>
                   <pre>{JSON.stringify(c(), null, 2)}</pre>

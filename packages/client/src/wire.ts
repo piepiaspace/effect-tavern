@@ -18,10 +18,12 @@ type Change = L.Change<Node>
 // stream); `GET /turn` picks up the turn in flight on a story the client lands on (204 when there is none).
 import type { DecisionConfig } from "@effect-tavern/provider/src/decision.ts"
 import type { Probe, Provider, SecretView } from "@effect-tavern/provider/src/providers.ts"
-import type { Card } from "@effect-tavern/runtime/src/card.ts"
+import type { Card, State } from "@effect-tavern/runtime/src/card.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
+import type { Input } from "@effect-tavern/runtime/src/journal.ts"
 import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
+import type { PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
 import { readTurnEvents } from "@effect-tavern/runtime/src/sse.ts"
 import type { Call } from "./inspect.ts"
@@ -92,6 +94,31 @@ export const fetchNodes = async (): Promise<void> => {
   const snapshot = await got<L.Snapshot<Node>>(call(`${base}/nodes`))
   if (registry.get(stories)?.current === story) registry.set(log, L.of(snapshot))
 }
+/** Read-only timeline snapshot for any story by id (used by Prompt Tree story-branch mode without switching active story). */
+export const fetchStoryNodes = (storyId: number, signal?: AbortSignal): Promise<L.Snapshot<Node>> =>
+  got<L.Snapshot<Node>>(fetch(`${base}/nodes`, { headers: { "x-tavern-story": String(storyId) }, signal }))
+
+export interface PreviewRequest {
+  mode?: "sandbox" | "story"
+  cardId?: string
+  candidateCard?: Card
+  storyId?: number
+  nodeId?: number | null
+  hatId?: string | null
+  candidateHat?: Hat
+  input?: Input
+  greetingIndex?: number | null
+  fields?: State
+  events?: readonly string[]
+  assumedReads?: readonly string[]
+  assumedMust?: readonly string[]
+  assumedMay?: readonly string[]
+  assumedTone?: string
+}
+
+/** Read-only Prompt Tree Stage 1 (`narrate`) preview: zero LLM calls, zero DB writes. */
+export const fetchPreview = (body: PreviewRequest, signal?: AbortSignal): Promise<PreviewNarrateResult> =>
+  got<PreviewNarrateResult>(call(`${base}/preview`, { ...json("POST", body), signal }))
 let cardRead = 0 // a newer card read supersedes an older refresh, even on the same tab
 export const fetchCard = async (current: () => boolean = () => true): Promise<void> => {
   const request = ++cardRead

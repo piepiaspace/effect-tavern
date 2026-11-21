@@ -13,7 +13,8 @@
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
-import { Archive, Clue, Close, Next, Prev, Settings, Shade, Snippets, Tag, Translate, User, Write } from "./icons.tsx"
+import { Archive, Clue, Close, Next, Prev, Settings, Shade, Snippets, Stack, Tag, Translate, User, Write } from "./icons.tsx"
+import { openPromptTree } from "./prompt-tree-state.ts"
 import { openSettings } from "./settings.tsx"
 import { browse, close, editCard, openStory, showCard, toHome } from "./pages.ts"
 import {
@@ -586,6 +587,19 @@ export const Sidebar = (props: {
                   <span>{freeChat() ? t("side.freeChatWriting") : t("side.writing")}</span>
                 </span>
                 <span class="val">{writing()}</span>
+              </button>
+              <button
+                type="button"
+                class="tile row"
+                disabled={at() === null}
+                aria-current={pg() === "prompt-tree" ? "page" : undefined}
+                onClick={() => leaveFor(() => openPromptTree({ cardId: at() }))}
+              >
+                <span class="lbl">
+                  <Stack aria-hidden="true" />
+                  <span>{t("side.promptTree")}</span>
+                </span>
+                <span class="val">{t("side.promptTreeHint")}</span>
               </button>
             </div>
             <div class="input-box sm">
