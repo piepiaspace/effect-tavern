@@ -125,6 +125,8 @@
 //                 `replace`. Nothing is fetched except on these two requests.
 //   POST /author/(compile|sort|review)  the workshop's three model operations (author.ts), each answering a candidate
 //                 or diagnostics; nothing is installed here.
+//   POST /preview  read-only Prompt Tree Stage 1 (`narrate`) request preview in sandbox or story branch mode;
+//                 supports unsaved candidateCard / candidateHat, zero LLM calls and zero persistence writes.
 //   GET  /card    the same for the story's own card.
 // Calls never travel on SSE; the selected trace carries them whole, request and result bodies included.
 //   GET  /host    who answers: {version, scripted, page, pid}, the program's version, whether every stage runs on the
@@ -138,7 +140,7 @@ import { Effect, Fiber, Schema, Stream, Struct } from "effect"
 import { extname, join, resolve, sep } from "node:path"
 import { version } from "./cli/config.ts"
 import { attachment, backup, disposition, markdown } from "./export.ts"
-import { Routing, type Library, type PublicEvent } from "./library.ts"
+import { PreviewError, Routing, type Library, type PublicEvent } from "./library.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { Refused } from "./shelf.ts"
 import { Busy } from "./turn.ts"
@@ -232,11 +234,16 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     const at = new URL(request.url)
     /** The path and query as the routes match them. */
     const url = at.pathname + at.search
-    const bad = (e: unknown, status = 400) =>
-      json(e instanceof Busy ? 409 : (e instanceof Refused && e.status) || status, {
-        error: e instanceof Error ? e.message : String(e),
-        ...((e instanceof Busy || e instanceof Refused) && { code: e.code }),
-      })
+    const bad = (e: unknown, status = 400) => {
+      const code = e instanceof Busy || e instanceof Refused || e instanceof PreviewError ? e.code : undefined
+      return json(
+        e instanceof Busy ? 409 : (e instanceof Refused && e.status) || (e instanceof PreviewError && e.status) || status,
+        {
+          error: e instanceof Error ? e.message : String(e),
+          ...(code !== undefined && { code }),
+        },
+      )
+    }
     try {
       decodeURIComponent(at.pathname)
     } catch (e) {
@@ -451,11 +458,12 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     }
     const removing = method === "DELETE" && /^\/cards\/([^/]+)$/.exec(url)
     if (removing) return reply(() => (lib.cards.remove(decodeURIComponent(removing[1])), lib.cards.list()), 404)
+    if (method === "POST" && url === "/preview") return reply(async () => lib.preview(await card((u) => u)))
     const cardAt = method === "GET" && /^\/cards\/([^/]+)$/.exec(url)
     if (cardAt) return reply(() => lib.view(decodeURIComponent(cardAt[1])), 404)
     // a card or library route none of the above took (a method it has no use for, a route that is gone): said here,
     // before the story's routes answer it with "no story"
-    if (/^\/(cards|depots)(?:[/?]|$)/.test(url)) return json(404, { error: "not found" })
+    if (/^\/(cards|depots|preview)(?:[/?]|$)/.test(url)) return json(404, { error: "not found" })
     // Everything below is one story's: the one the request names.
     if (asked === undefined || !lib.exists(asked)) return json(404, { error: `no story ${asked ?? ""}`.trim() })
     const story = asked

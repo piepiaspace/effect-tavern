@@ -26,6 +26,7 @@ export type { CardRow } from "@effect-tavern/runtime/src/library.ts"
 export { Routing } from "@effect-tavern/runtime/src/session.ts"
 import {
   bind,
+  capabilities,
   compileDecision,
   connection,
   ConnectionError,
@@ -50,7 +51,8 @@ import {
   type Trace,
 } from "@effect-tavern/provider"
 import { author } from "./author.ts"
-import type { Card } from "@effect-tavern/runtime/src/card.ts"
+import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
+import { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   decodeLayer,
   decodeLocal,
@@ -61,8 +63,14 @@ import {
   type Local,
   type Rows,
 } from "@effect-tavern/runtime/src/layer.ts"
+import * as Log from "@effect-tavern/runtime/src/log.ts"
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import { policyFor } from "@effect-tavern/runtime/src/history.ts"
+import {
+  previewNarrate,
+  type PreviewConnectionMeta,
+  type PreviewNarrateResult,
+} from "@effect-tavern/runtime/src/preview.ts"
 import {
   Routing,
   cardView,
@@ -72,7 +80,7 @@ import {
   type Session,
   type Turn as Logged,
 } from "@effect-tavern/runtime/src/session.ts"
-import { Effect, Stream } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import { factsOf, type Code } from "./term/index.ts"
 import type { Failure, TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
 import type { Data } from "./data.ts"
@@ -99,6 +107,56 @@ export class NoModel extends Error {
     super("no model: pick a default model in settings")
   }
 }
+
+export class PreviewError extends Error {
+  constructor(
+    readonly status: 400 | 404,
+    message: string,
+    readonly code?: string,
+  ) {
+    super(message)
+  }
+}
+
+const FREE_CHAT_CARD: Card = {
+  id: FREE_CHAT_ID,
+  title: "自由对话",
+  frame: [],
+  fiction: [],
+  greetings: [],
+  rules: { fields: [], actions: [] },
+  lore: [],
+  guard: [],
+}
+
+const PreviewInputSchema = Schema.Struct({
+  text: Schema.String,
+  note: Schema.optional(Schema.String),
+  invoke: Schema.optional(Schema.Array(Schema.String)),
+})
+
+export const PreviewRequest = Schema.Struct({
+  mode: Schema.optional(Schema.Literals(["sandbox", "story"])),
+  cardId: Schema.optional(Schema.String),
+  candidateCard: Schema.optional(Schema.Unknown),
+  storyId: Schema.optional(Schema.Int),
+  nodeId: Schema.optional(Schema.NullOr(Schema.Int)),
+  hatId: Schema.optional(Schema.NullOr(Schema.String)),
+  candidateHat: Schema.optional(Schema.Unknown),
+  input: Schema.optional(PreviewInputSchema),
+  greetingIndex: Schema.optional(Schema.NullOr(Schema.Int)),
+  fields: Schema.optional(
+    Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
+  ),
+  events: Schema.optional(Schema.Array(Schema.String)),
+  assumedReads: Schema.optional(Schema.Array(Schema.String)),
+  assumedMust: Schema.optional(Schema.Array(Schema.String)),
+  assumedMay: Schema.optional(Schema.Array(Schema.String)),
+  assumedTone: Schema.optional(Schema.String),
+})
+export type PreviewRequest = typeof PreviewRequest.Type
+const decodePreviewRequest = Schema.decodeUnknownSync(PreviewRequest)
+const decodeHat = Schema.decodeUnknownSync(Hat)
 
 /** The rows of the `pack` table that are ranks, not packs. */
 const RESERVED = new Set(["harness"])
@@ -654,6 +712,154 @@ export const library = ({
         { via: "link", url: url.trim() },
         { replace },
       ),
+    /** Read-only Stage 1 (`narrate`) Prompt Tree preview in sandbox or story branch mode, with zero DB writes or LLM calls. */
+    preview: (raw: unknown): PreviewNarrateResult => {
+      const req = decodePreviewRequest(raw)
+      const mode: "sandbox" | "story" = req.mode ?? (req.storyId !== undefined ? "story" : "sandbox")
+
+      const readCard = (id: string): Card => {
+        if (cards.has(id)) return cards.get(id)
+        if (id === FREE_CHAT_ID) return FREE_CHAT_CARD
+        throw new PreviewError(404, `no card ${id}`, "no-card")
+      }
+
+      let storyRow: ReturnType<typeof row>
+      let storyPath: readonly Logged[] | undefined
+      let branchHead: number | null | undefined
+      let targetNodeId: number | null | undefined
+
+      if (mode === "story") {
+        if (req.storyId === undefined) throw new PreviewError(400, "storyId is required in story mode")
+        storyRow = row(req.storyId)
+        if (!storyRow) throw new PreviewError(404, `no story ${req.storyId}`)
+        const cached = sessions.get(req.storyId)
+        const log = cached && !cached.stale ? cached.session.log : Log.of(data.store<Logged>(req.storyId).read())
+        if (!cached || cached.stale) {
+          for (const t of log.nodes.values())
+            if (!t.settlementStatus || !t.changes || !t.deliveries || !t.opportunities)
+              throw new Error(
+                "unsupported story format (requires transactions and delivery snapshots); export or migrate it before opening",
+              )
+        }
+        targetNodeId = req.nodeId === undefined ? log.head : req.nodeId
+        if (targetNodeId !== null && !log.nodes.has(targetNodeId))
+          throw new PreviewError(404, `no node ${targetNodeId}`)
+        storyPath = targetNodeId === null ? [] : Log.chain(log, targetNodeId)
+        branchHead = log.head
+      }
+
+      let card: Card
+      let effectiveCardId: string
+      if (req.candidateCard !== undefined) {
+        try {
+          card = decodeCard(req.candidateCard)
+        } catch (err) {
+          throw new PreviewError(
+            400,
+            err instanceof Error ? err.message : String(err),
+            "invalid-candidate",
+          )
+        }
+        effectiveCardId = req.cardId ?? card.id
+      } else if (mode === "story") {
+        effectiveCardId = storyRow!.card
+        card = readCard(effectiveCardId)
+      } else if (req.cardId !== undefined) {
+        effectiveCardId = req.cardId
+        card = readCard(req.cardId)
+      } else {
+        effectiveCardId = FREE_CHAT_ID
+        card = FREE_CHAT_CARD
+      }
+
+      const on =
+        mode === "story"
+          ? { id: storyRow!.persona, yields: storyRow!.yields }
+          : personaFor(card, data.locals.get(effectiveCardId)?.persona)
+      const personaPick = personaOf(on.id, on.yields)
+      const rows = rowsOf(
+        effectiveCardId,
+        personaPick ? { ...personaPick, id: personaPick.id } : undefined,
+      )
+      const packNames = Object.fromEntries((rows.packs ?? []).map((p) => [p.id, p.name]))
+
+      const r = pinned ? {} : routing()
+      const pair = r.stages?.narrate ?? r.default
+      const p = pair ? data.providers.list().find((x) => x.id === pair.provider) : undefined
+      const m = p && pair ? p.models.find((x) => x.id === pair.model) : undefined
+      const routingSource: PreviewConnectionMeta["routingSource"] =
+        p && m ? (r.stages?.narrate ? "stage" : "default") : "none"
+
+      let wornHat: Hat | undefined
+      if (req.candidateHat !== undefined) {
+        try {
+          wornHat = decodeHat(req.candidateHat)
+        } catch (err) {
+          throw new PreviewError(
+            400,
+            err instanceof Error ? err.message : String(err),
+            "invalid-candidate",
+          )
+        }
+      } else if (req.hatId === null) {
+        wornHat = undefined
+      } else if (req.hatId !== undefined) {
+        wornHat = hat(req.hatId)
+        if (!wornHat) throw new PreviewError(404, `no hat ${req.hatId}`)
+      } else {
+        const routedHatId = hatFor(r, "narrate")
+        wornHat = routedHatId !== undefined ? hat(routedHatId) : undefined
+      }
+
+      const connection: PreviewConnectionMeta =
+        p && m
+          ? (() => {
+              const format = m.format ?? p.defaultFormat
+              const caps = capabilities({ format, capabilities: m.capabilities })
+              return {
+                format,
+                prefill: caps.prefill,
+                reasoningBack: caps.reasoningBack,
+                ...(p.cacheTtl !== undefined && { ttl: p.cacheTtl }),
+                ...(m.contextTokens !== undefined && { contextTokens: m.contextTokens }),
+                providerId: p.id,
+                providerName: p.name,
+                modelId: m.id,
+                ...(wornHat && { hatId: wornHat.id, hatName: wornHat.name }),
+                routingSource,
+              }
+            })()
+          : {
+              prefill: true,
+              reasoningBack: true,
+              ...(wornHat && { hatId: wornHat.id, hatName: wornHat.name }),
+              routingSource: "none",
+            }
+
+      return previewNarrate({
+        card,
+        cardId: effectiveCardId,
+        rows,
+        packNames,
+        ...(wornHat && { hat: wornHat }),
+        connection,
+        mode,
+        ...(mode === "story" && {
+          storyId: req.storyId,
+          nodeId: targetNodeId,
+          storyPath,
+          branchHead,
+        }),
+        ...(req.input !== undefined && { input: req.input }),
+        ...(req.greetingIndex !== undefined && { greetingIndex: req.greetingIndex }),
+        ...(req.fields !== undefined && { fields: req.fields }),
+        ...(req.events !== undefined && { events: req.events }),
+        ...(req.assumedReads !== undefined && { assumedReads: req.assumedReads }),
+        ...(req.assumedMust !== undefined && { assumedMust: req.assumedMust }),
+        ...(req.assumedMay !== undefined && { assumedMay: req.assumedMay }),
+        ...(req.assumedTone !== undefined && { assumedTone: req.assumedTone }),
+      })
+    },
     personas: {
       /** By name, the install's default marked. */
       list: (): Persona[] => {
