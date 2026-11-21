@@ -22,7 +22,7 @@ import { gateOf, makeDerived } from "./derived.ts"
 import { evaluateHead, type Hat, type HeadInput, type Msg, type Slotted } from "./fragment.ts"
 import { narratorHistory, policyFor, type Policy } from "./history.ts"
 import { type Input, type Turn as TurnOf } from "./journal.ts"
-import { resolveWithTrace, shown, type ResolvedTrace, type Rows } from "./layer.ts"
+import { resolveWithTrace, type ResolvedTrace, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
 import { expand, fill, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
@@ -199,7 +199,6 @@ export interface PreviewNarrateResult {
     summaryRange?: { from: number; to: number }
     settlementPending: boolean
   }
-  layer: ReturnType<typeof shown>
 }
 
 export interface PrepareNarrateInput {
@@ -1315,7 +1314,6 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
         settlementPending,
       },
     }),
-    layer: shown(R),
   }
 }
 

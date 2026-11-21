@@ -41,6 +41,116 @@ export default defineConfig({
           "tavern/no-fixed-sleep": ["error", { allow: { "packages/client/test/controls.tsx": 4 } }],
         },
       },
+      {
+        files: ["packages/server/src/**"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              patterns: [
+                {
+                  group: [
+                    "*client*",
+                    "**/client/**",
+                    "@effect-tavern/client*",
+                    "@effect-tavern/app*",
+                    "**/app/**",
+                    "**/test/**",
+                  ],
+                  message: "server/src must not import client, app, or test modules.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        files: ["packages/runtime/src/**", "packages/provider/src/**"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              paths: ["bun", "@effect/platform-bun"],
+              patterns: [
+                {
+                  group: [
+                    "node:*",
+                    "bun:*",
+                    "@effect/platform-bun/*",
+                    "@effect-tavern/server*",
+                    "@effect-tavern/client*",
+                    "@effect-tavern/app*",
+                    "**/client/**",
+                    "**/server/**",
+                    "**/app/**",
+                    "**/test/**",
+                  ],
+                  message:
+                    "runtime/src and provider/src must stay portable and must not import server, client, app, or test modules.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        files: ["packages/provider/src/dev.ts"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              patterns: [
+                {
+                  group: [
+                    "@effect-tavern/server*",
+                    "@effect-tavern/client*",
+                    "@effect-tavern/app*",
+                    "**/client/**",
+                    "**/server/**",
+                    "**/app/**",
+                    "**/test/**",
+                  ],
+                  message: "provider/src/dev.ts must not import server, client, app, or test modules.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        files: ["packages/client/src/**"],
+        rules: {
+          "no-restricted-imports": [
+            "error",
+            {
+              paths: [
+                "bun",
+                "@effect/platform-bun",
+                {
+                  name: "@effect-tavern/provider",
+                  message: "Import browser-safe subpaths (@effect-tavern/provider/src/*) instead of the root barrel.",
+                },
+              ],
+              patterns: [
+                {
+                  group: [
+                    "node:*",
+                    "bun:*",
+                    "@effect/platform-bun/*",
+                    "@effect-tavern/server*",
+                    "@effect-tavern/app*",
+                    "**/server/**",
+                    "**/app/**",
+                    "**/test/**",
+                  ],
+                  message:
+                    "client/src must stay browser-pure and must not import Node/Bun, server, app, or test modules.",
+                },
+              ],
+            },
+          ],
+        },
+      },
     ],
     options: { typeAware: true, typeCheck: true, reportUnusedDisableDirectives: "error" },
   },

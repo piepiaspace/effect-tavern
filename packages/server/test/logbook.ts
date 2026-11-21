@@ -21,6 +21,7 @@ import { open } from "../src/data.ts"
 import { library } from "../src/library.ts"
 import { openLogbook } from "../src/logbook.ts"
 import { callHead, finished, type Call, type Title } from "../src/logbook/lines.ts"
+import { words } from "../src/logbook/words.ts"
 import { memoryScreen, screenOn, width, type Lang, type Screen } from "../src/term/index.ts"
 
 // ───────── scripted streams ─────────
@@ -827,5 +828,82 @@ for (const columns of [48, 100]) {
   } finally {
     rmSync(d, { recursive: true, force: true })
   }
+}
+
+// ───────── words table parity in zh and en (self-contained without importing packages/client) ─────────
+{
+  const shape = (lang: Lang) => {
+    const w = words[lang]
+    return {
+      action: w.action,
+      precheck: w.precheck,
+      escalate: w.escalate,
+      exhausted: w.exhausted,
+      failed: w.failed,
+      stopped: w.stopped,
+      booleanQuestion: w.booleanQuestion,
+      question: w.question,
+      breakpoint: w.breakpoint,
+      json: w.json,
+      chars: [w.chars(0), w.chars(1), w.chars(2)],
+      waiting: w.waiting,
+      noResponse: w.noResponse,
+      banner: w.host.banner,
+      didNotStart: w.host.didNotStart,
+      fileBroken: w.host.fileBroken("/srv/log", "ENOSPC"),
+    }
+  }
+  assert.deepEqual(shape("zh"), {
+    action: {
+      swipe: "换一版",
+      reword: "重写",
+      edit: "编辑",
+      retryRecord: "重试",
+      demand: "小剧场",
+      greet: "开始",
+      skipRecord: "跳过结算",
+    },
+    precheck: "预检",
+    escalate: "转交",
+    exhausted: "超出预算",
+    failed: "失败",
+    stopped: "已停止",
+    booleanQuestion: "判断题",
+    question: "决策问题",
+    breakpoint: "断点",
+    json: "JSON",
+    chars: ["0 字", "1 字", "2 字"],
+    waiting: "等待中",
+    noResponse: "未收到响应",
+    banner: { address: "地址", data: "数据", model: "模型", stop: "停止" },
+    didNotStart: "Effect Tavern 没有启动",
+    fileBroken: "日志文件写不进 /srv/log (ENOSPC)，故事照常进行",
+  })
+  assert.deepEqual(shape("en"), {
+    action: {
+      swipe: "Swipe",
+      reword: "Reword",
+      edit: "Edit",
+      retryRecord: "Retry",
+      demand: "Theater",
+      greet: "Begin",
+      skipRecord: "Skip settlement",
+    },
+    precheck: "pre-check",
+    escalate: "escalated",
+    exhausted: "over budget",
+    failed: "failed",
+    stopped: "stopped",
+    booleanQuestion: "Yes/no question",
+    question: "Decision question",
+    breakpoint: "breakpoint",
+    json: "JSON",
+    chars: ["0 chars", "1 char", "2 chars"],
+    waiting: "Waiting",
+    noResponse: "No response received",
+    banner: { address: "address", data: "data", model: "model", stop: "stop" },
+    didNotStart: "Effect Tavern did not start",
+    fileBroken: "cannot write the log file in /srv/log (ENOSPC); stories go on",
+  })
 }
 console.log("logbook ok")
