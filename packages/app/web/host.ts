@@ -29,7 +29,13 @@ g["Bun"] ??= {
 }
 
 type Wire = (r: Request) => Promise<Response>
-export const served = Promise.withResolvers<Wire>()
+let resolve!: (w: Wire) => void
+let reject!: (e: unknown) => void
+const promise = new Promise<Wire>((res, rej) => {
+  resolve = res
+  reject = rej
+})
+export const served = { promise, resolve, reject }
 const page = globalThis.fetch.bind(globalThis)
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const request = new Request(typeof input === "string" ? new URL(input, location.href) : input, init)

@@ -109,8 +109,9 @@ const load = () => {
     ),
   } as Record<string, unknown>
   page["globalThis"] = page
-  // the bundle exports nothing: as a module it is a script that may await at its top
-  void runInNewContext(`(async () => {${code}\n})()`, page)
+  // the bundle exports nothing: as a module it is a script that may await at its top; delete Promise.withResolvers
+  // first so the page bundle stays compatible with WebKit prior to 17.4
+  void runInNewContext(`delete Promise.withResolvers;\n(async () => {${code}\n})()`, page)
   const fetch = page["fetch"] as typeof globalThis.fetch
   return (path: string, init?: RequestInit) => fetch(`${origin}/api${path}`, init)
 }
