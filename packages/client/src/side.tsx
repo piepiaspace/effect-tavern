@@ -132,6 +132,11 @@ export const Sidebar = (props: {
   const pg = read(page)
   const rows = () => lib()?.stories ?? []
   const card = createMemo(() => shelf().find((c) => c.id === at()))
+  // the story the prompt tree previews from here: the open one when it is this card's, else the card's first
+  const playStory = () => {
+    const own = rows().filter((s) => s.card === at())
+    return (own.find((s) => s.id === lib()?.current) ?? own[0])?.id
+  }
   const freeChat = () => isFreeChat(card() ?? at(), shelf())
   // who the player is here (the open story's persona, else the card's default), and the writing in force: a change rewrites the cached prefix, no new story
   const allLocals = read(locals)
@@ -605,9 +610,9 @@ export const Sidebar = (props: {
               <button
                 type="button"
                 class="tile row"
-                disabled={at() === null}
+                disabled={playStory() === undefined}
                 aria-current={pg() === "prompt-tree" ? "page" : undefined}
-                onClick={() => leaveFor(() => openPromptTree({ cardId: at() }))}
+                onClick={() => leaveFor(() => openPromptTree({ cardId: at(), storyId: playStory(), play: true }))}
               >
                 <span class="lbl">
                   <Stack aria-hidden="true" />

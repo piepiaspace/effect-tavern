@@ -108,6 +108,16 @@ assert.equal(buildPreviewRequest(patchPromptTreeMemory(10, { mode: "story", stor
 openPromptTree()
 assert.equal(buildPreviewRequest(getPromptTreeMemory(10)!).hatId, undefined)
 
+// 7. The session card's entry is story mode on the story it names, even over a remembered sandbox; an author entry drops it
+patchPromptTreeMemory(10, { mode: "sandbox" })
+openPromptTree({ storyId: 7, play: true })
+assert.equal(getPromptTreeMemory(10)!.mode, "story")
+assert.equal(getPromptTreeMemory(10)!.storyId, 7)
+assert.equal(getPromptTreeMemory(10)!.play, true)
+openPromptTree({ candidateHat: draftHat })
+assert.equal(getPromptTreeMemory(10)!.play, false)
+assert.equal(getPromptTreeMemory(10)!.mode, "sandbox")
+
 clearPromptTreeMemory(10)
 assert.equal(getPromptTreeMemory(10), undefined)
 console.log("prompt-tree ok")

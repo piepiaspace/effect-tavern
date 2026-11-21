@@ -527,6 +527,23 @@
   height: 14px;
 }
 
+.stepper-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+}
+.stepper-input {
+  width: 3.5rem;
+  text-align: center;
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line);
+  background: var(--surface-1);
+  color: var(--ink);
+  font-size: var(--text-field);
+}
 .switch {
   flex: none;
   width: 42px;

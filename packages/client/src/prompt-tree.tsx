@@ -8,9 +8,9 @@ import type { OmittedReason, SourceRef } from "@effect-tavern/runtime/src/trace.
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js"
 import { read } from "./bridge.ts"
-import { Menu, Switch } from "./controls.tsx"
+import { Menu, Stepper, Switch } from "./controls.tsx"
 import { Family } from "./family.tsx"
-import { Back, EyeOff, Fold, Minus, Next, Plugs, Plus, Swipe, Warning } from "./icons.tsx"
+import { Back, EyeOff, Fold, Next, Plugs, Swipe, Warning } from "./icons.tsx"
 import { t } from "./i18n.ts"
 import { close, editCard, openStoryPage } from "./pages.ts"
 import {
@@ -179,6 +179,28 @@ export const PromptTreePage = () => {
     const { key } = requestEntry()
     const last = fetched()
     return last?.key === key ? last.value : (previewCache.get(key) ?? null)
+  })
+  // Entered from play (the session card): a condition that reads a hidden field is not shown, and an entry it left out is not listed.
+  const shown = createMemo<PreviewNarrateResult | null>(() => {
+    const r = result()
+    if (!r || !mem().play) return r
+    const hidden = new Set(r.sandbox.fields.filter((f) => f.hidden).map((f) => f.path))
+    if (!hidden.size) return r
+    const secret = (s: SourceRef | undefined) => !!s?.whenDetails?.some((d) => hidden.has(d.path))
+    const scrub = <S extends SourceRef | undefined>(s: S): S => {
+      if (!s || !secret(s)) return s
+      const { when: _w, whenText: _t, whenResult: _r, whenDetails: _d, ...rest } = s
+      return rest as S
+    }
+    return {
+      ...r,
+      traces: r.traces.map((tr) => ({
+        ...tr,
+        source: scrub(tr.source),
+        spans: tr.spans.map((sp) => ({ ...sp, source: scrub(sp.source) })),
+      })),
+      omitted: r.omitted.filter((o) => !secret(o.source)),
+    }
   })
   // Keep the current card's field inputs mounted while typing. Only the outline needs the exact request.
   const sandboxControls = createMemo(() => {
@@ -388,26 +410,28 @@ export const PromptTreePage = () => {
         </div>
 
         <div class="pt-header-end">
-          <div class="pt-seg" role="tablist" aria-label={t("promptTree.mode")}>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mem().mode === "sandbox" ? "true" : "false"}
-              onClick={() => switchMode("sandbox")}
-            >
-              {t("promptTree.modeSandbox")}
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mem().mode === "story" ? "true" : "false"}
-              disabled={!cardStories().length || !!mem().candidateCard}
-              title={!cardStories().length ? t("promptTree.noStoriesForCard") : undefined}
-              onClick={() => switchMode("story")}
-            >
-              {t("promptTree.modeStory")}
-            </button>
-          </div>
+          <Show when={!mem().play}>
+            <div class="pt-seg" role="tablist" aria-label={t("promptTree.mode")}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mem().mode === "sandbox" ? "true" : "false"}
+                onClick={() => switchMode("sandbox")}
+              >
+                {t("promptTree.modeSandbox")}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={mem().mode === "story" ? "true" : "false"}
+                disabled={!cardStories().length || !!mem().candidateCard}
+                title={!cardStories().length ? t("promptTree.noStoriesForCard") : undefined}
+                onClick={() => switchMode("story")}
+              >
+                {t("promptTree.modeStory")}
+              </button>
+            </div>
+          </Show>
 
           <Show when={result()}>
             {(r) => {
@@ -479,7 +503,7 @@ export const PromptTreePage = () => {
             )}
           </Show>
 
-          <Show when={result()}>
+          <Show when={shown()}>
             {(r) => (
               <>
                 <div class="pt-meta-strip">
@@ -951,13 +975,6 @@ export const PromptTreePage = () => {
                         const v = localVal()
                         return typeof v === "number" ? v : 0
                       }
-                      const step = () => (f().type === "int" ? 1 : 0.5)
-                      const clamp = (n: number) => {
-                        let out = f().type === "int" ? Math.round(n) : n
-                        if (f().min !== undefined && out < f().min!) out = f().min!
-                        if (f().max !== undefined && out > f().max!) out = f().max!
-                        return out
-                      }
                       return (
                         <div class={{ "pt-field": true, changed: changed() }}>
                           <div class="pt-field-head">
@@ -979,41 +996,14 @@ export const PromptTreePage = () => {
                           </div>
 
                           <Show when={f().type === "int" || f().type === "number"}>
-                            <div class="pt-num">
-                              <button
-                                type="button"
-                                class="icon sm"
-                                aria-label={`${f().label} -`}
-                                disabled={f().min !== undefined && numVal() <= f().min!}
-                                onClick={() => setField(f().path, clamp(numVal() - step()))}
-                              >
-                                <Minus />
-                              </button>
-                              <input
-                                type="number"
-                                class="pt-num-input mono"
-                                aria-label={f().label}
-                                inputmode={f().type === "int" ? "numeric" : "decimal"}
-                                enterkeyhint="done"
-                                value={numVal()}
-                                min={f().min}
-                                max={f().max}
-                                step={step()}
-                                onInput={(e) => {
-                                  const n = Number(e.currentTarget.value)
-                                  if (Number.isFinite(n)) setField(f().path, clamp(n))
-                                }}
-                              />
-                              <button
-                                type="button"
-                                class="icon sm"
-                                aria-label={`${f().label} +`}
-                                disabled={f().max !== undefined && numVal() >= f().max!}
-                                onClick={() => setField(f().path, clamp(numVal() + step()))}
-                              >
-                                <Plus />
-                              </button>
-                            </div>
+                            <Stepper
+                              label={f().label}
+                              value={numVal()}
+                              min={f().min}
+                              max={f().max}
+                              step={f().type === "int" ? 1 : 0.5}
+                              onChange={(n) => setField(f().path, n)}
+                            />
                           </Show>
 
                           <Show when={f().type === "boolean"}>

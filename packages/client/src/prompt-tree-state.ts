@@ -12,6 +12,8 @@ export interface PromptTreeMemory {
   cardId: string | null
   sampleCard?: boolean
   mode: "sandbox" | "story"
+  /** Entered from play (the session card): story mode only, no sandbox, hidden fields' conditions not shown. */
+  play?: boolean
   greetingIndex?: number | null
   fields: Record<string, unknown>
   events: string[]
@@ -117,6 +119,8 @@ export interface OpenPromptTreeOptions {
   mode?: "sandbox" | "story"
   storyId?: number
   nodeId?: number | null
+  /** The session card's entry: opens `storyId` in story mode and offers no sandbox. */
+  play?: boolean
 }
 
 /** Opens the Prompt Tree page on the active tab, preserving return memory for the same card when appropriate,
@@ -139,14 +143,18 @@ export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
 
   const lib = registry.get(stories)
   const activeStory = lib?.stories.find((s) => s.id === tab.story && s.card === cardId)
-  const mode: "sandbox" | "story" =
-    opts.candidateCard || opts.candidateHat ? "sandbox" : (opts.mode ?? (sameCard ? base.mode : "sandbox"))
+  const mode: "sandbox" | "story" = opts.play
+    ? "story"
+    : opts.candidateCard || opts.candidateHat
+      ? "sandbox"
+      : (opts.mode ?? (sameCard ? base.mode : "sandbox"))
 
   const next: PromptTreeMemory = {
     ...base,
     cardId,
     sampleCard,
     mode,
+    play: !!opts.play,
     candidateCard: opts.candidateCard,
     candidateHat: opts.candidateHat,
     hatId: opts.candidateHat?.id,

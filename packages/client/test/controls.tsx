@@ -7,7 +7,7 @@ import { createAgent } from "@ui-sdk/solid/agent"
 import { createSignal } from "solid-js"
 import { Composer } from "../src/composer.tsx"
 import { composition } from "../src/store.ts"
-import { ask, Confirm, dialogHandle, Menu, Modal, Prompt, Switch } from "../src/controls.tsx"
+import { ask, Confirm, dialogHandle, Menu, Modal, Prompt, Stepper, Switch } from "../src/controls.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
 import { Demand, Sheet } from "../src/readings.tsx"
@@ -71,6 +71,8 @@ let approve = false
 const agent = createAgent({ allow: (step) => !step.confirm || approve })
 const [format, setFormat] = createSignal<"openai" | "anthropic" | "gemini">("openai")
 const [stream, setStream] = createSignal(false)
+const [warmth, setWarmth] = createSignal(15)
+let stepped = 15
 let deleted = 0
 // what reached the app, read by the checks outside any tracked scope
 let picked = "openai"
@@ -124,6 +126,7 @@ render(
         onPick={(v) => (setFormat(v), (picked = v))}
       />
       <Switch label="流式输出" on={stream()} onFlip={() => (setStream((v) => !v), (flipped = !flipped))} />
+      <Stepper label="好感度" value={warmth()} min={-100} max={100} onChange={(n) => (setWarmth(n), (stepped = n))} />
       <footer class="actions">
         <Demand node={timelineNode(1, null, "正文")} n={1} />
         <Demand node={timelineNode(2, 1, "正文")} n={2} />
@@ -174,7 +177,7 @@ const run = async () => {
   const entries = agent.snapshot().filter((e) => !e.offPage)
   for (const e of entries) check(e.label, `${e.component} ${e.ref} has no name`)
   const labels = entries.map((e) => e.label)
-  for (const l of ["接口格式", "流式输出", "第 1 轮的小剧场", "第 2 轮的小剧场", "侧栏宽度"])
+  for (const l of ["接口格式", "流式输出", "好感度", "第 1 轮的小剧场", "第 2 轮的小剧场", "侧栏宽度"])
     check(labels.includes(l), `${l} is missing from the snapshot: ${labels.join(" | ")}`)
 
   const set = await agent.act({
@@ -186,6 +189,9 @@ const run = async () => {
   check(set.ok, `select and switch: ${set.error?.message}`)
   check(picked === "gemini", `the select's pick reached the app: ${picked}`)
   check(flipped, "the switch's flip reached the app")
+  const step = await agent.act({ steps: [{ ref: "好感度", action: "setValue", args: [16] }] })
+  check(step.ok && stepped === 16, `stepper: ${step.error?.message} ${stepped}`)
+  check(!document.querySelector('input[type="number"]'), "the stepper draws no native spinner")
 
   const demand = await agent.act({ steps: [{ ref: "第 2 轮的小剧场", action: "press", args: ["日记"] }] })
   check(demand.ok, `demand: ${demand.error?.message}`)

@@ -16,8 +16,15 @@ import {
 import { createDialogController, Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@ui-sdk/solid/select"
 import { Switch as Toggle, SwitchThumb } from "@ui-sdk/solid/switch"
+import {
+  NumberInput,
+  NumberInputControl,
+  NumberInputDecrement,
+  NumberInputGroup,
+  NumberInputIncrement,
+} from "@ui-sdk/solid/number-input"
 import { Family } from "./family.tsx"
-import { Back, Caret, Close, Expand } from "./icons.tsx"
+import { Back, Caret, Close, Expand, Minus, Plus } from "./icons.tsx"
 import { names } from "./store.ts"
 import { type Key, t } from "./i18n.ts"
 
@@ -143,6 +150,35 @@ export const Switch = (props: { on: boolean; label: string; onFlip: () => void; 
   >
     <SwitchThumb class="thumb" />
   </Toggle>
+)
+/** A number with − and + on either side; the field shows no native spinner. Empty input is not a value. */
+export const Stepper = (props: {
+  value: number
+  label: string
+  onChange: (n: number) => void
+  min?: number
+  max?: number
+  step?: number
+}) => (
+  <NumberInput
+    class="stepper"
+    aria-label={props.label}
+    value={props.value}
+    min={props.min}
+    max={props.max}
+    step={props.step}
+    onValueChange={(v) => v !== null && props.onChange(v)}
+  >
+    <NumberInputGroup class="stepper-group">
+      <NumberInputDecrement class="icon sm" aria-label={`${props.label} −`}>
+        <Minus aria-hidden="true" />
+      </NumberInputDecrement>
+      <NumberInputControl class="stepper-input mono" aria-label={props.label} enterkeyhint="done" />
+      <NumberInputIncrement class="icon sm" aria-label={`${props.label} +`}>
+        <Plus aria-hidden="true" />
+      </NumberInputIncrement>
+    </NumberInputGroup>
+  </NumberInput>
 )
 export const Avatar = (props: { name: string }) => <span class="avatar">{props.name.slice(0, 1).toUpperCase()}</span>
 /** A record's name edited in place in the detail header; an empty edit is not written. */
