@@ -23,6 +23,7 @@ import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
 import { expand, fill, nameOk, Names, unfilled } from "./names.ts"
 import { Entry as LexiconEntry } from "./polish.ts"
 import { decodeProducts, ProductPatch, validate, type Product } from "./product.ts"
+import { sourceKindFrom, type OmittedItem, type SourceRef } from "./trace.ts"
 
 export const Ask = Schema.Struct({ id: Schema.String, text: Schema.String })
 export type Ask = typeof Ask.Type
@@ -342,7 +343,7 @@ export interface Rows {
   local?: Local | undefined
   // `yields`: worn by inheritance (the install's default), not picked: its text leaves a `persona` slot the card writes
   // alone and its name is the lowest `user`, under the card's and the player's own
-  persona?: { name: string; text: string; yields?: boolean } | undefined
+  persona?: { id?: string; name: string; text: string; yields?: boolean } | undefined
 }
 export type From = string // "harness" | "card" | "local" | a pack's id
 export type Item<T> = T & { from: From; compiled?: true; persona?: true; unasked?: true }
@@ -393,9 +394,26 @@ export const worldOf = <F extends { id: string }>(card: Card, frame: readonly F[
   return frame.filter((f) => (declared.has(f.id) || f.id === "persona") && !WRITING.has(f.id))
 }
 
-/** The one place a layer is merged. Pure; called once per request; never throws for a player's row. */
-export const resolve = (card: Card, rows: Rows): Resolved => {
+export interface ResolvedTrace {
+  resolved: Resolved
+  omitted: OmittedItem[]
+  sources: {
+    frame: readonly SourceRef[]
+    tail: readonly SourceRef[]
+    asks: Readonly<Record<string, SourceRef>>
+    products: Readonly<Record<string, SourceRef>>
+    entries: Readonly<Record<string, SourceRef>>
+  }
+}
+
+/** The one place a layer is merged, with full source & omission traces for Prompt Tree. */
+export const resolveWithTrace = (
+  card: Card,
+  rows: Rows,
+  meta: { cardId?: string; personaId?: string } = {},
+): ResolvedTrace => {
   const dropped: Resolved["dropped"] = []
+  const omitted: OmittedItem[] = []
   const input = card.input ?? "act"
   const code = harness(input)
   // The player's rows in author order, each locked again: a row is only as good as what wrote it.
@@ -408,6 +426,22 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
     }),
     ...(local ? [{ from: "local", row: locked(local) }] : []),
   ]
+  const packNames = new Map((rows.packs ?? []).map((p) => [p.id, p.name]))
+  const cardId = meta.cardId ?? card.id
+  const personaId = rows.persona?.id ?? meta.personaId
+  const sourceOf = (from: From, path?: string, extra: Partial<SourceRef> = {}): SourceRef => {
+    const kind = sourceKindFrom(from, {
+      persona: extra.personaId !== undefined || extra.personaName !== undefined,
+    })
+    return {
+      kind,
+      from,
+      ...(path && { path }),
+      ...(kind === "pack" && { packId: from, ...(packNames.get(from) && { packName: packNames.get(from) }) }),
+      ...(kind === "card" && { cardId }),
+      ...extra,
+    }
+  }
   // The card as a row: its frame and products are merged below, its fiction, lore and rules are not the layer's.
   const cardRow: Partial<Layer> = {
     ...(card.names && { names: card.names }),
@@ -425,7 +459,18 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
   const pairs: [string, string][] = []
   const name = (from: From, k: string, v: string) => {
     if (nameOk(v)) pairs.push([k, v])
-    else dropped.push({ from, kind: "name", id: k, why: "a name is one line with no {{" })
+    else {
+      const why = "a name is one line with no {{"
+      dropped.push({ from, kind: "name", id: k, why })
+      omitted.push({
+        category: "name",
+        id: k,
+        reason: "invalid",
+        detail: why,
+        preview: v,
+        source: sourceOf(from, `names.${k}`, { label: k, rawText: v }),
+      })
+    }
   }
   if (rows.persona?.yields) name("local", "user", rows.persona.name)
   for (const { from, row } of up) for (const [k, v] of Object.entries(row.names ?? {})) name(from, k, v)
@@ -434,13 +479,31 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
 
   // ───────── asks: down the chain to the first that goes out (names.ts); the code's own has no hole ─────────
   const asks = new Map<string, Item<{ text: string }>>()
+  const askSources: Record<string, SourceRef> = {}
   const worded: string[] = [] // every ask that could go out, what `holes` scans; the ones under a filled one never do
-  for (const { from, row } of [...down, { from: "harness", row: code }])
+  for (const { from, row, builtIn } of [
+    ...down.map((x) => ({ ...x, builtIn: false })),
+    { from: "harness" as From, row: code, builtIn: true },
+  ])
     for (const a of row.asks ?? []) {
       if (a.id.startsWith("product.") || asks.has(a.id)) continue
       worded.push(a.text)
+      const src = sourceOf(from, `asks.${a.id}`, { builtIn, label: a.id, rawText: a.text })
       const text = expand(a.text, names, from)
-      if (text !== undefined) asks.set(a.id, { text, from })
+      if (text !== undefined) {
+        asks.set(a.id, { text, from })
+        askSources[a.id] = src
+      } else {
+        omitted.push({
+          category: "ask",
+          id: a.id,
+          label: a.id,
+          reason: "unfilled_hole",
+          missingHoles: unfilled(a.text, names),
+          preview: a.text,
+          source: src,
+        })
+      }
     }
   const sentenceOf: Record<string, string> = Object.fromEntries(
     [...asks].flatMap(([id, a]) => (id.startsWith("switch.") ? [[id, a.text]] : [])),
@@ -449,15 +512,56 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
   // ───────── the frame: the player zone in first-written order, then what is left of the card's ─────────
   // A card's slot with no text is left for the player to fill (fragment.ts): it holds nothing.
   const theirs = new Set(card.frame.flatMap((f) => (f.text && f.enabled !== false ? [f.id] : [])))
-  const slots = new Map<string, Item<Fragment>>()
+  const slots = new Map<string, { item: Item<Fragment>; source: SourceRef }>()
   let value: Writing = {}
   const switched = (from: From, row: Partial<Layer>) => {
     if (!row.switches) return
     value = { ...value, ...row.switches }
     for (const c of compile(value, sentenceOf)) {
+      const src = sourceOf(from, `switches.${c.id}`, { label: c.id, fragmentId: c.id, rawText: c.text })
       const held = slots.get(c.id)
-      if (theirs.has(c.id) || (held && (!held.compiled || held.text === c.text))) continue // the same text keeps its author
-      slots.set(c.id, { ...c, from, compiled: true })
+      const setHere =
+        c.id === "pov"
+          ? "pov" in row.switches || "echo" in row.switches || "agency" in row.switches
+          : "verbosity" in row.switches
+      if (theirs.has(c.id)) {
+        if (setHere)
+          omitted.push({
+            category: "switch",
+            id: c.id,
+            label: c.id,
+            reason: "yielded",
+            preview: c.text,
+            source: src,
+            by: sourceOf("card", `frame.${c.id}`, { label: c.id, fragmentId: c.id }),
+          })
+        continue
+      }
+      if (held && (!held.item.compiled || held.item.text === c.text)) {
+        if (setHere && !held.item.compiled)
+          omitted.push({
+            category: "switch",
+            id: c.id,
+            label: c.id,
+            reason: "yielded",
+            preview: c.text,
+            source: src,
+            by: held.source,
+          })
+        continue
+      }
+      if (held && held.item.compiled) {
+        omitted.push({
+          category: "switch",
+          id: held.item.id,
+          ...(held.item.label && { label: held.item.label }),
+          reason: "overridden",
+          preview: held.item.text,
+          source: held.source,
+          by: src,
+        })
+      }
+      slots.set(c.id, { item: { ...c, from, compiled: true }, source: src })
     }
   }
   // A tail fragment is a per-turn directive, not a slot (GLOSSARY Head / Tail): its id meets the other rows' tail ids, never
@@ -466,36 +570,181 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
   const cards = (f: Fragment) => f.at !== "tail" && theirs.has(f.id)
   if (overlay) switched("harness", overlay)
   for (const f of overlay?.fragments ?? []) {
-    if (f.enabled === false || ((f.mode ?? "yield") === "yield" && cards(f))) continue
-    slots.set(keyOf(f), { ...f, from: "harness" })
+    const cat = f.at === "tail" ? "tail" : "frame"
+    const src = sourceOf("harness", `${cat}.${f.id}`, { label: f.label ?? f.id, fragmentId: f.id, rawText: f.text })
+    if (f.enabled === false) {
+      omitted.push({
+        category: cat,
+        id: f.id,
+        ...(f.label && { label: f.label }),
+        reason: "disabled",
+        preview: f.text,
+        source: src,
+      })
+      continue
+    }
+    if ((f.mode ?? "yield") === "yield" && cards(f)) {
+      omitted.push({
+        category: cat,
+        id: f.id,
+        ...(f.label && { label: f.label }),
+        reason: "yielded",
+        preview: f.text,
+        source: src,
+        by: sourceOf("card", `frame.${f.id}`, { fragmentId: f.id }),
+      })
+      continue
+    }
+    const held = slots.get(keyOf(f))
+    if (held)
+      omitted.push({
+        category: held.item.compiled ? "switch" : held.item.at === "tail" ? "tail" : "frame",
+        id: held.item.id,
+        ...(held.item.label && { label: held.item.label }),
+        reason: f.mode === "mute" ? "muted" : "overridden",
+        preview: held.item.text,
+        source: held.source,
+        by: src,
+      })
+    slots.set(keyOf(f), { item: { ...f, from: "harness" }, source: src })
   }
   for (const { from, row } of mine) {
     switched(from, row)
     for (const f of row.fragments ?? []) {
-      if (f.enabled === false) continue // switched off, it is not there: it blanks no slot under it
+      const cat = f.at === "tail" ? "tail" : "frame"
+      const src = sourceOf(from, `${cat}.${f.id}`, { label: f.label ?? f.id, fragmentId: f.id, rawText: f.text })
+      if (f.enabled === false) {
+        omitted.push({
+          category: cat,
+          id: f.id,
+          ...(f.label && { label: f.label }),
+          reason: "disabled",
+          preview: f.text,
+          source: src,
+        })
+        continue
+      }
       const held = slots.get(keyOf(f))
-      if (f.mode === "yield" && (cards(f) || (held && held.from !== from))) continue
-      slots.set(keyOf(f), { ...f, from })
+      if (f.mode === "yield" && (cards(f) || (held && held.item.from !== from))) {
+        omitted.push({
+          category: cat,
+          id: f.id,
+          ...(f.label && { label: f.label }),
+          reason: "yielded",
+          preview: f.text,
+          source: src,
+          by: cards(f) ? sourceOf("card", `frame.${f.id}`, { fragmentId: f.id }) : held!.source,
+        })
+        continue
+      }
+      if (held)
+        omitted.push({
+          category: held.item.persona
+            ? "persona"
+            : held.item.compiled
+              ? "switch"
+              : held.item.at === "tail"
+                ? "tail"
+                : "frame",
+          id: held.item.id,
+          ...(held.item.label && { label: held.item.label }),
+          reason: f.mode === "mute" ? "muted" : "overridden",
+          preview: held.item.text,
+          source: held.source,
+          by: src,
+        })
+      slots.set(keyOf(f), { item: { ...f, from }, source: src })
     }
   }
   // A worn persona supplies the head slot. An inherited persona yields to existing text;
   // a local mute also suppresses an explicitly selected persona, while its name remains available.
   const worn = rows.persona
   const heldPersona = slots.get("persona")
-  if (
-    worn?.text.trim() &&
-    !(heldPersona?.from === "local" && heldPersona.mode === "mute") &&
-    !(worn.yields && (theirs.has("persona") || heldPersona))
-  ) {
-    slots.set("persona", { id: "persona", text: worn.text, from: "local", persona: true })
+  if (worn?.text.trim()) {
+    const personaSrc = sourceOf("local", "frame.persona", {
+      label: worn.name,
+      fragmentId: "persona",
+      rawText: worn.text,
+      ...(personaId !== undefined && { personaId }),
+      personaName: worn.name,
+    })
+    if (heldPersona?.item.from === "local" && heldPersona.item.mode === "mute") {
+      omitted.push({
+        category: "persona",
+        id: "persona",
+        label: worn.name,
+        reason: "muted",
+        preview: worn.text,
+        source: personaSrc,
+        by: heldPersona.source,
+      })
+    } else if (worn.yields && (theirs.has("persona") || heldPersona)) {
+      omitted.push({
+        category: "persona",
+        id: "persona",
+        label: worn.name,
+        reason: "yielded",
+        preview: worn.text,
+        source: personaSrc,
+        by: theirs.has("persona")
+          ? sourceOf("card", "frame.persona", { fragmentId: "persona" })
+          : heldPersona!.source,
+      })
+    } else {
+      if (heldPersona)
+        omitted.push({
+          category: heldPersona.item.compiled ? "switch" : "frame",
+          id: heldPersona.item.id,
+          ...(heldPersona.item.label && { label: heldPersona.item.label }),
+          reason: "overridden",
+          preview: heldPersona.item.text,
+          source: heldPersona.source,
+          by: personaSrc,
+        })
+      slots.set("persona", {
+        item: { id: "persona", text: worn.text, from: "local", persona: true },
+        source: personaSrc,
+      })
+    }
   }
-  const zone: Item<Fragment>[] = [
-    ...slots.values(),
-    ...card.frame
-      .filter((f) => !slots.has(f.id) || !["override", "mute"].includes(slots.get(f.id)!.mode ?? "override"))
-      .map((f) => ({ ...f, from: "card" })),
-  ]
-  const filled = fill(zone, names)
+  const zoneTracked: { item: Item<Fragment>; source: SourceRef }[] = [...slots.values()]
+  for (const f of card.frame) {
+    const cardSrc = sourceOf("card", `frame.${f.id}`, { label: f.label ?? f.id, fragmentId: f.id, rawText: f.text })
+    const winner = slots.get(f.id)
+    if (!winner || !["override", "mute"].includes(winner.item.mode ?? "override")) {
+      zoneTracked.push({ item: { ...f, from: "card" }, source: cardSrc })
+    } else if (f.text) {
+      omitted.push({
+        category: "frame",
+        id: f.id,
+        ...(f.label && { label: f.label }),
+        reason: winner.item.mode === "mute" ? "muted" : "overridden",
+        preview: f.text,
+        source: cardSrc,
+        by: winner.source,
+      })
+    }
+  }
+  const zone = zoneTracked.map((z) => z.item)
+  const filledTracked = zoneTracked.flatMap((entry) => {
+    const x = entry.item
+    if (!x.text) return [entry]
+    const text = expand(x.text, names, x.from)
+    if (text === undefined) {
+      omitted.push({
+        category: x.at === "tail" ? "tail" : "frame",
+        id: x.id,
+        ...(x.label && { label: x.label }),
+        reason: "unfilled_hole",
+        missingHoles: unfilled(x.text, names),
+        preview: x.text,
+        source: entry.source,
+      })
+      return []
+    }
+    return [{ item: { ...x, text }, source: entry.source }]
+  })
+  const filled = filledTracked.map((x) => x.item)
   // who holds a head slot: a tail directive is not a slot; an empty or disabled entry, or a player's with an unfilled hole, holds nothing
   const holder = (id: string) =>
     filled.find((f) => f.id === id && f.at !== "tail" && f.mode !== "mute" && f.text && f.enabled !== false)?.from ??
@@ -521,8 +770,17 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
     const was = stock.get(id)
     if (was) stock.set(id, { ...was, ...patch, from: patch.text === undefined ? was.from : from })
     else if (toggleOnly(p)) return
-    else if (patch.text === undefined) dropped.push({ from, kind: "product", id, why: "a new product needs text" })
-    else
+    else if (patch.text === undefined) {
+      const why = "a new product needs text"
+      dropped.push({ from, kind: "product", id, why })
+      omitted.push({
+        category: "product",
+        id,
+        reason: "invalid",
+        detail: why,
+        source: sourceOf(from, `products.${id}`, { label: patch.label ?? id }),
+      })
+    } else
       stock.set(id, {
         id,
         ...patch,
@@ -558,6 +816,12 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
     const text = expand(p.text, names, p.from)
     return text === undefined ? { ...p, unasked: true as const } : { ...p, text }
   })
+  const productSources = Object.fromEntries(
+    asked.map((p) => [
+      p.id,
+      sourceOf(p.from, `products.${p.id}`, { label: p.label ?? p.id, rawText: p.text }),
+    ]),
+  )
 
   // ───────── entries, the quick inputs, the format keys, the lexicon ─────────
   // `/` joins row and entry: an entry id holding one would alias another row's entry, so it is refused (the server refuses
@@ -565,11 +829,30 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
   const written = up.flatMap(({ from, row }) =>
     (row.entries ?? []).flatMap((e) => {
       if (!e.id.includes("/")) return [{ ...e, id: `${from}/${e.id}`, from }]
-      dropped.push({ from, kind: "entry", id: e.id, why: "an entry id has no /" })
+      const why = "an entry id has no /"
+      dropped.push({ from, kind: "entry", id: e.id, why })
+      omitted.push({
+        category: "entry",
+        id: e.id,
+        reason: "invalid",
+        detail: why,
+        preview: e.text,
+        source: sourceOf(from, `entries.${e.id}`, { entryId: e.id, rawText: e.text }),
+      })
       return []
     }),
   )
   const entries = fill([...new Map(written.map((e) => [e.id, e])).values()], names)
+  const entrySources = Object.fromEntries(
+    entries.map((e) => [
+      e.id,
+      sourceOf(e.from, `entries.${e.id.slice(e.from.length + 1)}`, {
+        entryId: e.id,
+        resourceId: `pack:${e.id}`,
+        rawText: e.text,
+      }),
+    ]),
+  )
   /** Keyed, the highest rank first and its copy standing: what a menu shows. */
   const menu = <T>(pick: (r: Partial<Layer>) => readonly T[] | undefined, key: (x: T) => string) => {
     const m = new Map<string, Item<T>>()
@@ -605,31 +888,46 @@ export const resolve = (card: Card, rows: Rows): Resolved => {
     ...worded,
     ...allSnippets.flatMap((s) => [s.text, s.after ?? ""]),
   ]
+  const frameEntries = filledTracked.filter((x) => x.item.at !== "tail")
+  const tailEntries = filledTracked.filter((x) => x.item.at === "tail")
   return {
-    frame: filled.filter((f) => f.at !== "tail"),
-    tail: filled.filter((f) => f.at === "tail"),
-    asks: Object.fromEntries(asks),
-    products: asked,
-    entries,
-    lexicon: menu(
-      (r) => r.lexicon,
-      (e) => e.pattern,
-    ),
-    snippets: quick,
-    format: menu(
-      (r) => r.format,
-      (f) => f.label,
-    ),
-    names,
-    holes: unfilled(out.join("\n"), names),
-    switches: {
-      value,
-      sentences: sentenceOf,
-      taken: { pov: holder("pov"), verbosity: holder("verbosity") },
+    resolved: {
+      frame: frameEntries.map((x) => x.item),
+      tail: tailEntries.map((x) => x.item),
+      asks: Object.fromEntries(asks),
+      products: asked,
+      entries,
+      lexicon: menu(
+        (r) => r.lexicon,
+        (e) => e.pattern,
+      ),
+      snippets: quick,
+      format: menu(
+        (r) => r.format,
+        (f) => f.label,
+      ),
+      names,
+      holes: unfilled(out.join("\n"), names),
+      switches: {
+        value,
+        sentences: sentenceOf,
+        taken: { pov: holder("pov"), verbosity: holder("verbosity") },
+      },
+      dropped,
     },
-    dropped,
+    omitted,
+    sources: {
+      frame: frameEntries.map((x) => x.source),
+      tail: tailEntries.map((x) => x.source),
+      asks: askSources,
+      products: productSources,
+      entries: entrySources,
+    },
   }
 }
+
+/** The one place a layer is merged. Pure; called once per request; never throws for a player's row. */
+export const resolve = (card: Card, rows: Rows): Resolved => resolveWithTrace(card, rows).resolved
 
 /** A resolved layer as it leaves the server: a card's item goes without its text, a card's lexicon entry goes whole (the
  *  pattern is the text, and a ban is a prompt, to a player too). */

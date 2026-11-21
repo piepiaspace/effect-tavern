@@ -210,8 +210,8 @@ export const makeDerived = ({
 
   /** Only unlocked text becomes a resource. Memory identities come from committed entities,
    * never the turn where a field happened to change. */
-  const resourcesOn = (path: readonly Turn[]): Resource[] => {
-    const s = gated(path)
+  const resourcesOn = (path: readonly Turn[], at?: State): Resource[] => {
+    const s = gated(path, [], at)
     const I = L()
     const seen = deliveredOn(path)
     return resourcesAt({
@@ -282,7 +282,7 @@ export const makeDerived = ({
       },
       context: (fields: State = last().s) => gated(path, [], fields),
       gated: (extra?: readonly Disclosure[], s?: State) => gated(path, extra, s),
-      resources: () => resourcesOn(path),
+      resources: (fields?: State) => resourcesOn(path, fields),
       resident: () => resident(path, retained().absolute),
       currentResources: () => currentResources(path).map((r) => freeze(r)),
       playerCatalog: () => playerCatalog(path),

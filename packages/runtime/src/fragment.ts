@@ -2,6 +2,7 @@
 // Frame ids are slots; how a player's slot meets the card's same slot is the player's per-fragment setting.
 import { Schema } from "effect"
 import { Cond, holds, expandState, type State } from "./cond.ts"
+import type { SourceRef } from "./trace.ts"
 
 export const Fragment = Schema.Struct({
   id: Schema.String, // in the frame, the id is the slot
@@ -34,6 +35,9 @@ export interface Msg {
   text: string
   /** A past assistant turn as parts; whether they go back to the model (reasoning included) is the connection's call. */
   parts?: readonly Part[]
+  nodeId?: number
+  summaryRange?: { from: number; to: number }
+  source?: SourceRef
 }
 
 /** An insertion at the caret, never sent: `text` goes before the caret, `after` behind it, a selection lands between
@@ -91,13 +95,74 @@ export type Hat = typeof Hat.Type
 /** A head message with its fragment's id: in the frame the id is the slot, which request.ts tags (`persona`, `setting`). */
 export interface Slotted extends Msg {
   id?: string
+  label?: string
+  compiled?: boolean
+  persona?: boolean
+  hatStage?: "narrate" | "review"
+  hatSlot?: "head" | "tail"
+  hatIndex?: number
 }
+
+export type HeadInput = Fragment & {
+  source?: SourceRef
+  compiled?: boolean
+  persona?: boolean
+}
+
+export interface HeadOmitted {
+  fragment: HeadInput
+  reason: "muted" | "disabled" | "when_false" | "empty_slot" | "empty_text"
+  when?: Cond
+}
+
+/** Head messages and omitted entries: `enabled`/options and `when` evaluated in document order. */
+export const evaluateHead = (
+  layers: readonly HeadInput[],
+  { state = {}, options = {} }: { state?: State; options?: Record<string, boolean> } = {},
+): { kept: Slotted[]; omitted: HeadOmitted[] } => {
+  const kept: Slotted[] = []
+  const omitted: HeadOmitted[] = []
+  for (const f of layers) {
+    if (f.mode === "mute") {
+      omitted.push({ fragment: f, reason: "muted" })
+      continue
+    }
+    if (!(options[f.id] ?? f.enabled ?? true)) {
+      omitted.push({ fragment: f, reason: "disabled" })
+      continue
+    }
+    if (f.when && !holds(f.when, state)) {
+      omitted.push({ fragment: f, reason: "when_false", when: f.when })
+      continue
+    }
+    if (!f.text) {
+      omitted.push({ fragment: f, reason: f.text === undefined ? "empty_slot" : "empty_text" })
+      continue
+    }
+    const text = expandState(f.text, state)
+    const entry: Slotted = {
+      id: f.id,
+      role: f.role ?? "system",
+      text,
+      ...(f.label !== undefined && { label: f.label }),
+      ...(f.compiled !== undefined && { compiled: f.compiled }),
+      ...(f.persona !== undefined && { persona: f.persona }),
+      ...(f.source !== undefined && {
+        source: {
+          ...f.source,
+          ...(f.when !== undefined && { when: f.when, whenResult: true }),
+          ...(f.text !== undefined && !f.source.rawText && { rawText: f.text }),
+        },
+      }),
+    }
+    kept.push(entry)
+  }
+  return { kept, omitted }
+}
+
 /** Head messages: `enabled`/options and `when` evaluated, in zone then document order. Order is the author's; a
  * `when` flip costs one cache miss on a rare event, not a reordering of the document. */
 export const head = (
   layers: readonly Fragment[],
   { state = {}, options = {} }: { state?: State; options?: Record<string, boolean> } = {},
-): Slotted[] =>
-  layers
-    .filter((f) => f.mode !== "mute" && (options[f.id] ?? f.enabled ?? true) && (!f.when || holds(f.when, state)))
-    .flatMap((f) => (f.text ? [{ id: f.id, role: f.role ?? "system", text: expandState(f.text, state) }] : []))
+): Slotted[] => evaluateHead(layers, { state, options }).kept.map(({ id, role, text }) => ({ id, role, text }))

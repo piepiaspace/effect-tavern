@@ -93,12 +93,34 @@ export const narratorHistory = <B>(path: readonly Turn<B>[], sum?: Summary, star
     path = first < 0 ? [] : path.slice(first)
   }
   return [
-    ...(sum ? [{ role: "system", text: sum.text } as Msg] : []),
+    ...(sum
+      ? [
+          {
+            role: "system",
+            text: sum.text,
+            summaryRange: { from: sum.from, to: sum.to },
+            source: { kind: "story", label: "summary", summaryRange: { from: sum.from, to: sum.to } },
+          } as Msg,
+        ]
+      : []),
     ...path.flatMap((t): Msg[] => [
       ...(t.input.text || t.input.note || t.input.invoke?.length
-        ? [{ role: "user", text: t.input.text || "Continue the story." } as Msg]
+        ? [
+            {
+              role: "user",
+              text: t.input.text || "Continue the story.",
+              nodeId: t.id,
+              source: { kind: "story", label: "turn.input", nodeId: t.id },
+            } as Msg,
+          ]
         : []),
-      { role: "assistant", text: prose(t), parts: t.reply },
+      {
+        role: "assistant",
+        text: prose(t),
+        parts: t.reply,
+        nodeId: t.id,
+        source: { kind: "story", label: "turn.reply", nodeId: t.id },
+      },
     ]),
   ]
 }

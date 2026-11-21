@@ -80,11 +80,13 @@ import { head as headOf, type Hat } from "./fragment.ts"
 import { policyFor, type Policy } from "./history.ts"
 import { split, splitter, textOf as proseOf, type Brief, type Input, type Turn as TurnOf } from "./journal.ts"
 import * as Log from "./log.ts"
-import { resolve, shown, worldOf, type Resolved, type Rows } from "./layer.ts"
+import { resolve, resolveWithTrace, shown, worldOf, type Resolved, type ResolvedTrace, type Rows } from "./layer.ts"
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
+import { prepareNarrate } from "./preview.ts"
 import { request, worldBlock, type Ask, type Told } from "./request.ts"
+import type { MessageTrace, WireErrorInfo } from "./trace.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
 import { cap, shapeSchema, withCatalogs, askedAt, productAsks, type Product } from "./product.ts"
 import { recordTransaction, worldValue, type RecordResult, type WorldState } from "./world.ts"
@@ -134,6 +136,8 @@ export type Event =
       via?: "decision"
       model?: string
       fault?: Fault
+      trace?: readonly MessageTrace[]
+      wireError?: WireErrorInfo
     }
   | ({ kind: "change" } & Change) // the log moved: a node landed or was amended, nodes dropped, and where head is now
 /** A narrate block's text as it streams, beside the provider's `text-delta`: the block `<<aside>> <id>` opened. */
@@ -154,7 +158,14 @@ const nameOf = (m: unknown): string | undefined => {
   return typeof id === "string" && id ? id : undefined
 }
 /** The `call` a failed call reports before the stream fails: what it asked, nothing back, the fault. */
-const failedCall = (phase: Phase, msgs: readonly Message[], model: string | undefined, t0: number, e: unknown) =>
+const failedCall = (
+  phase: Phase,
+  msgs: readonly Message[],
+  model: string | undefined,
+  t0: number,
+  e: unknown,
+  meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
+) =>
   ({
     kind: "call",
     phase,
@@ -163,6 +174,8 @@ const failedCall = (phase: Phase, msgs: readonly Message[], model: string | unde
     usage: NO_USAGE,
     ms: Date.now() - t0,
     ...(model && { model }),
+    ...(meta?.trace && { trace: meta.trace }),
+    ...(meta?.wireError && { wireError: meta.wireError }),
     fault: readFault(e),
   }) satisfies Event
 
@@ -291,15 +304,20 @@ export const makeSession = ({
   const cardLore = card.lore.map((e) => ({ ...e, source: "card" as const, ...gateOf(e.id, e.offer) }))
   /** Resolve one request's rows and card lore. Pack resources bypass the story disclosure
    *  engine, so a same-named Pack can never unlock card lore. Historical text lives on turns. */
-  let now: { R: Resolved; I: Lore<Paths, readonly string[]> } | undefined
-  const current = () => {
+  let now: { RT: ResolvedTrace; R: Resolved; I: Lore<Paths, readonly string[]>; packNames: Record<string, string> } | undefined
+  const currentResolved = () => {
     if (now) return now
-    const R = resolve(card, rows())
+    const rawRows = rows()
+    const RT = resolveWithTrace(card, rawRows, { cardId: card.id })
+    const R = RT.resolved
     const I = makeLore<Paths, readonly string[]>(namedLore(cardLore, R.names))
-    return (now = { R, I })
+    const packNames = Object.fromEntries((rawRows.packs ?? []).map((p) => [p.id, p.name]))
+    return (now = { RT, R, I, packNames })
   }
-  const layer = () => current().R
-  const L = () => current().I
+  const layer = () => currentResolved().R
+  const layerTrace = () => currentResolved().RT
+  const packNames = () => currentResolved().packNames
+  const L = () => currentResolved().I
   const fresh = () => void (now = undefined)
   /** The card's own text with the names in force: a hole nothing fills stays as written (names.ts). */
   const named = (text: string) => expand(text, layer().names, "card")!
@@ -929,15 +947,24 @@ export const makeSession = ({
       let cut = false
       // The deltas go out split live: prose as `text-delta`, a block's text as `product-delta`, the delimiter line never.
       const model = nameOf(M.model)
-      const write = (msgs: Message[], live: ReturnType<typeof splitter>) =>
+      const write = (
+        msgs: Message[],
+        live: ReturnType<typeof splitter>,
+        meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
+      ) =>
         Effect.gen(function* () {
           yield* emit({ kind: "stage", phase: "narrate" })
           const t0 = Date.now()
-          return yield* writing(msgs, live, t0).pipe(
-            Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e))),
+          return yield* writing(msgs, live, t0, meta).pipe(
+            Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, meta))),
           )
         })
-      const writing = (msgs: Message[], live: ReturnType<typeof splitter>, t0: number) =>
+      const writing = (
+        msgs: Message[],
+        live: ReturnType<typeof splitter>,
+        t0: number,
+        meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
+      ) =>
         Effect.gen(function* () {
           const { parts, reply } = yield* streamed(M, msgs, opts)
           let text = ""
@@ -979,30 +1006,48 @@ export const makeSession = ({
             usage: r.usage,
             ms: Date.now() - t0,
             ...(model && { model }),
+            ...(meta?.trace && { trace: meta.trace }),
+            ...(meta?.wireError && { wireError: meta.wireError }),
           })
           return r
         })
       const narrate = (correction?: string) =>
         Effect.gen(function* () {
-          const msgs = ask(here.context(s1), input, {
-            stage: "narrate",
-            fiction: fictionAt(here.context(s1)),
+          const worn = M.hat === undefined ? undefined : hat?.(M.hat)
+          const prep = prepareNarrate({
+            card,
+            resolvedTrace: layerTrace(),
+            hat: worn,
+            wire: {
+              format: M.format,
+              prefill: M.prefill,
+              reasoningBack: M.reasoningBack,
+              ttl: M.ttl,
+            },
+            state: here.context(s1),
             history: transition?.boundary ? [] : transcript.history(),
             summarized: sum !== undefined,
             told: latest([...resident, ...deliveries]),
-            outcome: events,
             known: transition?.boundary ? fed.known : undefined,
+            outcome: events,
             current: fed.current,
-            must: told(open.filter((d) => brief.must.includes(d.id))),
-            may: told(open.filter((d) => brief.may.includes(d.id))),
+            must: open.filter((d) => brief.must.includes(d.id)),
+            may: open.filter((d) => brief.may.includes(d.id)),
             tone: brief.tone,
+            input,
             correction,
-            blocks: { question: wording("narrate.blocks"), asks: penned.map((p) => `${p.id}: ${p.text}`) },
+            blocks: {
+              question: wording("narrate.blocks"),
+              asks: penned.map((p) => `${p.id}: ${p.text}`),
+              sources: penned.map((p) => layerTrace().sources.products[p.id]),
+            },
+            events: gateEvents,
+            packNames: packNames(),
           })
           const live = splitter() // one draft, one cut, across a resumed write
-          const r = yield* write(msgs, live)
+          const r = yield* write(prep.messages, live, { trace: prep.traces, wireError: prep.wireError })
           if (r.finishReason !== "length" || !M.prefill) return split(r.parts)
-          const r2 = yield* write([...msgs, { role: "assistant", content: r.text }], live) // resume with the partial as prefix
+          const r2 = yield* write([...prep.messages, { role: "assistant", content: r.text }], live) // resume with the partial as prefix
           return split([...r.parts, ...r2.parts])
         })
       // an edit keeps the player's prose and writes no block
