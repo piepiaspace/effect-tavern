@@ -92,14 +92,27 @@ import { recordTransaction, worldValue, type RecordResult, type WorldState } fro
 export type Turn = TurnOf<Beat>
 export const phases = ["lookup", "decide", "direct", "narrate", "check", "polish", "record"] as const
 export type Phase = (typeof phases)[number]
+export const hatPhases = ["narrate", "check", "polish", "record"] as const
+export type HatPhase = (typeof hatPhases)[number]
 export const Pair = Schema.Struct({ provider: Schema.String, model: Schema.String })
 export const Routing = Schema.Struct({
   default: Schema.optionalKey(Pair),
+  hat: Schema.optionalKey(Schema.String),
   stages: Schema.optionalKey(
     Schema.Struct(Object.fromEntries([...phases, "author"].map((p) => [p, Schema.optionalKey(Pair)]))),
   ),
+  stageHats: Schema.optionalKey(
+    Schema.Struct(
+      Object.fromEntries(hatPhases.map((p) => [p, Schema.optionalKey(Schema.Union([Schema.String, Schema.Null]))])),
+    ),
+  ),
 })
-export type Routing = { default?: typeof Pair.Type; stages?: Partial<Record<Phase | "author", typeof Pair.Type>> }
+export type Routing = {
+  default?: typeof Pair.Type
+  hat?: string
+  stages?: Partial<Record<Phase | "author", typeof Pair.Type>>
+  stageHats?: Partial<Record<HatPhase, string | null>>
+}
 export type Pair = typeof Pair.Type
 
 export type { Node } from "./derived.ts" // internal complete projection; clients use projection.ts

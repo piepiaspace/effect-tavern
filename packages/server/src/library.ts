@@ -139,17 +139,25 @@ export const library = ({
   const secretOf = (p: Provider) => data.secrets.list().find((s) => s.id === p.secret)
   const decision = (): DecisionConfig | undefined => data.decision.read() as DecisionConfig | undefined
   const decisionKey = (c: DecisionConfig) => data.secrets.list().find((s) => s.id === c.secret)
-  /** A pair as the session runs it: the flattened connection, bound. */
-  const resolve = (pair: Pair, onExchange?: CompileOptions["onExchange"]): Model => {
+  /** The hat id a routed phase wears: narrate + review stages (check, polish, record) only; an explicit null opts out
+   *  of the main hat, undefined inherits it, and non-hat stages stay bare. */
+  const hatFor = (r: Routing, phase: Phase | "author"): string | undefined => {
+    if (phase !== "narrate" && phase !== "check" && phase !== "polish" && phase !== "record") return undefined
+    const stageHat = r.stages ? r.stageHats?.[phase] : undefined
+    return stageHat === null ? undefined : (stageHat ?? r.hat)
+  }
+  /** A pair as the session runs it: the flattened connection, bound, wearing the routing's hat (never the provider's). */
+  const resolve = (pair: Pair, hatId: string | undefined, onExchange?: CompileOptions["onExchange"]): Model => {
     const p = providerOf(pair.provider)
     const m = p.models.find((x) => x.id === pair.model)
     if (!m) throw new ConnectionError("provider-no-model", `provider "${p.name}": no model ${pair.model}`)
-    return bind(connection(p, m, secretOf(p)), { onExchange })
+    const { hat: _, ...conn } = connection(p, m, secretOf(p))
+    return bind(hatId !== undefined ? { ...conn, hat: hatId } : conn, { onExchange })
   }
   const model = (phase: Phase | "author", onExchange?: CompileOptions["onExchange"]): Model => {
     const r = pinned ? {} : routing()
     const pair = r.stages?.[phase] ?? r.default
-    if (pair) return resolve(pair, onExchange)
+    if (pair) return resolve(pair, hatFor(r, phase), onExchange)
     if (!env) throw new NoModel()
     return env(phase === "author" ? "record" : phase, onExchange)
   }
@@ -174,7 +182,22 @@ export const library = ({
     if (!lost) return
     data.routing.write({
       ...(r.default && keep(r.default) && { default: r.default }),
+      ...(r.hat !== undefined && { hat: r.hat }),
       ...(r.stages && { stages: Object.fromEntries(stages) }),
+      ...(r.stageHats && { stageHats: r.stageHats }),
+    })
+  }
+  /** Clear a deleted hat id from the routing row; written only when it was referenced. */
+  const pruneHat = (id: string) => {
+    const r = routing()
+    const stageHats = Object.entries(r.stageHats ?? {}).filter(([, v]) => v !== id)
+    const lost = r.hat === id || stageHats.length !== Object.keys(r.stageHats ?? {}).length
+    if (!lost) return
+    data.routing.write({
+      ...(r.default && { default: r.default }),
+      ...(r.hat !== undefined && r.hat !== id && { hat: r.hat }),
+      ...(r.stages && { stages: r.stages }),
+      ...(stageHats.length > 0 && { stageHats: Object.fromEntries(stageHats) }),
     })
   }
   /** A provider probed whether or not it is enabled (the player tests before switching it on), on a model entry of its
@@ -468,7 +491,14 @@ export const library = ({
         follows: personaFor(c, undefined).id,
       }
     },
-    hats: data.hats,
+    hats: {
+      list: data.hats.list,
+      put: data.hats.put,
+      del: (id: string) => {
+        data.hats.del(id)
+        pruneHat(id)
+      },
+    },
     packs: {
       /** `[harness, ...packs]`, one row template: the harness row whole, the code's defaults under its overlay. */
       list: (): Layer[] => {

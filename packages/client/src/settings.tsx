@@ -27,7 +27,7 @@ import {
   Trash,
   User,
 } from "./icons.tsx"
-import { pairKey, pairOf, stalePair } from "./connections.ts"
+import { capOf, pairKey, pairOf, stalePair } from "./connections.ts"
 import { Cards } from "./cards.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
@@ -151,6 +151,9 @@ export const Settings = () => {
 
 // ───────── 默认模型 ─────────
 type Stage = keyof NonNullable<RoutingConfig["stages"]>
+type HatStage = keyof NonNullable<RoutingConfig["stageHats"]>
+const HAT_NONE = "__none__"
+const isHatStage = (s: Stage): s is HatStage => s === "narrate" || s === "check" || s === "polish" || s === "record"
 const STAGES: [Stage, Key][] = [
   ["narrate", "settings.stageNarrate"],
   ["record", "settings.stageRecord"],
@@ -189,6 +192,7 @@ const PreCheck = (props: { onDecision: () => void }) => {
 const Routing = (props: { onDecision: () => void }) => {
   const list = read(providers)
   const route = read(routing)
+  const hatList = read(hats)
   const pairs = createMemo(() =>
     list()
       .filter((p) => p.enabled)
@@ -200,6 +204,7 @@ const Routing = (props: { onDecision: () => void }) => {
         })),
       ),
   )
+  const hatOptions = createMemo(() => hatList().map((h) => ({ value: h.id, label: h.name })))
   /** A pair the menus cannot offer (its provider off, or it or its model gone) still shows what the row holds, marked;
    *  the next turn on it fails naming the provider, so the trigger must not look unset. */
   const stale = (pair: Pair | undefined) => {
@@ -213,13 +218,42 @@ const Routing = (props: { onDecision: () => void }) => {
       }
     )
   }
+  const staleHat = (id: string | null | undefined) =>
+    id && !hatList().some((h) => h.id === id) ? { value: id, label: id, reason: "removed" as const } : undefined
   const setStage = (s: Stage, k: string) => {
     const { [s]: _, ...rest } = route().stages ?? {}
     void putRouting({ ...route(), stages: k ? { ...rest, [s]: pairOf(k) } : rest })
   }
+  const setMainHat = (id: string | undefined) => {
+    const { hat: _, ...rest } = route()
+    void putRouting(id ? { ...rest, hat: id } : rest)
+  }
+  const setStageHat = (s: HatStage, v: string) => {
+    const { [s]: _, ...rest } = route().stageHats ?? {}
+    const next = v === "" ? rest : { ...rest, [s]: v === HAT_NONE ? null : v }
+    const { stageHats: _sh, ...base } = route()
+    void putRouting(Object.keys(next).length ? { ...base, stageHats: next } : base)
+  }
   const flipStages = () => {
-    const { stages, ...rest } = route()
+    const { stages, stageHats: _, ...rest } = route()
     void putRouting(stages ? rest : { ...rest, stages: {} })
+  }
+  const stageHatValue = (s: HatStage): string => {
+    const v = route().stageHats?.[s]
+    return v === null ? HAT_NONE : (v ?? "")
+  }
+  const effectiveHat = (s: HatStage): string | undefined => {
+    const v = route().stageHats?.[s]
+    return v === null ? undefined : (v ?? route().hat)
+  }
+  /** True when narrate's effective hat ends in an assistant message on a model with prefill disabled. */
+  const prefillConflict = (pair: Pair | undefined, hatId: string | undefined) => {
+    if (!pair || !hatId) return false
+    const h = hatList().find((x) => x.id === hatId)
+    if (h?.narrate?.tail?.at(-1)?.role !== "assistant") return false
+    const p = list().find((x) => x.id === pair.provider)
+    const m = p?.models.find((x) => x.id === pair.model)
+    return !!p && !!m && !capOf(p, m, "prefill")
   }
   return (
     <section class="detail-card" aria-label={t("settings.routing")}>
@@ -231,19 +265,35 @@ const Routing = (props: { onDecision: () => void }) => {
       <div class="detail-scroll scroller">
         {/* the main model in the stage cards' own grid and grammar; 预检 covers lookup and check, so it is the page's,
             in its head, in both by-stage states */}
-        <div class="cards-grid">
+        <div class="cards-grid routing-grid">
           <div class="setting-card">
             <div class="stage-head">
               <span>{t("settings.mainModel")}</span>
             </div>
-            <Menu
-              label={t("settings.mainModel")}
-              placeholder={t("settings.unset")}
-              value={route().default && pairKey(route().default!)}
-              options={pairs()}
-              stale={stale(route().default)}
-              onPick={(k) => void putRouting({ ...route(), default: pairOf(k) })}
-            />
+            <div class="stage-model">
+              <Menu
+                label={t("settings.mainModel")}
+                placeholder={t("settings.unset")}
+                value={route().default && pairKey(route().default!)}
+                options={pairs()}
+                stale={stale(route().default)}
+                onPick={(k) => void putRouting({ ...route(), default: pairOf(k) })}
+              />
+            </div>
+            <div class="stage-hat" data-active={route().hat ? "" : undefined}>
+              <Template class="hat-icon" aria-hidden="true" />
+              <Menu
+                small
+                label={t("settings.mainHat")}
+                value={route().hat ?? ""}
+                options={[{ value: "", label: t("settings.noHat") }, ...hatOptions()]}
+                stale={staleHat(route().hat)}
+                onPick={(v) => setMainHat(v || undefined)}
+              />
+            </div>
+            <Show when={prefillConflict(route().default, route().hat)}>
+              <div class="warn">{t("settings.hatNeedsPrefill")}</div>
+            </Show>
           </div>
         </div>
         <div class="block">
@@ -254,23 +304,57 @@ const Routing = (props: { onDecision: () => void }) => {
             </div>
           </div>
           <Show when={route().stages}>
-            <div class="cards-grid">
+            <div class="cards-grid routing-grid">
               <For each={STAGES} keyed={(s) => s[0]}>
-                {(s) => (
-                  <div class="setting-card">
-                    <div class="stage-head">
-                      <span>{t(s()[1])}</span>
+                {(s) => {
+                  const stage = () => s()[0]
+                  const label = () => t(s()[1])
+                  return (
+                    <div class="setting-card">
+                      <div class="stage-head">
+                        <span>{label()}</span>
+                      </div>
+                      <div class="stage-model">
+                        <Menu
+                          label={label()}
+                          value={route().stages?.[stage()] ? pairKey(route().stages![stage()]!) : ""}
+                          placeholder={t("settings.followMain")}
+                          options={[{ value: "", label: t("settings.followMain") }, ...pairs()]}
+                          stale={stale(route().stages?.[stage()])}
+                          onPick={(k) => setStage(stage(), k)}
+                        />
+                      </div>
+                      <Show when={isHatStage(stage())}>
+                        <div
+                          class="stage-hat"
+                          data-active={route().stageHats?.[stage() as HatStage] !== undefined ? "" : undefined}
+                        >
+                          <Template class="hat-icon" aria-hidden="true" />
+                          <Menu
+                            small
+                            label={t("settings.stageHat", { stage: label() })}
+                            value={stageHatValue(stage() as HatStage)}
+                            options={[
+                              { value: "", label: t("settings.followMainHat") },
+                              { value: HAT_NONE, label: t("settings.noHat") },
+                              ...hatOptions(),
+                            ]}
+                            stale={staleHat(route().stageHats?.[stage() as HatStage])}
+                            onPick={(v) => setStageHat(stage() as HatStage, v)}
+                          />
+                        </div>
+                      </Show>
+                      <Show
+                        when={
+                          stage() === "narrate" &&
+                          prefillConflict(route().stages?.narrate ?? route().default, effectiveHat("narrate"))
+                        }
+                      >
+                        <div class="warn">{t("settings.hatNeedsPrefill")}</div>
+                      </Show>
                     </div>
-                    <Menu
-                      label={t(s()[1])}
-                      value={route().stages?.[s()[0]] ? pairKey(route().stages![s()[0]]!) : ""}
-                      placeholder={t("settings.followMain")}
-                      options={[{ value: "", label: t("settings.followMain") }, ...pairs()]}
-                      stale={stale(route().stages?.[s()[0]])}
-                      onPick={(k) => setStage(s()[0], k)}
-                    />
-                  </div>
-                )}
+                  )
+                }}
               </For>
             </div>
           </Show>

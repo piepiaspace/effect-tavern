@@ -316,8 +316,10 @@ export const putRouting = async (r: Routing): Promise<void> =>
 export const fetchHats = async (): Promise<void> => registry.set(hats, await got(call(`${base}/hats`)))
 export const putHat = async ({ id, ...body }: Hat): Promise<void> =>
   registry.set(hats, await got(call(`${base}/hats/${enc(id)}`, json("PUT", body))))
-export const deleteHat = async (id: string): Promise<void> =>
+export const deleteHat = async (id: string): Promise<void> => {
   registry.set(hats, await got(call(`${base}/hats/${enc(id)}`, { method: "DELETE" })))
+  await fetchRouting() // any routing slot naming it is cleared with it
+}
 export const fetchPacks = async (): Promise<void> => registry.set(packs, await got(call(`${base}/packs`)))
 let packWrite: Promise<void> = Promise.resolve()
 /** Apply each edit to the last acknowledged row for `id` (the `packs` atom; a row it lacks starts bare), serially, as

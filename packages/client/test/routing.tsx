@@ -5,7 +5,7 @@ import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { openSettings, Settings } from "../src/settings.tsx"
-import { providers, registry, routing, type Routing } from "../src/store.ts"
+import { hats, providers, registry, routing, type Routing } from "../src/store.ts"
 import { quiet, tracked, until } from "./settle.ts"
 import "../src/app.css"
 
@@ -19,9 +19,16 @@ const provider: Provider = {
   enabled: true,
   defaultFormat: "openai-compatible",
   endpoints: { "openai-compatible": { url: "https://relay.example/v1" } },
-  models: [{ id: "m-main" }, { id: "m-author" }],
+  models: [
+    { id: "m-main", capabilities: { prefill: false } },
+    { id: "m-author", capabilities: { prefill: true } },
+  ],
 }
 registry.set(providers, [provider])
+registry.set(hats, [
+  { id: "hat-claude", name: "Claude 续写", narrate: { tail: [{ role: "assistant", text: "好的，" }] } },
+  { id: "hat-gemini", name: "Gemini 引导", narrate: { head: [{ role: "system", text: "继续" }] } },
+])
 registry.set(routing, { default: { provider: "p", model: "m-main" } })
 openSettings("routing")
 
@@ -51,21 +58,31 @@ const pick = async (label: string, optionText: string) => {
   check(t, `missing select trigger for ${label}`)
   if (!t) return
   t.click()
-  const found = await until(() =>
-    [...document.querySelectorAll<HTMLElement>(".popup-list .item")].find(
-      (el) => el.textContent?.trim() === optionText,
-    ),
-  )
+  const items = () => {
+    const id = t.getAttribute("aria-controls")
+    const root = (id && document.getElementById(id)) || document.querySelector(".popup-list[data-open]")
+    return [...(root?.querySelectorAll<HTMLElement>(".item") ?? [])]
+  }
+  const found = await until(() => items().find((el) => el.textContent?.trim() === optionText))
   check(found, `option "${optionText}" did not appear for ${label}`)
-  const item = [...document.querySelectorAll<HTMLElement>(".popup-list .item")].find(
-    (el) => el.textContent?.trim() === optionText,
-  )
-  item?.click()
+  items()
+    .find((el) => el.textContent?.trim() === optionText)
+    ?.click()
   await quiet()
 }
 
 const run = async () => {
   await quiet()
+
+  // Main model prompt template + prefill conflict warning
+  check(triggerOf("默认提示词模板")?.querySelector(".label")?.textContent === "无模板", "main hat starts empty")
+  await pick("默认提示词模板", "Claude 续写")
+  check(writes.at(-1)?.hat === "hat-claude", `expected main hat written, got ${JSON.stringify(writes.at(-1))}`)
+  check(
+    document.querySelectorAll(".setting-card > .warn").length === 1,
+    "prefill conflict warning shown on main card when model has prefill=false and hat ends in assistant",
+  )
+
   const toggle = document.querySelector<HTMLButtonElement>('button.switch[aria-label="按阶段指定模型"]')
   check(toggle, "missing 按阶段指定模型 switch")
   toggle?.click()
@@ -75,6 +92,33 @@ const run = async () => {
   check(heads.length === 8, `expected 8 stages, got ${heads.length}: ${heads.join(", ")}`)
   check(heads.includes("制卡"), `expected 制卡 stage in [${heads.join(", ")}]`)
   check(triggerOf("制卡")?.querySelector(".label")?.textContent === "跟随主模型", "author starts following main")
+
+  // Only the 4 hat-bearing stages have a template selector
+  for (const s of ["叙事", "结算", "校验", "润色"]) check(triggerOf(`${s}提示词模板`), `expected template menu on ${s}`)
+  for (const s of ["判定", "导演", "检索", "制卡"])
+    check(!triggerOf(`${s}提示词模板`), `did not expect template menu on ${s}`)
+
+  // Per-stage hat override, explicit opt-out (null), and return to follow-main
+  await pick("叙事提示词模板", "Gemini 引导")
+  check(
+    writes.at(-1)?.stageHats?.narrate === "hat-gemini",
+    `expected stageHats.narrate written, got ${JSON.stringify(writes.at(-1))}`,
+  )
+  await pick("结算提示词模板", "无模板")
+  check(
+    writes.at(-1)?.stageHats?.record === null,
+    `expected stageHats.record null, got ${JSON.stringify(writes.at(-1))}`,
+  )
+  await pick("结算提示词模板", "跟随主模板")
+  check(
+    writes.at(-1)?.stageHats?.record === undefined,
+    `expected stageHats.record cleared, got ${JSON.stringify(writes.at(-1))}`,
+  )
+
+  // Clearing main hat clears the main card's prefill warning
+  await pick("默认提示词模板", "无模板")
+  check(writes.at(-1)?.hat === undefined, `expected main hat cleared, got ${JSON.stringify(writes.at(-1))}`)
+  check(document.querySelectorAll(".setting-card > .warn").length === 0, "prefill warning cleared with main hat")
 
   await pick("制卡", "Relay · m-author")
   const afterPick = writes.at(-1)

@@ -466,6 +466,33 @@ const over = (data: Data, m: () => Model = model) =>
   lib.providers.del("relay")
   assert.deepEqual(lib.routing.read(), {})
   assert.equal(on(lib.model("narrate")), "env") // the stage follows the environment's model again
+
+  // Routing hats: default hat applies to narrate + review stages only; stageHats overrides or opts out with null;
+  // deleting a hat prunes routing; deleting a provider preserves routing hats; provider ModelEntry.hat is ignored.
+  lib.providers.put({ ...relay, enabled: true, models: [{ id: "m", hat: "legacy" }, { id: "n" }] })
+  lib.hats.put({ id: "h-main", name: "Main" })
+  lib.hats.put({ id: "h-narrate", name: "Narrate" })
+  lib.routing.write({
+    default: pair("m"),
+    hat: "h-main",
+    stages: { narrate: pair("n") },
+    stageHats: { narrate: "h-narrate", record: null },
+  })
+  assert.deepEqual(
+    (["narrate", "check", "polish", "record", "lookup", "decide", "direct", "author"] as const).map(
+      (p) => lib.model(p).hat,
+    ),
+    ["h-narrate", "h-main", "h-main", undefined, undefined, undefined, undefined, undefined],
+  )
+  lib.hats.del("h-narrate")
+  assert.deepEqual(lib.routing.read(), {
+    default: pair("m"),
+    hat: "h-main",
+    stages: { narrate: pair("n") },
+    stageHats: { record: null },
+  })
+  lib.providers.del("relay")
+  assert.deepEqual(lib.routing.read(), { hat: "h-main", stages: {}, stageHats: { record: null } })
 }
 
 // Listings and probes against a stub upstream that speaks openai-compatible: the key rides to the upstream; endpoints
