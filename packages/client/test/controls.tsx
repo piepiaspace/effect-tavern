@@ -10,8 +10,10 @@ import { composition } from "../src/store.ts"
 import { ask, Confirm, Drawer, dialogHandle, Menu, Modal, Prompt, Stepper, Switch } from "../src/controls.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
+import { mountBack } from "../src/back.ts"
+import { onKey, open as openPage } from "../src/pages.ts"
 import { Demand, Sheet } from "../src/readings.tsx"
-import { card, registry, type CardView } from "../src/store.ts"
+import { card, page, registry, type CardView } from "../src/store.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { timelineNode } from "./fixtures.ts"
 import { quiet, tracked, until } from "./settle.ts"
@@ -177,6 +179,10 @@ render(
       <Modal controller={modal} title="模型设置" onClose={() => left++}>
         <div class="modal-body">正文</div>
       </Modal>
+      <div id="native-pop" popover>
+        <button type="button">版本一</button>
+      </div>
+      <div id="facet-pop" class="facet-pop" popover="manual" />
     </div>
   ),
   document.getElementById("root")!,
@@ -445,6 +451,43 @@ const run = async () => {
   escape()
   await quiet()
   check(!document.querySelector(".side-drawer") && document.activeElement === trigger, "drawer restores its opener")
+
+  // system back (back.ts): reload unwinds stale entries; `.facet-pop` takes no entry; native `popover="auto"` closes
+  // on back; a focused field on a page over home blurs and closes the page in one back
+  addEventListener("keydown", onKey)
+  history.pushState({ back: 1 }, "")
+  history.pushState({ back: 2 }, "")
+  const unmountBack = mountBack()
+  check(
+    await until(() => (history.state as { back?: number } | null)?.back === undefined),
+    "mountBack unwinds stale reload history entries",
+  )
+  const facetPop = document.getElementById("facet-pop")!
+  facetPop.showPopover()
+  await quiet()
+  check(history.state === null, "`.facet-pop` takes no history entry")
+  facetPop.hidePopover()
+  const nativePop = document.getElementById("native-pop")!
+  nativePop.showPopover()
+  check(
+    await until(() => (history.state as { back?: number } | null)?.back === 1),
+    "native popover pushes a back entry",
+  )
+  history.back()
+  check(await until(() => !nativePop.matches(":popover-open")), "system back closes a native `popover=auto`")
+  openPage("settings")
+  check(
+    await until(() => (history.state as { back?: number } | null)?.back === 1),
+    "a page over home pushes a back entry",
+  )
+  line.focus()
+  history.back()
+  check(
+    await until(() => registry.get(page) === "home" && document.activeElement !== line),
+    `system back with a focused field blurs it and closes the page (${JSON.stringify(registry.get(page))})`,
+  )
+  unmountBack()
+  removeEventListener("keydown", onKey)
 
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)
