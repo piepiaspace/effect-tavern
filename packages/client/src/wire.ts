@@ -300,19 +300,19 @@ export const saveFile = async (file: Blob, name: string): Promise<void> => {
   Object.assign(document.createElement("a"), { href: url, download: name }).click()
   URL.revokeObjectURL(url)
 }
-/** A download link's click (`cardFile`, `exportUrl`): the browser's own download, or in the app the file fetched and
- *  handed to its host under the name the server's content-disposition gives it. */
-export const onDownload = (e: MouseEvent & { currentTarget: HTMLAnchorElement }) => {
+/** A download link's click (`cardFile`, `exportUrl`): the browser's own download (returns `undefined`), or in the app
+ *  the file fetched, checked (`!r.ok` throws `responseError` before touching the save dialog) and handed to its host
+ *  under the name the server's content-disposition gives it. */
+export const onDownload = (e: MouseEvent & { currentTarget: HTMLAnchorElement }): Promise<void> | undefined => {
   const h = host()
-  if (!h) return
+  if (!h) return undefined
   e.preventDefault()
   const href = e.currentTarget.href
-  void fetch(href)
-    .then(async (r) => {
-      const named = r.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
-      await h.save(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
-    })
-    .catch((err: unknown) => console.error(err))
+  return fetch(href).then(async (r) => {
+    if (!r.ok) throw await responseError(r)
+    const named = r.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+    await h.save(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
+  })
 }
 export const fetchDepots = async (): Promise<void> => registry.set(depots, await got(call(`${base}/depots`)))
 /** Adds a library by its address and answers the list as it now stands. */

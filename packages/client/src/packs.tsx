@@ -141,7 +141,9 @@ export const Packs = (props: Pane) => {
     }
   }
   const exportPack = (p: Layer) => {
-    void saveFile(new Blob([serializePack(p)], { type: "application/json" }), `${p.name}.pack.json`)
+    void saveFile(new Blob([serializePack(p)], { type: "application/json" }), `${p.name}.pack.json`).catch(
+      (e: unknown) => setImportError(e instanceof Error ? e.message : String(e)),
+    )
   }
 
   return (
@@ -775,7 +777,9 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
     })
   }
   const exportFile = () => {
-    void saveFile(new Blob([serializeLexicon(lex())], { type: "application/json" }), FILE)
+    void saveFile(new Blob([serializeLexicon(lex())], { type: "application/json" }), FILE).catch((e: unknown) =>
+      setNotice(e instanceof Error ? e.message : String(e)),
+    )
   }
   return (
     <section class="wpanel" role="tabpanel" aria-label={t("packs.lexicon")}>

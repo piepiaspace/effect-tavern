@@ -255,7 +255,7 @@ export const Cards = (props: Pane) => {
                           class="icon sm"
                           href={cardFile(c().id)}
                           download
-                          onClick={onDownload}
+                          onClick={(e) => void onDownload(e)?.then(done, fail)}
                           aria-label={t("cards.exportCard")}
                         >
                           <Export />

@@ -67,6 +67,16 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
     shelf = shelf.filter((c) => c.id !== id)
     return Response.json(shelf)
   }
+  if (method === "GET" && path.endsWith("/export.yaml")) {
+    const id = decodeURIComponent(path.slice(7, -12))
+    if (!shelf.some((c) => c.id === id)) return refuse(404, "no-card", `no card ${id}`)
+    return new Response(`id: ${id}\n`, {
+      headers: {
+        "content-type": "application/yaml; charset=utf-8",
+        "content-disposition": `attachment; filename="${id}.yaml"; filename*=UTF-8''${encodeURIComponent(`${id}.yaml`)}`,
+      },
+    })
+  }
   if (method === "POST" && path === "/depots") {
     const { location } = JSON.parse(body) as { location: string }
     if (location.endsWith(".yaml")) return refuse(400, "depot-is-card", `${location} is a card, not a card library`)
@@ -339,6 +349,32 @@ const run = async () => {
     rows().some((r) => r.startsWith("一")),
     `its card stays on the shelf: ${rows().join("|")}`,
   )
+
+  // in the standalone app (`tavernHost`), a failed export surfaces in place without opening the save dialog, and a
+  // live card hands its bytes and filename to the host
+  const saved: { name: string; text: string }[] = []
+  ;(globalThis as { tavernHost?: unknown }).tavernHost = {
+    save: async (file: Blob, name: string) => {
+      saved.push({ name, text: await file.text() })
+    },
+  }
+  const missing = shelf.find((c) => c.id === "alpha")!
+  shelf = shelf.filter((c) => c.id !== "alpha")
+  await press("导出卡片", row("甲二"))
+  check(
+    saved.length === 0 && text(".refusal span")[0] === "nocardalpha",
+    `a 404 export never reaches save and shows its error: ${text(".refusal").join(" | ")}`,
+  )
+  shelf = [missing, ...shelf]
+  await press("导出卡片", row("甲二"))
+  check(
+    saved.length === 1 &&
+      saved[0].name === "alpha.yaml" &&
+      saved[0].text === "id: alpha\n" &&
+      !document.querySelector(".refusal"),
+    `a valid export hands bytes and filename to the host: ${JSON.stringify(saved)}`,
+  )
+  delete (globalThis as { tavernHost?: unknown }).tavernHost
 
   // every control has a name
   for (const b of document.querySelectorAll<HTMLElement>(".settings button, .settings a, .settings input"))

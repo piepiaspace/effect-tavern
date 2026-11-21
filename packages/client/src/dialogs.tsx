@@ -36,6 +36,7 @@ const tagman = dialogHandle()
 const [renaming, setRenaming] = createSignal<StoryRow | null>(null)
 const [doomed, setDoomed] = createSignal<readonly StoryRow[]>([])
 const [exporting, setExporting] = createSignal<StoryRow | null>(null)
+const [exportError, setExportError] = createSignal<string | null>(null)
 /** This card's stories: every one with its star, the search, the cleanup and the exports. */
 export const openManager = (): void => void manager.open()
 /** The persona in force (the open story's, else the card's default), picked from the player's. */
@@ -47,7 +48,7 @@ export const openDelete = (rows: readonly StoryRow[]): void => {
   setDoomed(rows)
   void confirm.open()
 }
-export const openExport = (s: StoryRow): void => (setExporting(s), void exportDialog.open())
+export const openExport = (s: StoryRow): void => (setExportError(null), setExporting(s), void exportDialog.open())
 /** Every word the player files cards under: its count, a rename, a delete. */
 export const openTagManager = (): void => void tagman.open()
 
@@ -143,6 +144,15 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
     for (const c of Object.keys(cur))
       if (cur[c]?.includes(word)) void putLocal(c, (l) => withTags(l, () => next?.[c] ?? []))
   }
+  const saveExport = (e: MouseEvent & { currentTarget: HTMLAnchorElement }) => {
+    const saving = onDownload(e)
+    if (!saving) return exportDialog.close()
+    setExportError(null)
+    void saving.then(
+      () => exportDialog.close(),
+      (err: unknown) => setExportError(err instanceof Error ? err.message : String(err)),
+    )
+  }
   return (
     <>
       <Prompt controller={rename} title={t("side.renameStory")}>
@@ -198,6 +208,13 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
         controller={exportDialog}
         title={t("side.exportTitle", { title: exporting()?.title ?? t("stories.newStory") })}
       >
+        <Show when={exportError()}>
+          {(msg) => (
+            <p class="warn" role="alert">
+              {msg()}
+            </p>
+          )}
+        </Show>
         <div class="row">
           <button type="button" class="chip state" onClick={() => exportDialog.close()}>
             {t("common.cancel")}
@@ -207,10 +224,7 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
             href={exportUrl(exporting()?.id ?? 0, "json")}
             title={t("side.exportJsonHint")}
             download
-            onClick={(e) => {
-              onDownload(e)
-              exportDialog.close()
-            }}
+            onClick={saveExport}
           >
             {t("side.exportJson")}
           </a>
@@ -219,10 +233,7 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
             href={exportUrl(exporting()?.id ?? 0, "md")}
             title={t("side.exportMdHint")}
             download
-            onClick={(e) => {
-              onDownload(e)
-              exportDialog.close()
-            }}
+            onClick={saveExport}
           >
             {t("side.exportMd")}
           </a>
