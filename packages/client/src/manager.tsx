@@ -185,6 +185,7 @@ export const Manager = (props: {
                   onPointerUp={clearHold}
                   onPointerCancel={clearHold}
                   onPointerLeave={clearHold}
+                  onContextMenu={(e) => e.preventDefault()}
                   onClick={(e) => {
                     if (held) {
                       held = false

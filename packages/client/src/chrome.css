@@ -764,6 +764,8 @@ button.record-pill:hover {
   box-shadow: inset 0 0 0 var(--hairline) var(--line);
   cursor: pointer;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   transition:
     background var(--dur-2) var(--ease),
     box-shadow var(--dur-2) var(--ease);
@@ -866,6 +868,13 @@ button.record-pill:hover {
   opacity: 1;
   translate: 0 0;
   pointer-events: auto;
+}
+@media (hover: none) {
+  .manager:not([data-selecting]) .card .acts {
+    opacity: 1;
+    translate: 0 0;
+    pointer-events: auto;
+  }
 }
 .manager .card .acts .icon {
   width: 24px;
