@@ -812,6 +812,14 @@ const sse = (text: string) =>
     assert.equal(((await (await fetch(`${base}/api/cards/${chat.id}`)).json()) as { id: string }).id, chat.id)
     assert.ok(Array.isArray(((await (await fetch(`${base}/api/stories`)).json()) as { stories: unknown[] }).stories))
     assert.equal((await fetch(`${base}/api`)).status, 404) // the session's "/" takes POST only
+    // Custom-scheme URLs have `origin === "null"` under WHATWG URL: `app()` still strips `/api` cleanly.
+    const custom = app(handle(lib))
+    assert.equal(
+      ((await (await custom(new Request(`mygo://localhost/api/cards/${chat.id}`))).json()) as { id: string }).id,
+      chat.id,
+    )
+    assert.deepEqual(await (await custom(new Request("mygo://localhost/api/stories/search?q=nowhere"))).json(), [])
+    assert.equal((await custom(new Request("mygo://localhost/api"))).status, 404)
   } finally {
     await server.stop(true)
     await rm(dist, { recursive: true })

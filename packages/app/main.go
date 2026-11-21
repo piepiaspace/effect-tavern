@@ -44,10 +44,8 @@ func main() {
 		}
 	})
 	mygo.Use(fetch.Plugin)
-	// checks the app-v* releases in the background; installs only what the key in mygo.json signed
+	// checks the v* releases in the background; installs only what the key in mygo.json signed
 	mygo.Use(updater.Plugin)
-	openDB()
-	mygo.App.OnQuit(closeDB)
 	mygo.App.WhenReady(func() {
 		var win *mygo.Window
 		var openWindow func() *mygo.Window
@@ -86,8 +84,14 @@ func main() {
 			})
 			return w
 		}
+		openDB()
+		mygo.App.OnQuit(closeDB)
 		win = openWindow()
 		mygo.App.OnSecondInstance(func([]string, string) {
+			if win.IsDestroyed() {
+				win = openWindow()
+				return
+			}
 			win.Show()
 			win.Restore()
 			win.Focus()

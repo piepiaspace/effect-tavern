@@ -1,6 +1,17 @@
 package main
 
-import "testing"
+import (
+	"path/filepath"
+	"testing"
+)
+
+func TestCloseDBLifecycle(t *testing.T) {
+	closeDB() // safe before openDB (e.g. MYGO_GENERATE exits before WhenReady)
+	t.Setenv("TAVERN_DB", filepath.Join(t.TempDir(), "tavern.db"))
+	openDB()
+	closeDB()
+	closeDB() // idempotent
+}
 
 func TestExternal(t *testing.T) {
 	for raw, want := range map[string]bool{

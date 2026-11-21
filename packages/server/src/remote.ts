@@ -38,13 +38,19 @@ export const readHttps = async (
     if (!res.ok) throw refuse(`${url.href}: HTTP ${res.status}`)
     if (Number(res.headers.get("content-length") ?? 0) > CARD_BYTES) throw refuse(`${url.href}: too large`)
     if (!res.body) return ""
+    const reader = res.body.getReader()
     const decoder = new TextDecoder()
     let size = 0
     let text = ""
-    for await (const chunk of res.body) {
-      size += chunk.byteLength
-      if (size > CARD_BYTES) throw refuse(`${url.href}: too large`)
-      text += decoder.decode(chunk, { stream: true })
+    for (;;) {
+      const { value, done } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > CARD_BYTES) {
+        await reader.cancel().catch(() => {})
+        throw refuse(`${url.href}: too large`)
+      }
+      text += decoder.decode(value, { stream: true })
     }
     return text + decoder.decode()
   } catch (e) {

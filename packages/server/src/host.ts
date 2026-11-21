@@ -7,7 +7,7 @@ import { mkdirSync } from "node:fs"
 import { libraryFile } from "./announce.ts"
 import type { Config } from "./cli/config.ts"
 import { open } from "./data.ts"
-import type { Logbook } from "./logbook.ts"
+import { openLogbook, type Logbook } from "./logbook.ts"
 import { tavern } from "./tavern.ts"
 
 export const openHost = async (
@@ -22,7 +22,7 @@ export const openHost = async (
 export const standalone = (
   data: ReturnType<typeof open>,
   { scripted, page }: { scripted?: boolean; page?: boolean },
-  logbook?: Logbook,
+  logbook = openLogbook({ level: "quiet" }),
 ) => {
   const model = scripted ? fake((call) => defaultAnswer(readStage(call), { notes: "", options: [] })) : undefined
   return tavern({
@@ -31,6 +31,6 @@ export const standalone = (
     page,
     overlay: plain.harness,
     ...(model && { model: () => model, pinned: true }),
-    ...(logbook && { logbook }),
+    logbook,
   })
 }

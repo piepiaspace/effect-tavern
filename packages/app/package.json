@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "web": "bun web/build.ts",
-    "verify": "bun test/page.ts"
+    "verify": "go test -count=1 ./... && bun test/page.ts"
   },
   "dependencies": {
     "@effect-tavern/provider": "workspace:*",

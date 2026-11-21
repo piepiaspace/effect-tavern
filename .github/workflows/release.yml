@@ -30,15 +30,20 @@ jobs:
       - id: targets
         run: echo "matrix=$(bun release/targets.ts matrix)" >> "$GITHUB_OUTPUT"
 
-  # install.sh against a local mirror with simulated machines, and the table against the installers; beside the build
+  # install.sh against a local mirror with simulated machines, the table against the installers, and the app's own checks
   test:
     runs-on: blacksmith-2vcpu-ubuntu-2604
     steps:
       - uses: useblacksmith/checkout@v1
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: packages/app/go.mod
+          cache-dependency-path: packages/app/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.4
-      - run: bun test/install.ts && bun test/release.ts
+      - run: bun install --frozen-lockfile
+      - run: bun test/install.ts && bun test/release.ts && (cd packages/app && bun run verify)
 
   build:
     needs: plan
@@ -130,7 +135,7 @@ jobs:
             sudo apt-get install -y --no-install-recommends --download-only nsis
             mkdir -p ~/nsis-debs && cp /var/cache/apt/archives/*.deb ~/nsis-debs/
           fi
-          sudo dpkg -i ~/nsis-debs/*.deb
+          sudo dpkg -i ~/nsis-debs/*.deb || (sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends nsis)
       - if: matrix.name == 'android'
         uses: actions/setup-java@v6
         with:
@@ -155,14 +160,25 @@ jobs:
         if: matrix.name == 'android'
         env:
           ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
-        run: echo "$ANDROID_KEYSTORE" | base64 --decode > upload.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            if [ -z "$ANDROID_KEYSTORE" ] || [ -z "$ANDROID_KEYSTORE_PASSWORD" ]; then
+              echo "ANDROID_KEYSTORE and ANDROID_KEYSTORE_PASSWORD are required for tag releases" >&2
+              exit 1
+            fi
+          fi
+          if [ -n "$ANDROID_KEYSTORE" ]; then
+            printf '%s' "$ANDROID_KEYSTORE" | base64 --decode > upload.jks
+          else
+            jq 'del(.android.keystore, .android.keyAlias)' mygo.json > mygo.json.new && mv mygo.json.new mygo.json
+          fi
       - name: Version and notes
         if: github.ref_type == 'tag'
         run: |
           version=${GITHUB_REF_NAME#v}
           jq --arg v "$version" '.version = $v' mygo.json > mygo.json.new && mv mygo.json.new mygo.json
           { echo "## $version"; echo; sh ../../release/notes.sh "$GITHUB_SHA"; } > CHANGELOG.md
-      # mygo compiles once for the TypeScript client before buildCommand fills dist/, which go:embed needs to exist.
       # Its install scripts and SHA256SUMS stay behind: install.sh and install.ps1 are the tavern command's names.
       - name: Build
         env:
@@ -170,7 +186,6 @@ jobs:
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
           MYGO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          mkdir -p dist && touch dist/.placeholder
           go tool mygo build -platform "${{ matrix.platform }}"
           mkdir -p "$RUNNER_TEMP/app"
           cd build
@@ -178,6 +193,9 @@ jobs:
           cp */*.delta "$RUNNER_TEMP/app/" 2>/dev/null || true
           ls -la "$RUNNER_TEMP/app"
           test -n "$(ls "$RUNNER_TEMP/app")"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "${{ matrix.name }}" != android ]; then
+            ls "$RUNNER_TEMP/app"/update-*.json >/dev/null
+          fi
       - uses: actions/upload-artifact@v7
         with:
           name: app-${{ matrix.name }}

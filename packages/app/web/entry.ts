@@ -4,11 +4,10 @@ import { served } from "./host.ts"
 import { open } from "@effect-tavern/server/src/data.ts"
 import { standalone } from "@effect-tavern/server/src/host.ts"
 import { refresh } from "@effect-tavern/server/src/names.ts"
-import { app } from "@effect-tavern/server/src/serve.ts"
 
 try {
   const data = open("tavern.db", { lock: false })
-  served.resolve(app(standalone(data, { page: true }).handler))
+  served.resolve(standalone(data, { page: true }).handler)
   void refresh(data)
 } catch (e) {
   // a library this build cannot read (one a newer app has upgraded, say): every /api request fails with it

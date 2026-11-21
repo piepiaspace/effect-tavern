@@ -639,9 +639,8 @@ export const app = (api: Wire, dist?: string): Wire => {
   return async (request: Request): Promise<Response> => {
     const at = new URL(request.url)
     if (at.pathname === "/api" || at.pathname.startsWith("/api/")) {
-      const rest = request.url.slice(at.origin.length + 4)
       return api(
-        new Request(at.origin + (rest.startsWith("/") ? rest : `/${rest}`), {
+        new Request(new URL((at.pathname.slice(4) || "/") + at.search, request.url), {
           method: request.method,
           headers: request.headers,
           signal: request.signal,

@@ -38,11 +38,24 @@ const promise = new Promise<Wire>((res, rej) => {
 export const served = { promise, resolve, reject }
 const page = globalThis.fetch.bind(globalThis)
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-  const request = new Request(typeof input === "string" ? new URL(input, location.href) : input, init)
-  const url = new URL(request.url)
-  if (url.origin === location.origin && (url.pathname === "/api" || url.pathname.startsWith("/api/")))
+  const here = new URL(location.href)
+  const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, here)
+  const same = url.protocol === here.protocol && url.host === here.host
+  if (same && (url.pathname === "/api" || url.pathname.startsWith("/api/"))) {
+    const at = new URL((url.pathname.slice(4) || "/") + url.search, url)
+    const request =
+      input instanceof Request
+        ? new Request(at, {
+            method: input.method,
+            headers: input.headers,
+            signal: input.signal,
+            ...(input.body && { body: await input.arrayBuffer() }),
+            ...init,
+          })
+        : new Request(at, init)
     return (await served.promise)(request)
-  return url.origin !== location.origin && url.protocol.startsWith("http") ? go(request) : page(request)
+  }
+  return !same && (url.protocol === "http:" || url.protocol === "https:") ? go(input, init) : page(input, init)
 }) as typeof fetch
 
 // The client's way to save a file (wire.ts saveFile): Go has the user pick where (save.go).

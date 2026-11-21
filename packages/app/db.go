@@ -53,8 +53,14 @@ func openDB() {
 func closeDB() {
 	dbMu.Lock()
 	defer dbMu.Unlock()
-	dbConn.Close()
-	db.Close()
+	if dbConn != nil {
+		dbConn.Close()
+		dbConn = nil
+	}
+	if db != nil {
+		db.Close()
+		db = nil
+	}
 }
 
 // param: JSON numbers as SQLite would take them from bun:sqlite, integers as integers.

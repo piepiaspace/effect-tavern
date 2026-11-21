@@ -9,8 +9,9 @@ const dist = at("../dist")
 const client = at("../../client")
 const { version } = await file(at("../mygo.json")).json()
 
-await $`vp build`.cwd(client)
+await $`bun --bun vp build`.cwd(client)
 await $`rm -rf ${dist} && cp -R ${client}/dist ${dist}`
+await write(`${dist}/.gitkeep`, "")
 const out = await bundleServer({ outdir: dist, version })
 if (!out.success) throw new AggregateError(out.logs, "server bundle failed")
 const index = `${dist}/index.html`
