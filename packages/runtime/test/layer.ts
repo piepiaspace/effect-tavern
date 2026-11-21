@@ -17,6 +17,7 @@ import {
   overlaid,
   overlayOf,
   resolve,
+  resolveWithTrace,
   shown,
   type Layer,
   type Local,
@@ -391,6 +392,26 @@ const packs = [packB, packA]
     }).frame[0].text,
     "以半文言旁白叙述。" + line("switch.echo.false"),
   )
+  const second = row("harness", { switches: { pov: "second" } })
+  const blank = resolve(chat, { harness: second, local: here({ switches: { pov: "custom" } }) })
+  assert.equal(blank.switches.taken.pov, null)
+  assert.ok(!blank.frame.some((f) => f.id === "pov"))
+  const emptyOverride = here({ switches: { pov: "custom" } })
+  const inheritedCustom = resolve(chat, {
+    harness: row("harness", { switches: { pov: "custom", povText: "Inherited" } }),
+    local: emptyOverride,
+  })
+  assert.equal(inheritedCustom.switches.value.povText, undefined)
+  assert.equal(inheritedCustom.switches.taken.pov, null)
+  const cardSlot = resolve({ ...chat, frame: [{ id: "pov", text: "Card perspective" }] }, { local: emptyOverride })
+  assert.equal(cardSlot.frame.find((f) => f.id === "pov")?.text, "Card perspective")
+  const customHole = resolveWithTrace(chat, {
+    harness: second,
+    local: here({ switches: { pov: "custom", povText: "{{absent}}", echo: false, agency: "strict" } }),
+  })
+  assert.equal(customHole.resolved.frame[0].text, line("switch.echo.false") + line("switch.agency.strict"))
+  const hole = customHole.omitted.find((o) => o.reason === "unfilled_hole")
+  assert.deepEqual([hole?.category, hole?.preview, hole?.missingHoles], ["switch", "{{absent}}", ["absent"]])
   // a later row's switch wins key by key: one slot compiled from the merge, the later row's name on it
   const merged = resolve(chat, {
     harness: row("harness", { switches: { pov: "second", agency: "strict" } }),
@@ -991,6 +1012,23 @@ const texts = (msgs: readonly Message[] | undefined) =>
     typeof m.content === "string" ? m.content : m.content.map((c) => ("text" in c ? c.text : "")).join(""),
   )
 const mount = (...mounts: string[]) => here({ mounts })
+
+// Missing custom text preserves the other switch sentences in the actual narrate request.
+for (const povText of ["", "{{missing}}"]) {
+  const S = makeSession({
+    card: chat,
+    rows: () => ({
+      harness: row("harness", { switches: { pov: "second", echo: false } }),
+      local: here({ switches: { pov: "custom", povText } }),
+    }),
+    model,
+  })
+  const messages = texts(asked(await collect(S.act(null, { text: "one" })), "narrate")).join("\n")
+  const say = harness("act").asks!
+  assert.ok(messages.includes(say.find((a) => a.id === "switch.echo.false")!.text))
+  assert.ok(!messages.includes(say.find((a) => a.id === "switch.pov.second")!.text))
+  assert.ok(!messages.includes("{{missing}}"))
+}
 
 // The lookup index, and replay once the pack is gone.
 {

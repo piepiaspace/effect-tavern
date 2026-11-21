@@ -167,7 +167,6 @@ const openLine = (open: readonly Told[]) => `Open: ${open.map((d) => `${d.id}=${
  *  narrator, not as anyone in the story). A chip-only turn continues the story: keep a nonempty boundary even if its
  *  invoked entries were removed before a rerun. */
 const inputText = (i: Input) => i.text || i.note || "Continue the story."
-const said = (i: Input): Message => usr(inputText(i))
 /** An off-stage pass's single user message: the material enclosed in an XML tag, then the stage's task after it. */
 const tagged = (name: "input" | "draft" | "scene", body: string, ...tasks: readonly string[]): Message =>
   usr([tag(name, body), ...tasks.filter(Boolean)].join("\n\n"))

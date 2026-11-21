@@ -5,7 +5,9 @@ import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { openSettings, Settings } from "../src/settings.tsx"
-import { hats, providers, registry, routing, type Routing } from "../src/store.ts"
+import { activeOf, hats, page, providers, registry, routing, tabs, type Routing } from "../src/store.ts"
+import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
+import { getPromptTreeMemory } from "../src/prompt-tree-state.ts"
 import { quiet, tracked, until } from "./settle.ts"
 import "../src/app.css"
 
@@ -34,6 +36,8 @@ openSettings("routing")
 
 const post = globalThis.fetch
 const writes: Routing[] = []
+const hatWrites: Hat[] = []
+let hatResponse: Promise<Response>
 globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
   const method = init?.method ?? "GET"
@@ -42,6 +46,10 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
     const next = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as Routing
     writes.push(next)
     return Response.json(next)
+  }
+  if (method === "PUT" && path === "/hats/hat-gemini") {
+    hatWrites.push({ id: "hat-gemini", ...JSON.parse(typeof init?.body === "string" ? init.body : "{}") } as Hat)
+    return hatResponse
   }
   return Response.json({})
 })
@@ -157,6 +165,41 @@ const run = async () => {
   check(stageHeads().includes("Author"), `expected Author in en locale, got [${stageHeads().join(", ")}]`)
   flip()
   await quiet()
+
+  // The text change and preview click can arrive together. The editor stays until the PUT succeeds.
+  openSettings("templates", "hat-gemini")
+  await quiet()
+  const field = document.querySelector<HTMLTextAreaElement>(".msg-card textarea.field")!
+  const preview = [...document.querySelectorAll<HTMLButtonElement>(".detail-header .btn")].find((b) =>
+    b.textContent?.includes("请求预览"),
+  )!
+  const response = Promise.withResolvers<Response>()
+  hatResponse = response.promise
+  field.value = "留在编辑器里的新文字"
+  field.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  field.dispatchEvent(new Event("change", { bubbles: true }))
+  preview.click()
+  await until(() => hatWrites.length === 1)
+  check(registry.get(page) === "settings", "Preview waits for the blur write")
+  response.resolve(Response.json({ error: "save failed" }, { status: 500 }))
+  await quiet()
+  check(registry.get(page) === "settings" && hatWrites.length === 1, "one refused write keeps the editor open")
+  check(
+    field.value === "留在编辑器里的新文字" && document.querySelector('[role="alert"]'),
+    "failure keeps the text and shows its reason",
+  )
+  hatResponse = Promise.resolve(Response.json([hatWrites[0]]))
+  preview.click()
+  await quiet()
+  const previewState = getPromptTreeMemory(activeOf(registry.get(tabs)).id)
+  check(
+    registry.get(page) === "prompt-tree" && previewState?.hatId === "hat-gemini" && !previewState.candidateHat,
+    "retry opens the saved Hat",
+  )
+  check(
+    hatWrites.length === 2 && hatWrites[1]?.narrate?.head?.[0]?.text === field.value,
+    "retry persists the edited text",
+  )
 
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)

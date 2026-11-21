@@ -262,11 +262,11 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   const storyId = lib.stories.create(chat.id)
   const server = listen(handle(lib), "127.0.0.1", 0)
   const base = `http://127.0.0.1:${server.port}`
-  const storyFetch = (path: string, init: RequestInit = {}) =>
-    fetch(`${base}${path}`, {
-      ...init,
-      headers: { "x-tavern-story": String(storyId), ...init.headers },
-    })
+  const storyFetch = (path: string, init: RequestInit = {}) => {
+    const headers = new Headers(init.headers)
+    if (!headers.has("x-tavern-story")) headers.set("x-tavern-story", String(storyId))
+    return fetch(`${base}${path}`, { ...init, headers })
+  }
   const act = async (body: unknown) => {
     const res = await storyFetch("/", { method: "POST", body: JSON.stringify(body) })
     assert.equal(res.status, 200)

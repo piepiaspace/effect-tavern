@@ -12,12 +12,12 @@ import { Menu, Stepper, Switch } from "./controls.tsx"
 import { Family } from "./family.tsx"
 import { Back, EyeOff, Fold, Next, Plugs, Swipe, Warning } from "./icons.tsx"
 import { t } from "./i18n.ts"
-import { close, editCard, openStoryPage } from "./pages.ts"
+import { close, openPreviewEditor, openStoryPage } from "./pages.ts"
 import {
   buildPreviewRequest,
   defaultMemory,
   getPromptTreeMemory,
-  patchPromptTreeMemory,
+  setPromptTreeMemory,
   sourceDestination,
   sourceLabel,
   type PromptTreeMemory,
@@ -26,7 +26,6 @@ import { RequestView, SourceDetailCard } from "./request-view.tsx"
 import { openSettings } from "./settings.tsx"
 import { activeOf, cards, cardTitle, characterCards, FREE_CHAT_ID, isFreeChat, log, stories, tabs } from "./store.ts"
 import { fetchPreview, fetchStoryNodes } from "./wire.ts"
-import { openWriting } from "./writing.tsx"
 
 const omittedReasonLabel = (r: OmittedReason): string => {
   switch (r) {
@@ -48,6 +47,8 @@ const omittedReasonLabel = (r: OmittedReason): string => {
       return t("promptTree.reasonEmptySlot")
     case "folded":
       return t("promptTree.reasonFolded")
+    case "outside_window":
+      return t("promptTree.reasonOutsideWindow")
     case "invalid":
       return t("promptTree.reasonInvalid")
   }
@@ -75,16 +76,16 @@ export const PromptTreePage = () => {
   const tab = createMemo(() => activeOf(strip()))
   const tabId = () => tab().id
 
-  const initialMem = (): PromptTreeMemory => {
+  const [revision, edited] = createSignal(0)
+  const mem = createMemo((): PromptTreeMemory => {
+    revision()
     const existing = getPromptTreeMemory(tabId())
     if (existing) return existing
     const fallbackCard = tab().card ?? characterCards(shelf())[0]?.id ?? FREE_CHAT_ID
     return defaultMemory(fallbackCard)
-  }
-
-  const [mem, setMem] = createSignal<PromptTreeMemory>(untrack(initialMem))
+  })
   const [pane, setPane] = createSignal<"outline" | "controls">("outline")
-  const [fetched, setFetched] = createSignal<{ key: string; value: PreviewNarrateResult } | null>(null)
+  const [fetched, setFetched] = createSignal<{ context: string; value: PreviewNarrateResult } | null>(null)
   const [loading, setLoading] = createSignal(false)
   const [errMsg, setErrMsg] = createSignal<string | null>(null)
   const [fetchedStory, setFetchedStory] = createSignal<{
@@ -98,25 +99,11 @@ export const PromptTreePage = () => {
   const storyNodesCache = new Map<number, { nodes: readonly Node[]; head: number | null }>()
   let debounceNext = false
 
-  // Re-sync memory if the user switches tabs while staying on a prompt-tree page.
-  createEffect(
-    () => tabId(),
-    (id) => {
-      const m = getPromptTreeMemory(id)
-      if (m) setMem(m)
-      else {
-        const fallbackCard = untrack(() => tab().card ?? characterCards(shelf())[0]?.id ?? FREE_CHAT_ID)
-        const fresh = defaultMemory(fallbackCard)
-        patchPromptTreeMemory(id, fresh)
-        setMem(fresh)
-      }
-    },
-  )
-
   const update = (patch: Partial<PromptTreeMemory>, debounce = false) => {
     debounceNext = debounce
-    const next = patchPromptTreeMemory(tabId(), patch)
-    setMem(next)
+    const id = tabId()
+    setPromptTreeMemory(id, { ...(getPromptTreeMemory(id) ?? mem()), ...patch })
+    edited((n) => n + 1)
   }
 
   // Stories belonging to the currently previewed card.
@@ -168,24 +155,35 @@ export const PromptTreePage = () => {
   // Instant (0ms + synchronous cache memo, zero relay tear) for mode/node/field/opening clicks; debounced (120ms) only for free-text typing.
   const requestEntry = createMemo(
     () => {
-      const body = buildPreviewRequest(mem())
-      return { body, key: JSON.stringify(body) }
+      const m = mem()
+      const body = buildPreviewRequest(m)
+      // Input edits can keep the outline mounted. A different tab, audience or branch needs a fresh outline.
+      const context = JSON.stringify({
+        tab: tabId(),
+        play: m.play,
+        card: m.cardId,
+        mode: m.mode,
+        story: m.storyId,
+        node: m.nodeId,
+        hat: m.hatId,
+        greeting: m.greetingIndex,
+      })
+      return { body, context, key: JSON.stringify([context, body]) }
     },
     { equals: (a, b) => a.key === b.key },
   )
 
   const result = createMemo<PreviewNarrateResult | null>(() => {
-    if (errMsg() !== null) return null
-    const { key } = requestEntry()
+    const { key, context } = requestEntry()
     const last = fetched()
-    return last?.key === key ? last.value : (previewCache.get(key) ?? null)
+    return previewCache.get(key) ?? (last?.context === context ? last.value : null)
   })
   // Entered from play (the session card): a condition that reads a hidden field is not shown, and an entry it left out is not listed.
   const shown = createMemo<PreviewNarrateResult | null>(() => {
+    if (errMsg() !== null) return null
     const r = result()
     if (!r || !mem().play) return r
     const hidden = new Set(r.sandbox.fields.filter((f) => f.hidden).map((f) => f.path))
-    if (!hidden.size) return r
     const secret = (s: SourceRef | undefined) => !!s?.whenDetails?.some((d) => hidden.has(d.path))
     const scrub = <S extends SourceRef | undefined>(s: S): S => {
       if (!s || !secret(s)) return s
@@ -199,21 +197,31 @@ export const PromptTreePage = () => {
         source: scrub(tr.source),
         spans: tr.spans.map((sp) => ({ ...sp, source: scrub(sp.source) })),
       })),
-      omitted: r.omitted.filter((o) => !secret(o.source)),
+      omitted: r.omitted.filter((o) => !secret(o.source)).map((o) => ({ ...o, by: scrub(o.by) })),
+      resources: r.resources
+        .filter((res) => res.unlockedLayer > 0)
+        .map((res) => ({
+          ...res,
+          layers: res.layers?.filter((layer) => layer.unlocked),
+          sections: res.sections.filter((s) => s.inCatalog || s.resident || s.deliveredThisTurn),
+          unlockGates: [],
+          offerGate: undefined,
+        })),
     }
   })
-  // Keep the current card's field inputs mounted while typing. Only the outline needs the exact request.
   const sandboxControls = createMemo(() => {
-    const r = result() ?? fetched()?.value
+    const r = result()
     return r?.mode === "sandbox" && r.card.id === mem().cardId ? r.sandbox : undefined
   })
 
   createEffect(
     () => requestEntry(),
-    ({ body, key }) => {
+    ({ body, key, context }) => {
       const shouldDebounce = debounceNext
       debounceNext = false
-      if (previewCache.has(key)) {
+      const cached = previewCache.get(key)
+      if (cached) {
+        setFetched({ context, value: cached })
         if (untrack(loading)) setLoading(false)
         if (untrack(errMsg) !== null) setErrMsg(null)
         return
@@ -230,7 +238,7 @@ export const PromptTreePage = () => {
               if (oldest !== undefined) previewCache.delete(oldest)
             }
             previewCache.set(key, res)
-            setFetched({ key, value: res })
+            setFetched({ context, value: res })
             setErrMsg(null)
             setLoading(false)
           },
@@ -285,7 +293,7 @@ export const PromptTreePage = () => {
     switch (dest.target.kind) {
       case "workshop":
         if (m.candidateCard) update({ candidateCard: undefined })
-        void editCard(dest.target.cardId)
+        void openPreviewEditor(dest.target.cardId, "manuscript")
         break
       case "pack":
         openSettings("packs", dest.target.packId)
@@ -298,7 +306,7 @@ export const PromptTreePage = () => {
         openSettings("personas", dest.target.personaId)
         break
       case "writing":
-        openWriting()
+        if (m.cardId) void openPreviewEditor(m.cardId, "writing")
         break
       case "inspect":
       case "timeline":
@@ -588,6 +596,14 @@ export const PromptTreePage = () => {
                           {(item, idx) => {
                             const key = () => `om:${idx}:${item().category}:${item().id}`
                             const open = () => selectedOmitted() === key()
+                            const detail = () => {
+                              const story = r().story
+                              if (story && item().reason === "outside_window")
+                                return t("promptTree.turnsOutsideWindow", { n: story.foldStart })
+                              if (story?.summaryRange && item().reason === "folded")
+                                return t("promptTree.turnsSummarized", { n: story.foldStart, ...story.summaryRange })
+                              return item().detail
+                            }
                             return (
                               <div class={{ "pt-omitted-wrap": true, open: open() }}>
                                 <button
@@ -610,6 +626,7 @@ export const PromptTreePage = () => {
                                 </button>
                                 <Show when={open()}>
                                   <div class="pt-omitted-detail">
+                                    <Show when={detail()}>{(text) => <p class="pt-omitted-by">{text()}</p>}</Show>
                                     <Show when={item().by}>
                                       {(by) => (
                                         <p class="pt-omitted-by">
@@ -971,6 +988,10 @@ export const PromptTreePage = () => {
                       const localVal = () =>
                         Object.hasOwn(mem().fields, f().path) ? mem().fields[f().path] : f().value
                       const changed = () => localVal() !== f().initial
+                      const fieldText = () => {
+                        const value = localVal()
+                        return typeof value === "string" ? value : ""
+                      }
                       const numVal = (): number => {
                         const v = localVal()
                         return typeof v === "number" ? v : 0
@@ -1018,7 +1039,7 @@ export const PromptTreePage = () => {
                             <Menu
                               small
                               label={f().label}
-                              value={String(localVal() ?? "")}
+                              value={fieldText()}
                               options={(f().options ?? []).map((opt) => ({ value: opt, label: opt }))}
                               onPick={(v) => setField(f().path, v)}
                             />
@@ -1033,7 +1054,7 @@ export const PromptTreePage = () => {
                               autocorrect="off"
                               spellcheck="false"
                               enterkeyhint="done"
-                              value={String(localVal() ?? "")}
+                              value={fieldText()}
                               onInput={(e) => setField(f().path, e.currentTarget.value)}
                             />
                           </Show>

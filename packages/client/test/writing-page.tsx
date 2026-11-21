@@ -19,6 +19,7 @@ const local: Local = {
   fragments: [{ id: "extra", at: "tail", text: "private supplement" }],
 }
 const pack = {
+  switches: { pov: "custom" as const, povText: "Pack perspective" },
   fragments: [
     { id: "style", text: "Opening" },
     { id: "style", at: "tail" as const, text: "Closing" },
@@ -65,6 +66,20 @@ async function run() {
     const root = document.getElementById("root")!
     const dispose = render(() => <WritingPage />, root)
     flush()
+    const customPov = () => button(root, t("switches.povCustom"))!
+    if (customPov().getAttribute("aria-pressed") !== "true") throw Error("Missing inherited custom perspective")
+    customPov().click()
+    if (!(await until(() => saved.switches?.pov === "second"))) throw Error("Inherited custom did not switch off")
+    button(root, t("writing.allFollowCard"))!.click()
+    if (!(await until(() => !saved.switches && customPov().getAttribute("aria-pressed") === "true")))
+      throw Error("Reset did not restore the pack perspective")
+    const perspective = root.querySelector<HTMLTextAreaElement>(".sw-custom-input")!
+    perspective.value = "Edited perspective"
+    perspective.dispatchEvent(new Event("change", { bubbles: true }))
+    if (!(await until(() => saved.switches?.povText === "Edited perspective"))) throw Error("Missing local perspective")
+    button(root, t("switches.povFirst"))!.click()
+    if (!(await until(() => saved.switches?.pov === "first" && saved.switches.povText === undefined)))
+      throw Error("Changing perspective kept the local custom text")
     const toggle = document.querySelector<HTMLButtonElement>('[role="switch"][aria-label="事件摘要"]')
     if (!toggle || toggle.disabled || toggle.getAttribute("aria-checked") !== "false")
       throw Error("Missing named, unchecked chronicle switch")

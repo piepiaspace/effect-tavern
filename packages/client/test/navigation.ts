@@ -1,6 +1,6 @@
 // Delay real wire reads across page/tab entry points; stale completions must not claim another destination.
 import assert from "node:assert/strict"
-import { close, newStory, open, openStory, openStoryPage, showCard, toHome } from "../src/pages.ts"
+import { close, newStory, open, openPreviewEditor, openStory, openStoryPage, showCard, toHome } from "../src/pages.ts"
 import { activeOf, card, log, page, registry, stories, tabs, type CardView, type StoryRow } from "../src/store.ts"
 import { add, select } from "../src/tabs.ts"
 import { fetchCardOf } from "../src/wire.ts"
@@ -96,6 +96,14 @@ assert.deepEqual([at().story, registry.get(stories)?.current, registry.get(card)
 await showCard("browse")
 open("prompt-tree")
 const preview = at()
+for (const editor of ["manuscript", "writing"] as const) {
+  await openPreviewEditor("c2", editor)
+  assert.deepEqual([at().page, at().card], [editor, "c2"])
+  close()
+  await select(first)
+  assert.deepEqual(at(), preview)
+  assert.equal(registry.get(card)?.id, "browse")
+}
 await openStoryPage(2, { inspect: 2 })
 assert.deepEqual([at().story, at().page, registry.get(stories)?.current], [2, { inspect: 2 }, 2])
 close()

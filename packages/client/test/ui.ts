@@ -13,6 +13,7 @@ const fixtures: [file: string, passed: (snapshot: unknown[]) => string][] = [
   ["test/routing.tsx", (s) => `per-stage routing includes author, in ${s.length} writes`],
   ["test/cards.tsx", (s) => `the shelf and a card library work through the page, in ${s.length} requests`],
   ["test/timeline.tsx", () => "the selected node title and actions clear its details"],
+  ["test/prompt-tree-page.tsx", () => "preview refresh preserves focus, player visibility and source excerpts"],
   ["test/turn-status.tsx", () => "turn status renders every stage orb and label with zero diagnostics"],
   [
     "test/writing-page.tsx",

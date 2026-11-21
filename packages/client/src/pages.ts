@@ -59,6 +59,16 @@ export const open = (p: Page): void => {
   edit({ page: p, under: at === "reader" ? under : [...under, at] })
   void loads[kindOf(p)]?.()
 }
+/** A source link back into the page the preview covers reuses that entry in the tab's history. */
+export const openSource = (p: "manuscript" | "writing" | "settings" | "timeline" | { inspect: number }): void => {
+  const { page, under } = tab()
+  const previous = under.at(-1)
+  const same =
+    previous === p ||
+    (typeof p === "object" && typeof previous === "object" && "inspect" in previous && previous.inspect === p.inspect)
+  if (page === "prompt-tree" && same) close()
+  else open(p)
+}
 /** Back to the page this one covered, the reader when none. Back onto home resets the active tab to home and the
  *  sidebar to the shelf (`toHome`). */
 export const close = (): void => {
@@ -142,6 +152,27 @@ export const showCard = (id: string): Promise<void> => onCard(id, "card", () => 
 /** A card open in the workshop (workshop.tsx), by id: its manuscript over whatever the tab was on, so its Back
  *  returns there (the workshop's list, a story, the card's page). */
 export const editCard = (id: string): Promise<void> => onCard(id, "manuscript", () => false)
+
+/** A preview can show a sample or another card. Its editor opens on that card; Back restores the preview's tab. */
+export const openPreviewEditor = (id: string, page: "manuscript" | "writing"): Promise<void> => {
+  const origin = tab()
+  if (origin.card === id) {
+    openSource(page)
+    return Promise.resolve()
+  }
+  return navigate(async (valid) => {
+    const current = () => valid() && tab() === origin
+    await wire.fetchCardOf(id, current)
+    if (current()) {
+      edit({
+        card: id,
+        page,
+        under: [...origin.under, { page: "prompt-tree", story: origin.story, card: origin.card }],
+      })
+      void loads[page]?.()
+    }
+  })
+}
 /** The workshop's New: a blank card on the shelf under `title`, open as a manuscript at once. A card from its first
  *  moment: nothing is kept anywhere but the shelf. */
 export const newCard = async (title: string): Promise<void> => editCard((await wire.newCard(title)).id)
@@ -285,7 +316,7 @@ const restoreReading = async (valid: () => boolean): Promise<void> => {
 /** Open a story source over its preview, retaining the original tab's story and card in the return stack. */
 export const openStoryPage = async (id: number, page: "timeline" | { inspect: number }): Promise<void> => {
   const origin = tab()
-  if (origin.story === id) return open(page)
+  if (origin.story === id) return openSource(page)
   await navigate(async (valid) => {
     await reading.activate(id)
     if (!valid()) return

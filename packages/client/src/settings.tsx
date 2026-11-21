@@ -9,7 +9,7 @@
 // it changed (wire.ts), text committing on change (blur or Enter). The shared controls and shells are controls.tsx.
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Dynamic, type JSX } from "@solidjs/web"
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { ask, Avatar, Confirm, Menu, Name, newId, Switch, ToList, type Pane } from "./controls.tsx"
 import {
@@ -32,10 +32,11 @@ import { capOf, pairKey, pairOf, stalePair } from "./connections.ts"
 import { Cards } from "./cards.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
-import { close, open } from "./pages.ts"
-import { clearHatDraft, getHatDraft, openPromptTree, stashHatDraft } from "./prompt-tree-state.ts"
+import { close, openSource } from "./pages.ts"
+import { forgetPreviewHat, openPromptTree } from "./prompt-tree-state.ts"
 import * as Atom from "./atom.ts"
 import {
+  activeOf,
   cards,
   cardTitle,
   decision,
@@ -45,6 +46,7 @@ import {
   providers,
   registry,
   routing,
+  tabs,
   type Pair,
   type Routing as RoutingConfig,
 } from "./store.ts"
@@ -54,13 +56,15 @@ import { deleteHat, deletePersona, putDecision, putHat, putPersona, putRouting, 
 export type Section = "providers" | "routing" | "templates" | "personas" | "packs" | "cards"
 /** The section shown: written by every way in, so the settings layer moves to the section asked for. */
 const section = Atom.make<Section>("providers").pipe(Atom.keepAlive)
+const [pane, setPane] = createSignal<"list" | "detail">("list")
 const pickedAtom = Atom.make<Partial<Record<Section, string>>>({}).pipe(Atom.keepAlive)
 /** The settings layer on a section, 模型服务 when none is named: a missing model opens it on 默认模型 (the draft's
  *  error, the card page); Back or Escape returns to the page that opened it. Optional `id` pre-selects a record. */
 export const openSettings = (at: Section = "providers", id?: string) => {
+  setPane(id ? "detail" : "list")
   registry.set(section, at)
   if (id) registry.update(pickedAtom, (p) => ({ ...p, [at]: id }))
-  open("settings")
+  openSource("settings")
 }
 
 const SECTIONS: [Section, Key, (p: JSX.SvgSVGAttributes<SVGSVGElement>) => JSX.Element][] = [
@@ -75,7 +79,6 @@ const SECTIONS: [Section, Key, (p: JSX.SvgSVGAttributes<SVGSVGElement>) => JSX.E
 export const Settings = () => {
   const at = read(section)
   const picked = read(pickedAtom)
-  const [pane, setPane] = createSignal<"list" | "detail">("list")
   const paneOf = (s: Section): Pane => ({
     get picked() {
       return picked()[s]
@@ -390,37 +393,52 @@ const withSlot = (h: Hat, s: Slot, said: Said[]): Hat =>
 const Templates = (props: Pane) => {
   const list = read(hats)
   const savedHat = () => list().find((h) => h.id === props.picked) ?? list()[0]
-  // Live unsaved draft for the currently selected hat (survives Prompt Tree preview round-trip).
   const [draft, setDraft] = createSignal<Hat | null>(null)
-  const hat = (): Hat | undefined => {
-    const saved = savedHat()
-    if (!saved) return undefined
-    const d = draft()
-    if (d && d.id === saved.id) return d
-    const stashed = getHatDraft(saved.id)
-    if (stashed && stashed.id === saved.id) return stashed
-    return saved
+  const [failure, setFailure] = createSignal<{ id: string; message: string } | null>(null)
+  const hat = () => (draft()?.id === savedHat()?.id ? (draft() ?? savedHat()) : savedHat())
+  let mounted = true
+  let queued: Hat | undefined
+  let saving = Promise.resolve(true)
+  // A blur immediately followed by Preview shares one write. A later edit waits its turn.
+  const save = (next: Hat): Promise<boolean> => {
+    if (queued === next) return saving
+    queued = next
+    saving = saving.then(async () => {
+      try {
+        await putHat(next)
+        setDraft((current) => (current === next ? null : current))
+        setFailure(null)
+        return true
+      } catch (error) {
+        setFailure({ id: next.id, message: error instanceof Error ? error.message : String(error) })
+        return false
+      } finally {
+        if (queued === next) queued = undefined
+      }
+    })
+    return saving
   }
-  const stageSlot = (s: Slot, f: (said: Said[]) => Said[]) => {
+  onCleanup(() => {
+    mounted = false
+    const pending = draft()
+    if (pending) void save(pending)
+  })
+  const editSlot = (s: Slot, f: (said: Said[]) => Said[], commit = true) => {
     const h = hat()
     if (!h) return
     const next = withSlot(h, s, f([...slotOf(h, s)]))
     setDraft(next)
-    stashHatDraft(next)
+    if (commit) void save(next)
   }
-  const editSlot = (s: Slot, f: (said: Said[]) => Said[]) => {
+  const previewHat = async () => {
+    const origin = activeOf(registry.get(tabs))
+    await Promise.resolve() // let the blur commit its edit before reading the draft
     const h = hat()
-    if (!h) return
-    const next = withSlot(h, s, f([...slotOf(h, s)]))
-    setDraft(null)
-    clearHatDraft(h.id)
-    void putHat(next)
-  }
-  const previewHat = () => {
-    const h = hat()
-    if (!h) return
-    stashHatDraft(h)
-    openPromptTree({ candidateHat: h })
+    if (!h || !mounted || activeOf(registry.get(tabs)) !== origin) return
+    if (draft() === h && !(await save(h))) return
+    if (!mounted || activeOf(registry.get(tabs)) !== origin || hat()?.id !== h.id) return
+    const editing = draft()
+    if (!editing || editing.id !== h.id || editing === h) openPromptTree({ hatId: h.id, mode: "sandbox" })
   }
   const create = async () => {
     const id = newId("hat")
@@ -462,13 +480,12 @@ const Templates = (props: Pane) => {
                   label={t("settings.hatName")}
                   onCommit={(name) => {
                     const next = { ...h(), name }
-                    setDraft(null)
-                    clearHatDraft(h().id)
-                    void putHat(next)
+                    setDraft(next)
+                    void save(next)
                   }}
                 />
                 <span class="spacer" />
-                <button type="button" class="btn sm" onMouseDown={(e) => e.preventDefault()} onClick={previewHat}>
+                <button type="button" class="btn sm" onClick={() => void previewHat()}>
                   <Stack aria-hidden="true" />
                   <span>{t("promptTree.preview")}</span>
                 </button>
@@ -476,25 +493,32 @@ const Templates = (props: Pane) => {
                   type="button"
                   class="icon sm"
                   aria-label={t("settings.deleteHat")}
-                  onClick={() =>
-                    ask(t("settings.confirmDeleteHat", { name: h().name }), () => {
-                      clearHatDraft(h().id)
-                      setDraft(null)
-                      void deleteHat(h().id)
+                  onClick={() => {
+                    const { id, name } = h()
+                    ask(t("settings.confirmDeleteHat", { name }), async () => {
+                      await saving
+                      await deleteHat(id)
+                      setDraft((current) => (current?.id === id ? null : current))
+                      forgetPreviewHat(id)
                     })
-                  }
+                  }}
                 >
                   <Trash />
                 </button>
               </header>
               <div class="detail-scroll scroller">
+                <Show when={failure()?.id === h().id}>
+                  <p class="warn" role="alert">
+                    {failure()?.message}
+                  </p>
+                </Show>
                 <For each={SLOTS} keyed={(s) => s[0]}>
                   {(s) => (
                     <SlotEditor
                       label={t(s()[1])}
                       said={slotOf(h(), s()[0])}
                       tail={s()[0] === "tail"}
-                      onStage={(f) => stageSlot(s()[0], f)}
+                      onStage={(f) => editSlot(s()[0], f, false)}
                       onEdit={(f) => editSlot(s()[0], f)}
                     />
                   )}

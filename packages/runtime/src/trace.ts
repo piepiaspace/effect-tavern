@@ -113,6 +113,7 @@ export type OmittedReason =
   | "empty_text"
   | "empty_slot"
   | "folded"
+  | "outside_window"
   | "invalid"
 
 export type OmittedCategory =

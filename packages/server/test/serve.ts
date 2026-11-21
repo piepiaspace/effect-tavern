@@ -975,7 +975,7 @@ const sse = (text: string) =>
     assert.equal(sse.headers.get("content-encoding"), null)
     assert.equal(await sse.text(), "data: 1\n\n")
   } finally {
-    server.stop(true)
+    await server.stop(true)
   }
 }
 console.log("ok")

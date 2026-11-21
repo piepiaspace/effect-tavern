@@ -14,6 +14,7 @@ import {
   land,
   newCard,
   open,
+  openSource,
   openStory,
   startFreeChat,
   toHome,
@@ -128,6 +129,24 @@ close()
 assert.equal(at(), "reader")
 close()
 assert.equal(at(), "reader") // nothing under the reader
+
+// Jumping to the preview's own editor unwinds it; a different inspector node still gets its own return point.
+for (const source of ["settings", "writing", "timeline", "manuscript", { inspect: 1 }] as const) {
+  open(source)
+  open("prompt-tree")
+  openSource(source)
+  assert.deepEqual(at(), source)
+  close()
+  assert.equal(at(), "reader")
+}
+open({ inspect: 1 })
+open("prompt-tree")
+openSource({ inspect: 2 })
+close()
+assert.equal(at(), "prompt-tree")
+close()
+assert.deepEqual(at(), { inspect: 1 })
+close()
 // the reader is under every page: opening it drops what covered it (Begin after browsing Writing from the card page)
 open("card")
 open("writing")

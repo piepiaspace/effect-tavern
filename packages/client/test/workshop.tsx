@@ -304,6 +304,8 @@ const run = async () => {
     stale.includes("在别处被改过了") && saves.length === stood && held.get("made")!.title === "终端装的",
     `a card changed elsewhere is not written over: ${stale}`,
   )
+  await press("请求预览")
+  check(pg() === "manuscript" && words().includes("在别处被改过了"), "a conflict keeps Preview on the manuscript")
   await press("重新读取")
   check(
     await until(
@@ -333,7 +335,7 @@ const run = async () => {
     "Play stays when the edit made during its save is refused",
   )
   await press("重新读取")
-  // Typing while Preview waits for the shelf revision cancels navigation and saves the newer text.
+  // Typing while Preview waits for the shelf revision flushes the newer text before navigation.
   const delayed = Promise.withResolvers<void>()
   pendingSave = delayed.promise
   await type("一句话简介", "预览前")
@@ -345,16 +347,20 @@ const run = async () => {
   delayed.resolve()
   pendingSave = undefined
   await settled()
-  check(pg() === "manuscript" && last().summary === "继续写稿", "the newer edit remains on the desk and saves")
+  check(pg() === "prompt-tree" && last().summary === "继续写稿", "preview waits for the newest edit")
 
-  // Preview before debounce stashes the edit; Back resumes autosave against the settled revision.
-  await type("一句话简介", "预览中的草稿")
-  await press("请求预览")
-  check(pg() === "prompt-tree" && last().summary === "继续写稿", "preview opens without writing the pending edit")
   close()
   await quiet()
-  await settled()
-  check(last().summary === "预览中的草稿" && !document.querySelector(".workshop-notice"), "Back resumes autosave")
+  const beforePreview = saves.length
+  await press("请求预览")
+  check(pg() === "prompt-tree" && saves.length === beforePreview, "preview of a saved card writes nothing")
+  close()
+  await quiet()
+  await type("一句话简介", "预览前的最后一笔")
+  await press("请求预览")
+  check(pg() === "prompt-tree" && last().summary === "预览前的最后一笔", "preview flushes the pending edit")
+  close()
+  await quiet()
   // leaving with a keystroke not yet saved writes it on the way out
   await type("一句话简介", "一条盐道")
   await press("返回")

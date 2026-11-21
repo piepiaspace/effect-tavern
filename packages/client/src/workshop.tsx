@@ -21,7 +21,7 @@ import { Back, Plus, Stack, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./manuscript.ts"
 import { close, editCard, newCard, showCard } from "./pages.ts"
-import { openPromptTree, stashManuscript, takeManuscriptStash } from "./prompt-tree-state.ts"
+import { openPromptTree } from "./prompt-tree-state.ts"
 import { activeOf, cards, characterCards, focus, registry, tabs } from "./store.ts"
 import { saveCard, wholeCard } from "./wire.ts"
 
@@ -53,33 +53,21 @@ const standingOf = (e: unknown): Standing => {
  *  from. A write waits `DELAY` for the next one; saves go one after another, each of the manuscript as it is by then.
  *  A save that would change nothing is not sent, so a page nothing was typed on never saves. `busy` hears whether a write
  *  is waiting or under way. */
-const desk = (
-  read: Card,
-  at: string,
-  say: (s: Standing) => void,
-  busy: (on: boolean) => void,
-  initial?: { manuscript: Manuscript; shelf: Card },
-) => {
-  let manuscript = initial?.manuscript ?? manuscriptOf(read)
-  let shelf = initial?.shelf ?? read
+const desk = (read: Card, at: string, say: (s: Standing) => void, busy: (on: boolean) => void) => {
+  let manuscript = manuscriptOf(read)
+  let shelf = read
   let rev = at
   let timer: ReturnType<typeof setTimeout> | undefined
   let queue: Promise<boolean> = Promise.resolve(true)
   let failed = false // the last save did not go through: the page says so until one does, or the text is the card again
   let letGone = false // the author gave this page's text up (the notice's way out): nothing more of it is written
-  let paused = false // paused for read-only Prompt Tree preview: do not flush or write on unmount
   let running = 0 // saves queued or under way
   const told = () => busy(timer !== undefined || running > 0)
-  // If restored from a paused Prompt Tree preview with unsaved edits, re-arm autosave so changes aren't stranded.
-  if (initial && !same(cardOf(read, manuscript), shelf)) {
-    timer = setTimeout(() => void save(), DELAY)
-    told()
-  }
   /** Now, not after the delay; true when the shelf holds what the page shows. `last`: on the way out of the window. */
   const save = (last = false): Promise<boolean> => {
     clearTimeout(timer)
     timer = undefined
-    if (letGone || paused) {
+    if (letGone) {
       told()
       return Promise.resolve(true)
     }
@@ -87,7 +75,7 @@ const desk = (
     told()
     return (queue = queue
       .then(async () => {
-        if (letGone || paused) return true
+        if (letGone) return true
         const next = cardOf(read, manuscript)
         if (same(next, shelf)) {
           if (failed) say({ is: "saved" }) // text put back as the shelf holds it takes the notice with it
@@ -113,11 +101,8 @@ const desk = (
   }
   return {
     read,
-    rev: () => rev,
-    shelf: () => shelf,
     manuscript: () => manuscript,
     write: (next: Manuscript) => {
-      paused = false
       manuscript = next
       clearTimeout(timer)
       timer = setTimeout(() => void save(), DELAY)
@@ -125,25 +110,12 @@ const desk = (
     },
     save,
     async flush() {
-      paused = false
       let edited: Manuscript
       do {
         edited = manuscript
         if (!(await save())) return false
       } while (edited !== manuscript)
       return true
-    },
-    /** Wait for the shelf revision. An edit, a new save, or leaving the desk cancels this handoff. */
-    async preview(current: () => boolean, open: () => void) {
-      const draft = manuscript
-      const saving = queue
-      clearTimeout(timer)
-      timer = undefined
-      told()
-      await saving
-      if (!current() || manuscript !== draft || queue !== saving) return
-      paused = true
-      open()
     },
     /** The page's text given up: what is on the shelf stands, and a save still waiting writes nothing. */
     letGo: () => {
@@ -263,39 +235,25 @@ export const ManuscriptPage = () => {
   // the page is on a card (the tab's): read it whole; leaving it, for another card or another page, saves what is left
   createEffect(
     () => [at(), activeId(), reads()] as const,
-    ([id, tabId]) => {
+    ([id]) => {
       if (id === null) return
       let left = false
       let mine: Desk | undefined
-      const stashed = takeManuscriptStash(tabId, id)
-      if (stashed) {
-        mine = desk(
-          stashed.read,
-          stashed.rev,
-          (s) => left || setStanding(s),
-          (on) => left || setBusy(on),
-          { manuscript: stashed.manuscript, shelf: stashed.shelf },
-        )
-        setManuscript(mine.manuscript())
-        setStanding({ is: "clean" })
-        setOpened({ id, desk: mine })
-      } else {
-        void wholeCard(id).then(
-          ({ card, rev }) => {
-            if (left) return
-            mine = desk(
-              card,
-              rev,
-              (s) => left || setStanding(s),
-              (on) => left || setBusy(on),
-            )
-            setManuscript(mine.manuscript())
-            setStanding({ is: "clean" })
-            setOpened({ id, desk: mine })
-          },
-          () => left || setOpened({ id, desk: null }),
-        )
-      }
+      void wholeCard(id).then(
+        ({ card, rev }) => {
+          if (left) return
+          mine = desk(
+            card,
+            rev,
+            (s) => left || setStanding(s),
+            (on) => left || setBusy(on),
+          )
+          setManuscript(mine.manuscript())
+          setStanding({ is: "clean" })
+          setOpened({ id, desk: mine })
+        },
+        () => left || setOpened({ id, desk: null }),
+      )
       return () => {
         left = true
         void mine?.save()
@@ -363,33 +321,14 @@ export const ManuscriptPage = () => {
   const leave = async (to: (id: string) => void) => {
     const o = here()
     if (!o) return close()
-    if ((!o.desk || (await o.desk.flush())) && here() === o) to(o.id)
+    const origin = activeOf(registry.get(tabs))
+    if ((!o.desk || (await o.desk.flush())) && here() === o && activeOf(registry.get(tabs)) === origin) to(o.id)
   }
   /** The notice's way out: the page's text let go, the card read again as the shelf holds it. */
   const reread = () => {
     here()?.desk?.letGo()
     setOpened(null)
     setReads((n) => n + 1)
-  }
-  /** Preview unsaved manuscript in Prompt Tree without saving to the shelf (0 new PUT /cards/:id/whole). */
-  const preview = async () => {
-    const o = here()
-    if (!o?.desk) return
-    const d = o.desk
-    const origin = activeOf(registry.get(tabs))
-    await d.preview(
-      () => here() === o && activeOf(registry.get(tabs)) === origin,
-      () => {
-        stashManuscript(origin.id, {
-          cardId: o.id,
-          read: d.read,
-          shelf: d.shelf(),
-          rev: d.rev(),
-          manuscript: d.manuscript(),
-        })
-        openPromptTree({ cardId: o.id, candidateCard: cardOf(d.read, d.manuscript()) })
-      },
-    )
   }
   const notice = () => {
     const s = standing()
@@ -406,7 +345,12 @@ export const ManuscriptPage = () => {
           <span class="workshop-standing" role="status" aria-busy={busy() ? "true" : "false"}>
             {standing().is === "saving" ? t("workshop.saving") : standing().is === "saved" ? t("workshop.saved") : ""}
           </span>
-          <button type="button" class="btn" disabled={!here()?.desk} onClick={() => void preview()}>
+          <button
+            type="button"
+            class="btn"
+            disabled={!here()?.desk}
+            onClick={() => void leave((cardId) => openPromptTree({ cardId, mode: "sandbox" }))}
+          >
             <Stack aria-hidden="true" />
             <span>{t("promptTree.preview")}</span>
           </button>

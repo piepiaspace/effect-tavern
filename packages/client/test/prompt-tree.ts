@@ -1,19 +1,14 @@
 import assert from "node:assert/strict"
-import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   buildPreviewRequest,
-  clearHatDraft,
   clearPromptTreeMemory,
-  getHatDraft,
+  forgetPreviewHat,
   getPromptTreeMemory,
   openPromptTree,
   patchPromptTreeMemory,
   sliceSpanText,
   sourceDestination,
-  stashHatDraft,
-  stashManuscript,
-  takeManuscriptStash,
 } from "../src/prompt-tree-state.ts"
 import { activeOf, cards, FREE_CHAT_ID, page, registry, tabs } from "../src/store.ts"
 
@@ -48,24 +43,11 @@ assert.deepEqual(req.input, { text: "Look at the sea" })
 assert.deepEqual(req.assumedReads, ["card:tiger"])
 assert.equal(req.candidateHat?.id, "hat-1")
 
-// 3. Manuscript stash & Hat draft stash round-trip without saving
-const fakeCard = { id: "life-of-pi", title: "Life of Pi" } as unknown as Card
-stashManuscript(10, {
-  cardId: "life-of-pi",
-  read: fakeCard,
-  shelf: fakeCard,
-  rev: "rev-1",
-  manuscript: { title: "Unsaved Title", summary: "", chapters: [], openings: [], entries: [] },
-})
-const restored = takeManuscriptStash(10, "life-of-pi")
-assert.equal(restored?.manuscript.title, "Unsaved Title")
-assert.equal(restored?.rev, "rev-1")
-assert.equal(takeManuscriptStash(10, "life-of-pi"), undefined)
-
-stashHatDraft(draftHat)
-assert.equal(getHatDraft("hat-1")?.name, "Test Hat")
-clearHatDraft("hat-1")
-assert.equal(getHatDraft("hat-1"), undefined)
+// Settings selects its saved Hat even when it differs from the route's Hat.
+openPromptTree({ hatId: draftHat.id, mode: "sandbox" })
+const savedHatRequest = buildPreviewRequest(getPromptTreeMemory(10)!)
+assert.equal(savedHatRequest.hatId, draftHat.id)
+assert.equal(savedHatRequest.candidateHat, undefined)
 
 // 4. Source destination mapping & disabled reasons
 assert.deepEqual(sourceDestination({ kind: "harness", builtIn: true }), {
@@ -114,10 +96,28 @@ openPromptTree({ storyId: 7, play: true })
 assert.equal(getPromptTreeMemory(10)!.mode, "story")
 assert.equal(getPromptTreeMemory(10)!.storyId, 7)
 assert.equal(getPromptTreeMemory(10)!.play, true)
+assert.deepEqual(getPromptTreeMemory(10)!.fields, {})
+patchPromptTreeMemory(10, { nodeId: 95, assumedReads: ["card:tiger"] })
+openPromptTree({ storyId: 8, play: true })
+assert.equal(getPromptTreeMemory(10)!.nodeId, undefined)
+assert.deepEqual(getPromptTreeMemory(10)!.assumedReads, [])
+const before = getPromptTreeMemory(10)
+openPromptTree({ play: true })
+assert.equal(getPromptTreeMemory(10), before)
 openPromptTree({ candidateHat: draftHat })
 assert.equal(getPromptTreeMemory(10)!.play, false)
 assert.equal(getPromptTreeMemory(10)!.mode, "sandbox")
 
+// Returning to a preview after deleting its Hat uses the route's current Hat on every affected tab.
+patchPromptTreeMemory(10, { candidateHat: undefined, hatId: draftHat.id })
+patchPromptTreeMemory(11, { hatId: draftHat.id })
+patchPromptTreeMemory(12, { hatId: "other" })
+forgetPreviewHat(draftHat.id)
+assert.equal(buildPreviewRequest(getPromptTreeMemory(10)!).hatId, undefined)
+assert.equal(getPromptTreeMemory(11)!.hatId, undefined)
+assert.equal(getPromptTreeMemory(12)!.hatId, "other")
+clearPromptTreeMemory(11)
+clearPromptTreeMemory(12)
 clearPromptTreeMemory(10)
 assert.equal(getPromptTreeMemory(10), undefined)
 console.log("prompt-tree ok")

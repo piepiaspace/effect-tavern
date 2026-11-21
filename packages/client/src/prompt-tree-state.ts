@@ -1,9 +1,8 @@
-// Pure state, per-tab return memory, unsaved-draft stashes, and source navigation helpers for Prompt Tree.
+// Pure state, per-tab return memory, and source navigation helpers for Prompt Tree.
 import type { Card, State } from "@effect-tavern/runtime/src/card.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Message } from "@effect-tavern/provider/src/call.ts"
 import type { MessageTrace, SourceRef, Span } from "@effect-tavern/runtime/src/trace.ts"
-import type { Manuscript } from "./manuscript.ts"
 import type { PreviewRequest } from "./wire.ts"
 import { activeOf, cards, characterCards, focus, FREE_CHAT_ID, isFreeChat, registry, stories, tabs } from "./store.ts"
 import { open } from "./pages.ts"
@@ -64,55 +63,10 @@ export const patchPromptTreeMemory = (tabId: number, patch: Partial<PromptTreeMe
 
 export const clearPromptTreeMemory = (tabId: number): void => {
   memories.delete(tabId)
-  clearManuscriptStashForTab(tabId)
-}
-
-/** Stashed unsaved manuscript desk so navigating Workshop → Prompt Tree → Back never triggers PUT /cards/:id/whole. */
-export interface ManuscriptStash {
-  cardId: string
-  read: Card
-  shelf: Card
-  rev: string
-  manuscript: Manuscript
-}
-
-const manuscriptStashes = new Map<string, ManuscriptStash>()
-const stashKey = (tabId: number, cardId: string) => `${tabId}:${cardId}`
-
-export const stashManuscript = (tabId: number, entry: ManuscriptStash): void => {
-  manuscriptStashes.set(stashKey(tabId, entry.cardId), entry)
-}
-
-export const takeManuscriptStash = (tabId: number, cardId: string): ManuscriptStash | undefined => {
-  const k = stashKey(tabId, cardId)
-  const v = manuscriptStashes.get(k)
-  if (v) manuscriptStashes.delete(k)
-  return v
-}
-
-export const clearManuscriptStash = (tabId: number, cardId: string): void => {
-  manuscriptStashes.delete(stashKey(tabId, cardId))
-}
-
-const clearManuscriptStashForTab = (tabId: number): void => {
-  const prefix = `${tabId}:`
-  for (const k of manuscriptStashes.keys()) if (k.startsWith(prefix)) manuscriptStashes.delete(k)
-}
-
-/** Stashed unsaved Hat draft so Settings → Templates → Prompt Tree → Back preserves unsaved edits. */
-const hatDrafts = new Map<string, Hat>()
-
-export const stashHatDraft = (hat: Hat): void => {
-  hatDrafts.set(hat.id, hat)
-}
-
-export const getHatDraft = (hatId: string): Hat | undefined => hatDrafts.get(hatId)
-
-export const clearHatDraft = (hatId: string): void => {
-  hatDrafts.delete(hatId)
 }
 
 export interface OpenPromptTreeOptions {
+  hatId?: string
   cardId?: string | null
   candidateCard?: Card
   candidateHat?: Hat
@@ -126,6 +80,7 @@ export interface OpenPromptTreeOptions {
 /** Opens the Prompt Tree page on the active tab, preserving return memory for the same card when appropriate,
  *  and falling back to a sample card when opened from Settings → Templates with no active card. */
 export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
+  if (opts.play && opts.storyId === undefined) return
   const tab = activeOf(registry.get(tabs))
   const shelf = registry.get(cards)
   const existing = memories.get(tab.id)
@@ -139,7 +94,9 @@ export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
   }
 
   const sameCard = existing && existing.cardId === cardId
-  const base = sameCard ? existing : defaultMemory(cardId)
+  const sameContext =
+    sameCard && !!existing.play === !!opts.play && (opts.storyId === undefined || opts.storyId === existing.storyId)
+  const base = sameContext ? existing : defaultMemory(cardId)
 
   const lib = registry.get(stories)
   const activeStory = lib?.stories.find((s) => s.id === tab.story && s.card === cardId)
@@ -147,7 +104,7 @@ export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
     ? "story"
     : opts.candidateCard || opts.candidateHat
       ? "sandbox"
-      : (opts.mode ?? (sameCard ? base.mode : "sandbox"))
+      : (opts.mode ?? base.mode)
 
   const next: PromptTreeMemory = {
     ...base,
@@ -157,7 +114,7 @@ export const openPromptTree = (opts: OpenPromptTreeOptions = {}): void => {
     play: !!opts.play,
     candidateCard: opts.candidateCard,
     candidateHat: opts.candidateHat,
-    hatId: opts.candidateHat?.id,
+    hatId: opts.candidateHat?.id ?? opts.hatId,
     storyId: opts.storyId ?? base.storyId ?? activeStory?.id,
     nodeId: opts.nodeId !== undefined ? opts.nodeId : base.nodeId,
   }
@@ -219,6 +176,13 @@ export interface SourceDestination {
   ok: boolean
   target?: SourceTarget
   reason?: "builtIn" | "runtime" | "story"
+}
+
+/** Deleting a saved Hat also releases its explicit preview selection on any open tab. */
+export const forgetPreviewHat = (id: string): void => {
+  for (const [tab, mem] of memories) {
+    if (mem.hatId === id) patchPromptTreeMemory(tab, { hatId: undefined })
+  }
 }
 
 /** Resolves where clicking a SourceRef's edit link should navigate, or why jumping is disabled. */

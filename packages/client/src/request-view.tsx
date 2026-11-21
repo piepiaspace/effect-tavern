@@ -2,7 +2,7 @@
 // Default view is a compact outline (message order, cache breakpoints, role rewrites, prefill conflict, clickable source spans);
 // full message prose expands on demand. Gracefully falls back to region-only view for legacy Inspector calls without `trace`.
 import type { Message } from "@effect-tavern/provider/src/call.ts"
-import type { MessageTrace, SourceKind, SourceRef, Span, WireErrorInfo } from "@effect-tavern/runtime/src/trace.ts"
+import type { MessageTrace, SourceKind, SourceRef, WireErrorInfo } from "@effect-tavern/runtime/src/trace.ts"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import {
   Card as CardIcon,
@@ -101,8 +101,7 @@ const Marked = (props: { text: string; q: string }) => {
 
 const formatActual = (v: unknown): string => {
   if (v === undefined) return "—"
-  if (typeof v === "string") return JSON.stringify(v)
-  return String(v)
+  return JSON.stringify(v) ?? "—"
 }
 
 const SourceKindGlyph = (props: { kind: SourceKind; title?: string }) => {
@@ -219,7 +218,7 @@ export const SourceDetailCard = (props: {
         </div>
       </Show>
       <Show when={props.excerpt !== undefined}>
-        <pre class="rv-excerpt scroller">{showRaw() ? props.source.rawText : props.excerpt}</pre>
+        <pre class="rv-excerpt scroller">{hasRawDiff() && showRaw() ? props.source.rawText : props.excerpt}</pre>
       </Show>
     </div>
   )
@@ -331,44 +330,6 @@ export const RequestView = (props: RequestViewProps) => {
               const expanded = () => isExpanded(tr().index, text())
               const wholeKey = () => `msg:${tr().index}:whole`
 
-              const renderSpanRow = (sp: () => Span, si: number) => {
-                const key = () => `msg:${tr().index}:span:${si}`
-                const open = () => selectedKey() === key()
-                const sliced = () => sliceSpanText(text(), sp())
-                const chars = () => Math.max(0, sp().end - sp().start)
-                return (
-                  <div class={{ "rv-span-wrap": true, open: open() }}>
-                    <button
-                      type="button"
-                      class="rv-span-row"
-                      aria-expanded={open() ? "true" : "false"}
-                      onClick={() => toggleSelect(key())}
-                    >
-                      <Next class="rv-chev" aria-hidden="true" />
-                      <SourceKindGlyph kind={sp().source.kind} />
-                      <span class="rv-span-label">{sourceLabel(sp().source)}</span>
-                      <Show when={sp().source.whenText}>
-                        {(w) => (
-                          <span class="rv-cond ok" title={w()}>
-                            ✓ {w()}
-                          </span>
-                        )}
-                      </Show>
-                      <span class="rv-span-snip">{snippetOf(sliced())}</span>
-                      <span class="rv-chars mono">{fmt(chars())}c</span>
-                    </button>
-                    <Show when={open()}>
-                      <SourceDetailCard
-                        source={sp().source}
-                        excerpt={sliced()}
-                        destination={props.resolveDestination?.(sp().source)}
-                        onJump={props.onJump}
-                      />
-                    </Show>
-                  </div>
-                )
-              }
-
               return (
                 <>
                   <article
@@ -472,7 +433,43 @@ export const RequestView = (props: RequestViewProps) => {
                           }
                         >
                           <For each={tr().spans} keyed={false}>
-                            {(sp, i) => renderSpanRow(sp, i)}
+                            {(sp, si) => {
+                              const key = () => `msg:${tr().index}:span:${si}`
+                              const open = () => selectedKey() === key()
+                              const sliced = () => sliceSpanText(text(), sp())
+                              const chars = () => Math.max(0, sp().end - sp().start)
+                              return (
+                                <div class={{ "rv-span-wrap": true, open: open() }}>
+                                  <button
+                                    type="button"
+                                    class="rv-span-row"
+                                    aria-expanded={open() ? "true" : "false"}
+                                    onClick={() => toggleSelect(key())}
+                                  >
+                                    <Next class="rv-chev" aria-hidden="true" />
+                                    <SourceKindGlyph kind={sp().source.kind} />
+                                    <span class="rv-span-label">{sourceLabel(sp().source)}</span>
+                                    <Show when={sp().source.whenText}>
+                                      {(w) => (
+                                        <span class="rv-cond ok" title={w()}>
+                                          ✓ {w()}
+                                        </span>
+                                      )}
+                                    </Show>
+                                    <span class="rv-span-snip">{snippetOf(sliced())}</span>
+                                    <span class="rv-chars mono">{fmt(chars())}c</span>
+                                  </button>
+                                  <Show when={open()}>
+                                    <SourceDetailCard
+                                      source={sp().source}
+                                      excerpt={sliced()}
+                                      destination={props.resolveDestination?.(sp().source)}
+                                      onJump={props.onJump}
+                                    />
+                                  </Show>
+                                </div>
+                              )
+                            }}
                           </For>
                         </Show>
                       </div>

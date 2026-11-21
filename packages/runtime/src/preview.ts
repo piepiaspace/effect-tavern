@@ -831,16 +831,16 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     const first = foldedTurns[0]
     const last = foldedTurns.at(-1)
     if (first && last) {
-      const label = first === last ? `Turn #${first.id}` : `Turn #${first.id}–#${last.id}`
+      const label = first === last ? `#${first.id}` : `#${first.id}–#${last.id}`
       extraOmitted.push({
         category: "turn",
         id: `turns-${first.id}-${last.id}`,
         label,
-        reason: "folded",
+        reason: sum ? "folded" : "outside_window",
         detail: sum
           ? `${foldedTurns.length} turns folded into summary (${sum.from}–${sum.to})`
           : `${foldedTurns.length} turns slid out of history window without summary`,
-        source: { kind: "story", nodeId: first.id, label },
+        source: { kind: "story", label },
       })
     }
     if (!sum) {

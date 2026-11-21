@@ -325,13 +325,16 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
       return Object.keys(next).length ? { ...rest, switches: next } : rest
     })
   }
-  const setSwitch = (key: SwitchKey, value: string | boolean) =>
-    writeSwitches((x) => ({ ...x, [key]: pressing(key, x, value) }))
   const [povDraft, setPovDraft] = createSignal<string | null>(null)
+  const setSwitch = (key: SwitchKey, value: string | boolean) => {
+    if (key === "pov") setPovDraft(null)
+    writeSwitches((x) => ({ ...x, ...(key === "pov" && { povText: undefined }), [key]: pressing(key, x, value) }))
+  }
   const isCustomPov = () => (localSw()?.pov ?? effSw()?.pov) === "custom"
   const toggleCustomPov = () => {
     setPovDraft(null)
-    writeSwitches((x) => ({ ...x, pov: isCustomPov() ? undefined : "custom" }))
+    const next = !isCustomPov() ? "custom" : localSw()?.pov === "custom" ? undefined : "second"
+    writeSwitches((x) => ({ ...x, pov: next, povText: undefined }))
   }
   const commitPovText = (text: string) => {
     const cid = cardId()

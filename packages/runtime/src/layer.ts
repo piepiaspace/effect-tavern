@@ -379,7 +379,7 @@ const compile = (w: Writing, say: Readonly<Record<string, string>>): Fragment[] 
     w.pov !== "none" && w.agency && line("agency", w.agency),
   ].filter((x): x is string => typeof x === "string")
   return [
-    ...(pov.length ? [{ id: "pov", text: pov.join("") }] : []),
+    ...(pov.length || w.pov === "custom" ? [{ id: "pov", text: pov.join("") }] : []),
     ...(w.verbosity ? [{ id: "verbosity", text: line("verbosity", w.verbosity) }] : []),
   ]
 }
@@ -518,6 +518,12 @@ export const resolveWithTrace = (
   let value: Writing = {}
   const switched = (from: From, row: Partial<Layer>) => {
     if (!row.switches) return
+    // Selecting a perspective also selects its text. An explicitly empty custom
+    // perspective must not pick up the previous row's custom sentence.
+    if (row.switches.pov !== undefined) {
+      const { povText: _, ...others } = value
+      value = others
+    }
     value = { ...value, ...row.switches }
     for (const c of compile(value, sentenceOf)) {
       const src = sourceOf(from, `switches.${c.id}`, { label: c.id, fragmentId: c.id, rawText: c.text })
@@ -527,7 +533,7 @@ export const resolveWithTrace = (
           ? "pov" in row.switches || "povText" in row.switches || "echo" in row.switches || "agency" in row.switches
           : "verbosity" in row.switches
       if (theirs.has(c.id)) {
-        if (setHere)
+        if (setHere && c.text)
           omitted.push({
             category: "switch",
             id: c.id,
@@ -540,7 +546,7 @@ export const resolveWithTrace = (
         continue
       }
       if (held && (!held.item.compiled || held.item.text === c.text)) {
-        if (setHere && !held.item.compiled)
+        if (setHere && c.text && !held.item.compiled)
           omitted.push({
             category: "switch",
             id: c.id,
@@ -563,7 +569,8 @@ export const resolveWithTrace = (
           by: src,
         })
       }
-      slots.set(c.id, { item: { ...c, from, compiled: true }, source: src })
+      if (c.text) slots.set(c.id, { item: { ...c, from, compiled: true }, source: src })
+      else slots.delete(c.id)
     }
   }
   // A tail fragment is a per-turn directive, not a slot (GLOSSARY Head / Tail): its id meets the other rows' tail ids, never
@@ -731,16 +738,25 @@ export const resolveWithTrace = (
     if (!x.text) return [entry]
     const text = expand(x.text, names, x.from)
     if (text === undefined) {
+      // A custom perspective can have holes. The echo and agency sentences
+      // in the same compiled slot were independently resolved through asks.
+      const custom = x.compiled && x.id === "pov" && value.pov === "custom" ? value.povText?.trim() : undefined
+      const missingCustom = custom && unfilled(custom, names).length > 0 ? custom : undefined
+      const raw = missingCustom ?? x.text
       omitted.push({
-        category: x.at === "tail" ? "tail" : "frame",
+        category: x.compiled ? "switch" : x.at === "tail" ? "tail" : "frame",
         id: x.id,
         ...(x.label && { label: x.label }),
         reason: "unfilled_hole",
-        missingHoles: unfilled(x.text, names),
-        preview: x.text,
-        source: entry.source,
+        missingHoles: unfilled(raw, names),
+        preview: raw,
+        source: { ...entry.source, rawText: raw },
       })
-      return []
+      if (!missingCustom) return []
+      const remaining = x.text.slice(missingCustom.length)
+      const switches = expand(remaining, names, x.from)
+      if (!switches) return []
+      return [{ item: { ...x, text: switches }, source: { ...entry.source, rawText: remaining } }]
     }
     return [{ item: { ...x, text }, source: entry.source }]
   })
