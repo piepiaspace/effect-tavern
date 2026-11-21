@@ -686,9 +686,7 @@ export const resolveWithTrace = (
         reason: "yielded",
         preview: worn.text,
         source: personaSrc,
-        by: theirs.has("persona")
-          ? sourceOf("card", "frame.persona", { fragmentId: "persona" })
-          : heldPersona!.source,
+        by: theirs.has("persona") ? sourceOf("card", "frame.persona", { fragmentId: "persona" }) : heldPersona!.source,
       })
     } else {
       if (heldPersona)
@@ -817,10 +815,7 @@ export const resolveWithTrace = (
     return text === undefined ? { ...p, unasked: true as const } : { ...p, text }
   })
   const productSources = Object.fromEntries(
-    asked.map((p) => [
-      p.id,
-      sourceOf(p.from, `products.${p.id}`, { label: p.label ?? p.id, rawText: p.text }),
-    ]),
+    asked.map((p) => [p.id, sourceOf(p.from, `products.${p.id}`, { label: p.label ?? p.id, rawText: p.text })]),
   )
 
   // ───────── entries, the quick inputs, the format keys, the lexicon ─────────

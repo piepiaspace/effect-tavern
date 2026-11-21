@@ -28,7 +28,7 @@ import { expand, fill, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
 import { cond, labels } from "./phrase.ts"
 import { askedAt } from "./product.ts"
-import { requestDetailed, type Ask, type Common, type Told } from "./request.ts"
+import { requestDetailed, type Ask, type Common } from "./request.ts"
 import {
   sourceKindFrom,
   type ConditionDetail,
@@ -51,7 +51,7 @@ export interface PreviewConnectionMeta {
   modelId?: string
   hatId?: string
   hatName?: string
-  routingSource?: "stage" | "default" | "none"
+  routingSource?: "stage" | "default" | "env" | "none"
 }
 
 export interface ResourceSectionView {
@@ -65,11 +65,7 @@ export interface ResourceSectionView {
   supersededRevision?: string
 }
 
-export type ResidencyStatus =
-  | "none"
-  | "resident_in_window"
-  | "resident_permanent"
-  | "delivered_this_turn"
+export type ResidencyStatus = "none" | "resident_in_window" | "resident_permanent" | "delivered_this_turn"
 
 export interface ResourceEntryView {
   resourceId: string
@@ -239,10 +235,27 @@ export const evaluateCondition = (
   events: readonly string[] = [],
 ): { expr: string; passed: boolean; details: ConditionDetail[] } => {
   const details: ConditionDetail[] = []
-  const visit = (path: string, node: Cond) => {
+  const markSkipped = (path: string, node: Cond) => {
     const expr = cond(node, by)
-    const passed = holds(node, state, events)
     if ("path" in node) {
+      details.push({ path: node.path, label: by(node.path), expr, passed: false, actual: undefined, skipped: true })
+      return
+    }
+    if ("event" in node) {
+      details.push({ path, label: node.event, expr, passed: false, actual: undefined, skipped: true })
+      return
+    }
+    const children = conditionChildren(path, node)
+    if (!children.length) {
+      details.push({ path, label: expr, expr, passed: false, actual: undefined, skipped: true })
+      return
+    }
+    for (const [childPath, child] of children) markSkipped(childPath, child)
+  }
+  const evalNode = (path: string, node: Cond): boolean => {
+    const expr = cond(node, by)
+    if ("path" in node) {
+      const passed = holds(node, state, events)
       details.push({
         path: node.path,
         label: by(node.path),
@@ -250,27 +263,72 @@ export const evaluateCondition = (
         passed,
         actual: lookup(state, node.path),
       })
-      return
+      return passed
     }
     if ("event" in node) {
+      const passed = events.includes(node.event)
       details.push({
         path,
         label: node.event,
         expr,
         passed,
-        actual: events.includes(node.event),
+        actual: passed,
       })
-      return
+      return passed
     }
-    const children = conditionChildren(path, node)
-    if (!children.length) {
-      details.push({ path, label: expr, expr, passed, actual: passed })
-      return
+    if ("not" in node) {
+      return !evalNode(`${path}.not`, node.not)
     }
-    for (const [childPath, child] of children) visit(childPath, child)
+    if ("all" in node) {
+      if (!node.all.length) {
+        details.push({ path, label: expr, expr, passed: true, actual: true })
+        return true
+      }
+      let ok = true
+      for (let i = 0; i < node.all.length; i++) {
+        const childPath = `${path}.all[${i}]`
+        if (!ok) {
+          markSkipped(childPath, node.all[i])
+          continue
+        }
+        if (!evalNode(childPath, node.all[i])) ok = false
+      }
+      return ok
+    }
+    // "any" in node
+    if (!node.any.length) {
+      details.push({ path, label: expr, expr, passed: false, actual: false })
+      return false
+    }
+    let ok = false
+    for (let i = 0; i < node.any.length; i++) {
+      const childPath = `${path}.any[${i}]`
+      if (ok) {
+        markSkipped(childPath, node.any[i])
+        continue
+      }
+      if (evalNode(childPath, node.any[i])) ok = true
+    }
+    return ok
   }
-  visit("when", c)
-  return { expr: cond(c, by), passed: holds(c, state, events), details }
+  const passed = evalNode("when", c)
+  return { expr: cond(c, by), passed, details }
+}
+
+const traceSource = (source: SourceRef): SourceRef => {
+  if (source.rawText === undefined) return source
+  const compact = { ...source }
+  delete compact.rawText
+  return compact
+}
+
+/** Strip raw template text from traces before persisting to call logs (bodies live in `msgs`). */
+export const stripTraceRawText = (traces: readonly MessageTrace[]): MessageTrace[] => {
+  return traces.map((tr) => ({
+    ...tr,
+    ...(tr.source && { source: traceSource(tr.source) }),
+    spans: tr.spans.map((sp) => ({ ...sp, source: traceSource(sp.source) })),
+  }))
 }
 
 const enrichSourceWhen = (
@@ -469,12 +527,13 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
 
   const enrichKept = (items: Slotted[]): Slotted[] =>
     items.map((m) =>
-      m.source?.when
-        ? { ...m, source: enrichSourceWhen(m.source, m.source.when, true, state, by, []) }
-        : m,
+      m.source?.when ? { ...m, source: enrichSourceWhen(m.source, m.source.when, true, state, by, []) } : m,
     )
 
-  const omittedFromHead = (category: "frame" | "tail" | "fiction", items: ReturnType<typeof evaluateHead>["omitted"]): OmittedItem[] =>
+  const omittedFromHead = (
+    category: "frame" | "tail" | "fiction",
+    items: ReturnType<typeof evaluateHead>["omitted"],
+  ): OmittedItem[] =>
     items.map(({ fragment: f, reason, when }) => {
       const baseSrc: SourceRef = f.source ?? {
         kind: f.persona ? "persona" : category === "fiction" ? "card" : "harness",
@@ -551,12 +610,13 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
       wiredMessages = wire(w.format, detailed.messages, true)
       const messageIndex = Math.max(0, detailed.messages.length - 1)
       const lastTrace = detailed.traces[messageIndex]
+      const source = lastTrace?.spans[0]?.source ?? lastTrace?.source
       wireError = {
         code: "prefill_disallowed",
         message: err instanceof Error ? err.message : String(err),
         messageIndex,
         format: w.format,
-        source: lastTrace?.spans[0]?.source ?? lastTrace?.source,
+        ...(source && { source: traceSource(source) }),
       }
     }
     detailed.traces.forEach((tr, i) => {
@@ -583,10 +643,14 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
 
 const summarizePolicy = (contextTokens?: number): Policy => policyFor(contextTokens)
 
-const staticGreetingTurn = (card: Card, names: Names, greetingIndex: number): { turn?: TurnOf<Beat>; opening?: typeof card.greetings[number]["do"]; note?: string } => {
+const staticGreetingTurn = (
+  card: Card,
+  names: Names,
+  greetingIndex: number,
+): { turn?: TurnOf<Beat>; opening?: (typeof card.greetings)[number]["do"]; note?: string } => {
   const g = card.greetings[greetingIndex]
   if (!g) return {}
-  const note = g.note?.trim() ? expand(g.note, names, "card") ?? "" : ""
+  const note = g.note?.trim() ? (expand(g.note, names, "card") ?? "") : ""
   if (g.text?.trim() && !note) {
     const text = expand(g.text, names, "card") ?? g.text
     const turn: TurnOf<Beat> = {
@@ -617,9 +681,7 @@ const staticGreetingTurn = (card: Card, names: Names, greetingIndex: number): { 
 export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult => {
   const { card, rows, hat, connection } = opts
   const cardId = opts.cardId ?? card.id
-  const packNames =
-    opts.packNames ??
-    Object.fromEntries((rows.packs ?? []).map((p) => [p.id, p.name]))
+  const packNames = opts.packNames ?? Object.fromEntries((rows.packs ?? []).map((p) => [p.id, p.name]))
   const RT = resolveWithTrace(card, rows, { cardId })
   const R = RT.resolved
   const by = labels(card.rules)
@@ -648,7 +710,9 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
         kind: sourceKindFrom(d.from),
         from: d.from,
         path: `${d.kind}s.${d.id}`,
-        ...(d.from !== "harness" && d.from !== "local" && d.from !== "card" && { packId: d.from, packName: packNames[d.from] }),
+        ...(d.from !== "harness" &&
+          d.from !== "local" &&
+          d.from !== "card" && { packId: d.from, packName: packNames[d.from] }),
       },
     })
   }
@@ -669,7 +733,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       : null
 
   let basePath: readonly TurnOf<Beat>[] = []
-  let openingEffects: typeof card.greetings[number]["do"] | undefined
+  let openingEffects: (typeof card.greetings)[number]["do"] | undefined
   let greetingNote: string | undefined
   if (opts.mode === "story") {
     basePath = opts.storyPath ?? []
@@ -690,20 +754,43 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
 
   const here = derived.at(basePath)
   const opened = openingEffects ? rpg.apply(here.state, openingEffects) : { s: here.state, events: [] as string[] }
-  const overriddenState: State = opts.fields ? { ...opened.s, ...opts.fields } : opened.s
-  const events = [...opened.events, ...(opts.events ?? [])]
-  const gateEvents = [...events, ...here.post]
+  const sanitizeFields = (base: State, overrides?: State): State => {
+    if (!overrides) return base
+    const next: State = { ...base }
+    for (const f of card.rules.fields) {
+      if (!Object.hasOwn(overrides, f.path)) continue
+      const v = overrides[f.path]
+      if (f.type === "int" || f.type === "number") {
+        if (typeof v !== "number" || !Number.isFinite(v)) continue
+        let n = f.type === "int" ? Math.trunc(v) : v
+        if (f.min !== undefined && n < f.min) n = f.min
+        if (f.max !== undefined && n > f.max) n = f.max
+        next[f.path] = n
+      } else if (f.type === "boolean") {
+        if (typeof v === "boolean") next[f.path] = v
+      } else if (f.type === "enum") {
+        if (typeof v === "string" && (!f.options || f.options.includes(v))) next[f.path] = v
+      } else if (typeof v === "string") {
+        next[f.path] = v
+      }
+    }
+    return next
+  }
+  const overriddenState: State = sanitizeFields(opened.s, opts.fields)
+  const actionEvents = opts.events ?? []
+  const turnEvents = [...opened.events, ...actionEvents]
+  const gateEvents = [...turnEvents, ...here.post]
   const s1Context = here.context(overriddenState)
 
   // Story mode diagnostics (settlement / branch / folded summary)
   const settlementPending =
-    opts.mode === "story" &&
-    basePath.some((t) => t.settlementStatus === "pending" || t.settlementStatus === "failed")
+    opts.mode === "story" && basePath.some((t) => t.settlementStatus === "pending" || t.settlementStatus === "failed")
   if (settlementPending) {
     diagnostics.push({
       level: "warn",
       code: "settlement_pending",
-      message: "Branch contains turn(s) whose settlement is pending or failed; predicted state reflects committed records.",
+      message:
+        "Branch contains turn(s) whose settlement is pending or failed; predicted state reflects committed records.",
     })
   }
 
@@ -739,9 +826,12 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
 
   // Resources + residency + simulation (session.ts exact delivery semantics)
   const seenOnPath = basePath.flatMap((t) => t.deliveries)
-  const resources: Resource[] = here.resources(overriddenState)
+  // The live turn selects lookup and automatic deliveries on the parent, before a dynamic opening settles.
+  const lookupState = openingEffects ? sanitizeFields(here.state, opts.fields) : overriddenState
+  const resources: Resource[] = here.resources(lookupState)
   const resident = opts.mode === "story" ? here.resident() : []
-  const currentRes = opts.mode === "story" ? here.currentResources() : fedResources(resources, R.products).map((r) => freeze(r))
+  const currentRes =
+    opts.mode === "story" ? here.currentResources() : fedResources(resources, R.products).map((r) => freeze(r))
 
   // 1. Player invocations (check access.player cleanly without mutating story)
   const invokedIds = [...new Set(input.invoke ?? [])]
@@ -796,17 +886,13 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   }
 
   // 4. Gate + disclosures + open windows
-  const gate = here.gate({ state: overriddenState, events, before: preDisclosures })
+  const gate = here.gate({ state: overriddenState, events: turnEvents, before: preDisclosures })
   const open = gate.open.map((d) => ({ ...d, text: L.text(d) }))
-  const mustIds = opts.assumedMust?.length ? opts.assumedMust : []
-  const mayIds = opts.assumedMay?.length
-    ? opts.assumedMay
-    : open.map((d) => d.id).filter((id) => !mustIds.includes(id))
+  const mustIds = opts.assumedMust !== undefined ? opts.assumedMust : []
+  const mayIds =
+    opts.assumedMay !== undefined ? opts.assumedMay : open.map((d) => d.id).filter((id) => !mustIds.includes(id))
 
-  const revealed = [
-    ...gate.disclosures,
-    ...open.filter((d) => mustIds.includes(d.id) || mayIds.includes(d.id)),
-  ]
+  const revealed = [...gate.disclosures, ...open.filter((d) => mustIds.includes(d.id) || mayIds.includes(d.id))]
   for (const id of new Set(revealed.map((d) => d.id))) {
     const e = L.entries.find((x) => x.id === id)
     if (!e) continue
@@ -838,7 +924,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     history: opts.mode === "story" ? here.history() : narratorHistory(basePath),
     summarized: sum !== undefined,
     told: latest([...resident, ...deliveries]),
-    outcome: events,
+    outcome: actionEvents,
     current: fed.current,
     must: open.filter((d) => mustIds.includes(d.id)),
     may: open.filter((d) => mayIds.includes(d.id)),
@@ -869,7 +955,9 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
         ? m.content
         : Array.isArray(m.content)
           ? m.content
-              .map((p) => (typeof p === "object" && p !== null && "text" in p && typeof p.text === "string" ? p.text : ""))
+              .map((p) =>
+                typeof p === "object" && p !== null && "text" in p && typeof p.text === "string" ? p.text : "",
+              )
               .join("\n")
           : "",
     )
@@ -885,11 +973,15 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   }
 
   // Build Resource Lifecycle Panel with parallel independent states
-  const lookupAfter = contextLookup(resources, latest([...resident, ...currentRes, ...deliveries]))
+  const postInjected = latest([...resident, ...currentRes, ...deliveries])
+  const lookupAfter = contextLookup(resources, postInjected)
   const unitsAfter = new Map(lookupAfter.units().map((u) => [u.resourceId, u]))
+  const postHeld = new Map(postInjected.map((d) => [d.resourceId, d]))
+  const resourceMap = new Map(resources.map((r) => [r.resourceId, r]))
   const residentMap = new Map(resident.map((d) => [d.resourceId, d]))
   const deliveredMap = new Map(deliveries.map((d) => [d.resourceId, d]))
   const seenIds = new Set(seenOnPath.map((s) => s.resourceId))
+  const seenDisclosures: Disclosure[] = basePath.flatMap((t) => [...t.read, ...t.fired])
   const windowOfferMap = new Map(open.map((d) => [d.id, d.layer]))
 
   const resourceViews: ResourceEntryView[] = []
@@ -898,12 +990,14 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   for (const e of card.lore) {
     const rid = `card:${e.id}`
     const loreEntry = L.entries.find((x) => x.id === e.id)!
-    const depth = L.current(loreEntry, s1Context, [])
+    const depth = L.current(loreEntry, s1Context, seenDisclosures)
+    const liveRes = resourceMap.get(rid)
     const pol = policyDefaults("card", e)
     const resSnap = residentMap.get(rid)
     const delivSnap = deliveredMap.get(rid)
     const u = unitsAfter.get(rid)
     const openNext = windowOfferMap.get(e.id)
+    const faceUnread = !!liveRes && postHeld.get(rid)?.revision !== liveRes.revision
 
     const residencyStatus: ResidencyStatus = delivSnap
       ? "delivered_this_turn"
@@ -965,8 +1059,8 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       windowOpen: openNext !== undefined,
       ...(openNext !== undefined && { windowNextLayer: openNext }),
       inCatalog: !!u && !u.resident,
-      modelSelectable: pol.access.model && pol.activation === "on_demand" && depth > 0 && residencyStatus === "none",
-      playerSelectable: pol.access.player && depth > 0,
+      modelSelectable: pol.access.model && pol.activation === "on_demand" && depth > 0 && faceUnread,
+      playerSelectable: !!liveRes?.access.player,
       simulatedRead: assumedReads.includes(rid) || sections.some((s) => assumedReads.includes(s.resourceId)),
       playerInvoked: invokedIds.includes(rid),
       sections,
@@ -1013,7 +1107,10 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       fellOutOfWindow: seenIds.has(rid) && !resSnap && !delivSnap,
       windowOpen: false,
       inCatalog: !!u && !u.resident,
-      modelSelectable: pol.access.model && pol.activation === "on_demand" && residencyStatus === "none",
+      modelSelectable:
+        pol.access.model &&
+        pol.activation === "on_demand" &&
+        postHeld.get(rid)?.revision !== resourceMap.get(rid)?.revision,
       playerSelectable: pol.access.player,
       simulatedRead: assumedReads.includes(rid),
       playerInvoked: invokedIds.includes(rid),
@@ -1057,7 +1154,8 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       fellOutOfWindow: seenIds.has(r.resourceId) && !resSnap && !delivSnap,
       windowOpen: false,
       inCatalog: !!u && !u.resident,
-      modelSelectable: r.access.model && r.activation === "on_demand" && residencyStatus === "none",
+      modelSelectable:
+        r.access.model && r.activation === "on_demand" && postHeld.get(r.resourceId)?.revision !== r.revision,
       playerSelectable: r.access.player,
       simulatedRead: assumedReads.includes(r.resourceId),
       playerInvoked: invokedIds.includes(r.resourceId),
@@ -1105,7 +1203,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       decide: {
         status: card.rules.actions.length ? "skipped_in_preview" : "not_applicable",
         availableActions: rpg.available(overriddenState, s1Context).map((a) => a.id),
-        events,
+        events: actionEvents,
       },
       direct: {
         status: card.director && open.length ? "skipped_in_preview" : "not_applicable",

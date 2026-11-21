@@ -31,15 +31,7 @@
 import { breakpoint, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
 import type { Hat, Msg, Slotted } from "./fragment.ts"
 import type { Input } from "./journal.ts"
-import type {
-  MessageSubzone,
-  MessageTrace,
-  MessageZone,
-  OmittedItem,
-  SourceRef,
-  Span,
-  SpanKind,
-} from "./trace.ts"
+import type { MessageSubzone, MessageTrace, MessageZone, OmittedItem, SourceRef, Span, SpanKind } from "./trace.ts"
 
 /** The connection's say: whether past reasoning parts go back, and the head's cache lifetime. */
 export interface Wire {
@@ -363,7 +355,13 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       }
 
       // 1. Head zone: lead, frame (system + non-system), fiction, hat head, then breakpoint on last head msg
-      const headDrafts: { subzone: MessageSubzone; role: "system" | "user" | "assistant"; text: string; spans: Span[]; source?: SourceRef }[] = []
+      const headDrafts: {
+        subzone: MessageSubzone
+        role: "system" | "user" | "assistant"
+        text: string
+        spans: Span[]
+        source?: SourceRef
+      }[] = []
       const pushHead = (
         subzone: MessageSubzone,
         role: "system" | "user" | "assistant",
@@ -412,7 +410,13 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       }
       for (const m of c.frame.filter((m) => m.role !== "system")) {
         const src = slottedSource(m, c)
-        pushHead("frame", m.role, m.text, m.text ? [{ start: 0, end: m.text.length, kind: frameSpanKind(m), source: src }] : [], src)
+        pushHead(
+          "frame",
+          m.role,
+          m.text,
+          m.text ? [{ start: 0, end: m.text.length, kind: frameSpanKind(m), source: src }] : [],
+          src,
+        )
       }
       let run: Slotted[] = []
       const flushFiction = () => {
@@ -432,14 +436,26 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
         else {
           flushFiction()
           const src = slottedSource(m, c, "card")
-          pushHead("fiction", m.role, m.text, m.text ? [{ start: 0, end: m.text.length, kind: "fiction", source: src }] : [], src)
+          pushHead(
+            "fiction",
+            m.role,
+            m.text,
+            m.text ? [{ start: 0, end: m.text.length, kind: "fiction", source: src }] : [],
+            src,
+          )
         }
       }
       flushFiction()
 
       const hatHead = collectHat(w.hat?.narrate?.head, w.hatSources?.head, w, "head", omitted)
       for (const m of [...hatHead.filter((x) => x.role === "system"), ...hatHead.filter((x) => x.role !== "system")]) {
-        pushHead("hat-head", m.role, m.text, [{ start: 0, end: m.text.length, kind: "hat", source: m.source }], m.source)
+        pushHead(
+          "hat-head",
+          m.role,
+          m.text,
+          [{ start: 0, end: m.text.length, kind: "hat", source: m.source }],
+          m.source,
+        )
       }
       headDrafts.forEach((d, i) => {
         const isLast = i === headDrafts.length - 1
@@ -568,9 +584,15 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       // 5. Thought, Correction, Blocks
       if (c.thought && /⦅/.test(c.input.text)) {
         const src = askSource(c, "input.thought")
-        pushMsg("turn", "thought", sys(c.thought), [{ start: 0, end: c.thought.length, kind: "thought", source: src }], {
-          source: src,
-        })
+        pushMsg(
+          "turn",
+          "thought",
+          sys(c.thought),
+          [{ start: 0, end: c.thought.length, kind: "thought", source: src }],
+          {
+            source: src,
+          },
+        )
       }
       if (a.correction) {
         const src: SourceRef = { kind: "runtime", label: "correction" }
@@ -589,7 +611,8 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           bw.raw("\n")
           const colon = line.indexOf(":")
           const id = colon > 0 ? line.slice(0, colon) : line
-          const src = a.blocks!.sources?.[i] ?? c.productSources?.[id] ?? { kind: "card", label: id, path: `products.${id}` }
+          const src = a.blocks!.sources?.[i] ??
+            c.productSources?.[id] ?? { kind: "card", label: id, path: `products.${id}` }
           bw.push(line, "block", src)
         })
         pushMsg("turn", "blocks", sys(bw.text()), bw.spans)
@@ -629,7 +652,11 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       }
     case "polish": // per-target hints above (when any), <draft> with <target> marks and the rewrite instruction below
       return {
-        messages: [...reviewed, ...(a.hints.length ? [sys(a.hints.join("\n"))] : []), tagged("draft", a.prose, a.question)],
+        messages: [
+          ...reviewed,
+          ...(a.hints.length ? [sys(a.hints.join("\n"))] : []),
+          tagged("draft", a.prose, a.question),
+        ],
         traces: [],
         omitted,
       }

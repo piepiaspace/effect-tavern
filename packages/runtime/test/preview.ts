@@ -3,17 +3,27 @@
 import assert from "node:assert/strict"
 import { Effect, Stream } from "effect"
 import { wire, type Message } from "@effect-tavern/provider/src/call.ts"
-import { fake } from "@effect-tavern/provider/src/fake.ts"
+import { fake, type FakeCall } from "@effect-tavern/provider/src/fake.ts"
 import { makeCard, type Card } from "../src/card.ts"
 import { evaluateHead, type Hat } from "../src/fragment.ts"
 import { resolve, resolveWithTrace, type Rows } from "../src/layer.ts"
-import { prepareNarrate, previewNarrate } from "../src/preview.ts"
+import { prepareNarrate, previewNarrate, stripTraceRawText } from "../src/preview.ts"
 import { makeSession, type Event } from "../src/session.ts"
 import { policyFor } from "../src/history.ts"
 import * as Log from "../src/log.ts"
 import { readCard } from "../support/author.ts"
 
 const lifeOfPi = await readCard(new URL("../../../samples/life-of-pi/life-of-pi.yaml", import.meta.url))
+
+// The SDK wraps user/assistant strings in text parts. Compare the transmitted part types and cache options too.
+const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[]) => {
+  const expected = messages.map(({ role, content, providerOptions }) => ({
+    role,
+    content: role !== "system" && typeof content === "string" ? [{ type: "text", text: content }] : content,
+    providerOptions,
+  }))
+  assert.deepEqual(JSON.parse(JSON.stringify(prompt)), JSON.parse(JSON.stringify(expected)))
+}
 
 // 1. Spans match content slices verbatim & omitted records explain yields, overrides, mutes, holes, and when=false
 {
@@ -27,7 +37,12 @@ const lifeOfPi = await readCard(new URL("../../../samples/life-of-pi/life-of-pi.
       { id: "style", text: "" },
     ],
     fiction: [
-      { id: "fic-on", label: "Active", text: "The bell rings for {{user}}.", when: { path: "hp", op: "gte", value: 2 } },
+      {
+        id: "fic-on",
+        label: "Active",
+        text: "The bell rings for {{user}}.",
+        when: { path: "hp", op: "gte", value: 2 },
+      },
       { id: "fic-off", label: "Dim", text: "Hidden below 5.", when: { path: "hp", op: "gte", value: 5 } },
       { id: "fic-muted", label: "Muted", text: "Muted by flag", enabled: false },
     ],
@@ -126,10 +141,11 @@ const lifeOfPi = await readCard(new URL("../../../samples/life-of-pi/life-of-pi.
   assert.equal(res.wireError?.messageIndex, res.messages.length - 1)
   assert.equal(res.wireError?.source?.hatSlot, "tail")
   assert.equal(res.wireError?.source?.hatIndex, 0)
+  assert.equal(res.wireError?.source?.rawText, undefined)
 
   // Every Span slice [start, end) matches exact substring in msg.content!
   for (const tr of res.traces) {
-    const msg = res.messages[tr.index]!
+    const msg = res.messages[tr.index]
     if (typeof msg.content === "string") {
       for (const s of tr.spans) {
         assert.ok(s.start >= 0 && s.end <= msg.content.length && s.start < s.end)
@@ -211,7 +227,7 @@ const lifeOfPi = await readCard(new URL("../../../samples/life-of-pi/life-of-pi.
   })
   const fictionSpans = (r: ReturnType<typeof previewNarrate>) =>
     r.traces.flatMap((t) =>
-      t.spans.filter((s) => s.kind === "fiction").map((s) => ({ msg: r.messages[t.index]!, span: s })),
+      t.spans.filter((s) => s.kind === "fiction").map((s) => ({ msg: r.messages[t.index], span: s })),
     )
 
   const s2 = fictionSpans(at2)
@@ -224,7 +240,8 @@ const lifeOfPi = await readCard(new URL("../../../samples/life-of-pi/life-of-pi.
   assert.ok(!s3.some((x) => x.span.source.fragmentId === "seam-calm"))
   assert.ok(at3.omitted.some((o) => o.category === "fiction" && o.id === "seam-calm" && o.reason === "when_false"))
   const midSpan = s3.find((x) => x.span.source.fragmentId === "seam-mid")!
-  const midText = String(midSpan.msg.content).slice(midSpan.span.start, midSpan.span.end)
+  assert.ok(typeof midSpan.msg.content === "string")
+  const midText = midSpan.msg.content.slice(midSpan.span.start, midSpan.span.end)
   assert.equal(midText, lifeOfPi.fiction.find((f) => f.id === "seam-mid")!.text)
 }
 
@@ -277,6 +294,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     harness: { id: "harness", name: "H", switches: { verbosity: "concise" } },
   }
   const captured: Message[][] = []
+  const sdkCaptured: FakeCall["prompt"][] = []
   const callEvents: Extract<Event, { kind: "call" }>[] = []
   const s = makeSession({
     card,
@@ -285,6 +303,9 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     policy: policyFor(128000),
     model: (phase) => {
       const m = fake((o) => {
+        if (phase === "narrate") {
+          sdkCaptured.push(o.prompt)
+        }
         if (o.responseFormat?.type === "json") return { text: JSON.stringify({ fired: [] }) }
         return { text: phase === "narrate" ? "First reply prose." : "done" }
       })
@@ -305,15 +326,13 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   // Greet + turn 1
   await Effect.runPromise(Stream.runDrain(s.begin({ greeting: 0 })))
   await Effect.runPromise(
-    Stream.runForEach(
-      s.act(s.log.head, { text: "Check the deck", invoke: ["card:player-badge"] }),
-      (e) =>
-        Effect.sync(() => {
-          if (e.kind === "call" && e.phase === "narrate") {
-            captured.push([...e.msgs])
-            callEvents.push(e)
-          }
-        }),
+    Stream.runForEach(s.act(s.log.head, { text: "Check the deck", invoke: ["card:player-badge"] }), (e) =>
+      Effect.sync(() => {
+        if (e.kind === "call" && e.phase === "narrate") {
+          captured.push([...e.msgs])
+          callEvents.push(e)
+        }
+      }),
     ),
   )
 
@@ -336,10 +355,18 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     input: { text: "Check the deck", invoke: ["card:player-badge"] },
   })
   assert.equal(captured.length, 1)
+  assert.equal(sdkCaptured.length, 1)
   assert.deepEqual(previewTurn1.messages, captured[0])
-  assert.deepEqual(wire(format, captured[0]!, format !== "anthropic"), previewTurn1.wiredMessages)
+  assert.deepEqual(wire(format, captured[0], format !== "anthropic"), previewTurn1.wiredMessages)
+  assertSdkPrompt(sdkCaptured[0], previewTurn1.wiredMessages)
   assert.equal(callEvents[0]?.trace?.length, captured[0]?.length)
-  assert.deepEqual(callEvents[0]?.trace, previewTurn1.traces)
+  assert.deepEqual(callEvents[0]?.trace, stripTraceRawText(previewTurn1.traces))
+  // Persisted session call trace must not duplicate message bodies in `rawText`
+  assert.ok(
+    callEvents[0].trace.every(
+      (tr) => tr.source?.rawText === undefined && tr.spans.every((sp) => sp.source.rawText === undefined),
+    ),
+  )
 
   // Now check Turn 2 with unread secret-map + section and simulated reading ONLY secret-map face
   const turn2PreviewBefore = previewNarrate({
@@ -467,6 +494,20 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     nodeId: written.node!.id,
     input: { text: "Next question" },
   })
+  const resumed = makeSession({
+    card,
+    rows: () => ({}),
+    store: { read: () => Log.snapshot(nextLog), write: () => {} },
+    model: (phase) => ({
+      ...fake((o) => {
+        if (phase === "narrate") assertSdkPrompt(o.prompt, pv.wiredMessages)
+        return { text: "ok" }
+      }),
+      format: "gemini",
+      reasoningBack: true,
+    }),
+  })
+  await Effect.runPromise(Stream.runDrain(resumed.act(nextLog.head, { text: "Next question" })))
   // Multi-state simultaneous: archive face is resident_in_window AND 2 sections remain in catalog!
   const arch = pv.resources.find((r) => r.resourceId === "card:archive")!
   assert.equal(arch.residencyStatus, "resident_in_window")
@@ -518,6 +559,158 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.ok(evOmitted && evOmitted.reason === "when_false")
   assert.equal(evOmitted.source.whenResult, false)
   assert.equal(evOmitted.source.whenDetails?.[0]?.passed, false)
+}
+
+// 7. Short-circuit `any`/`all` in real session & preview, dynamic greeting outcome separation, explicit `assumedMay: []`,
+//    field sanitization, and multi-turn lore depth + superseded resident `modelSelectable`
+{
+  // 7a. Short-circuit condition: `any` first branch true, second branch compares enum field as number
+  const scCard: Card = {
+    id: "sc-card",
+    title: "Short Circuit",
+    frame: [],
+    fiction: [
+      {
+        id: "sc-frag",
+        label: "SC",
+        when: {
+          any: [
+            { path: "phase", is: "intro" },
+            { path: "phase", op: "gte", value: 2 },
+          ],
+        },
+        text: "Intro fiction.",
+      },
+    ],
+    greetings: [{ note: "Open with an alarm.", do: [{ event: "alarm" }] }],
+    lore: [
+      {
+        id: "secret",
+        layers: ["Secret layer 1.", "Secret layer 2."],
+        unlock: [{ all: [] }],
+        offer: { event: "alarm" },
+        access: { model: true, player: false },
+      },
+      {
+        id: "archive",
+        layers: ["Archive layer 1.", "Archive layer 2."],
+        unlock: [{ all: [] }, { path: "depth", op: "gte", value: 2 }],
+        offer: { all: [] },
+        access: { model: true, player: false },
+      },
+    ],
+    guard: [],
+    rules: {
+      fields: [
+        { path: "phase", type: "enum", options: ["intro", "mid"], initial: "intro" },
+        { path: "depth", type: "int", min: 0, max: 5, initial: 1 },
+      ],
+      actions: [],
+    },
+  }
+
+  // Real session act must not throw on short-circuited branch
+  const scSession = makeSession({
+    card: scCard,
+    rows: () => ({}),
+    model: () =>
+      fake((o) =>
+        o.responseFormat?.type === "json" ? { text: JSON.stringify({ fired: [] }) } : { text: "Safe reply." },
+      ),
+  })
+  await Effect.runPromise(Stream.runDrain(scSession.act(null, { text: "Go" })))
+
+  // Preview on short-circuited `any` marks 2nd detail as `skipped: true`, does not leak opening `alarm` into Outcome,
+  // respects explicit `assumedMay: []`, and sanitizes out-of-range/unknown fields.
+  const scPreview = previewNarrate({
+    card: scCard,
+    rows: {},
+    connection: { prefill: true, reasoningBack: true, routingSource: "none" },
+    mode: "sandbox",
+    greetingIndex: 0,
+    fields: { depth: 999, typo: 42 },
+    assumedMay: [],
+  })
+  const scSpan = scPreview.traces.flatMap((t) => t.spans).find((sp) => sp.source.fragmentId === "sc-frag")
+  assert.ok(scSpan)
+  assert.equal(scSpan.source.whenDetails?.[0]?.passed, true)
+  assert.equal(scSpan.source.whenDetails?.[1]?.skipped, true)
+  // Dynamic greeting event opens lore window (`alarm`), but must NOT emit `Outcome: alarm` in narrator `<turn>`
+  assert.ok(!JSON.stringify(scPreview.messages).includes("Outcome: alarm"))
+  assert.equal(scPreview.upstream.direct.open.length, 1)
+  assert.deepEqual(scPreview.upstream.direct.may, [])
+  assert.ok(!JSON.stringify(scPreview.messages).includes("MAY reveal:"))
+  // Field sanitization: `depth` clamped to max 5, undeclared `typo` dropped
+  assert.equal(scPreview.sandbox.state["depth"], 5)
+  assert.equal("typo" in scPreview.sandbox.state, false)
+
+  // The opening unlocks the entry after this call's automatic deliveries have been selected.
+  const openingCard: Card = {
+    ...scCard,
+    greetings: [{ note: "Begin.", do: [{ path: "depth", set: 2 }] }],
+    lore: [
+      {
+        id: "new-entry",
+        layers: ["New entry."],
+        activation: "always",
+        unlock: { path: "depth", is: 2 },
+        offer: { any: [] },
+      },
+    ],
+  }
+  const opening = previewNarrate({ card: openingCard, rows: {}, mode: "sandbox", connection: scPreview.connection })
+  const session = makeSession({ card: openingCard, rows: () => ({}), model: () => fake(() => ({ text: "ok" })) })
+  const openingCalls = await Effect.runPromise(Stream.runCollect(session.begin({ greeting: 0 })))
+  const narrator = Array.from(openingCalls).find((e) => e.kind === "call" && e.phase === "narrate")
+  assert.ok(narrator?.kind === "call")
+  assert.deepEqual(opening.messages, narrator.msgs)
+  assert.equal(opening.sandbox.state.depth, 2)
+
+  // 7b. Superseded resident lore entry: resident at layer 1, now unlocked to layer 2 -> inCatalog && modelSelectable
+  const supersededPv = previewNarrate({
+    card: scCard,
+    rows: {},
+    connection: { prefill: true, reasoningBack: true, routingSource: "none" },
+    mode: "story",
+    storyPath: [
+      {
+        id: 1,
+        parent: null,
+        input: { text: "Turn 1" },
+        read: [{ id: "archive", layer: 1 }],
+        deliveries: [
+          {
+            resourceId: "card:archive",
+            source: "card",
+            title: "Archive layer 1.",
+            text: "Archive layer 1.",
+            revision: "layer:1",
+            residency: "window",
+          },
+        ],
+        opportunities: [],
+        beats: [],
+        answers: {},
+        end: "end",
+        brief: { must: [], may: [] },
+        reply: [{ type: "text", text: "Reply 1." }],
+        fired: [],
+        violated: [],
+        products: {},
+        changes: [],
+        settlementStatus: "committed",
+        settlementVersion: 0,
+      },
+    ],
+    nodeId: 1,
+    fields: { depth: 2 },
+    input: { text: "Turn 2" },
+  })
+  const secRes = supersededPv.resources.find((r) => r.resourceId === "card:archive")!
+  assert.equal(secRes.unlockedLayer, 2)
+  assert.equal(secRes.residencyStatus, "resident_in_window")
+  assert.equal(secRes.inCatalog, true)
+  assert.equal(secRes.modelSelectable, true)
 }
 
 assert.ok(typeof makeCard === "function" && typeof evaluateHead === "function" && typeof prepareNarrate === "function")

@@ -47,21 +47,16 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
 {
   const data = open(":memory:")
   shelf(data).install(lifeOfPi, { via: "file" })
-  let llmCalls = 0
   const lib = library({
     data,
     overlay: player.harness,
-    model: () => {
-      llmCalls++
-      throw new Error("preview must never call any LLM")
-    },
   })
   const server = listen(handle(lib), "127.0.0.1", 0)
   const base = `http://127.0.0.1:${server.port}`
   const postPreview = (body: unknown, headers?: Record<string, string>) =>
     fetch(`${base}/preview`, {
       method: "POST",
-      headers: { "content-type": "application/json", ...(headers ?? {}) },
+      headers: { "content-type": "application/json", ...headers },
       body: typeof body === "string" ? body : JSON.stringify(body),
     })
 
@@ -92,7 +87,6 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     assert.ok(p3.omitted.some((o) => o.category === "fiction" && o.id === "seam-calm" && o.reason === "when_false"))
     assert.equal(fictionSlice(p3, "seam-mid"), lifeOfPi.fiction.find((f) => f.id === "seam-mid")!.text)
     assert.equal(lib.stories.list().length, 0)
-    assert.equal(llmCalls, 0)
 
     // Empty {} preview (no cardId, no candidateCard) falls back to FREE_CHAT_CARD without persisting to shelf
     const emptyPreview = await postPreview({})
@@ -215,6 +209,9 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     const badCardRes = await postPreview({ candidateCard: { id: "bad" } })
     assert.equal(badCardRes.status, 400)
     assert.equal(((await badCardRes.json()) as { code?: string }).code, "invalid-candidate")
+    const emptyGuardRes = await postPreview({ candidateCard: { ...lifeOfPi, guard: [""] } })
+    assert.equal(emptyGuardRes.status, 400)
+    assert.equal(((await emptyGuardRes.json()) as { code?: string }).code, "invalid-candidate")
     const badHatRes = await postPreview({ candidateHat: { id: "bad", name: 123 } })
     assert.equal(badHatRes.status, 400)
     assert.equal(((await badHatRes.json()) as { code?: string }).code, "invalid-candidate")
@@ -222,7 +219,6 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     assert.equal((await postPreview({ storyId: 99999 })).status, 404)
     assert.equal((await postPreview({ cardId: lifeOfPi.id, hatId: "nonexistent-hat" })).status, 404)
     assert.equal((await fetch(`${base}/preview`)).status, 404)
-    assert.equal(llmCalls, 0)
   } finally {
     await server.stop(true)
   }
@@ -269,7 +265,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   const storyFetch = (path: string, init: RequestInit = {}) =>
     fetch(`${base}${path}`, {
       ...init,
-      headers: { "x-tavern-story": String(storyId), ...(init.headers ?? {}) },
+      headers: { "x-tavern-story": String(storyId), ...init.headers },
     })
   const act = async (body: unknown) => {
     const res = await storyFetch("/", { method: "POST", body: JSON.stringify(body) })
@@ -389,6 +385,66 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     const updatedMsgs = JSON.stringify(prevAfterHatEdit.messages)
     assert.ok(updatedMsgs.includes("HAT-V2-UPDATED"))
     assert.ok(!updatedMsgs.includes("HAT-V1"))
+  } finally {
+    await server.stop(true)
+  }
+}
+
+// 6. Env / pinned model fallback: uses env model format & prefill capabilities with zero LLM calls
+{
+  const data = open(":memory:")
+  shelf(data).install(lifeOfPi, { via: "file" })
+  let llmCalls = 0
+  const lib = library({
+    data,
+    overlay: player.harness,
+    pinned: true,
+    model: () => ({
+      ...fake(() => {
+        llmCalls++
+        throw new Error("preview must never call any LLM")
+      }),
+      format: "gemini",
+      prefill: false,
+      reasoningBack: false,
+    }),
+  })
+  const envLibrary = library({
+    data,
+    model: () =>
+      fake(() => {
+        throw new Error("unexpected call")
+      }),
+  })
+  data.hats.put({ id: "routing-only", name: "Routing Hat" })
+  envLibrary.routing.write({ hat: "routing-only" })
+  assert.equal(envLibrary.preview({}).connection.hatId, undefined)
+  envLibrary.routing.write({ default: { provider: "missing", model: "missing" } })
+  assert.throws(() => envLibrary.preview({}), /no provider missing/)
+  const server = listen(handle(lib), "127.0.0.1", 0)
+  const base = `http://127.0.0.1:${server.port}`
+  try {
+    const res = await fetch(`${base}/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cardId: lifeOfPi.id,
+        greetingIndex: 0,
+        candidateHat: {
+          id: "env-hat",
+          name: "Env Prefill Hat",
+          narrate: { tail: [{ role: "assistant", text: "Tail prefill" }] },
+        },
+      }),
+    })
+    assert.equal(res.status, 200)
+    const body = (await res.json()) as PreviewNarrateResult
+    assert.equal(body.connection.routingSource, "env")
+    assert.equal(body.connection.format, "gemini")
+    assert.equal(body.connection.prefill, false)
+    assert.equal(body.wireError?.code, "prefill_disallowed")
+    assert.equal(body.wireError?.format, "gemini")
+    assert.equal(llmCalls, 0)
   } finally {
     await server.stop(true)
   }

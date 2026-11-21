@@ -237,7 +237,9 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     const bad = (e: unknown, status = 400) => {
       const code = e instanceof Busy || e instanceof Refused || e instanceof PreviewError ? e.code : undefined
       return json(
-        e instanceof Busy ? 409 : (e instanceof Refused && e.status) || (e instanceof PreviewError && e.status) || status,
+        e instanceof Busy
+          ? 409
+          : (e instanceof Refused && e.status) || (e instanceof PreviewError && e.status) || status,
         {
           error: e instanceof Error ? e.message : String(e),
           ...(code !== undefined && { code }),

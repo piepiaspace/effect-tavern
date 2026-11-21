@@ -12,6 +12,7 @@ export interface ConditionDetail {
   expr: string
   passed: boolean
   actual: unknown
+  skipped?: boolean
 }
 
 export interface SourceRef {

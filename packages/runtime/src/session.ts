@@ -84,7 +84,7 @@ import { resolve, resolveWithTrace, shown, worldOf, type Resolved, type Resolved
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
-import { prepareNarrate } from "./preview.ts"
+import { prepareNarrate, stripTraceRawText } from "./preview.ts"
 import { request, worldBlock, type Ask, type Told } from "./request.ts"
 import type { MessageTrace, WireErrorInfo } from "./trace.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
@@ -304,7 +304,9 @@ export const makeSession = ({
   const cardLore = card.lore.map((e) => ({ ...e, source: "card" as const, ...gateOf(e.id, e.offer) }))
   /** Resolve one request's rows and card lore. Pack resources bypass the story disclosure
    *  engine, so a same-named Pack can never unlock card lore. Historical text lives on turns. */
-  let now: { RT: ResolvedTrace; R: Resolved; I: Lore<Paths, readonly string[]>; packNames: Record<string, string> } | undefined
+  let now:
+    | { RT: ResolvedTrace; R: Resolved; I: Lore<Paths, readonly string[]>; packNames: Record<string, string> }
+    | undefined
   const currentResolved = () => {
     if (now) return now
     const rawRows = rows()
@@ -1045,7 +1047,10 @@ export const makeSession = ({
             packNames: packNames(),
           })
           const live = splitter() // one draft, one cut, across a resumed write
-          const r = yield* write(prep.messages, live, { trace: prep.traces, wireError: prep.wireError })
+          const r = yield* write(prep.messages, live, {
+            trace: stripTraceRawText(prep.traces),
+            wireError: prep.wireError,
+          })
           if (r.finishReason !== "length" || !M.prefill) return split(r.parts)
           const r2 = yield* write([...prep.messages, { role: "assistant", content: r.text }], live) // resume with the partial as prefix
           return split([...r.parts, ...r2.parts])

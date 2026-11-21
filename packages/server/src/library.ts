@@ -51,7 +51,8 @@ import {
   type Trace,
 } from "@effect-tavern/provider"
 import { author } from "./author.ts"
-import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
+import { type Card } from "@effect-tavern/runtime/src/card.ts"
+import { validateCard } from "@effect-tavern/runtime/src/author.ts"
 import { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   decodeLayer,
@@ -145,9 +146,7 @@ export const PreviewRequest = Schema.Struct({
   candidateHat: Schema.optional(Schema.Unknown),
   input: Schema.optional(PreviewInputSchema),
   greetingIndex: Schema.optional(Schema.NullOr(Schema.Int)),
-  fields: Schema.optional(
-    Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number, Schema.Boolean])),
-  ),
+  fields: Schema.optional(Schema.Record(Schema.String, Schema.Union([Schema.String, Schema.Number, Schema.Boolean]))),
   events: Schema.optional(Schema.Array(Schema.String)),
   assumedReads: Schema.optional(Schema.Array(Schema.String)),
   assumedMust: Schema.optional(Schema.Array(Schema.String)),
@@ -204,11 +203,15 @@ export const library = ({
     const stageHat = r.stages ? r.stageHats?.[phase] : undefined
     return stageHat === null ? undefined : (stageHat ?? r.hat)
   }
-  /** A pair as the session runs it: the flattened connection, bound, wearing the routing's hat (never the provider's). */
-  const resolve = (pair: Pair, hatId: string | undefined, onExchange?: CompileOptions["onExchange"]): Model => {
+  const routedEntry = (pair: Pair) => {
     const p = providerOf(pair.provider)
     const m = p.models.find((x) => x.id === pair.model)
     if (!m) throw new ConnectionError("provider-no-model", `provider "${p.name}": no model ${pair.model}`)
+    return { p, m }
+  }
+  /** A pair as the session runs it: the flattened connection, bound, wearing the routing's hat. */
+  const resolve = (pair: Pair, hatId: string | undefined, onExchange?: CompileOptions["onExchange"]): Model => {
+    const { p, m } = routedEntry(pair)
     const { hat: _, ...conn } = connection(p, m, secretOf(p))
     return bind(hatId !== undefined ? { ...conn, hat: hatId } : conn, { onExchange })
   }
@@ -751,15 +754,15 @@ export const library = ({
       let card: Card
       let effectiveCardId: string
       if (req.candidateCard !== undefined) {
-        try {
-          card = decodeCard(req.candidateCard)
-        } catch (err) {
+        const { card: checked, diagnostics } = validateCard(req.candidateCard)
+        const errors = diagnostics.filter((d) => d.level === "error")
+        if (!checked || errors.length)
           throw new PreviewError(
             400,
-            err instanceof Error ? err.message : String(err),
+            errors.map((d) => `${d.level} ${d.rule} ${d.path}: ${d.message}`).join("\n") || "invalid candidate card",
             "invalid-candidate",
           )
-        }
+        card = checked
         effectiveCardId = req.cardId ?? card.id
       } else if (mode === "story") {
         effectiveCardId = storyRow!.card
@@ -777,29 +780,20 @@ export const library = ({
           ? { id: storyRow!.persona, yields: storyRow!.yields }
           : personaFor(card, data.locals.get(effectiveCardId)?.persona)
       const personaPick = personaOf(on.id, on.yields)
-      const rows = rowsOf(
-        effectiveCardId,
-        personaPick ? { ...personaPick, id: personaPick.id } : undefined,
-      )
+      const rows = rowsOf(effectiveCardId, personaPick ? { ...personaPick, id: personaPick.id } : undefined)
       const packNames = Object.fromEntries((rows.packs ?? []).map((p) => [p.id, p.name]))
 
       const r = pinned ? {} : routing()
       const pair = r.stages?.narrate ?? r.default
-      const p = pair ? data.providers.list().find((x) => x.id === pair.provider) : undefined
-      const m = p && pair ? p.models.find((x) => x.id === pair.model) : undefined
-      const routingSource: PreviewConnectionMeta["routingSource"] =
-        p && m ? (r.stages?.narrate ? "stage" : "default") : "none"
+      const entry = pair && routedEntry(pair)
+      const envModel = pair ? undefined : env?.("narrate")
 
       let wornHat: Hat | undefined
       if (req.candidateHat !== undefined) {
         try {
           wornHat = decodeHat(req.candidateHat)
         } catch (err) {
-          throw new PreviewError(
-            400,
-            err instanceof Error ? err.message : String(err),
-            "invalid-candidate",
-          )
+          throw new PreviewError(400, err instanceof Error ? err.message : String(err), "invalid-candidate")
         }
       } else if (req.hatId === null) {
         wornHat = undefined
@@ -807,42 +801,44 @@ export const library = ({
         wornHat = hat(req.hatId)
         if (!wornHat) throw new PreviewError(404, `no hat ${req.hatId}`)
       } else {
-        const routedHatId = hatFor(r, "narrate")
+        const routedHatId = pair ? hatFor(r, "narrate") : envModel?.hat
         wornHat = routedHatId !== undefined ? hat(routedHatId) : undefined
       }
 
-      const connection: PreviewConnectionMeta =
-        p && m
-          ? (() => {
-              const format = m.format ?? p.defaultFormat
-              const caps = capabilities({ format, capabilities: m.capabilities })
-              return {
-                format,
-                prefill: caps.prefill,
-                reasoningBack: caps.reasoningBack,
-                ...(p.cacheTtl !== undefined && { ttl: p.cacheTtl }),
-                ...(m.contextTokens !== undefined && { contextTokens: m.contextTokens }),
-                providerId: p.id,
-                providerName: p.name,
-                modelId: m.id,
-                ...(wornHat && { hatId: wornHat.id, hatName: wornHat.name }),
-                routingSource,
-              }
-            })()
-          : {
-              prefill: true,
-              reasoningBack: true,
-              ...(wornHat && { hatId: wornHat.id, hatName: wornHat.name }),
-              routingSource: "none",
-            }
-
+      let connection: PreviewConnectionMeta
+      if (entry) {
+        const { p, m } = entry
+        const format = m.format ?? p.defaultFormat
+        const caps = capabilities({ format, capabilities: m.capabilities })
+        connection = {
+          format,
+          prefill: caps.prefill,
+          reasoningBack: caps.reasoningBack,
+          ttl: p.cacheTtl,
+          contextTokens: m.contextTokens,
+          providerId: p.id,
+          providerName: p.name,
+          modelId: m.id,
+          routingSource: r.stages?.narrate ? "stage" : "default",
+        }
+      } else if (envModel) {
+        connection = {
+          format: envModel.format,
+          prefill: envModel.prefill,
+          reasoningBack: envModel.reasoningBack ?? false,
+          ttl: envModel.ttl,
+          routingSource: "env",
+        }
+      } else {
+        connection = { prefill: true, reasoningBack: true, routingSource: "none" }
+      }
       return previewNarrate({
         card,
         cardId: effectiveCardId,
         rows,
         packNames,
         ...(wornHat && { hat: wornHat }),
-        connection,
+        connection: wornHat ? { ...connection, hatId: wornHat.id, hatName: wornHat.name } : connection,
         mode,
         ...(mode === "story" && {
           storyId: req.storyId,
