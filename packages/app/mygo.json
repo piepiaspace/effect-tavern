@@ -1,0 +1,12 @@
+{
+  "name": "Effect Tavern",
+  "slug": "effect-tavern",
+  "identifier": "space.piepia.tavern",
+  "version": "0.0.1",
+  "out": "build",
+  "frontendDist": "dist",
+  "buildCommand": "bun web/build.ts",
+  "ios": {
+    "team": "4PG5LBH388"
+  }
+}

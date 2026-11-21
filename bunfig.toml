@@ -39,4 +39,6 @@ minimumReleaseAgeExcludes = [
   "@solidjs/compiler-linux-arm64-gnu",
   "@solidjs/compiler-linux-x64-gnu",
   "@solidjs/compiler-win32-x64-msvc",
+  "@mygo-plugins/fetch",
+  "mygo-runtime",
 ]
