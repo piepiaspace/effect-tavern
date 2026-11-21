@@ -781,8 +781,7 @@ button.record-pill:active {
 /* a clickable list-card tile: owns only the elevated surface and interaction (surface-2, hairline + shadow-1, hover
    lift on fine pointers, press scale, selected hairline). Geometry (padding, gap, and concentric border-radius when
    nested beside --radius controls such as `.workspace .row`) stays with each caller. */
-.tile,
-.drawer .shelf-item {
+.tile {
   box-sizing: border-box;
   border-radius: var(--radius-card);
   background: var(--surface-2);
@@ -795,17 +794,17 @@ button.record-pill:active {
     scale var(--dur-1) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
-  :is(.tile, .drawer .shelf-item):hover:not(:disabled) {
+  .tile:hover:not(:disabled) {
     background: var(--surface-3);
     box-shadow:
       var(--shadow-1),
       inset 0 0 0 var(--hairline) var(--line-strong);
   }
 }
-:is(.tile, .drawer .shelf-item):active:not(:disabled) {
+.tile:active:not(:disabled) {
   scale: 0.98;
 }
-:is(.tile, .drawer .shelf-item):is([aria-current], [aria-checked="true"]) {
+.tile:is([aria-current], [aria-checked="true"]) {
   box-shadow:
     var(--shadow-1),
     inset 0 0 0 1px var(--ink-3);

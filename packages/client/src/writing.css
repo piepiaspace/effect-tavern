@@ -30,7 +30,7 @@
   flex: none;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-5);
+  gap: var(--space-4);
   padding: var(--space-4) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
 }
 .wsheet > * {
@@ -41,7 +41,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 .whead {
   flex: none;
@@ -95,8 +95,22 @@
   overflow: hidden;
 }
 .wcard.grow .field-well {
-  height: 12rem;
+  height: 7.5rem;
   overflow: hidden;
+}
+/* on the per-card writing page, let name chips stretch across the card width instead of hugging the bottom-left */
+.wcard .name-chip {
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+.wcard .name-chip input {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.wcard .name-chip .persona-name {
+  flex: 1;
+  max-width: none;
 }
 .pack-chips {
   display: flex;
@@ -282,20 +296,23 @@
   color: var(--ink-3);
 }
 .sw-card .sw-pills {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   gap: var(--space-1);
   clear: both;
   padding-top: var(--space-2); /* not a margin: a cleared box's top margin is absorbed by the clearance */
 }
 .sw-card .sw-pills button {
-  height: 28px;
-  padding: 0 var(--space-3);
+  height: 32px;
+  padding: 0 var(--space-2);
   border-radius: var(--radius-pill);
   background: var(--alpha-1);
   color: var(--ink-2);
   font-size: var(--text-footnote);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition:
     background var(--dur-2) var(--ease),
     color var(--dur-2) var(--ease);
@@ -320,7 +337,6 @@
   font-size: var(--text-caption);
   color: var(--ink-3);
   line-height: 1.45;
-  min-height: 2lh; /* the built-in sentences run one or two lines: a pick never moves the page under it */
 }
 
 /* the record products: compact cards grouped by kind, with theaters paged in a 2×2 grid */
@@ -873,12 +889,36 @@
     min-height: 0;
     grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
+    gap: var(--space-5);
     column-gap: var(--space-6);
     padding: var(--space-6);
   }
   .wcol {
     height: 100%;
+    gap: var(--space-4);
     overflow: hidden;
+  }
+  .wcard .name-chip {
+    flex: 0 0 auto;
+  }
+  .wcard .name-chip input {
+    flex: none;
+    width: 6.5rem;
+  }
+  .wcard .name-chip .persona-name {
+    flex: none;
+    max-width: 6.5rem;
+  }
+  .sw-card .sw-pills {
+    display: flex;
+    flex-wrap: wrap;
+  }
+  .sw-card .sw-pills button {
+    height: 28px;
+    padding: 0 var(--space-3);
+  }
+  .sw-card .sw-sentence {
+    min-height: 2lh; /* keep the two-column grid rows aligned across picks */
   }
   .wcard.grow .field-well {
     flex: 1;

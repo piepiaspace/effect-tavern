@@ -433,7 +433,7 @@ export const Sidebar = (props: {
                   <li>
                     <button
                       type="button"
-                      class="shelf-item"
+                      class="shelf-item tile"
                       aria-current={c().id === at() ? "true" : undefined}
                       onClick={() => pickCard(c().id)}
                     >

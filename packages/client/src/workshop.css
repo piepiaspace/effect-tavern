@@ -102,6 +102,9 @@
 .workshop-manuscript ::placeholder {
   color: var(--ink-3);
 }
+.workshop-manuscript > .workshop-title::placeholder {
+  font-size: inherit;
+}
 .workshop-manuscript > .workshop-title {
   font-size: 1.75rem;
   font-weight: 650;

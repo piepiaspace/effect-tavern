@@ -284,6 +284,11 @@
   flex-direction: column;
   gap: var(--space-half);
 }
+.shelf-list {
+  margin: 0 calc(-1 * var(--space-2));
+  padding: var(--space-1) var(--space-2);
+  gap: var(--space-2);
+}
 .story-list {
   padding: 0 var(--space-1);
   max-height: calc(7 * 32px + 6 * 2px);
@@ -306,33 +311,15 @@
   background: var(--warn-soft);
   color: var(--ink);
 }
-/* a card on the shelf: its title, a dot while a story of it runs, its line under */
+/* a card on the shelf: a raised tile (surface/shadow/press from chrome.css `.tile`), its title, a dot while a story
+   of it runs, its line under */
 .shelf-item {
-  box-sizing: border-box;
   width: 100%;
   text-align: left;
-  padding: var(--space-2);
-  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
   display: flex;
   flex-direction: column;
   gap: var(--space-half);
-  transition:
-    background var(--dur-2) var(--ease),
-    box-shadow var(--dur-2) var(--ease);
-}
-@media (hover: hover) and (pointer: fine) {
-  .shelf-item:hover {
-    background: var(--ghost-hover);
-  }
-}
-.shelf-item:active {
-  background: var(--ghost-active);
-}
-.shelf-item[aria-current] {
-  background: var(--surface-2);
-  box-shadow:
-    var(--shadow-1),
-    inset 0 0 0 var(--hairline) var(--line);
 }
 .shelf-item .head {
   display: flex;
@@ -1556,16 +1543,10 @@
   height: 48px;
   font-size: var(--text-body);
 }
-/* the shelf in the drawer: each card a raised tile (surface/shadow/press from chrome.css `.tile`) with two lines of summary */
-.drawer .shelf-list {
-  gap: var(--space-2);
-}
+/* the shelf in the drawer: roomier padding and two lines of summary on the shared `.tile` surface */
 .drawer .shelf-item {
   gap: var(--space-1);
   padding: var(--space-3) var(--space-4);
-}
-.drawer .shelf-item:active {
-  background: var(--surface-2);
 }
 .drawer .shelf-item .summary {
   white-space: normal;
