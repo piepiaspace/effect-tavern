@@ -352,6 +352,8 @@ const en: Dict = {
     hatHandshakeNeedsTools: "This template includes tool handshake messages, which this model does not support",
     hatName: "Template name",
     hatNeedsPrefill: "This template ends with an assistant message, but prefill is off on this model",
+    hatReasoningUnsigned:
+      "This template writes reasoning, but the anthropic format only takes back signed reasoning, so it is not sent",
     invalidHatFile: "Not a valid template file",
     invalidToolJson: "Must be a JSON object",
     mainHat: "Default prompt template",
@@ -733,6 +735,8 @@ const en: Dict = {
       "This template includes tool handshake messages, which the selected model connection does not support",
     diagPrefillDisallowed:
       "This request ends with an assistant message, which is disabled on the selected model connection",
+    diagReasoningUnsigned:
+      "The anthropic format only takes back signed reasoning: written or unsigned reasoning is not sent",
     upstreamSkipped: "lookup / decide / direct not run",
     upstreamSimulated: "{n|simulated read|simulated reads}",
     updating: "Updating…",

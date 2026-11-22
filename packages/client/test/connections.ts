@@ -158,6 +158,30 @@ assert.deepEqual(
   ["deliver_prefill"],
 )
 assert.deepEqual(hatConflicts([conflictProv], [blankAssistantTail], { provider: "p", model: "ok" }, "h-blank-asst"), [])
+// Written reasoning never reaches an anthropic-format model (no signature): said on the narrate and review stages
+const thinkHat: Hat = {
+  id: "h-think",
+  name: "Think",
+  narrate: {
+    tail: [
+      { role: "user", text: "Go." },
+      { role: "assistant", text: "", reasoning: "Plan." },
+    ],
+  },
+  review: { head: [{ role: "tool", toolName: "peek", text: "{}", reasoning: "Look first." }] },
+}
+const anthropicProv: Provider = {
+  ...conflictProv,
+  models: [...conflictProv.models, { id: "claude", format: "anthropic" }],
+}
+assert.deepEqual(hatConflicts([anthropicProv], [thinkHat], { provider: "p", model: "claude" }, "h-think"), [
+  "reasoning_unsigned",
+])
+assert.deepEqual(hatConflicts([anthropicProv], [thinkHat], { provider: "p", model: "claude" }, "h-think", "record"), [
+  "reasoning_unsigned",
+])
+assert.deepEqual(hatConflicts([anthropicProv], [thinkHat], { provider: "p", model: "ok" }, "h-think"), [])
+assert.deepEqual(hatConflicts([anthropicProv], [tailHat], { provider: "p", model: "claude" }, "h-tail"), ["prefill"])
 
 // Lightweight Hat mounting, live template conflicts, and JSON import/export round-trip
 let routeState = toggleMainHat({}, "h-tail")

@@ -76,6 +76,8 @@ const diagnosticText = (d: PreviewDiagnostic, deliverTool: boolean): string => {
       return t("promptTree.diagDeliverNeedsTools")
     case "hat_needs_tools":
       return t("promptTree.diagHatNeedsTools")
+    case "reasoning_unsigned":
+      return t("promptTree.diagReasoningUnsigned")
     case "prefill_disallowed":
       return deliverTool ? t("promptTree.diagDeliverNoPrefill") : t("promptTree.diagPrefillDisallowed")
     default:

@@ -118,8 +118,28 @@ assert.equal(signal?.aborted, true)
     { role: "user", content: "go" },
     { role: "assistant", content: [{ type: "reasoning", text: "Let me consider the scene..." }] },
   ]
-  assert.throws(() => wire("anthropic", reasoningOnlyTail, false), /prefill/)
+  assert.throws(() => wire("openai-compatible", reasoningOnlyTail, false), /prefill/)
   assert.equal(wire("openai-compatible", reasoningOnlyTail, true).at(-1)?.role, "assistant")
+  // anthropic: unsigned reasoning is never sent, so a reasoning-only assistant goes away instead of going out as content []
+  assert.deepEqual(roles(wire("anthropic", reasoningOnlyTail, false)), ["system", "user"])
+  const signature = { anthropic: { signature: "sig" } }
+  const mixed: Message[] = [
+    { role: "user", content: "go" },
+    {
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "written" },
+        { type: "reasoning", text: "signed", providerOptions: signature },
+        { type: "text", text: "prose" },
+      ],
+    },
+    { role: "user", content: "more" },
+  ]
+  assert.deepEqual(wire("anthropic", mixed)[1]?.content, [
+    { type: "reasoning", text: "signed", providerOptions: signature },
+    { type: "text", text: "prose" },
+  ])
+  assert.equal(wire("gemini", mixed)[1], mixed[1])
 
   // 4. `replyText` formats reasoning + tool-call + text and ignores `tool` role messages
   assert.equal(

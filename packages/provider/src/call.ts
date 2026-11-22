@@ -124,13 +124,29 @@ export const standard = <S extends Schema.Top & Schema.Constraint & Schema.Const
   return { "~standard": { ...v["~standard"], jsonSchema: j["~standard"].jsonSchema } }
 }
 
+/** Anthropic takes reasoning back only as a thinking block carrying its own reply's signature (or redacted data);
+ *  @ai-sdk/anthropic drops any other reasoning part into a warning nobody reads, and an assistant message holding only
+ *  such parts would go out as `content: []`, a 400. So unsigned reasoning (a Hat's written reasoning, another format's
+ *  past reply) is dropped here on purpose, and a message left with nothing is not sent: `undefined`. */
+export const signedOnly = (m: Message): Message | undefined => {
+  if (m.role !== "assistant" || typeof m.content === "string") return m
+  const content = m.content.filter((p) => {
+    if (p.type !== "reasoning") return true
+    const a = p.providerOptions?.anthropic
+    return a?.signature != null || a?.redactedData != null
+  })
+  if (content.length === m.content.length) return m
+  return content.length ? { ...m, content } : undefined
+}
+
 /** Wire placement. Anthropic takes a mid-conversation system message only directly after a user message (verified live:
  *  400 after assistant or tool_result), and @ai-sdk/anthropic hoists the first system block to top-level `system` when
  *  no leading system block opened the prompt (`head === 0`); those go out as `user`, content unchanged, while leading
  *  system messages (the head) stay untouched. Gemini takes system messages only as the leading run (they become
  *  systemInstruction; @ai-sdk/google throws on any later one), so every system message after the first non-system one
  *  goes out as user, content unchanged. */
-export const wire = (format: Format, messages: readonly Message[], prefill?: boolean): Message[] => {
+export const wire = (format: Format, assembled: readonly Message[], prefill?: boolean): Message[] => {
+  const messages = format === "anthropic" ? assembled.flatMap((m) => signedOnly(m) ?? []) : assembled
   // the one prefill rule: the request does not end in an assistant message (an assistant inside, or a tool result at the end, is fine)
   if (prefill === false && messages.at(-1)?.role === "assistant")
     throw new Error(

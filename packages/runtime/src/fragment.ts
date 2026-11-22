@@ -142,6 +142,16 @@ export const hatHasToolHandshake = (hat: Hat | undefined, stage: "narrate" | "re
   )
 }
 
+/** Whether a Hat writes reasoning on an assistant message or a tool handshake in the given stage (anthropic never sends it). */
+export const hatHasReasoning = (hat: Hat | undefined, stage: "narrate" | "review" = "narrate"): boolean => {
+  if (!hat) return false
+  const entries =
+    stage === "review" ? (hat.review?.head ?? []) : HAT_NARRATE_SLOTS.flatMap((s) => hat.narrate?.[s] ?? [])
+  return entries.some(
+    (e) => (e.role === "assistant" || e.role === "tool") && hatEntryActive(e) && Boolean(e.reasoning?.trim()),
+  )
+}
+
 /** `desired` trimmed, unless another hat (any but `selfId`) already holds it: then its root (a trailing ` <n>` dropped)
  *  numbered from 2 up, skipping a number taken spaced (`新模板 2`) or run together (`新模板2`). A blank name comes back
  *  as given, the caller's to refuse. Settings → 提示词模板 names a new, imported or renamed hat by it, and the library's

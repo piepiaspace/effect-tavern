@@ -1041,12 +1041,32 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
       name: "Reasoning Tail",
       narrate: { tail: [{ role: "assistant", text: "", reasoning: "Begin thinking..." }] },
     },
-    connection: { format: "anthropic", prefill: false, tools: true, reasoningBack: true },
+    connection: { format: "openai-compatible", prefill: false, tools: true, reasoningBack: true },
     mode: "sandbox",
     input: { text: "Look." },
   })
   assert.equal(reasoningTailPreview.wireError?.code, "prefill_disallowed")
   assert.equal(reasoningTailPreview.wireError?.source?.hatSlot, "tail")
+  // anthropic never sends written reasoning: the reasoning-only tail is left out (no prefill, no `content: []`) and said so
+  const anthropicTail = previewNarrate({
+    card,
+    rows: {},
+    hat: {
+      id: "r-tail",
+      name: "Reasoning Tail",
+      narrate: { tail: [{ role: "assistant", text: "", reasoning: "Begin thinking..." }] },
+    },
+    connection: { format: "anthropic", prefill: false, tools: true, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look." },
+  })
+  assert.equal(anthropicTail.wireError, undefined)
+  const unsigned = anthropicTail.diagnostics.find((d) => d.code === "reasoning_unsigned")
+  assert.equal(unsigned?.source?.hatSlot, "tail")
+  assert.notEqual(anthropicTail.wiredMessages?.at(-1)?.role, "assistant")
+  assert.equal(anthropicTail.wiredMessages?.length, anthropicTail.messages.length - 1)
+  assert.equal(anthropicTail.traces.at(-1)?.wiredRole, undefined)
+  assert.equal(anthropicTail.traces.at(-2)?.wiredRole, anthropicTail.wiredMessages?.at(-1)?.role)
 
   const toolTailPreview = previewNarrate({
     card,

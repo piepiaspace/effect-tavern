@@ -9,6 +9,7 @@ import type { Format } from "@effect-tavern/provider/src/url.ts"
 import {
   HAT_NARRATE_SLOTS,
   hatEntryActive,
+  hatHasReasoning,
   hatHasToolHandshake,
   normalizeHatDelivery,
   type Hat,
@@ -81,7 +82,7 @@ export const withDeliver = (h: Hat, choice: "text" | NonNullable<Hat["toolChoice
   const { deliver: _, toolChoice: __, ...rest } = h
   return choice === "text" ? rest : { ...rest, deliver: "tool", toolChoice: choice }
 }
-export type HatConflict = "prefill" | "deliver_prefill" | "deliver_tools" | "handshake_tools"
+export type HatConflict = "prefill" | "deliver_prefill" | "deliver_tools" | "handshake_tools" | "reasoning_unsigned"
 /** Whether a Hat tool handshake's `toolInput` text is blank (defaulting to `{}`) or a valid JSON object. */
 export const validToolInput = (raw: string): boolean => {
   const trimmed = raw.trim()
@@ -107,16 +108,26 @@ export const hatConflicts = (
   const p = pair ? providers.find((x) => x.id === pair.provider) : undefined
   const m = pair && p ? p.models.find((x) => x.id === pair.model) : undefined
   const noTools = p && m && !capOf(p, m, "tools")
-  if (stage !== "narrate") return noTools && hatHasToolHandshake(h, "review") ? ["handshake_tools"] : []
+  const anthropic = p && m && formatOf(p, m) === "anthropic"
+  const unsigned = anthropic && hatHasReasoning(h, stage === "narrate" ? "narrate" : "review")
+  if (stage !== "narrate") {
+    const out: HatConflict[] = noTools && hatHasToolHandshake(h, "review") ? ["handshake_tools"] : []
+    return unsigned ? [...out, "reasoning_unsigned"] : out
+  }
   const endsInAssistant = h.narrate?.tail?.filter(hatEntryActive).at(-1)?.role === "assistant"
   const out: HatConflict[] = []
   if (h.deliver === "tool") {
     if (endsInAssistant) out.push("deliver_prefill")
     if (noTools) out.push("deliver_tools")
-  } else if (endsInAssistant && p && m && !capOf(p, m, "prefill")) {
-    out.push("prefill")
+  } else if (p && m && !capOf(p, m, "prefill")) {
+    // on anthropic a reasoning-only assistant is not sent (provider wire), so it ends nothing
+    const sent = h.narrate?.tail?.filter(
+      (e) => hatEntryActive(e) && !(anthropic && e.role === "assistant" && !e.text.trim()),
+    )
+    if (sent?.at(-1)?.role === "assistant") out.push("prefill")
   }
   if (noTools && hatHasToolHandshake(h, "narrate")) out.push("handshake_tools")
+  if (unsigned) out.push("reasoning_unsigned")
   return out
 }
 /** Where `hatId` is currently mounted in `route` (`stageHats` only applies while `route.stages` is enabled). */
