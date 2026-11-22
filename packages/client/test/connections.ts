@@ -95,11 +95,14 @@ assert.deepEqual(without({ id: "a" }, "effort", "high"), { id: "a", effort: "hig
 
 // Hat prose delivery (`text` omitted, `tool` explicit) and narrate routing conflicts
 const baseHat: Hat = { id: "h1", name: "Base", narrate: { head: [{ role: "system", text: "Go" }] } }
-const toolHat = withDeliver(baseHat, "tool")
+const toolHat = withDeliver(baseHat, "auto")
 assert.equal(toolHat.deliver, "tool")
 const resetHat = withDeliver(toolHat, "text")
 assert.equal("deliver" in resetHat, false)
+assert.equal(toolHat.toolChoice, "auto")
 assert.deepEqual(resetHat, baseHat)
+const forcedHat = { ...toolHat, toolChoice: "force" as const }
+assert.deepEqual(withDeliver(withDeliver(forcedHat, "text"), "force"), forcedHat)
 
 const tailHat: Hat = { id: "h-tail", name: "Tail", narrate: { tail: [{ role: "assistant", text: "Sure," }] } }
 const toolTailHat: Hat = { ...tailHat, id: "h-tool-tail", deliver: "tool" }
@@ -181,12 +184,15 @@ assert.equal(exported.includes('"id"'), false)
 assert.deepEqual(parseHatFile(exported, "Fallback"), {
   name: "Base",
   deliver: "tool",
+  toolChoice: "auto",
   narrate: { head: [{ role: "system", text: "Go" }] },
 })
 assert.equal(parseHatFile('{"scripts":{}}', "package"), null)
 assert.deepEqual(parseHatFile(serializeHat({ id: "empty", name: "Empty" }), "Fallback"), { name: "Empty" })
 assert.equal(parseHatFile("{bad", "Fallback"), null)
 assert.equal(parseHatFile('{"deliver":"invalid"}', "Fallback"), null)
+assert.equal(parseHatFile('{"toolChoice":"invalid"}', "Fallback"), null)
+assert.deepEqual(parseHatFile('{"deliver":"tool"}', "Legacy"), { name: "Legacy", deliver: "tool" })
 assert.equal(parseHatFile('{"narrate":{"head":[{"role":"tool","text":"x"}]}}', "Fallback"), null)
 
 // Structured Hat entries (`assistant` reasoning, `role: "tool"` handshake) and all 5 slots
@@ -270,6 +276,7 @@ for (const stage of ["check", "polish", "record"] as const) {
 const richHat: Hat = {
   id: "h-rich",
   name: "Rich Protocol Shell",
+  toolChoice: "force",
   deliver: "tool",
   narrate: {
     lead: [{ role: "system", text: "Top framing" }],

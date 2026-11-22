@@ -245,10 +245,25 @@ const run = async () => {
     ].find((el) => el.textContent?.trim() === itemText)
   check(segItem("正文交付", "纯文本")?.hasAttribute("data-checked"), "hat deliver starts on 纯文本")
   hatResponse = Promise.resolve(
-    Response.json(registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, deliver: "tool" } : h))),
+    Response.json(
+      registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, deliver: "tool", toolChoice: "auto" } : h)),
+    ),
   )
-  segItem("正文交付", "工具调用")?.click()
+  segItem("正文交付", "工具（自动）")?.click()
   await quiet()
+  check(
+    hatWrites.at(-1)?.toolChoice === "auto" && segItem("正文交付", "工具（自动）")?.hasAttribute("data-checked"),
+    "tool delivery starts in auto",
+  )
+  hatResponse = Promise.resolve(
+    Response.json(registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, toolChoice: "force" } : h))),
+  )
+  segItem("正文交付", "工具（强制）")?.click()
+  await quiet()
+  check(
+    hatWrites.at(-1)?.toolChoice === "force" && segItem("正文交付", "工具（强制）")?.hasAttribute("data-checked"),
+    "force choice saved",
+  )
   check(hatWrites.at(-1)?.deliver === "tool", `expected deliver=tool written, got ${JSON.stringify(hatWrites.at(-1))}`)
   check(
     document.querySelector('[aria-label="尾部预填"] .hat-slot-empty')?.classList.contains("muted"),
@@ -258,7 +273,7 @@ const run = async () => {
     Response.json(
       registry.get(hats).map((h) => {
         if (h.id !== "hat-gemini") return h
-        const { deliver: _, ...rest } = h
+        const { deliver: _, toolChoice: __, ...rest } = h
         return rest
       }),
     ),
@@ -266,9 +281,23 @@ const run = async () => {
   segItem("正文交付", "纯文本")?.click()
   await quiet()
   check(
-    hatWrites.at(-1) !== undefined && !("deliver" in hatWrites.at(-1)!),
+    segItem("正文交付", "纯文本")?.hasAttribute("data-checked") &&
+      hatWrites.at(-1)?.toolChoice === undefined &&
+      !("deliver" in hatWrites.at(-1)!),
     `expected deliver omitted when switched back to text, got ${JSON.stringify(hatWrites.at(-1))}`,
   )
+
+  openSettings("templates", "hat-tool")
+  await quiet()
+  check(
+    document.querySelector(".hat-deliver-bar h3")?.textContent?.includes("工具（沿用旧规则）") &&
+      !segItem("正文交付", "纯文本")?.hasAttribute("data-checked") &&
+      !segItem("正文交付", "工具（自动）")?.hasAttribute("data-checked") &&
+      !segItem("正文交付", "工具（强制）")?.hasAttribute("data-checked"),
+    "legacy template keeps its original policy until a choice is made",
+  )
+  openSettings("templates", "hat-gemini")
+  await quiet()
 
   // Adding a message opens the focused modal (`+ 添加` -> Modal -> `完成`), never inserting a blank inline card
   const addTailBtn = document.querySelector<HTMLButtonElement>('[aria-label="尾部预填"] button[aria-label="添加消息"]')

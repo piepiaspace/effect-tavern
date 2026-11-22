@@ -542,6 +542,21 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
     assert.deepEqual(sentAnthropic?.tool_choice, expectedChoice)
   }
 
+  // An explicit choice overrides the legacy thinking-mode default at the model boundary.
+  for (const choice of ["auto", "force"] as const) {
+    const model = fake((req) => {
+      assert.deepEqual(
+        req.toolChoice,
+        choice === "auto" ? { type: "auto" } : { type: "tool", toolName: NARRATIVE_TOOL },
+      )
+      return { text: "Plain prose" }
+    })
+    const result = await Effect.runPromise(
+      text({ ...model, format: "anthropic", effort: "high" }, msgs, { deliver: "tool", toolChoice: choice }),
+    )
+    assert.equal(result.text, "Plain prose")
+  }
+
   // 6d. Player mid-stream stop / abort cancels request and preserves partial decoded text
   let abortSig: AbortSignal | undefined
   const slowToolFake = fake((req) => {

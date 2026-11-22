@@ -181,8 +181,11 @@ const failedCall = (
   } satisfies Event
 }
 
-const checkDeliver = (deliver: "tool" | undefined, M: Model, msgs: readonly Message[]) => {
-  if (deliver !== "tool") return undefined
+const narrativeDelivery = (hat?: Hat) =>
+  hat?.deliver === "tool" ? { deliver: "tool" as const, toolChoice: hat.toolChoice } : undefined
+
+const checkDeliver = (delivery: ReturnType<typeof narrativeDelivery>, M: Model, msgs: readonly Message[]) => {
+  if (!delivery) return undefined
   if (M.tools === false)
     return modelError(new Error("hat deliver: tool requires native tool calling on this connection"))
   if (msgs.at(-1)?.role === "assistant")
@@ -646,19 +649,19 @@ export const makeSession = ({
       )
       const M = modelFor("narrate", emit.observe("narrate"))
       const worn = M.hat === undefined ? undefined : hat?.(M.hat)
-      const deliver = worn?.deliver === "tool" ? ("tool" as const) : undefined
+      const delivery = narrativeDelivery(worn)
       yield* emit({ kind: "stage", phase: "narrate" })
       const t0 = Date.now()
       const model = nameOf(M.model)
       let callMeta: { out?: unknown; usage?: Usage } | undefined
       const demanded = yield* Effect.gen(function* () {
-        const invalid = checkDeliver(deliver, M, msgs)
+        const invalid = checkDeliver(delivery, M, msgs)
         if (invalid) return yield* Effect.fail(invalid)
         const r = yield* whole(M, msgs, {
           name: "narrate",
           maxOutputTokens: M.maxOutputTokens,
           effort: M.effort,
-          ...(deliver && { deliver }),
+          ...delivery,
         })
         callMeta = { out: r.text || undefined, usage: r.usage }
         if (r.finishReason === "content-filter") return yield* Effect.fail(contentFilterError(r, model))
@@ -1005,7 +1008,7 @@ export const makeSession = ({
       const write = (
         msgs: Message[],
         live: ReturnType<typeof splitter>,
-        deliver: "tool" | undefined,
+        delivery: ReturnType<typeof narrativeDelivery>,
         meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
         priorParts: readonly { type: "text" | "reasoning"; text: string }[] = [],
         allowAsideOnlyForCheck = false,
@@ -1016,7 +1019,7 @@ export const makeSession = ({
           let callMeta:
             | { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage }
             | undefined = meta
-          return yield* writing(msgs, live, t0, deliver, meta, priorParts, allowAsideOnlyForCheck, (extra) => {
+          return yield* writing(msgs, live, t0, delivery, meta, priorParts, allowAsideOnlyForCheck, (extra) => {
             callMeta = { ...meta, ...extra }
           }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
         })
@@ -1024,18 +1027,18 @@ export const makeSession = ({
         msgs: Message[],
         live: ReturnType<typeof splitter>,
         t0: number,
-        deliver: "tool" | undefined,
+        delivery: ReturnType<typeof narrativeDelivery>,
         meta: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo } | undefined,
         priorParts: readonly { type: "text" | "reasoning"; text: string }[],
         allowAsideOnlyForCheck: boolean,
         onReply: (extra: { out?: unknown; usage?: Usage }) => void,
       ) =>
         Effect.gen(function* () {
-          const invalid = checkDeliver(deliver, M, msgs)
+          const invalid = checkDeliver(delivery, M, msgs)
           if (invalid) return yield* Effect.fail(invalid)
           const { parts, reply } = yield* streamed(M, msgs, {
             ...opts,
-            ...(deliver && { deliver }),
+            ...delivery,
           })
           let text = ""
           let finished = false
@@ -1075,7 +1078,7 @@ export const makeSession = ({
               priorParts.length === 0 &&
               r.finishReason === "length" &&
               M.prefill &&
-              deliver !== "tool" &&
+              !delivery &&
               r.text.trim().length > 0
             if (!willResume) {
               const allParts = [...priorParts, ...r.parts]
@@ -1101,7 +1104,7 @@ export const makeSession = ({
       const narrate = (correction?: string) =>
         Effect.gen(function* () {
           const worn = M.hat === undefined ? undefined : hat?.(M.hat)
-          const deliver = worn?.deliver === "tool" ? ("tool" as const) : undefined
+          const delivery = narrativeDelivery(worn)
           const allowAsideOnlyForCheck = !correction && (guard.length > 0 || brief.must.length > 0)
           const prep = prepareNarrate({
             card,
@@ -1137,7 +1140,7 @@ export const makeSession = ({
           const r = yield* write(
             prep.messages,
             live,
-            deliver,
+            delivery,
             {
               trace: stripTraceRawText(prep.traces),
               wireError: prep.wireError,
@@ -1145,11 +1148,11 @@ export const makeSession = ({
             [],
             allowAsideOnlyForCheck,
           )
-          if (r.finishReason !== "length" || !M.prefill || deliver === "tool") return split(r.parts)
+          if (r.finishReason !== "length" || !M.prefill || delivery) return split(r.parts)
           const r2 = yield* write(
             [...prep.messages, { role: "assistant", content: r.text }],
             live,
-            deliver,
+            delivery,
             undefined,
             r.parts,
             allowAsideOnlyForCheck,

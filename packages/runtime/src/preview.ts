@@ -53,6 +53,7 @@ export interface PreviewConnectionMeta {
   prefill: boolean
   tools?: boolean
   deliver?: "text" | "tool"
+  toolChoice?: Hat["toolChoice"]
   reasoningBack: boolean
   ttl?: CacheTtl
   contextTokens?: number
@@ -132,7 +133,7 @@ export interface PreviewNarrateInput {
   rows: Rows
   packNames?: Readonly<Record<string, string>>
   hat?: Hat
-  connection: PreviewConnectionMeta
+  connection: Omit<PreviewConnectionMeta, "toolChoice">
   mode: "sandbox" | "story"
   storyId?: number
   nodeId?: number | null
@@ -1074,7 +1075,11 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   })
 
   const effectiveDeliver = hat?.deliver ?? connection.deliver ?? "text"
-  const effectiveConnection: PreviewConnectionMeta = { ...connection, deliver: effectiveDeliver }
+  const effectiveConnection: PreviewConnectionMeta = {
+    ...connection,
+    deliver: effectiveDeliver,
+    ...(effectiveDeliver === "tool" && hat?.toolChoice && { toolChoice: hat.toolChoice }),
+  }
 
   if (effectiveDeliver === "tool" && connection.tools === false) {
     diagnostics.push({

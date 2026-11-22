@@ -509,6 +509,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   lib.hats.put({
     id: "h-tool",
     name: "Tool Delivery Hat",
+    toolChoice: "auto",
     deliver: "tool",
     narrate: { tail: [{ role: "user", text: "Go ahead." }] },
   })
@@ -527,6 +528,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     const body = (await res.json()) as PreviewNarrateResult
     assert.equal(body.connection.tools, false)
     assert.equal(body.connection.deliver, "tool")
+    assert.equal(body.connection.toolChoice, "auto")
     assert.equal(body.connection.prefill, true)
     assert.ok(body.diagnostics.some((d) => d.code === "deliver_needs_tools" && d.level === "error"))
     assert.ok(JSON.stringify(body.messages[0]).includes("calling the narrative tool"))
@@ -534,6 +536,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     // 8. `/hats` PUT/GET round-trip and `/preview` `candidateHat` with structured tool handshakes, all 4 slots, and reasoning
     const fullShellHat = {
       name: "Structured Shell Hat",
+      toolChoice: "force" as const,
       deliver: "text" as const,
       narrate: {
         lead: [{ role: "system" as const, text: "HTTP-HAT-LEAD" }],
@@ -573,6 +576,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     assert.equal(shellPrevRes.status, 200)
     const shellPrev = (await shellPrevRes.json()) as PreviewNarrateResult
     assert.ok(shellPrev.diagnostics.some((d) => d.code === "hat_needs_tools" && d.level === "error"))
+    assert.equal(shellPrev.connection.toolChoice, undefined)
     assert.equal(shellPrev.traces[0]?.subzone, "hat-lead")
     assert.ok(shellPrev.traces.some((t) => t.subzone === "hat-turn" && t.source?.hatSlot === "turn"))
     assert.ok(shellPrev.traces.some((t) => t.role === "tool" && t.partSummary?.toolResultCount === 1))
@@ -588,6 +592,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
         candidateHat: {
           id: "unsaved-shell",
           ...fullShellHat,
+          deliver: "tool",
           narrate: {
             ...fullShellHat.narrate,
             lead: [{ role: "system" as const, text: "UNSAVED-CANDIDATE-LEAD" }],
@@ -597,6 +602,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     })
     assert.equal(candShellRes.status, 200)
     const candShellBody = (await candShellRes.json()) as PreviewNarrateResult
+    assert.equal(candShellBody.connection.toolChoice, "force")
     assert.ok(JSON.stringify(candShellBody.messages).includes("UNSAVED-CANDIDATE-LEAD"))
     assert.equal(
       lib.hats.list().some((h) => h.id === "unsaved-shell"),

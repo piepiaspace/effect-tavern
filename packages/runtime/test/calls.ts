@@ -323,6 +323,7 @@ for (const [phase, demand] of [
       "tool-ok": {
         id: "tool-ok",
         name: "Tool Hat",
+        toolChoice: "auto",
         deliver: "tool",
         narrate: { tail: [{ role: "user", text: "Deliver now." }] },
       },
@@ -381,6 +382,10 @@ for (const [phase, demand] of [
     activeHat = "tool-ok"
     const lenRes = await collectEvents(S.act(root.id, { text: "Write scene." }))
     assert.ok(Exit.isSuccess(lenRes.exit))
+    assert.equal(
+      S.log.nodes.get(1)?.reply.find((part) => part.type === "text")?.text,
+      "Cut prose without prefill resume.",
+    )
     assert.equal(upstreamCalls, 1)
     assert.equal(calls(lenRes.events).filter((c) => c.phase === "narrate").length, 1)
     assert.ok(JSON.stringify(calls(lenRes.events)[0]?.msgs[0]).includes("calling the narrative tool"))
@@ -395,6 +400,7 @@ for (const [phase, demand] of [
       tools: true,
       hat: "tool-ok",
       doStream: async (o) => {
+        assert.deepEqual(o.toolChoice, { type: "auto" })
         sawStreamNarrativeTool = Boolean(o.tools?.some((t) => t.name === "narrative"))
         return {
           stream: streamFrom([
@@ -412,6 +418,7 @@ for (const [phase, demand] of [
         }
       },
       doGenerate: async (o) => {
+        assert.deepEqual(o.toolChoice, { type: "auto" })
         sawDemandNarrativeTool = Boolean(o.tools?.some((t) => t.name === "narrative"))
         return {
           content: [{ type: "tool-call", toolCallId: "tc_2", toolName: "narrative", input: demandArg }],

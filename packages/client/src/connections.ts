@@ -76,10 +76,9 @@ export const hasCompatOverrides = (p: Provider, m: ModelEntry): boolean => {
     (fmt === "openai-compatible" && capOf(p, m, "structured") !== def.structured)
   )
 }
-/** Sets a Hat's prose delivery mode, omitting `deliver` when `"text"` so default Hats stay minimal. */
-export const withDeliver = (h: Hat, deliver: "text" | "tool"): Hat => {
-  const { deliver: _, ...rest } = h
-  return deliver === "tool" ? { ...rest, deliver: "tool" } : rest
+export const withDeliver = (h: Hat, choice: "text" | NonNullable<Hat["toolChoice"]>): Hat => {
+  const { deliver: _, toolChoice: __, ...rest } = h
+  return choice === "text" ? rest : { ...rest, deliver: "tool", toolChoice: choice }
 }
 export type HatConflict = "prefill" | "deliver_prefill" | "deliver_tools" | "handshake_tools"
 /** Whether a Hat tool handshake's `toolInput` text is blank (defaulting to `{}`) or a valid JSON object. */
@@ -184,7 +183,7 @@ const parseHatEntries = (v: unknown): HatEntry[] | null => {
   }
   return out
 }
-const HAT_KEYS = ["name", "deliver", "narrate", "review"] as const
+const HAT_KEYS = ["name", "deliver", "toolChoice", "narrate", "review"] as const
 export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id"> | null => {
   let body: unknown
   try {
@@ -196,6 +195,7 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
   const rec = body as Record<string, unknown>
   if (!HAT_KEYS.some((key) => Object.hasOwn(rec, key))) return null
   if (rec.deliver !== undefined && rec.deliver !== "text" && rec.deliver !== "tool") return null
+  if (rec.toolChoice !== undefined && rec.toolChoice !== "auto" && rec.toolChoice !== "force") return null
   if (rec.name !== undefined && typeof rec.name !== "string") return null
   const narrate = rec.narrate
   if (narrate !== undefined && (!narrate || typeof narrate !== "object" || Array.isArray(narrate))) return null
@@ -221,6 +221,7 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
   const name = typeof rec.name === "string" && rec.name.trim() ? rec.name.trim() : fallbackName
   return {
     name,
+    ...(rec.toolChoice !== undefined && { toolChoice: rec.toolChoice }),
     ...(rec.deliver === "tool" && { deliver: "tool" as const }),
     ...(Object.keys(parsedNarrate).length > 0 && { narrate: parsedNarrate }),
     ...(revHead?.length && { review: { head: revHead } }),

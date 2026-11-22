@@ -111,6 +111,7 @@ export const Hat = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   deliver: Schema.optionalKey(Schema.Literals(["text", "tool"])),
+  toolChoice: Schema.optionalKey(Schema.Literals(["auto", "force"])),
   narrate: Schema.optionalKey(
     Schema.Struct({
       lead: HatSlot,

@@ -570,11 +570,8 @@ const Templates = (props: Pane) => {
     setDraft(next)
     if (commit) void save(next)
   }
-  const setDeliver = (v: "text" | "tool") => {
-    const h = hat()
-    if (!h) return
-    const next = withDeliver(h, v)
-    pin(h.id)
+  const saveDelivery = (next: Hat) => {
+    pin(next.id)
     setDraft(next)
     void save(next)
   }
@@ -808,15 +805,21 @@ const Templates = (props: Pane) => {
                   </Show>
                   <For each={conflicts()}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
                   <div class="hat-deliver-bar">
-                    <h3>{t("settings.hatDeliver")}</h3>
+                    <h3>
+                      {t("settings.hatDeliver")}
+                      <Show when={h().deliver === "tool" && !h().toolChoice}> · {t("settings.hatToolLegacy")}</Show>
+                    </h3>
                     <Segment
                       label={t("settings.hatDeliver")}
-                      value={h().deliver ?? "text"}
+                      value={h().deliver === "tool" ? (h().toolChoice ?? "") : "text"}
                       options={[
                         { value: "text", label: t("settings.hatDeliverText") },
-                        { value: "tool", label: t("settings.hatDeliverTool") },
+                        { value: "auto", label: t("settings.hatDeliverAuto") },
+                        { value: "force", label: t("settings.hatDeliverForce") },
                       ]}
-                      onPick={(v) => setDeliver(v)}
+                      onPick={(v) => {
+                        if (v) saveDelivery(withDeliver(h(), v))
+                      }}
                     />
                   </div>
                   <div class="hat-stack">

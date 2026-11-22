@@ -33,6 +33,8 @@ export interface CallOptions {
   maxOutputTokens?: number
   effort?: Effort
   deliver?: DeliverMode
+  /** Explicit narrative tool choice. Older templates omit it and retain the existing connection default. */
+  toolChoice?: "auto" | "force"
   /** Merged under the model's own provider key; use for anything the connection config does not name. */
   providerOptions?: Record<string, Record<string, unknown>>
 }
@@ -288,7 +290,12 @@ const effectiveOptions = (m: Model, o: CallOptions): CallOptions => ({
   ...o,
 })
 
-const singleToolChoice = (format: Format, modelId: string | undefined, effort: Effort | undefined, toolName: string) =>
+const singleToolChoice = <T extends string>(
+  format: Format,
+  modelId: string | undefined,
+  effort: Effort | undefined,
+  toolName: T,
+) =>
   effort &&
   effort !== "off" &&
   (format === "anthropic" || (format === "openai-compatible" && modelId !== undefined && /claude/i.test(modelId)))
@@ -300,11 +307,19 @@ const NARRATIVE_SCHEMA = standard(
     text: Schema.String.annotate({ description: "The full reply, nothing omitted." }),
   }),
 )
-const narrativeTools = (): ToolSet => ({
-  [NARRATIVE_TOOL]: {
-    description: "Deliver the complete scene narration.",
-    inputSchema: NARRATIVE_SCHEMA,
+const narrativeCall = (m: Model, options: CallOptions, modelId: string | undefined) => ({
+  tools: {
+    [NARRATIVE_TOOL]: {
+      description: "Deliver the complete scene narration.",
+      inputSchema: NARRATIVE_SCHEMA,
+    },
   },
+  toolChoice:
+    options.toolChoice === "auto"
+      ? ("auto" as const)
+      : options.toolChoice === "force"
+        ? ({ type: "tool", toolName: NARRATIVE_TOOL } as const)
+        : singleToolChoice(m.format, modelId, options.effort, NARRATIVE_TOOL),
 })
 
 const HEX_CHARS = new Set("0123456789abcdefABCDEF".split(""))
@@ -864,10 +879,7 @@ export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}
         model: spy ? spy.model : m.model,
         messages: wired,
         abortSignal,
-        ...(toolDeliver && {
-          tools: narrativeTools(),
-          toolChoice: singleToolChoice(m.format, modelId, eff.effort, NARRATIVE_TOOL),
-        }),
+        ...(toolDeliver && narrativeCall(m, eff, modelId)),
         ...settings(m.format, eff, modelId),
       })
       const body = replyText(r.response.messages)
@@ -954,10 +966,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         // object, stack and all, to the console
         onError: () => {},
         includeRawChunks: !!m.exchange,
-        ...(toolDeliver && {
-          tools: narrativeTools(),
-          toolChoice: singleToolChoice(m.format, modelId, eff.effort, NARRATIVE_TOOL),
-        }),
+        ...(toolDeliver && narrativeCall(m, eff, modelId)),
         ...settings(m.format, eff, modelId),
       })
       let sawNarrativeCall = false

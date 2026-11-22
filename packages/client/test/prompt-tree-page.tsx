@@ -264,6 +264,7 @@ async function run() {
         id: "h-tool",
         name: "Tool Hat",
         deliver: "tool",
+        toolChoice: "force",
         narrate: {
           head: [{ role: "system", text: "Use narrative tool" }],
           tail: [{ role: "assistant", text: "Prefill line" }],
@@ -272,7 +273,10 @@ async function run() {
     })
     flush()
     await quiet()
-    if (root.querySelector(".pt-deliver-chip")?.textContent !== t("promptTree.deliverTool"))
+    if (
+      root.querySelector(".pt-deliver-chip")?.textContent !==
+      `${t("promptTree.deliverTool")} · ${t("settings.hatToolForce")}`
+    )
       throw Error("Missing narrative tool delivery badge in Prompt Tree")
     if (!root.querySelector(".pt-diags")?.textContent?.includes(t("promptTree.diagDeliverNeedsTools")))
       throw Error("Missing localized deliver_needs_tools diagnostic in Prompt Tree")

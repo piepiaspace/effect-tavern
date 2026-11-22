@@ -563,7 +563,14 @@ export const PromptTreePage = () => {
                     {(hn) => <span class="pt-meta-item">{t("promptTree.hatActive", { name: hn() })}</span>}
                   </Show>
                   <Show when={(r().connection.deliver ?? mem().candidateHat?.deliver) === "tool"}>
-                    <span class="pill soft pt-deliver-chip">{t("promptTree.deliverTool")}</span>
+                    <span class="pill soft pt-deliver-chip">
+                      {t("promptTree.deliverTool")}
+                      <Show when={r().connection.toolChoice}>
+                        {(choice) =>
+                          ` · ${choice() === "auto" ? t("settings.hatToolAuto") : t("settings.hatToolForce")}`
+                        }
+                      </Show>
+                    </span>
                   </Show>
                   <Show when={r().mode === "sandbox"}>
                     <span class="pt-meta-item muted">
