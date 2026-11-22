@@ -831,16 +831,14 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
         },
       },
     )
-  // schema: every key required, the optional one nullable, its null read back as absent; a NullOr keeps its null
-  const strict = await Effect.runPromise(
-    object(compatModel("schema", '{"next":"end","again":null,"who":null}'), Decide, msgs, { name: "decide" }),
+  // schema: json_schema non-strict, the schema as it is (optional keys optional)
+  const plain = await Effect.runPromise(
+    object(compatModel("schema", '{"next":"end","who":null}'), Decide, msgs, { name: "decide" }),
   )
-  assert.deepEqual(strict.value, { next: "end", who: null })
+  assert.deepEqual(plain.value, { next: "end", who: null })
   const js = sent[0].response_format.json_schema
-  assert.equal(js.strict, true)
-  assert.deepEqual([...js.schema.required].sort(), ["again", "next", "who"])
-  assert.deepEqual(js.schema.properties.again, { anyOf: [{ type: "boolean" }, { type: "null" }] })
-  assert.equal(js.schema.additionalProperties, false)
+  assert.equal(js.strict, false)
+  assert.deepEqual(js.schema.required, ["next", "who"])
   // json: json_object, the schema (and so the word "json") in the last system message
   const json = await Effect.runPromise(
     object(compatModel("json", '{"next":"strike","again":true,"who":"x"}'), Decide, msgs, { name: "decide" }),
