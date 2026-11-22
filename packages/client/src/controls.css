@@ -251,6 +251,29 @@
   opacity: 0.4;
   cursor: default;
 }
+/* a ticked box (controls.tsx `Tick`): the size of a native checkbox, filled with the primary ink when ticked */
+.checkbox {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-sm);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+  background: var(--surface-2);
+}
+.checkbox[data-checked] {
+  box-shadow: none;
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+.checkbox .mark {
+  display: contents;
+}
+.checkbox .mark svg {
+  width: 10px;
+  height: 10px;
+}
 
 .tag {
   flex: none;
