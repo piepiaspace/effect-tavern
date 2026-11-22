@@ -117,11 +117,60 @@ export const effortOptions = (
   }
 }
 
+type JsonSchema = { [k: string]: unknown }
+const isObj = (v: unknown): v is JsonSchema => typeof v === "object" && v !== null && !Array.isArray(v)
+
+/** OpenAI's strict structured outputs (what @ai-sdk/openai-compatible sends unless told otherwise, and what gateways in
+ *  front of other models enforce) take an object only with every property required and no other: an optional key goes
+ *  out required-or-null. */
+const strictShape = (s: unknown): unknown => {
+  if (Array.isArray(s)) return s.map(strictShape)
+  if (!isObj(s)) return s
+  const out: JsonSchema = Object.fromEntries(Object.entries(s).map(([k, v]) => [k, strictShape(v)]))
+  if (out.type === "object" && isObj(out.properties)) {
+    const props = out.properties
+    const required = new Set(Array.isArray(s.required) ? s.required : [])
+    for (const k of Object.keys(props)) if (!required.has(k)) props[k] = { anyOf: [props[k], { type: "null" }] }
+    out.required = Object.keys(props)
+    out.additionalProperties = false
+  }
+  return out
+}
+
+/** The answer to a strict schema back in the original's shape: a null on a key the original left optional is the key
+ *  absent. A key the original requires keeps its null (a NullOr field). */
+const dropOptionalNulls = (s: unknown, v: unknown): unknown => {
+  if (!isObj(s)) return v
+  if (Array.isArray(v)) return isObj(s.items) ? v.map((x) => dropOptionalNulls(s.items, x)) : v
+  if (!isObj(v) || !isObj(s.properties)) return v
+  const props = s.properties
+  const required = new Set(Array.isArray(s.required) ? s.required : [])
+  return Object.fromEntries(
+    Object.entries(v)
+      .filter(([k, x]) => !(x === null && k in props && !required.has(k)))
+      .map(([k, x]) => [k, dropOptionalNulls(props[k], x)]),
+  )
+}
+
 /** Effect Schema as an ai-sdk schema: Standard Schema for validation plus Standard JSON Schema for the wire. */
 export const standard = <S extends Schema.Top & Schema.Constraint & Schema.ConstraintDecoder<unknown>>(s: S) => {
   const v = Schema.toStandardSchemaV1(s)
   const j = Schema.toStandardJSONSchemaV1(s)
   return { "~standard": { ...v["~standard"], jsonSchema: j["~standard"].jsonSchema } }
+}
+
+/** `standard` in OpenAI's strict shape (`strictShape`), its answer read back through `dropOptionalNulls`. */
+export const strictStandard = <S extends Schema.Top & Schema.Constraint & Schema.ConstraintDecoder<unknown>>(s: S) => {
+  const base = standard(s)["~standard"]
+  const original = base.jsonSchema.input({ target: "draft-07" })
+  const strict = strictShape(original) as Record<string, unknown>
+  return {
+    "~standard": {
+      ...base,
+      validate: (value: unknown) => base.validate(dropOptionalNulls(original, value)),
+      jsonSchema: { input: () => strict, output: () => strict },
+    },
+  }
 }
 
 /** Anthropic takes reasoning back only as a thinking block carrying its own reply's signature (or redacted data);
@@ -782,13 +831,27 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
       }
     }
 
+    // openai-compatible: `schema` goes out strict, so in OpenAI's strict shape; `json` is a json_object request, which
+    // carries no schema and needs "json" in the prompt (OpenAI's rule, enforced by DeepSeek and gateways): the schema
+    // goes in as the last system word.
+    const compat = m.format === "openai-compatible"
+    const jsonOnly = compat && m.structured === "json"
+    const output = compat && !jsonOnly ? strictStandard(schema) : standard(schema)
     const spy = spyGenerate(m.model)
     let result: Awaited<ReturnType<typeof generateText>>
     try {
       result = await generateText({
         model: spy.model,
-        output: Output.object({ schema: standard(schema), name: eff.name }),
-        messages: wired,
+        output: Output.object({ schema: output, name: eff.name }),
+        messages: jsonOnly
+          ? [
+              ...wired,
+              {
+                role: "system",
+                content: `Answer with one JSON object matching this JSON Schema:\n${JSON.stringify(output["~standard"].jsonSchema.input({ target: "draft-07" }))}`,
+              },
+            ]
+          : wired,
         abortSignal,
         ...settings(m.format, eff, modelId),
       })

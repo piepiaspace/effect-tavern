@@ -799,4 +799,57 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   assert.match(respEx?.error ?? "", /PROHIBITED_CONTENT/)
 }
 
+// ───────── openai-compatible object(): strict schema shape, json mode carries the schema ─────────
+{
+  const Decide = Schema.Struct({
+    next: Schema.Literals(["strike", "end"]),
+    again: Schema.optionalKey(Schema.Boolean),
+    who: Schema.NullOr(Schema.String),
+  })
+  const sent: Array<Record<string, any>> = []
+  const compatModel = (structured: "schema" | "json", content: string) =>
+    bind(
+      {
+        id: "compat/ds",
+        format: "openai-compatible",
+        endpoint: { url: "https://compat.example/v1", resolution: "exact-prefix" },
+        credential: { type: "api_key", key: "sk-compat-0123456789abcdef" },
+        model: "deepseek-x",
+        capabilities: { structured },
+      },
+      {
+        fetch: async (_input, init) => {
+          sent.push(JSON.parse(init?.body as string))
+          return Response.json({
+            id: "c",
+            object: "chat.completion",
+            created: 1,
+            model: "deepseek-x",
+            choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }],
+            usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+          })
+        },
+      },
+    )
+  // schema: every key required, the optional one nullable, its null read back as absent; a NullOr keeps its null
+  const strict = await Effect.runPromise(
+    object(compatModel("schema", '{"next":"end","again":null,"who":null}'), Decide, msgs, { name: "decide" }),
+  )
+  assert.deepEqual(strict.value, { next: "end", who: null })
+  const js = sent[0].response_format.json_schema
+  assert.equal(js.strict, true)
+  assert.deepEqual([...js.schema.required].sort(), ["again", "next", "who"])
+  assert.deepEqual(js.schema.properties.again, { anyOf: [{ type: "boolean" }, { type: "null" }] })
+  assert.equal(js.schema.additionalProperties, false)
+  // json: json_object, the schema (and so the word "json") in the last system message
+  const json = await Effect.runPromise(
+    object(compatModel("json", '{"next":"strike","again":true,"who":"x"}'), Decide, msgs, { name: "decide" }),
+  )
+  assert.deepEqual(json.value, { next: "strike", again: true, who: "x" })
+  assert.equal(sent[1].response_format.type, "json_object")
+  const last = sent[1].messages.at(-1)
+  assert.equal(last.role, "system")
+  assert.match(last.content, /JSON Schema:\n\{.*"again"/)
+}
+
 console.log("call ok")
