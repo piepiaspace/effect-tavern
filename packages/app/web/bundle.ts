@@ -1,5 +1,4 @@
-// The server bundled for the page: entry.ts for the browser, with bun:sqlite on Go's SQLite (sqlite.ts) and the
-// node:fs / node:os that data.ts imports for its lock as stubs (nofs.ts). build.ts writes it; test/page.ts runs it.
+// Bundle the server for the page using the Go SQLite bridge (sqlite.ts).
 import { fileURLToPath } from "node:url"
 
 const at = (p: string) => fileURLToPath(new URL(p, import.meta.url))
@@ -17,7 +16,6 @@ export const bundleServer = (o: { outdir?: string; version: string }) =>
         name: "page",
         setup(b) {
           b.onResolve({ filter: /^bun:sqlite$/ }, () => ({ path: at("./sqlite.ts") }))
-          b.onResolve({ filter: /^node:(fs|os)$/ }, () => ({ path: at("./nofs.ts") }))
         },
       },
     ],

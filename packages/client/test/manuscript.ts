@@ -3,7 +3,7 @@
 // does not show stays where it was through any edit, and what the author did not touch is written as it was read.
 import { validateCard } from "@effect-tavern/runtime/src/author.ts"
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
-import { cardNames, loadCard } from "@effect-tavern/runtime/test/cards/index.ts"
+import { cardNames, loadCard } from "../../runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
 import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "../src/manuscript.ts"
 

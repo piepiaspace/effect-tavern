@@ -1,5 +1,5 @@
 // The declared rules in words: the wuxia card's ending, actions and odds, and the shapes the other cards use.
-import { full } from "@effect-tavern/runtime/test/cards/index.ts"
+import { full } from "../../runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
 import { chance, cond, effect, labels } from "@effect-tavern/runtime/src/phrase.ts"
 

@@ -5,7 +5,7 @@
 // announced address; never a tavern on a real model under MODEL=fake; a live owner that never says its address is
 // exit 3 naming its pid; a stale address is ignored and removed.
 import { fake, fakeText } from "@effect-tavern/provider"
-import { chat, plain as player } from "@effect-tavern/runtime/test/cards/index.ts"
+import { chat, plain as player } from "../../runtime/test/cards/index.ts"
 import { printCard } from "@effect-tavern/runtime/support/author.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import assert from "node:assert/strict"

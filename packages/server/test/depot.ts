@@ -4,7 +4,7 @@
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { printCard } from "@effect-tavern/runtime/support/author.ts"
-import { chat } from "@effect-tavern/runtime/test/cards/index.ts"
+import { chat } from "../../runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { createServer } from "node:http"

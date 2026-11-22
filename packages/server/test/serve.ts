@@ -7,7 +7,7 @@ type Event = TimelineEvent | Extract<RuntimeEvent, { kind: "call" }>
 // story answers 409; stories of one card and of two run side by side; a story route without its story is a 404.
 import { fake, fakeText } from "@effect-tavern/provider"
 import { facets, type Event as RuntimeEvent } from "@effect-tavern/runtime/src/session.ts"
-import { chat, recordingPlayer as player } from "@effect-tavern/runtime/test/cards/index.ts"
+import { chat, recordingPlayer as player } from "../../runtime/test/cards/index.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import assert from "node:assert/strict"
 import { once } from "node:events"

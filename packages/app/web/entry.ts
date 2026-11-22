@@ -1,12 +1,12 @@
 // The server in the page: the library is Go's (db.go, reached through sqlite.ts), the model whatever the player's
 // routing names, and the client's fetch of /api is answered by the server's own handler, the Wire a listener mounts.
 import { served } from "./host.ts"
-import { open } from "@effect-tavern/server/src/data.ts"
+import { openSqlite } from "@effect-tavern/server/src/sqlite.ts"
 import { standalone } from "@effect-tavern/server/src/host.ts"
 import { refresh } from "@effect-tavern/server/src/names.ts"
 
 try {
-  const data = open("tavern.db", { lock: false })
+  const data = openSqlite("tavern.db")
   served.resolve(standalone(data, { page: true }).handler)
   void refresh(data)
 } catch (e) {
