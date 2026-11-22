@@ -468,6 +468,165 @@ for (const s of stages)
   }
 }
 
+// Structured protocol-shell Hat: `narrate.lead`, `narrate.head`, `narrate.turn`, `narrate.tail`, `review.head`,
+// paired `HatToolHandshake` compilation, `assistant` `reasoning` parts, deterministic `callId`, and safe `toolInput` fallback
+{
+  const shellHat: Hat = {
+    id: "shell",
+    name: "Protocol Shell",
+    narrate: {
+      lead: [
+        { role: "user", text: "LEAD-U" },
+        { role: "system", text: "LEAD-SYS" },
+        { role: "tool", toolName: "boot", toolInput: '{"v":2}', text: "BOOT-OK", reasoning: "Booting" },
+        { role: "tool", toolName: "   ", text: "SKIPPED-BLANK-TOOL" },
+      ],
+      head: [
+        { role: "user", text: "HEAD-U" },
+        { role: "system", text: "HEAD-SYS" },
+        { role: "tool", toolName: "handshake", toolInput: "not-valid-json", text: "", toolCallId: "custom_id_1" },
+      ],
+      turn: [
+        { role: "system", text: "TURN-BEFORE-INPUT" },
+        { role: "assistant", text: "TURN-ACK", reasoning: "Ready for input" },
+      ],
+      tail: [
+        { role: "assistant", text: "   ", reasoning: "   " },
+        { role: "assistant", text: "", reasoning: "TAIL-REASONING-ONLY" },
+      ],
+    },
+    review: {
+      head: [
+        { role: "tool", toolName: "audit_init", toolInput: "[1,2]", text: "AUDIT-READY" },
+        { role: "assistant", text: "Understood.", reasoning: "Review mode" },
+      ],
+    },
+  }
+
+  const detailed = requestDetailed({ ...c(drawn), tail: [{ role: "system", text: "PLAYER-TAIL" }] }, asks.narrate, {
+    hat: shellHat,
+    ttl: "1h",
+  })
+
+  // 1. `narrate.lead` is AT THE VERY TOP of headDrafts in exact declared order, before `lead`, `frame`, `fiction`
+  assert.deepEqual(
+    detailed.traces.slice(0, 4).map((t) => [t.zone, t.subzone, t.role]),
+    [
+      ["head", "hat-lead", "user"],
+      ["head", "hat-lead", "system"],
+      ["head", "hat-lead", "assistant"],
+      ["head", "hat-lead", "tool"],
+    ],
+  )
+  assert.equal(detailed.messages[0]?.content, "LEAD-U")
+  assert.equal(detailed.messages[1]?.content, "LEAD-SYS")
+  assert.deepEqual(detailed.messages[2], {
+    role: "assistant",
+    content: [
+      { type: "reasoning", text: "Booting" },
+      { type: "tool-call", toolCallId: "hat_call_lead_2", toolName: "boot", input: { v: 2 } },
+    ],
+  })
+  assert.deepEqual(detailed.messages[3], {
+    role: "tool",
+    content: [
+      {
+        type: "tool-result",
+        toolCallId: "hat_call_lead_2",
+        toolName: "boot",
+        output: { type: "text", value: "BOOT-OK" },
+      },
+    ],
+  })
+  assert.deepEqual(detailed.traces[2]?.partSummary, {
+    textCount: 0,
+    reasoningCount: 1,
+    reasoningChars: 7,
+    toolCallCount: 1,
+  })
+  assert.deepEqual(detailed.traces[3]?.partSummary, {
+    textCount: 0,
+    reasoningCount: 0,
+    reasoningChars: 0,
+    toolResultCount: 1,
+  })
+  assert.equal(detailed.traces[4]?.subzone, "lead")
+  assert.equal(detailed.traces[5]?.subzone, "frame")
+  assert.equal(detailed.traces[6]?.subzone, "fiction")
+
+  // 2. `narrate.head` places system first, then non-system + tool handshake; last head message carries `head` breakpoint
+  const hatHeadTraces = detailed.traces.filter((t) => t.subzone === "hat-head")
+  assert.deepEqual(
+    hatHeadTraces.map((t) => t.role),
+    ["system", "user", "assistant", "tool"],
+  )
+  const lastHeadTrace = hatHeadTraces.at(-1)!
+  assert.deepEqual(lastHeadTrace.breakpoint, { zone: "head", ttl: "1h" })
+  const headCallMsg = detailed.messages[hatHeadTraces[2].index]
+  const headResMsg = detailed.messages[lastHeadTrace.index]
+  // Invalid JSON falls back safely to `{ raw: "not-valid-json" }`, custom toolCallId preserved, breakpoint on tool-result
+  assert.deepEqual(headCallMsg.content, [
+    { type: "tool-call", toolCallId: "custom_id_1", toolName: "handshake", input: { raw: "not-valid-json" } },
+  ])
+  assert.deepEqual(headResMsg.content, [
+    { type: "tool-result", toolCallId: "custom_id_1", toolName: "handshake", output: { type: "text", value: "" } },
+  ])
+  assert.deepEqual(cc(headResMsg), { type: "ephemeral", ttl: "1h" })
+
+  // 3. `narrate.turn` sits right AFTER `history` (after history's breakpoint) and right BEFORE player `input`
+  const lastHistoryTrace = detailed.traces.filter((t) => t.zone === "history").at(-1)!
+  assert.deepEqual(lastHistoryTrace.breakpoint, { zone: "history" })
+  const turnIdx = lastHistoryTrace.index + 1
+  assert.deepEqual(
+    detailed.traces.slice(turnIdx, turnIdx + 3).map((t) => [t.zone, t.subzone, t.role, t.source?.hatSlot]),
+    [
+      ["input", "hat-turn", "system", "turn"],
+      ["input", "hat-turn", "assistant", "turn"],
+      ["input", "input", "user", undefined],
+    ],
+  )
+  assert.deepEqual(detailed.messages[turnIdx + 1], {
+    role: "assistant",
+    content: [
+      { type: "reasoning", text: "Ready for input" },
+      { type: "text", text: "TURN-ACK" },
+    ],
+  })
+  assert.equal(detailed.messages[turnIdx + 2]?.content, "我拔剑。")
+
+  // 4. `narrate.tail` ends with reasoning-only assistant message; blank entries omitted with `empty_text`
+  const lastTailTrace = detailed.traces.at(-1)!
+  assert.equal(lastTailTrace.subzone, "hat-tail")
+  assert.equal(lastTailTrace.role, "assistant")
+  assert.deepEqual(detailed.messages.at(-1), {
+    role: "assistant",
+    content: [{ type: "reasoning", text: "TAIL-REASONING-ONLY" }],
+  })
+  assert.deepEqual(
+    detailed.omitted.map((o) => [o.id, o.reason]),
+    [
+      ["narrate.lead[3]", "empty_text"],
+      ["narrate.tail[0]", "empty_text"],
+    ],
+  )
+
+  // 5. `review.head` expands `HatToolHandshake` + `assistant` reasoning on `check`, `polish`, `record` inside cached prefix
+  for (const s of ["check", "polish", "record"] as const) {
+    const rev = request(c(drawn), asks[s], { hat: shellHat, ttl: "5m" })
+    assert.equal(rev[offHead.length]?.role, "assistant")
+    assert.equal(rev[offHead.length + 1]?.role, "tool")
+    assert.deepEqual(rev[offHead.length + 2], {
+      role: "assistant",
+      content: [
+        { type: "reasoning", text: "Review mode" },
+        { type: "text", text: "Understood." },
+      ],
+      providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } },
+    })
+    assert.deepEqual(marks(rev), [offHead.length + 2], s)
+  }
+}
+
 // ───────── The scripted narrator reads what this module writes ─────────
 // support/script.ts parses the data lines back for every scripted model; a change to a line above fails here first.
 const read = (s: Ask["stage"], ms: Message[] = line[s]) =>

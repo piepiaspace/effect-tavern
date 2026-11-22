@@ -29,7 +29,7 @@
 // `<draft>`, `<scene>`, Available, State / Actions / So far, Rule, Open, Events, Must, Outcome, Current, MUST / MAY reveal, Tone,
 // Player note, Known, Questions, Player's line.
 import { breakpoint, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
-import type { Hat, Msg, Slotted } from "./fragment.ts"
+import type { Hat, HatEntry, HatNarrateSlot, Msg, Slotted } from "./fragment.ts"
 import type { Input } from "./journal.ts"
 import type { MessageSubzone, MessageTrace, MessageZone, OmittedItem, SourceRef, Span, SpanKind } from "./trace.ts"
 
@@ -39,7 +39,9 @@ export interface Wire {
   ttl?: CacheTtl
   hat?: Hat
   hatSources?: {
+    lead?: readonly (SourceRef | undefined)[]
     head?: readonly (SourceRef | undefined)[]
+    turn?: readonly (SourceRef | undefined)[]
     tail?: readonly (SourceRef | undefined)[]
   }
 }
@@ -179,10 +181,6 @@ const thoughtOf = (c: Common) => (c.thought && /⦅/.test(c.input.text) ? [sys(c
 /** The scene record reads: the player's line, marked as theirs, then the prose; an opening or a note-only turn is prose alone. */
 const sceneBody = (i: Input, prose: string) => (i.text ? `Player's line: ${i.text}\n\n${prose}` : prose)
 
-/** A hat's messages that say something: the settings editor keeps empty rows to type into, and Anthropic and Gemini
- *  refuse empty content, so every hat slot is read through this. */
-const spoken = <M extends { text: string }>(ms: readonly M[] = []): M[] => ms.filter((m) => m.text.trim())
-
 export interface DetailedRequest {
   messages: Message[]
   traces: MessageTrace[]
@@ -226,57 +224,205 @@ const summarizeParts = (parts: readonly unknown[]) => {
   let textCount = 0
   let reasoningCount = 0
   let reasoningChars = 0
+  let toolCallCount = 0
+  let toolResultCount = 0
   let chars = 0
   for (const p of parts) {
     if (typeof p !== "object" || p === null) continue
-    const rec = p as { type?: unknown; text?: unknown }
-    const len = typeof rec.text === "string" ? rec.text.length : 0
-    chars += len
+    const rec = p as {
+      type?: unknown
+      text?: unknown
+      toolName?: unknown
+      input?: unknown
+      output?: unknown
+    }
     if (rec.type === "reasoning") {
+      const len = typeof rec.text === "string" ? rec.text.length : 0
+      chars += len
       reasoningCount++
       reasoningChars += len
-    } else if (rec.type === "text") textCount++
+    } else if (rec.type === "text") {
+      const len = typeof rec.text === "string" ? rec.text.length : 0
+      chars += len
+      textCount++
+    } else if (rec.type === "tool-call") {
+      toolCallCount++
+      const nameLen = typeof rec.toolName === "string" ? rec.toolName.length : 0
+      const argsStr = typeof rec.input === "string" ? rec.input : (JSON.stringify(rec.input) ?? "")
+      chars += nameLen + (argsStr ? argsStr.length + 1 : 0)
+    } else if (rec.type === "tool-result") {
+      toolResultCount++
+      if (typeof rec.output === "object" && rec.output !== null) {
+        const out = rec.output as { value?: unknown }
+        const outStr = typeof out.value === "string" ? out.value : (JSON.stringify(out.value) ?? "")
+        chars += outStr.length
+      }
+    }
   }
-  return { chars, partSummary: { textCount, reasoningCount, reasoningChars } }
+  return {
+    chars,
+    partSummary: {
+      textCount,
+      reasoningCount,
+      reasoningChars,
+      ...(toolCallCount > 0 && { toolCallCount }),
+      ...(toolResultCount > 0 && { toolResultCount }),
+    },
+  }
 }
 
-const collectHat = (
-  ms: readonly { role: "system" | "user" | "assistant"; text: string }[] = [],
+const parseToolInput = (raw: string | undefined): Record<string, unknown> => {
+  if (!raw || !raw.trim()) return {}
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+    return { raw }
+  } catch {
+    return { raw }
+  }
+}
+
+const hatRawText = (m: HatEntry): string => {
+  if (m.role === "assistant" && m.reasoning?.trim()) {
+    return m.text ? `${m.reasoning}\n${m.text}` : m.reasoning
+  }
+  return m.text
+}
+
+interface CompiledHatMessage {
+  msg: Message
+  source: SourceRef
+}
+
+interface CompiledHatItem {
+  entry: HatEntry
+  messages: CompiledHatMessage[]
+}
+
+const compileHatSlot = (
+  ms: readonly HatEntry[] = [],
   sources: readonly (SourceRef | undefined)[] | undefined,
   w: Wire,
-  slot: "head" | "tail",
+  stage: "narrate" | "review",
+  slot: HatNarrateSlot,
   omitted: OmittedItem[],
-) => {
-  const kept: { role: "system" | "user" | "assistant"; text: string; source: SourceRef }[] = []
+): CompiledHatItem[] => {
+  const kept: CompiledHatItem[] = []
   ms.forEach((m, i) => {
-    const source: SourceRef = sources?.[i] ?? {
+    const origIndex = sources?.[i]?.hatIndex ?? i
+    const baseSource: SourceRef = sources?.[i] ?? {
       kind: "hat",
       ...(w.hat && { hatId: w.hat.id, hatName: w.hat.name }),
-      hatStage: "narrate",
+      hatStage: stage,
       hatSlot: slot,
-      hatIndex: i,
-      rawText: m.text,
+      hatIndex: origIndex,
+      rawText: hatRawText(m),
     }
-    if (!m.text.trim()) {
-      omitted.push({
-        category: "hat",
-        id: `narrate.${slot}[${source.hatIndex ?? i}]`,
-        ...(w.hat?.name && { label: w.hat.name }),
-        reason: "empty_text",
-        source,
+    if (m.role === "tool") {
+      if (!m.toolName.trim()) {
+        if (stage === "narrate") {
+          omitted.push({
+            category: "hat",
+            id: `${stage}.${slot}[${origIndex}]`,
+            ...(w.hat?.name && { label: w.hat.name }),
+            reason: "empty_text",
+            source: baseSource,
+          })
+        }
+        return
+      }
+      const toolName = m.toolName.trim()
+      const callId = m.toolCallId?.trim() || `hat_call_${slot}_${origIndex}`
+      const input = parseToolInput(m.toolInput)
+      const callSource: SourceRef = {
+        ...baseSource,
+        rawText: m.reasoning?.trim() ? m.reasoning : undefined,
+      }
+      const resultSource: SourceRef = {
+        ...baseSource,
+        rawText: sources?.[i]?.rawText ?? m.text,
+      }
+      kept.push({
+        entry: m,
+        messages: [
+          {
+            msg: {
+              role: "assistant",
+              content: [
+                ...(m.reasoning?.trim() ? [{ type: "reasoning" as const, text: m.reasoning }] : []),
+                { type: "tool-call" as const, toolCallId: callId, toolName, input },
+              ],
+            },
+            source: callSource,
+          },
+          {
+            msg: {
+              role: "tool",
+              content: [
+                {
+                  type: "tool-result" as const,
+                  toolCallId: callId,
+                  toolName,
+                  output: { type: "text" as const, value: m.text },
+                },
+              ],
+            },
+            source: resultSource,
+          },
+        ],
       })
       return
     }
-    kept.push({ role: m.role, text: m.text, source })
+    const hasReasoning = m.role === "assistant" && Boolean(m.reasoning?.trim())
+    if (!m.text.trim() && !hasReasoning) {
+      if (stage === "narrate") {
+        omitted.push({
+          category: "hat",
+          id: `${stage}.${slot}[${origIndex}]`,
+          ...(w.hat?.name && { label: w.hat.name }),
+          reason: "empty_text",
+          source: baseSource,
+        })
+      }
+      return
+    }
+    if (m.role === "assistant" && m.reasoning?.trim()) {
+      kept.push({
+        entry: m,
+        messages: [
+          {
+            msg: {
+              role: "assistant",
+              content: [
+                { type: "reasoning" as const, text: m.reasoning },
+                ...(m.text.trim() ? [{ type: "text" as const, text: m.text }] : []),
+              ],
+            },
+            source: baseSource,
+          },
+        ],
+      })
+      return
+    }
+    kept.push({
+      entry: m,
+      messages: [{ msg: { role: m.role, content: m.text }, source: baseSource }],
+    })
   })
   return kept
 }
 
 export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedRequest => {
+  const omitted: OmittedItem[] = []
   const head = worldHead(c)
   const frame = zone(head, w)
-  const reviewed = zone([...head, ...spoken(w.hat?.review?.head)], w)
-  const omitted: OmittedItem[] = []
+  const reviewHatMsgs = compileHatSlot(w.hat?.review?.head, undefined, w, "review", "head", omitted).flatMap((item) =>
+    item.messages.map((x) => x.msg),
+  )
+  const reviewedAll: Message[] = [...head.map(toP(w)), ...reviewHatMsgs]
+  const reviewed: Message[] = reviewedAll.map((m, i) => (i === reviewedAll.length - 1 ? breakpoint(m, w.ttl) : m))
   switch (a.stage) {
     case "lookup":
       return {
@@ -343,7 +489,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           index,
           zone: zoneName,
           subzone,
-          role: msg.role as "system" | "user" | "assistant",
+          role: msg.role,
           contentKind: isText ? "text" : "parts",
           chars: info.chars,
           ...("partSummary" in info && { partSummary: info.partSummary }),
@@ -353,14 +499,28 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           ...(opts.breakpoint && { breakpoint: opts.breakpoint }),
         })
       }
+      const pushHatMsg = (zoneName: MessageZone, subzone: MessageSubzone, item: CompiledHatMessage) => {
+        const isText = typeof item.msg.content === "string"
+        const text = isText ? (item.msg.content as string) : ""
+        pushMsg(
+          zoneName,
+          subzone,
+          item.msg,
+          isText && text.length ? [{ start: 0, end: text.length, kind: "hat", source: item.source }] : [],
+          {
+            source: item.source,
+            ...(!isText && { wholeMessage: true }),
+          },
+        )
+      }
 
-      // 1. Head zone: lead, frame (system + non-system), fiction, hat head, then breakpoint on last head msg
+      // 1. Head zone: hat-lead, lead, frame (system + non-system), fiction, hat-head, then breakpoint on last head msg
       const headDrafts: {
         subzone: MessageSubzone
-        role: "system" | "user" | "assistant"
-        text: string
+        msg: Message
         spans: Span[]
         source?: SourceRef
+        wholeMessage?: boolean
       }[] = []
       const pushHead = (
         subzone: MessageSubzone,
@@ -369,8 +529,25 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
         spans: Span[],
         source?: SourceRef,
       ) => {
-        headDrafts.push({ subzone, role, text, spans, source })
+        headDrafts.push({ subzone, msg: { role, content: text }, spans, source })
       }
+      const pushHeadHat = (subzone: MessageSubzone, item: CompiledHatMessage) => {
+        const isText = typeof item.msg.content === "string"
+        const text = isText ? (item.msg.content as string) : ""
+        headDrafts.push({
+          subzone,
+          msg: item.msg,
+          spans: isText && text.length ? [{ start: 0, end: text.length, kind: "hat", source: item.source }] : [],
+          source: item.source,
+          ...(!isText && { wholeMessage: true }),
+        })
+      }
+
+      const hatLead = compileHatSlot(w.hat?.narrate?.lead, w.hatSources?.lead, w, "narrate", "lead", omitted)
+      for (const item of hatLead) {
+        for (const hm of item.messages) pushHeadHat("hat-lead", hm)
+      }
+
       const sysFrame = c.frame.filter((m) => m.role === "system")
       const leadEntries: { text: string; source: SourceRef }[] = []
       if (c.narrator) leadEntries.push({ text: c.narrator, source: askSource(c, "narrate.role") })
@@ -449,22 +626,19 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       }
       flushFiction()
 
-      const hatHead = collectHat(w.hat?.narrate?.head, w.hatSources?.head, w, "head", omitted)
-      for (const m of [...hatHead.filter((x) => x.role === "system"), ...hatHead.filter((x) => x.role !== "system")]) {
-        pushHead(
-          "hat-head",
-          m.role,
-          m.text,
-          [{ start: 0, end: m.text.length, kind: "hat", source: m.source }],
-          m.source,
-        )
+      const hatHead = compileHatSlot(w.hat?.narrate?.head, w.hatSources?.head, w, "narrate", "head", omitted)
+      for (const item of [
+        ...hatHead.filter((x) => x.entry.role === "system"),
+        ...hatHead.filter((x) => x.entry.role !== "system"),
+      ]) {
+        for (const hm of item.messages) pushHeadHat("hat-head", hm)
       }
       headDrafts.forEach((d, i) => {
         const isLast = i === headDrafts.length - 1
-        const baseMsg: Message = { role: d.role, content: d.text }
-        const msg = isLast ? breakpoint(baseMsg, w.ttl) : baseMsg
+        const msg = isLast ? breakpoint(d.msg, w.ttl) : d.msg
         pushMsg("head", d.subzone, msg, d.spans, {
           source: d.source,
+          ...(d.wholeMessage && { wholeMessage: true }),
           ...(isLast && { breakpoint: { zone: "head", ...(w.ttl && { ttl: w.ttl }) } }),
         })
       })
@@ -492,7 +666,10 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
         })
       })
 
-      // 3. Input
+      // 3. Hat turn + Input
+      for (const item of compileHatSlot(w.hat?.narrate?.turn, w.hatSources?.turn, w, "narrate", "turn", omitted)) {
+        for (const hm of item.messages) pushHatMsg("input", "hat-turn", hm)
+      }
       const inText = inputText(c.input)
       const inSrc: SourceRef = {
         kind: "runtime",
@@ -632,14 +809,8 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           source: src,
         })
       }
-      for (const m of collectHat(w.hat?.narrate?.tail, w.hatSources?.tail, w, "tail", omitted)) {
-        pushMsg(
-          "tail",
-          "hat-tail",
-          { role: m.role, content: m.text },
-          [{ start: 0, end: m.text.length, kind: "hat", source: m.source }],
-          { source: m.source },
-        )
+      for (const item of compileHatSlot(w.hat?.narrate?.tail, w.hatSources?.tail, w, "narrate", "tail", omitted)) {
+        for (const hm of item.messages) pushHatMsg("tail", "hat-tail", hm)
       }
       return { messages, traces, omitted }
     }

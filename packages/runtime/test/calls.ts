@@ -535,5 +535,78 @@ for (const [phase, demand] of [
     assert.ok(checkEx && checkEx.kind === "exchange" && checkEx.exchange.kind === "response")
     assert.match(checkEx.exchange.error ?? "", /PROHIBITED_CONTENT/)
   }
+
+  // 5. Hat tool handshake fast-fails when `M.tools === false`, and `Hat.asks` overrides off-stage asks (`stage.role`, `check`, `polish`, `record.tools`)
+  {
+    const handshakeHat: Hat = {
+      id: "hs-hat",
+      name: "Handshake & Asks Hat",
+      narrate: {
+        head: [{ role: "tool", toolName: "boot_ctx", text: "ok" }],
+      },
+      review: {
+        head: [{ role: "tool", toolName: "audit_ctx", text: "ok" }],
+      },
+      asks: {
+        "stage.role": "CUSTOM-STAGE-ROLE for {{char}}",
+        check: "CUSTOM-CHECK-QUESTION",
+        polish: "CUSTOM-POLISH-QUESTION",
+        "record.tools": "CUSTOM-RECORD-TOOLS",
+      },
+    }
+    let toolsEnabled = false
+    const richCard = {
+      ...chat,
+      names: { char: "Lin" },
+      guard: ["Never break character."],
+      lexicon: [{ pattern: "发白", hint: "avoid cliche" }],
+      products: [
+        {
+          id: "notes",
+          role: "chronicle" as const,
+          shape: { kind: "text" as const },
+          fold: "append" as const,
+          feed: true,
+          text: "Record scene.",
+          on: true,
+        },
+      ],
+    }
+    const S = makeSession({
+      card: richCard,
+      rows: () => ({}),
+      hat: (id) => (id === handshakeHat.id ? handshakeHat : undefined),
+      model: () => ({
+        ...fake((o) => {
+          const doc = readStage(o)
+          if (doc.phase === "narrate")
+            return { text: `${"夜雨落在廊檐青石上，风声穿过竹林。".repeat(14)}他的指节发白。` }
+          return defaultAnswer(doc, { notes: "Recorded." })
+        }),
+        tools: toolsEnabled,
+        hat: handshakeHat.id,
+      }),
+    })
+    const root = S.greet({ text: "Opening." }).node!
+    const blockedTurn = await collectEvents(S.act(root.id, { text: "Speak." }))
+    assert.ok(Exit.isFailure(blockedTurn.exit))
+    assert.match(
+      String(Cause.squash(blockedTurn.exit.cause)),
+      /hat tool handshake requires native tool calling on this connection/,
+    )
+
+    toolsEnabled = true
+    const okTurn = await collectEvents(S.act(root.id, { text: "Speak." }))
+    assert.ok(Exit.isSuccess(okTurn.exit))
+    const stageCalls = calls(okTurn.events)
+    const checkCall = stageCalls.find((c) => c.phase === "check")!
+    const polishCall = stageCalls.find((c) => c.phase === "polish")!
+    const recordCall = stageCalls.find((c) => c.phase === "record")!
+    assert.ok(JSON.stringify(checkCall.msgs).includes("CUSTOM-STAGE-ROLE for Lin"))
+    assert.ok(JSON.stringify(checkCall.msgs).includes("CUSTOM-CHECK-QUESTION"))
+    assert.ok(checkCall.msgs.some((m) => m.role === "tool"))
+    assert.ok(JSON.stringify(polishCall.msgs).includes("CUSTOM-POLISH-QUESTION"))
+    assert.ok(JSON.stringify(recordCall.msgs).includes("CUSTOM-RECORD-TOOLS"))
+  }
 }
 console.log("calls ok")

@@ -81,18 +81,63 @@ export type Writing = typeof Writing.Type
 
 // A hat: the protocol shell a connection wears so its model opens in continuation mode, a library row of the player's
 // (`/hats`) that a Connection names by id. Every message is player data; the harness has none of its own. narrate (writes
-// prose) wears narrate.head + narrate.tail; check, polish, record (read prose) wear review.head; lookup, decide, direct
-// (read ledger lines and menus) wear nothing. A message is a head message's shape, role and text, so it wires like one.
-const Said = Schema.Struct({ role: Schema.Literals(["system", "user", "assistant"]), text: Schema.String })
-const Said_ = Schema.optionalKey(Schema.Array(Said))
+// prose) wears narrate.{lead,head,turn,tail}; check, polish, record (read prose) wear review.head; lookup, decide, direct
+// (read ledger lines and menus) wear nothing, though any routed stage's hat may override its asks (`Hat.asks`).
+export const HatRoleMessage = Schema.Struct({
+  role: Schema.Literals(["system", "user", "assistant"]),
+  text: Schema.String,
+  reasoning: Schema.optionalKey(Schema.String),
+})
+export type HatRoleMessage = typeof HatRoleMessage.Type
+
+export const HatToolHandshake = Schema.Struct({
+  role: Schema.Literal("tool"),
+  toolName: Schema.String,
+  toolInput: Schema.optionalKey(Schema.String),
+  text: Schema.String,
+  toolCallId: Schema.optionalKey(Schema.String),
+  reasoning: Schema.optionalKey(Schema.String),
+})
+export type HatToolHandshake = typeof HatToolHandshake.Type
+
+export const HatEntry = Schema.Union([HatRoleMessage, HatToolHandshake])
+export type HatEntry = typeof HatEntry.Type
+
+export const HAT_NARRATE_SLOTS = ["lead", "head", "turn", "tail"] as const
+export type HatNarrateSlot = (typeof HAT_NARRATE_SLOTS)[number]
+
+const HatSlot = Schema.optionalKey(Schema.Array(HatEntry))
 export const Hat = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
   deliver: Schema.optionalKey(Schema.Literals(["text", "tool"])),
-  narrate: Schema.optionalKey(Schema.Struct({ head: Said_, tail: Said_ })),
-  review: Schema.optionalKey(Schema.Struct({ head: Said_ })),
+  narrate: Schema.optionalKey(
+    Schema.Struct({
+      lead: HatSlot,
+      head: HatSlot,
+      turn: HatSlot,
+      tail: HatSlot,
+    }),
+  ),
+  review: Schema.optionalKey(Schema.Struct({ head: HatSlot })),
+  asks: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 })
 export type Hat = typeof Hat.Type
+
+/** Whether a HatEntry carries non-blank content (skipping empty editor rows). */
+export const hatEntryActive = (entry: HatEntry): boolean =>
+  entry.role === "tool"
+    ? Boolean(entry.toolName.trim())
+    : Boolean(entry.text.trim() || (entry.role === "assistant" && entry.reasoning?.trim()))
+
+/** Whether a Hat declares at least one non-blank `role: "tool"` handshake in the given stage. */
+export const hatHasToolHandshake = (hat: Hat | undefined, stage: "narrate" | "review" = "narrate"): boolean => {
+  if (!hat) return false
+  if (stage === "review") return (hat.review?.head ?? []).some((e) => e.role === "tool" && Boolean(e.toolName.trim()))
+  return HAT_NARRATE_SLOTS.some((slot) =>
+    (hat.narrate?.[slot] ?? []).some((e) => e.role === "tool" && Boolean(e.toolName.trim())),
+  )
+}
 
 /** A head message with its fragment's id: in the frame the id is the slot, which request.ts tags (`persona`, `setting`). */
 export interface Slotted extends Msg {
@@ -101,7 +146,7 @@ export interface Slotted extends Msg {
   compiled?: boolean
   persona?: boolean
   hatStage?: "narrate" | "review"
-  hatSlot?: "head" | "tail"
+  hatSlot?: HatNarrateSlot
   hatIndex?: number
 }
 

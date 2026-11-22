@@ -84,7 +84,7 @@ import { resolve, resolveWithTrace, shown, worldOf, type Resolved, type Resolved
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
-import { prepareNarrate, stripTraceRawText } from "./preview.ts"
+import { prepareHat, prepareNarrate, stripTraceRawText } from "./preview.ts"
 import { request, worldBlock, type Ask, type Told } from "./request.ts"
 import type { MessageTrace, WireErrorInfo } from "./trace.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
@@ -182,6 +182,8 @@ const failedCall = (
 }
 
 const checkDeliver = (deliver: "tool" | undefined, M: Model, msgs: readonly Message[]) => {
+  if (M.tools === false && msgs.some((m) => m.role === "tool"))
+    return modelError(new Error("hat tool handshake requires native tool calling on this connection"))
   if (deliver !== "tool") return undefined
   if (M.tools === false)
     return modelError(new Error("hat deliver: tool requires native tool calling on this connection"))
@@ -378,6 +380,18 @@ export const makeSession = ({
   const policyOf = () => (typeof P === "function" ? P() : P)
 
   const wording = (id: string) => layer().asks[id].text
+  const wordingWith = (worn: Hat | undefined, id: string): string => {
+    const raw = worn?.asks?.[id]
+    if (raw?.trim()) {
+      const expanded = expand(raw, layer().names, "hat")
+      if (expanded !== undefined) return expanded
+    }
+    return wording(id)
+  }
+  const wordingFor = (phase: Phase, id: string): string => {
+    const h = modelFor(phase).hat
+    return wordingWith(h === undefined ? undefined : hat?.(h), id)
+  }
   const products = () => layer().products
   /** Narrate blocks under the declared product's cap; a block of an undeclared id is kept as written (the Inspector's). */
   const capped = (bs: Readonly<Record<string, string>>) =>
@@ -411,31 +425,27 @@ export const makeSession = ({
     const M = modelFor(a.stage)
     const { frame, tail, names: N } = layer()
     const worn = M.hat === undefined ? undefined : hat?.(M.hat)
+    const prepHat = worn ? prepareHat(worn, N) : undefined
+    const askText = (id: string) => prepHat?.asks[id] ?? wording(id)
     return request(
       {
         frame: headOf(frame, { state }),
         world: headOf(worldOf(card, frame), { state }),
-        role: wording("stage.role"),
-        narrator: wording("narrate.role"),
-        persona: wording("narrate.persona"),
-        deliver: wording("narrate.deliver"),
-        contextLead: wording("narrate.context"),
-        directions: wording("narrate.turn"),
+        role: askText("stage.role"),
+        narrator: askText("narrate.role"),
+        persona: askText("narrate.persona"),
+        deliver: askText("narrate.deliver"),
+        contextLead: askText("narrate.context"),
+        directions: askText("narrate.turn"),
         tail: headOf(tail, { state }),
         input,
-        thought: wording("input.thought"),
+        thought: askText("input.thought"),
       },
       a,
       {
         reasoningBack: M.reasoningBack,
         ttl: M.ttl,
-        ...(worn && {
-          hat: {
-            ...worn,
-            narrate: { head: fill(worn.narrate?.head ?? [], N, "hat"), tail: fill(worn.narrate?.tail ?? [], N, "hat") },
-            review: { head: fill(worn.review?.head ?? [], N, "hat") },
-          },
-        }),
+        ...(prepHat && { hat: prepHat.hat, hatSources: prepHat.sources }),
       },
     )
   }
@@ -583,8 +593,8 @@ export const makeSession = ({
         .filter((d) => scene.input.invoke?.includes(d.resourceId))
         .map(deliveryText),
       asks: productAsks(picks, context),
-      ...(settlement && { tools: wording("record.tools") }),
-      readout: qs ? wording("record.readout") : "",
+      ...(settlement && { tools: wordingFor("record", "record.tools") }),
+      readout: qs ? wordingFor("record", "record.readout") : "",
       questions: qs?.lines,
       prose: interval ? "" : proseOf(scene.reply),
       ...(interval && { history: derived.at(path).history() }),
@@ -635,7 +645,7 @@ export const makeSession = ({
       const sum = here.summary()
       const msgs = ask(
         here.context(state),
-        { text: "", note: wording("narrate.demand") },
+        { text: "", note: wordingFor("narrate", "narrate.demand") },
         {
           stage: "narrate",
           fiction: fictionAt(here.context(state)),
@@ -646,7 +656,7 @@ export const makeSession = ({
           current: here.known().current,
           must: [],
           may: [],
-          blocks: { question: wording("narrate.blocks"), asks: [`${p.id}: ${p.text}`] },
+          blocks: { question: wordingFor("narrate", "narrate.blocks"), asks: [`${p.id}: ${p.text}`] },
         },
       )
       const M = modelFor("narrate", emit.observe("narrate"))
@@ -882,7 +892,7 @@ export const makeSession = ({
               ask(here.context(s0), input, {
                 stage: "lookup",
                 ledger: here.ledger(),
-                question: wording("lookup"),
+                question: wordingFor("lookup", "lookup"),
                 // lookup's own reading: an entry's unread sections listed under it; narrate's `told` stays bare
                 context: latest([...resident, ...deliveries]).map(lookup.told),
                 current: here.known().current,
@@ -917,7 +927,7 @@ export const makeSession = ({
           // (`again`). Only an input that asked for more enters the per-beat loop, where each later question sees the
           // outcomes so far (§10.2) and continues by default. Verified on Haiku: one question for both roles answers
           // the input again every time, whichever way it is worded.
-          const q = wording(beats.length ? "decide.again" : "decide.first")
+          const q = wordingFor("decide", beats.length ? "decide.again" : "decide.first")
           const d = yield* obj(
             emit,
             "decide",
@@ -966,7 +976,7 @@ export const makeSession = ({
                 BriefOf(openIds),
                 ask(here.context(s1), input, {
                   stage: "direct",
-                  question: wording("direct"),
+                  question: wordingFor("direct", "direct"),
                   ledger: here.ledger(),
                   rules: guard,
                   open: told(open),
@@ -1131,7 +1141,7 @@ export const makeSession = ({
             input,
             correction,
             blocks: {
-              question: wording("narrate.blocks"),
+              question: wordingWith(worn, "narrate.blocks"),
               asks: penned.map((p) => `${p.id}: ${p.text}`),
               sources: penned.map((p) => layerTrace().sources.products[p.id]),
             },
@@ -1192,7 +1202,7 @@ export const makeSession = ({
             Check(openIds, guard),
             ask(here.context(s1), input, {
               stage: "check",
-              question: wording("check"),
+              question: wordingFor("check", "check"),
               rules: guard,
               open: told(open),
               must: brief.must,
@@ -1209,8 +1219,9 @@ export const makeSession = ({
         const missed = brief.must.filter((id) => !c.fired.includes(id))
         // the player's own prose (an edit) is never rewritten: its verdict is recorded and stands
         if (from !== "check" && (c.violated.length || missed.length)) {
+          const worn = M.hat === undefined ? undefined : hat?.(M.hat)
           const again = yield* narrate(
-            `${wording("narrate.correction")} ${[...c.violated.map((r) => `rule "${r}"`), ...missed.map((m) => `missed MUST ${m}`)].join("; ")}`,
+            `${wordingWith(worn, "narrate.correction")} ${[...c.violated.map((r) => `rule "${r}"`), ...missed.map((m) => `missed MUST ${m}`)].join("; ")}`,
           )
           // A stop that fired while check ran halts the rewrite before its first character: the first draft stands,
           // stopped, with its verdict (the halted rewrite once became an empty stopped node).
@@ -1240,7 +1251,7 @@ export const makeSession = ({
           Schema.Struct(Object.fromEntries(targets.map((t) => [t.id, Schema.String]))),
           ask(here.context(s1), input, {
             stage: "polish",
-            question: wording("polish"),
+            question: wordingFor("polish", "polish"),
             hints: targets.flatMap((t) => (t.hints.length ? [`${t.id}: ${t.hints.join("; ")}`] : [])),
             prose: marked(text, targets),
           }),

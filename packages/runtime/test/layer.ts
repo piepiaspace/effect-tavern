@@ -8,7 +8,7 @@ import { Effect, Schema, Stream } from "effect"
 import assert from "node:assert/strict"
 import { readFileSync, writeFileSync } from "node:fs"
 import type { Card } from "../src/card.ts"
-import { Hat } from "../src/fragment.ts"
+import { Hat, hatEntryActive, hatHasToolHandshake } from "../src/fragment.ts"
 import { prose as proseOf } from "../src/journal.ts"
 import {
   decodeLayer,
@@ -1217,6 +1217,47 @@ for (const povText of ["", "{{missing}}"]) {
   assert.equal(decodeHat({ id: "h2", name: "Text", deliver: "text" }).deliver, "text")
   assert.equal(decodeHat({ id: "h3", name: "Tool", deliver: "tool" }).deliver, "tool")
   assert.throws(() => decodeHat({ id: "h4", name: "Bad", deliver: "xml" }))
+
+  // Legacy 3-slot Hat decodes unchanged; full protocol-shell Hat decodes all slots, tool handshakes, reasoning, and asks
+  const legacyHat = decodeHat({
+    id: "legacy",
+    name: "Legacy",
+    narrate: { head: [{ role: "system", text: "S" }], tail: [{ role: "assistant", text: "A" }] },
+    review: { head: [{ role: "user", text: "R" }] },
+  })
+  assert.equal(legacyHat.narrate?.lead, undefined)
+  assert.equal(legacyHat.narrate?.turn, undefined)
+  assert.equal(legacyHat.asks, undefined)
+  assert.equal(hatHasToolHandshake(legacyHat), false)
+
+  const richHat = decodeHat({
+    id: "rich",
+    name: "Rich Shell",
+    deliver: "tool",
+    narrate: {
+      lead: [{ role: "system", text: "Lead" }],
+      head: [{ role: "tool", toolName: "ping", toolInput: '{"x":1}', text: "pong", toolCallId: "c1", reasoning: "R" }],
+      turn: [{ role: "user", text: "Before input" }],
+      tail: [{ role: "assistant", text: "", reasoning: "Prefill thought" }],
+    },
+    review: {
+      head: [{ role: "tool", toolName: "audit", text: "clean" }],
+    },
+    asks: { "narrate.role": "Custom narrator", "stage.role": "Custom stage" },
+  })
+  assert.equal(richHat.narrate?.lead?.length, 1)
+  assert.equal(richHat.narrate?.turn?.length, 1)
+  assert.equal(richHat.asks?.["narrate.role"], "Custom narrator")
+  assert.equal(hatHasToolHandshake(richHat, "narrate"), true)
+  assert.equal(hatHasToolHandshake(richHat, "review"), true)
+  assert.equal(hatEntryActive({ role: "assistant", text: "", reasoning: "think" }), true)
+  assert.equal(hatEntryActive({ role: "assistant", text: "  ", reasoning: " " }), false)
+  assert.equal(hatEntryActive({ role: "user", text: "", reasoning: "ignored" }), false)
+  assert.equal(hatEntryActive({ role: "tool", toolName: "  ", text: "out" }), false)
+  assert.equal(hatEntryActive({ role: "tool", toolName: "ok", text: "" }), true)
+  assert.throws(() =>
+    decodeHat({ id: "bad-tool", name: "Bad", narrate: { head: [{ role: "tool", text: "no-name" }] } }),
+  )
 }
 
 console.log("layer ok")

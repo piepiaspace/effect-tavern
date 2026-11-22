@@ -872,4 +872,196 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.equal(unroutedPrefill.wireError, undefined)
   assert.ok(unroutedPrefill.diagnostics.some((d) => d.code === "prefill_disallowed" && d.level === "error"))
 }
+
+// 8. Protocol-shell Hat: all 4 narrate slots, paired tool handshakes, assistant reasoning, `Hat.asks` overrides,
+//    `hat_needs_tools` diagnostic, and 100% live `makeSession` parity across anthropic, gemini, and openai-compatible
+{
+  const card: Card = {
+    id: "shell-preview-card",
+    title: "Shell Preview",
+    input: "act",
+    frame: [
+      { id: "persona", text: "Companion of {{char}}." },
+      { id: "setting", text: "Observatory dome." },
+    ],
+    fiction: [{ id: "f1", text: "Starlight falls." }],
+    greetings: [{ text: "Welcome {{user}}." }],
+    lore: [],
+    guard: [],
+    products: [
+      {
+        id: "inner",
+        role: "theater",
+        stage: "narrate",
+        shape: { kind: "text" },
+        text: "Silent thought.",
+        on: true,
+      },
+    ],
+    rules: { fields: [], actions: [] },
+    names: { char: "Astra", user: "Leo" },
+  }
+  const rows: Rows = {
+    packs: [
+      {
+        id: "pack-ask",
+        name: "Ask Pack",
+        asks: [{ id: "narrate.role", text: "Pack narrator role." }],
+      },
+    ],
+    local: { id: "local", name: "local", card: card.id, mounts: ["pack-ask"] },
+  }
+  const shellHat: Hat = {
+    id: "shell-hat",
+    name: "Full Protocol Hat",
+    narrate: {
+      lead: [{ role: "system", text: "Protocol lead for {{char}}." }],
+      head: [
+        {
+          role: "tool",
+          toolName: "sync_world",
+          toolInput: '{"dome":true}',
+          text: "Synced {{char}} & {{user}}.",
+          reasoning: "Syncing {{char}}.",
+        },
+      ],
+      turn: [{ role: "system", text: "Turn anchor for {{user}}." }],
+      tail: [{ role: "user", text: "Proceed in character." }],
+    },
+    asks: {
+      "narrate.role": "Hat narrator for {{char}}.",
+      "narrate.blocks": "Hat aside blocks:",
+      "stage.role": "",
+      "narrate.turn": "Unfilled {{missing_hat_hole}}",
+    },
+  }
+
+  for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
+    const pv = previewNarrate({
+      card,
+      rows,
+      hat: shellHat,
+      connection: { format, prefill: false, tools: true, reasoningBack: true, ttl: "5m" },
+      mode: "sandbox",
+      greetingIndex: 0,
+      input: { text: "Open the shutter.", note: "Slowly." },
+    })
+    assert.equal(pv.wireError, undefined)
+    assert.ok(!pv.diagnostics.some((d) => d.code === "hat_needs_tools"))
+
+    // `narrate.lead` is message 0, `lead` (with Hat.asks["narrate.role"]) is message 1
+    assert.equal(pv.traces[0]?.subzone, "hat-lead")
+    assert.equal(pv.traces[0]?.source?.hatSlot, "lead")
+    assert.equal(pv.messages[0]?.content, "Protocol lead for Astra.")
+    assert.equal(pv.traces[1]?.subzone, "lead")
+    const roleSpan = pv.traces[1].spans.find((sp) => sp.source.path === "asks.narrate.role")!
+    assert.equal(roleSpan.source.kind, "hat")
+    assert.equal(roleSpan.source.hatId, "shell-hat")
+    assert.equal(roleSpan.source.rawText, "Hat narrator for {{char}}.")
+    assert.ok(
+      typeof pv.messages[1].content === "string" && pv.messages[1].content.startsWith("Hat narrator for Astra."),
+    )
+
+    // Overridden pack ask, blank ask, and unfilled-hole ask are all tracked in `omitted`
+    assert.ok(
+      pv.omitted.some(
+        (o) =>
+          o.category === "ask" &&
+          o.id === "narrate.role" &&
+          o.reason === "overridden" &&
+          o.source.kind === "pack" &&
+          o.by?.kind === "hat",
+      ),
+    )
+    assert.ok(pv.omitted.some((o) => o.category === "ask" && o.id === "stage.role" && o.reason === "empty_text"))
+    assert.ok(
+      pv.omitted.some(
+        (o) =>
+          o.category === "ask" &&
+          o.id === "narrate.turn" &&
+          o.reason === "unfilled_hole" &&
+          o.missingHoles?.includes("missing_hat_hole"),
+      ),
+    )
+
+    // `Hat.asks["narrate.blocks"]` overrides `blocks` question with `kind: "hat"` source
+    const blocksTrace = pv.traces.find((t) => t.subzone === "blocks")!
+    assert.equal(blocksTrace.spans[0]?.source.kind, "hat")
+    const blocksContent = pv.messages[blocksTrace.index].content
+    assert.ok(typeof blocksContent === "string" && blocksContent.startsWith("Hat aside blocks:\ninner:"))
+
+    // `hat-turn` sits immediately before player `input`, and `wire()` rewrites `system` after `tool` on anthropic/gemini
+    const hatTurnIdx = pv.traces.findIndex((t) => t.subzone === "hat-turn")
+    assert.ok(hatTurnIdx > 0)
+    assert.equal(pv.traces[hatTurnIdx + 1]?.subzone, "input")
+    const toolTraceIdx = pv.traces.findIndex((t) => t.role === "tool")
+    assert.equal(pv.traces[toolTraceIdx]?.partSummary?.toolResultCount, 1)
+
+    // Exact parity with live `makeSession`
+    const s = makeSession({
+      card,
+      rows: () => rows,
+      hat: (id) => (id === shellHat.id ? shellHat : undefined),
+      model: (phase) => ({
+        ...fake((o) => {
+          if (phase === "narrate") assertSdkPrompt(o.prompt, pv.wiredMessages ?? pv.messages)
+          return { text: "Scene prose.\n<<aside>> inner\nQuiet." }
+        }),
+        format,
+        prefill: false,
+        tools: true,
+        reasoningBack: true,
+        ttl: "5m",
+        hat: shellHat.id,
+      }),
+    })
+    await Effect.runPromise(Stream.runDrain(s.begin({ greeting: 0 })))
+    await Effect.runPromise(Stream.runDrain(s.act(0, { text: "Open the shutter.", note: "Slowly." })))
+  }
+
+  // `hat_needs_tools` diagnostic surfaces when `connection.tools === false` and Hat has a `role: "tool"` handshake
+  const noTools = previewNarrate({
+    card,
+    rows,
+    hat: shellHat,
+    connection: { format: "openai-compatible", prefill: true, tools: false, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look." },
+  })
+  const hatToolsDiag = noTools.diagnostics.find((d) => d.code === "hat_needs_tools")
+  assert.ok(hatToolsDiag)
+  assert.equal(hatToolsDiag.level, "error")
+  assert.equal(hatToolsDiag.source?.hatId, shellHat.id)
+  assert.equal(hatToolsDiag.source?.hatSlot, "head")
+
+  // Reasoning-only assistant tail triggers `prefill_disallowed` when `prefill === false`; tool-result tail does NOT
+  const reasoningTailPreview = previewNarrate({
+    card,
+    rows: {},
+    hat: {
+      id: "r-tail",
+      name: "Reasoning Tail",
+      narrate: { tail: [{ role: "assistant", text: "", reasoning: "Begin thinking..." }] },
+    },
+    connection: { format: "anthropic", prefill: false, tools: true, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look." },
+  })
+  assert.equal(reasoningTailPreview.wireError?.code, "prefill_disallowed")
+  assert.equal(reasoningTailPreview.wireError?.source?.hatSlot, "tail")
+
+  const toolTailPreview = previewNarrate({
+    card,
+    rows: {},
+    hat: {
+      id: "t-tail",
+      name: "Tool Tail",
+      narrate: { tail: [{ role: "tool", toolName: "ready_check", text: "ok" }] },
+    },
+    connection: { format: "anthropic", prefill: false, tools: true, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look." },
+  })
+  assert.equal(toolTailPreview.wireError, undefined)
+}
 console.log("preview: ok")

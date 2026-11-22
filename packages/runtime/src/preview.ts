@@ -19,7 +19,16 @@ import {
   type Resource,
 } from "./context.ts"
 import { gateOf, makeDerived } from "./derived.ts"
-import { evaluateHead, type Hat, type HeadInput, type Msg, type Slotted } from "./fragment.ts"
+import {
+  evaluateHead,
+  hatHasToolHandshake,
+  type Hat,
+  type HatEntry,
+  type HatNarrateSlot,
+  type HeadInput,
+  type Msg,
+  type Slotted,
+} from "./fragment.ts"
 import { narratorHistory, policyFor, type Policy } from "./history.ts"
 import { type Input, type Turn as TurnOf } from "./journal.ts"
 import { resolveWithTrace, type ResolvedTrace, type Rows } from "./layer.ts"
@@ -106,6 +115,7 @@ export interface PreviewDiagnostic {
     | "folded_without_summary"
     | "prefill_disallowed"
     | "deliver_needs_tools"
+    | "hat_needs_tools"
     | "invalid_invoke"
     | "connection_unavailable"
     | "invalid_read"
@@ -329,12 +339,18 @@ const traceSource = (source: SourceRef): SourceRef => {
   return compact
 }
 
-const plainText = (m: Message | undefined): string =>
-  !m
-    ? ""
-    : typeof m.content === "string"
-      ? m.content
-      : m.content.map((p) => ("text" in p && typeof p.text === "string" ? p.text : "")).join("")
+const plainText = (m: Message | undefined): string => {
+  if (!m) return ""
+  if (typeof m.content === "string") return m.content
+  return m.content
+    .map((p) => {
+      if ("text" in p && typeof p.text === "string") return p.text
+      if (p.type === "tool-result" && "value" in p.output && typeof p.output.value === "string") return p.output.value
+      return ""
+    })
+    .filter(Boolean)
+    .join("\n")
+}
 const unlessShown = (source: SourceRef, shown: string | undefined) =>
   source.rawText === shown ? traceSource(source) : source
 /** The preview's body sends a text once: a raw template equal to the text it is shown as (the span's slice, the
@@ -384,18 +400,24 @@ export const prepareHat = (
   names: Names,
 ): {
   hat: Hat
-  sources: { head: (SourceRef | undefined)[]; tail: (SourceRef | undefined)[] }
+  sources: {
+    lead: (SourceRef | undefined)[]
+    head: (SourceRef | undefined)[]
+    turn: (SourceRef | undefined)[]
+    tail: (SourceRef | undefined)[]
+  }
+  asks: Record<string, string>
+  askSources: Record<string, SourceRef>
   omitted: OmittedItem[]
 } => {
   const omitted: OmittedItem[] = []
-  const prep = (
-    rows: readonly { role: "system" | "user" | "assistant"; text: string }[] = [],
-    stage: "narrate" | "review",
-    slot: "head" | "tail",
-  ) => {
-    const kept: { role: "system" | "user" | "assistant"; text: string }[] = []
+  const prep = (rows: readonly HatEntry[] = [], stage: "narrate" | "review", slot: HatNarrateSlot) => {
+    const kept: HatEntry[] = []
     const sources: (SourceRef | undefined)[] = []
     rows.forEach((m, i) => {
+      const hasReasoning = (m.role === "assistant" || m.role === "tool") && Boolean(m.reasoning?.trim())
+      const rawPreview =
+        m.role === "assistant" && hasReasoning ? (m.text ? `${m.reasoning}\n${m.text}` : (m.reasoning ?? "")) : m.text
       const src: SourceRef = {
         kind: "hat",
         hatId: worn.id,
@@ -403,9 +425,13 @@ export const prepareHat = (
         hatStage: stage,
         hatSlot: slot,
         hatIndex: i,
-        rawText: m.text,
+        rawText: rawPreview,
       }
-      if (!m.text.trim()) {
+      const isBlank =
+        m.role === "tool"
+          ? !m.toolName.trim()
+          : !m.text.trim() && !(m.role === "assistant" && Boolean(m.reasoning?.trim()))
+      if (isBlank) {
         if (stage === "narrate")
           omitted.push({
             category: "hat",
@@ -416,35 +442,94 @@ export const prepareHat = (
           })
         return
       }
-      const expanded = expand(m.text, names, "hat")
-      if (expanded === undefined) {
-        if (stage === "narrate")
+      const expandedText = expand(m.text, names, "hat")
+      const expandedReasoning = hasReasoning ? expand(m.reasoning!, names, "hat") : undefined
+      if (expandedText === undefined || (hasReasoning && expandedReasoning === undefined)) {
+        if (stage === "narrate") {
+          const combined = [m.text, hasReasoning ? m.reasoning : ""].filter(Boolean).join("\n")
           omitted.push({
             category: "hat",
             id: `${stage}.${slot}[${i}]`,
             label: worn.name,
             reason: "unfilled_hole",
-            missingHoles: unfilled(m.text, names),
-            preview: m.text,
+            missingHoles: unfilled(combined, names),
+            preview: rawPreview,
             source: src,
           })
+        }
         return
       }
-      kept.push({ role: m.role, text: expanded })
+      if (m.role === "tool") {
+        kept.push({
+          ...m,
+          toolName: m.toolName.trim(),
+          text: expandedText,
+          ...(hasReasoning ? { reasoning: expandedReasoning } : { reasoning: undefined }),
+        })
+      } else {
+        kept.push({
+          role: m.role,
+          text: expandedText,
+          ...(hasReasoning && expandedReasoning !== undefined && { reasoning: expandedReasoning }),
+        })
+      }
       sources.push(src)
     })
     return { kept, sources }
   }
+  const lead = prep(worn.narrate?.lead, "narrate", "lead")
   const head = prep(worn.narrate?.head, "narrate", "head")
+  const turn = prep(worn.narrate?.turn, "narrate", "turn")
   const tail = prep(worn.narrate?.tail, "narrate", "tail")
   const review = prep(worn.review?.head, "review", "head")
+
+  const asks: Record<string, string> = {}
+  const askSources: Record<string, SourceRef> = {}
+  for (const [id, raw] of Object.entries(worn.asks ?? {})) {
+    const src: SourceRef = {
+      kind: "hat",
+      hatId: worn.id,
+      hatName: worn.name,
+      path: `asks.${id}`,
+      label: id,
+      rawText: raw,
+    }
+    if (!raw.trim()) {
+      omitted.push({
+        category: "ask",
+        id,
+        label: id,
+        reason: "empty_text",
+        source: src,
+      })
+      continue
+    }
+    const expanded = expand(raw, names, "hat")
+    if (expanded === undefined) {
+      omitted.push({
+        category: "ask",
+        id,
+        label: id,
+        reason: "unfilled_hole",
+        missingHoles: unfilled(raw, names),
+        preview: raw,
+        source: src,
+      })
+      continue
+    }
+    asks[id] = expanded
+    askSources[id] = src
+  }
+
   return {
     hat: {
       ...worn,
-      narrate: { head: head.kept, tail: tail.kept },
+      narrate: { lead: lead.kept, head: head.kept, turn: turn.kept, tail: tail.kept },
       review: { head: review.kept },
     },
-    sources: { head: head.sources, tail: tail.sources },
+    sources: { lead: lead.sources, head: head.sources, turn: turn.sources, tail: tail.sources },
+    asks,
+    askSources,
     omitted,
   }
 }
@@ -584,12 +669,31 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     })
 
   const prepHat = hat ? prepareHat(hat, R.names) : undefined
+  const askSources: Record<string, SourceRef> = { ...RT.sources.asks }
+  const hatOverriddenAsks: OmittedItem[] = []
+  if (prepHat) {
+    for (const [id, src] of Object.entries(prepHat.askSources)) {
+      const prev = RT.sources.asks[id]
+      if (prev && !prev.builtIn) {
+        hatOverriddenAsks.push({
+          category: "ask",
+          id,
+          label: id,
+          reason: "overridden",
+          ...(R.asks[id]?.text && { preview: R.asks[id].text }),
+          source: prev,
+          by: src,
+        })
+      }
+      askSources[id] = src
+    }
+  }
 
   const keptFrame = enrichKept(evalFrame.kept)
   const keptTail = enrichKept(evalTail.kept)
   const keptFiction = enrichKept(evalFiction.kept)
 
-  const wording = (id: string) => R.asks[id].text
+  const wording = (id: string) => prepHat?.asks[id] ?? R.asks[id]?.text ?? ""
   // Only attach a template when it reproduces the frozen delivery. A resident snapshot may predate an editor change.
   const lore = new Map(card.lore.map((entry) => [entry.id, entry]))
   const rawDelivery = (d: DeliverySnapshot) => {
@@ -642,7 +746,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     may: o.may.map(disclosure),
     tone: o.tone,
     correction: o.correction,
-    blocks: o.blocks,
+    blocks: o.blocks ? { ...o.blocks, question: prepHat?.asks["narrate.blocks"] ?? o.blocks.question } : undefined,
   }
   const common: Common = {
     cardId,
@@ -657,7 +761,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     tail: keptTail,
     input: o.input,
     thought: wording("input.thought"),
-    askSources: RT.sources.asks,
+    askSources,
     productSources: RT.sources.products,
   }
   const detailed = requestDetailed(common, ask, {
@@ -688,7 +792,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
       }
     }
     detailed.traces.forEach((tr, i) => {
-      if (wiredMessages[i]) tr.wiredRole = wiredMessages[i].role as "system" | "user" | "assistant"
+      if (wiredMessages[i]) tr.wiredRole = wiredMessages[i].role
     })
   }
 
@@ -702,6 +806,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
       ...omittedFromHead("frame", evalFrame.omitted),
       ...omittedFromHead("tail", evalTail.omitted),
       ...omittedFromHead("fiction", evalFiction.omitted),
+      ...hatOverriddenAsks,
       ...(prepHat?.omitted ?? []),
       ...detailed.omitted,
     ],
@@ -1040,6 +1145,20 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       code: "deliver_needs_tools",
       message: "hat deliver: tool requires native tool calling on this connection (capabilities.tools is false)",
       ...(hat && { source: { kind: "hat", hatId: hat.id, hatName: hat.name } }),
+    })
+  }
+  if (
+    connection.tools === false &&
+    (prepped.messages.some((m) => m.role === "tool") || hatHasToolHandshake(hat, "narrate"))
+  ) {
+    const toolSrc =
+      prepped.traces.find((tr) => tr.role === "tool")?.source ??
+      (hat ? ({ kind: "hat", hatId: hat.id, hatName: hat.name } satisfies SourceRef) : undefined)
+    diagnostics.push({
+      level: "error",
+      code: "hat_needs_tools",
+      message: "hat tool handshake requires native tool calling on this connection (capabilities.tools is false)",
+      ...(toolSrc && { source: traceSource(toolSrc) }),
     })
   }
 

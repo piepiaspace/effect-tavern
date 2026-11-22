@@ -530,6 +530,78 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     assert.equal(body.connection.prefill, true)
     assert.ok(body.diagnostics.some((d) => d.code === "deliver_needs_tools" && d.level === "error"))
     assert.ok(JSON.stringify(body.messages[0]).includes("calling the narrative tool"))
+
+    // 8. `/hats` PUT/GET round-trip and `/preview` `candidateHat` with structured tool handshakes, all 4 slots, reasoning, and `asks`
+    const fullShellHat = {
+      name: "Structured Shell Hat",
+      deliver: "text" as const,
+      narrate: {
+        lead: [{ role: "system" as const, text: "HTTP-HAT-LEAD" }],
+        head: [
+          {
+            role: "tool" as const,
+            toolName: "load_protocol",
+            toolInput: '{"strict":true}',
+            text: "HTTP-TOOL-RESULT",
+            toolCallId: "http_call_1",
+            reasoning: "HTTP-TOOL-REASONING",
+          },
+        ],
+        turn: [{ role: "user" as const, text: "HTTP-HAT-TURN" }],
+        tail: [{ role: "assistant" as const, text: "HTTP-TAIL-TEXT", reasoning: "HTTP-TAIL-REASONING" }],
+      },
+      review: {
+        head: [{ role: "system" as const, text: "HTTP-REVIEW-HEAD" }],
+      },
+      asks: {
+        "narrate.role": "HTTP-CUSTOM-NARRATE-ROLE",
+      },
+    }
+    const putRes = await fetch(`${base}/hats/h-shell`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(fullShellHat),
+    })
+    assert.equal(putRes.status, 200)
+    const listedHats = (await (await fetch(`${base}/hats`)).json()) as Array<typeof fullShellHat & { id: string }>
+    const storedShell = listedHats.find((h) => h.id === "h-shell")
+    assert.deepEqual(storedShell, { id: "h-shell", ...fullShellHat })
+
+    // Preview against `no-tools` connection with `h-shell` surfaces `hat_needs_tools`, all slots, tool messages, and `Hat.asks`
+    const shellPrevRes = await fetch(`${base}/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cardId: lifeOfPi.id, greetingIndex: 0, hatId: "h-shell" }),
+    })
+    assert.equal(shellPrevRes.status, 200)
+    const shellPrev = (await shellPrevRes.json()) as PreviewNarrateResult
+    assert.ok(shellPrev.diagnostics.some((d) => d.code === "hat_needs_tools" && d.level === "error"))
+    assert.equal(shellPrev.traces[0]?.subzone, "hat-lead")
+    assert.ok(shellPrev.traces.some((t) => t.subzone === "hat-turn" && t.source?.hatSlot === "turn"))
+    assert.ok(shellPrev.traces.some((t) => t.role === "tool" && t.partSummary?.toolResultCount === 1))
+    assert.ok(JSON.stringify(shellPrev.messages).includes("HTTP-CUSTOM-NARRATE-ROLE"))
+
+    // Unsaved `candidateHat` with structured entries works without writing to `/hats`
+    const candShellRes = await fetch(`${base}/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cardId: lifeOfPi.id,
+        greetingIndex: 0,
+        candidateHat: {
+          id: "unsaved-shell",
+          ...fullShellHat,
+          asks: { "narrate.role": "UNSAVED-CANDIDATE-ASK" },
+        },
+      }),
+    })
+    assert.equal(candShellRes.status, 200)
+    const candShellBody = (await candShellRes.json()) as PreviewNarrateResult
+    assert.ok(JSON.stringify(candShellBody.messages).includes("UNSAVED-CANDIDATE-ASK"))
+    assert.equal(
+      lib.hats.list().some((h) => h.id === "unsaved-shell"),
+      false,
+    )
   } finally {
     await server.stop(true)
   }

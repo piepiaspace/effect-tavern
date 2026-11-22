@@ -29,7 +29,7 @@ export interface SourceRef {
   hatId?: string
   hatName?: string
   hatStage?: "narrate" | "review"
-  hatSlot?: "head" | "tail"
+  hatSlot?: "lead" | "head" | "turn" | "tail"
   hatIndex?: number
   entryId?: string
   resourceId?: string
@@ -73,12 +73,14 @@ export interface Span {
 export type MessageZone = "head" | "history" | "input" | "turn" | "tail"
 
 export type MessageSubzone =
+  | "hat-lead"
   | "lead"
   | "frame"
   | "fiction"
   | "hat-head"
   | "summary"
   | "history"
+  | "hat-turn"
   | "input"
   | "context"
   | "turn"
@@ -92,11 +94,17 @@ export interface MessageTrace {
   index: number
   zone: MessageZone
   subzone: MessageSubzone
-  role: "system" | "user" | "assistant"
-  wiredRole?: "system" | "user" | "assistant"
+  role: "system" | "user" | "assistant" | "tool"
+  wiredRole?: "system" | "user" | "assistant" | "tool"
   contentKind: "text" | "parts"
   chars: number
-  partSummary?: { textCount: number; reasoningCount: number; reasoningChars: number }
+  partSummary?: {
+    textCount: number
+    reasoningCount: number
+    reasoningChars: number
+    toolCallCount?: number
+    toolResultCount?: number
+  }
   wholeMessage?: boolean
   source?: SourceRef
   spans: readonly Span[]

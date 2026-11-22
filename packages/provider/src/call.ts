@@ -123,24 +123,27 @@ export const standard = <S extends Schema.Top & Schema.Constraint & Schema.Const
 }
 
 /** Wire placement. Anthropic takes a mid-conversation system message only directly after a user message (verified live:
- *  400 otherwise). The harness's views put directives after the player's line, but a past turn that had no player line
- *  (an note-only turn that delivered lore) leaves its system lines after an assistant message; those go out under the
- *  one role the wire still allows there, content unchanged. Leading system messages (the head) are untouched.
- *  Gemini takes system messages only as the leading run (they become systemInstruction; @ai-sdk/google throws on any
- *  later one), so there every system message after the first non-system one goes out as user, content unchanged. */
+ *  400 after assistant or tool_result), and @ai-sdk/anthropic hoists the first system block to top-level `system` when
+ *  no leading system block opened the prompt (`head === 0`); those go out as `user`, content unchanged, while leading
+ *  system messages (the head) stay untouched. Gemini takes system messages only as the leading run (they become
+ *  systemInstruction; @ai-sdk/google throws on any later one), so every system message after the first non-system one
+ *  goes out as user, content unchanged. */
 export const wire = (format: Format, messages: readonly Message[], prefill?: boolean): Message[] => {
-  // the one prefill rule: the request does not end in an assistant message (an assistant inside, a hat's, is fine)
+  // the one prefill rule: the request does not end in an assistant message (an assistant inside, or a tool result at the end, is fine)
   if (prefill === false && messages.at(-1)?.role === "assistant")
     throw new Error(
       "request ends in an assistant message, and this connection does not take a prefill (capabilities.prefill is false): end the hat's tail in a user or system message",
     )
   const head = messages.findIndex((m) => m.role !== "system")
-  return messages.map((m, i) =>
-    m.role === "system" &&
-    (format === "anthropic" ? messages[i - 1]?.role === "assistant" : format === "gemini" && head >= 0 && i > head)
-      ? { ...m, role: "user" }
-      : m,
-  )
+  return messages.map((m, i) => {
+    if (m.role !== "system") return m
+    const prev = messages[i - 1]?.role
+    const rewrite =
+      format === "anthropic"
+        ? head === 0 || prev === "assistant" || prev === "tool"
+        : format === "gemini" && head >= 0 && i > head
+    return rewrite ? { ...m, role: "user" } : m
+  })
 }
 
 const mergeProviderOptions = (
