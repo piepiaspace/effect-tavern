@@ -14,6 +14,8 @@ import {
   type HatEntry,
 } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Pair, Routing } from "./store.ts"
+/** A hat's name no other hat holds (runtime fragment.ts, the library's `hats.put` holds writes to the same rule). */
+export { uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Listed } from "./wire.ts"
 
 export const FORMATS: Format[] = ["openai-compatible", "anthropic", "gemini"]

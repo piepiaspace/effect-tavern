@@ -633,6 +633,36 @@ const over = (data: Data, m: () => Model = model) =>
   }
 }
 
+// A hat's name is the player's handle on it in every menu: a write under a name another hat holds is numbered
+// (fragment.ts `uniqueHatName`), compared trimmed; the same hat rewritten, or renamed back onto its own name, keeps it.
+{
+  const lib = library({ data: open(":memory:"), model })
+  const names = () => lib.hats.list().map((h) => [h.id, h.name])
+  lib.hats.put({ id: "a", name: "新模板" })
+  lib.hats.put({ id: "b", name: "新模板" })
+  lib.hats.put({ id: "c", name: " 新模板 " })
+  assert.deepEqual(names(), [
+    ["a", "新模板"],
+    ["b", "新模板 2"],
+    ["c", "新模板 3"],
+  ])
+  lib.hats.put({ id: "a", name: "新模板", narrate: { head: [{ role: "system", text: "继续" }] } })
+  lib.hats.put({ id: "b", name: "新模板" })
+  assert.deepEqual(names(), [
+    ["a", "新模板"],
+    ["b", "新模板 2"],
+    ["c", "新模板 3"],
+  ])
+  assert.deepEqual(lib.hats.list()[0].narrate, { head: [{ role: "system", text: "继续" }] })
+  lib.hats.put({ id: "c", name: "B" })
+  lib.hats.put({ id: "a", name: "B" })
+  assert.deepEqual(names(), [
+    ["c", "B"],
+    ["a", "B 2"],
+    ["b", "新模板 2"],
+  ])
+}
+
 console.log("library ok")
 
 // Cancelling or explicitly skipping a slow record preserves prose and broadcasts the final node before SSE closes.

@@ -208,8 +208,10 @@ export const Stepper = (props: {
   </NumberInput>
 )
 export const Avatar = (props: { name: string }) => <span class="avatar">{props.name.slice(0, 1).toUpperCase()}</span>
-/** A record's name edited in place in the detail header; an empty edit is not written. */
-export const Name = (props: { value: string; label: string; onCommit: (v: string) => void }) => (
+/** A record's name edited in place in the detail header; an empty edit is not written. The box shows the name kept:
+ *  the record's own after an empty edit, and the caller's answer when `onCommit` returns the name it settled on (a
+ *  template renamed onto another's name keeps a numbered one, often its own: then `value` never changes to redraw it). */
+export const Name = (props: { value: string; label: string; onCommit: (v: string) => string | void }) => (
   <div class="input-box name">
     <input
       type="text"
@@ -221,7 +223,12 @@ export const Name = (props: { value: string; label: string; onCommit: (v: string
       }}
       value={props.value}
       aria-label={props.label}
-      onChange={(e) => e.currentTarget.value.trim() && props.onCommit(e.currentTarget.value.trim())}
+      onChange={(e) => {
+        const box = e.currentTarget
+        const typed = box.value.trim()
+        const kept = typed ? props.onCommit(typed) : props.value
+        if (typeof kept === "string" && box.value !== kept) box.value = kept
+      }}
     />
   </div>
 )

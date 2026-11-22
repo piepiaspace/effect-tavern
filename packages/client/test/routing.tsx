@@ -6,7 +6,7 @@ import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { parseHatFile, serializeHat } from "../src/connections.ts"
 import { Settings } from "../src/settings.tsx"
-import { openSettings } from "../src/settings-navigation.ts"
+import { openSettings, pickedAtom } from "../src/settings-navigation.ts"
 import { activeOf, hats, page, providers, registry, routing, tabs, type Routing } from "../src/store.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { getPromptTreeMemory } from "../src/prompt-tree-state.ts"
@@ -46,6 +46,7 @@ openSettings("routing")
 const post = globalThis.fetch
 const writes: Routing[] = []
 const hatWrites: Hat[] = []
+const otherHatWrites: Hat[] = []
 let routingDelay: Promise<void> | undefined
 let hatResponse: Promise<Response>
 globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -61,6 +62,18 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
   if (method === "PUT" && path === "/hats/hat-gemini") {
     hatWrites.push({ id: "hat-gemini", ...JSON.parse(typeof init?.body === "string" ? init.body : "{}") } as Hat)
     return hatResponse
+  }
+  // any other template: stored and the list answered as the server orders it (by name, then id)
+  const hatAt = method === "PUT" && /^\/hats\/([^/]+)$/.exec(path)
+  if (hatAt) {
+    const written = {
+      id: decodeURIComponent(hatAt[1]),
+      ...JSON.parse(typeof init?.body === "string" ? init.body : "{}"),
+    } as Hat
+    otherHatWrites.push(written)
+    const order = (a: Hat, b: Hat) =>
+      a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+    return Response.json([...registry.get(hats).filter((h) => h.id !== written.id), written].sort(order))
   }
   return Response.json({})
 })
@@ -729,6 +742,76 @@ const run = async () => {
   check(
     hatWrites.length === 3 && hatWrites[2]?.narrate?.head?.[0]?.text === "卸载前最后一次输入",
     "unmount flushes the unblurred template once",
+  )
+
+  // Template names stay unique, and the template edited stays shown. `+ 新建模板` twice names 新模板 and 新模板 2; renaming
+  // 新模板 2 onto 新模板 keeps 新模板 2 with no write, and the name box shows it again. With nothing picked the detail is
+  // the list's first (新模板); renaming it to 终稿模板 (after 新模板 2 in the server's byte order) re-sorts the list,
+  // and the detail must stay on it rather than fall to the new first row.
+  const unpick = () =>
+    registry.update(pickedAtom, (p) => {
+      const { templates: _, ...rest } = p
+      return rest
+    })
+  registry.set(hats, [])
+  unpick()
+  openSettings("templates")
+  await quiet()
+  const newHatButton = () =>
+    [...document.querySelectorAll<HTMLButtonElement>(".master-foot .btn")].find((b) =>
+      b.textContent?.includes("新建模板"),
+    )
+  const listed = () => [...document.querySelectorAll<HTMLElement>(".master-list .p-name")].map((e) => e.textContent)
+  const selected = () => document.querySelector<HTMLElement>('.master-list .p-row[aria-selected="true"] .p-name')
+  const nameBox = () => document.querySelector<HTMLInputElement>('.hat-detail-header input[aria-label="模板名称"]')
+  newHatButton()?.click()
+  await quiet()
+  newHatButton()?.click()
+  await quiet()
+  check(
+    JSON.stringify(listed()) === JSON.stringify(["新模板", "新模板 2"]) &&
+      JSON.stringify(otherHatWrites.map((h) => h.name)) === JSON.stringify(["新模板", "新模板 2"]),
+    `two new templates get distinct names: ${JSON.stringify(listed())}`,
+  )
+  check(nameBox()?.value === "新模板 2", `the second new template opens: ${nameBox()?.value}`)
+  const before = otherHatWrites.length
+  const box = nameBox()
+  if (box) {
+    box.value = "新模板"
+    box.dispatchEvent(new Event("change", { bubbles: true }))
+  }
+  await quiet()
+  check(
+    nameBox()?.value === "新模板 2" &&
+      otherHatWrites.length === before &&
+      JSON.stringify(listed()) === JSON.stringify(["新模板", "新模板 2"]),
+    `renaming onto a taken name keeps its own, unwritten, and the box shows it: ${nameBox()?.value}, ${otherHatWrites.length - before} writes`,
+  )
+  const blank = nameBox()
+  if (blank) {
+    blank.value = "   "
+    blank.dispatchEvent(new Event("change", { bubbles: true }))
+  }
+  await quiet()
+  check(
+    nameBox()?.value === "新模板 2" && otherHatWrites.length === before,
+    "a blank name is not written, the box restored",
+  )
+  unpick()
+  await quiet()
+  check(nameBox()?.value === "新模板", `with nothing picked the first template shows: ${nameBox()?.value}`)
+  const first = nameBox()
+  if (first) {
+    first.value = "终稿模板"
+    first.dispatchEvent(new Event("change", { bubbles: true }))
+  }
+  await quiet()
+  check(
+    JSON.stringify(listed()) === JSON.stringify(["新模板 2", "终稿模板"]) &&
+      otherHatWrites.at(-1)?.name === "终稿模板" &&
+      nameBox()?.value === "终稿模板" &&
+      selected()?.textContent === "终稿模板",
+    `the renamed template stays shown after the list re-sorts: list ${JSON.stringify(listed())}, detail ${nameBox()?.value}, selected ${selected()?.textContent}`,
   )
 
   const diagnostics = bridge.end().diagnostics

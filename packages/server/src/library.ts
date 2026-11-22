@@ -53,7 +53,7 @@ import {
 import { author } from "./author.ts"
 import { type Card } from "@effect-tavern/runtime/src/card.ts"
 import { validateCard } from "@effect-tavern/runtime/src/author.ts"
-import { Hat } from "@effect-tavern/runtime/src/fragment.ts"
+import { Hat, uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   decodeLayer,
   decodeLocal,
@@ -554,7 +554,9 @@ export const library = ({
     },
     hats: {
       list: data.hats.list,
-      put: data.hats.put,
+      /** Written under a name no other hat holds (fragment.ts `uniqueHatName`): a colliding one is numbered, the same
+       *  hat rewritten keeps its own. */
+      put: (h: Hat) => data.hats.put({ ...h, name: uniqueHatName(data.hats.list(), h.name, h.id) }),
       del: (id: string) => {
         data.hats.del(id)
         pruneHat(id)

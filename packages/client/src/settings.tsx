@@ -62,6 +62,7 @@ import {
   stalePair,
   toggleMainHat,
   toggleStageHat,
+  uniqueHatName,
   validToolInput,
   withDeliver,
   type HatConflict,
@@ -569,10 +570,16 @@ const Templates = (props: Pane) => {
     const pending = untrack(draft)
     if (pending) void save(pending)
   })
+  /** The template edited stays the one shown. With nothing picked the detail is `list()[0]`, and the list is by name: a
+   *  rename (or the server's answer) re-sorts it, which would move the detail onto another template mid-edit. */
+  const pin = (id: string) => {
+    if (props.picked !== id) props.onPick(id)
+  }
   const editSlot = (s: Slot, f: (said: HatEntry[]) => HatEntry[], commit = true) => {
     const h = hat()
     if (!h) return
     const next = withSlot(h, s, f([...slotOf(h, s)]))
+    pin(h.id)
     setDraft(next)
     if (commit) void save(next)
   }
@@ -580,6 +587,7 @@ const Templates = (props: Pane) => {
     const h = hat()
     if (!h) return
     const next = withAsks(h, asks)
+    pin(h.id)
     setDraft(next)
     if (commit) void save(next)
   }
@@ -587,8 +595,21 @@ const Templates = (props: Pane) => {
     const h = hat()
     if (!h) return
     const next = withDeliver(h, v)
+    pin(h.id)
     setDraft(next)
     void save(next)
+  }
+  /** A rename onto another template's name keeps a numbered one (`uniqueHatName`), which may be its own: no write then. */
+  const rename = (raw: string): string => {
+    const h = hat()
+    if (!h) return raw
+    const name = uniqueHatName(list(), raw, h.id)
+    if (name === h.name) return name
+    const next = { ...h, name }
+    pin(h.id)
+    setDraft(next)
+    void save(next)
+    return name
   }
   const toggleMount = (id: string, stage?: HatStage) =>
     void putRouting((r) => (stage ? toggleStageHat(r, stage, id) : toggleMainHat(r, id)))
@@ -641,7 +662,7 @@ const Templates = (props: Pane) => {
   }
   const create = async () => {
     const id = newId("hat")
-    await putHat({ id, name: t("settings.newHat") })
+    await putHat({ id, name: uniqueHatName(list(), t("settings.newHat")) })
     setImportError("")
     props.onPick(id)
   }
@@ -651,7 +672,7 @@ const Templates = (props: Pane) => {
     if (!parsed) return setImportError(t("settings.invalidHatFile"))
     const id = newId("hat")
     try {
-      await putHat({ id, ...parsed })
+      await putHat({ id, ...parsed, name: uniqueHatName(list(), parsed.name) })
       setImportError("")
       props.onPick(id)
     } catch (e) {
@@ -744,15 +765,7 @@ const Templates = (props: Pane) => {
               <>
                 <header class="detail-header hat-detail-header">
                   <ToList onBack={props.onBack} />
-                  <Name
-                    value={h().name}
-                    label={t("settings.hatName")}
-                    onCommit={(name) => {
-                      const next = { ...h(), name }
-                      setDraft(next)
-                      void save(next)
-                    }}
-                  />
+                  <Name value={h().name} label={t("settings.hatName")} onCommit={rename} />
                   <span class="spacer" />
                   <Popover>
                     <PopoverTrigger

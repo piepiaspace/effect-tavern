@@ -139,6 +139,23 @@ export const hatHasToolHandshake = (hat: Hat | undefined, stage: "narrate" | "re
   )
 }
 
+/** `desired` trimmed, unless another hat (any but `selfId`) already holds it: then its root (a trailing ` <n>` dropped)
+ *  numbered from 2 up, skipping a number taken spaced (`新模板 2`) or run together (`新模板2`). A blank name comes back
+ *  as given, the caller's to refuse. Settings → 提示词模板 names a new, imported or renamed hat by it, and the library's
+ *  `hats.put` holds every write to it, so no two hats share a name in a menu. */
+export const uniqueHatName = (
+  existing: readonly { id: string; name: string }[],
+  desired: string,
+  selfId?: string,
+): string => {
+  const base = desired.trim()
+  if (!base) return desired
+  const taken = new Set(existing.filter((x) => x.id !== selfId).map((x) => x.name.trim()))
+  if (!taken.has(base)) return base
+  const root = base.replace(/\s+\d+$/, "") || base
+  for (let n = 2; ; n++) if (!taken.has(`${root} ${n}`) && !taken.has(`${root}${n}`)) return `${root} ${n}`
+}
+
 /** A head message with its fragment's id: in the frame the id is the slot, which request.ts tags (`persona`, `setting`). */
 export interface Slotted extends Msg {
   id?: string

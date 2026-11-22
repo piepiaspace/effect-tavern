@@ -21,6 +21,7 @@ import {
   stalePair,
   toggleMainHat,
   toggleStageHat,
+  uniqueHatName,
   validToolInput,
   withCapability,
   withDeliver,
@@ -291,6 +292,21 @@ assert.equal(
 )
 assert.equal(parseHatFile('{"asks":{"narrate.role":123}}', "Fallback"), null)
 assert.equal(parseHatFile('{"asks":["bad"]}', "Fallback"), null)
+
+// Hat names stay unique: a free name trimmed and kept; a taken one numbered from 2 on its root, skipping numbers taken
+// spaced or run together; the hat itself (`selfId`) never collides with its own name; a blank name is the caller's.
+const named = (...names: string[]) => names.map((name, i) => ({ id: `h${i}`, name }))
+assert.equal(uniqueHatName([], "新模板"), "新模板")
+assert.equal(uniqueHatName(named("其他"), "  新模板 "), "新模板")
+assert.equal(uniqueHatName(named("新模板"), "新模板"), "新模板 2")
+assert.equal(uniqueHatName(named("新模板", "新模板 2"), "新模板"), "新模板 3")
+assert.equal(uniqueHatName(named("新模板", "新模板 2"), "新模板 2"), "新模板 3") // the root, not "新模板 2 2"
+assert.equal(uniqueHatName(named("新模板", "新模板2"), "新模板"), "新模板 3") // "新模板 2" would read as "新模板2"
+assert.equal(uniqueHatName(named(" 新模板 "), "新模板"), "新模板 2") // stored names compare trimmed
+assert.equal(uniqueHatName(named("新模板 2", "新模板"), "新模板", "h0"), "新模板 2") // renamed back onto its own name
+assert.equal(uniqueHatName(named("新模板"), "新模板", "h0"), "新模板") // rewritten under its own name
+assert.equal(uniqueHatName(named("A", "B"), "A", "h1"), "A 2")
+assert.equal(uniqueHatName(named("A"), "   "), "   ")
 
 // The request round trip: a bare provider reads as the defaults and goes back unchanged
 const bare = requestOf(p)

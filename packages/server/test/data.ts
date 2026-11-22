@@ -311,6 +311,17 @@ data.hats.put(hat)
 assert.deepEqual(data.hats.list(), [hat])
 data.hats.del("h")
 assert.deepEqual(data.hats.list(), [])
+// Two rows under one name (written before names were kept unique) list in id order, however often one is rewritten:
+// `insert or replace` gives it a new rowid, and the settings list must not swap them under the player.
+data.hats.put({ id: "y", name: "同名" })
+data.hats.put({ id: "z", name: "同名" })
+data.hats.put({ id: "y", name: "同名", narrate: { head: [{ role: "user", text: "改" }] } })
+assert.deepEqual(
+  data.hats.list().map((x) => x.id),
+  ["y", "z"],
+)
+data.hats.del("y")
+data.hats.del("z")
 // Secrets and providers: the same named-row shape; routing: one row, JSON in, the same out.
 const secret = { id: "s", name: "Key", type: "api_key" as const, value: "sk-0123456789abcdef" }
 data.secrets.put(secret)

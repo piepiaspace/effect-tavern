@@ -389,10 +389,11 @@ export const openSqlite = (file: string, onClose?: () => void) => {
       throw e
     }
   }
-  /** A table of named records: the json column holds the record without its id and name, the row's own columns. */
+  /** A table of named records: the json column holds the record without its id and name, the row's own columns. Listed
+   *  by name, then id: `insert or replace` gives a rewritten row a new rowid, so ties must not fall to the scan order. */
   const named = <T extends { id: string; name: string }>(table: string) => ({
     list: (): T[] =>
-      (q(`select id, name, json from ${table} order by name`).all() as Row[]).map(
+      (q(`select id, name, json from ${table} order by name, id`).all() as Row[]).map(
         (r) => ({ id: r["id"] as string, name: r["name"] as string, ...parse<object>(r)! }) as T,
       ),
     put: ({ id, name, ...rest }: T) =>
@@ -412,7 +413,7 @@ export const openSqlite = (file: string, onClose?: () => void) => {
     },
     personas: {
       list: (): Persona[] =>
-        (q("select id, name, json from persona order by name").all() as Row[]).map((r) => ({
+        (q("select id, name, json from persona order by name, id").all() as Row[]).map((r) => ({
           id: r["id"] as string,
           name: r["name"] as string,
           text: parse<string>(r)!,
