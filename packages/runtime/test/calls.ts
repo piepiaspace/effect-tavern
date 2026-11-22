@@ -67,6 +67,25 @@ for (const c of calls(ok.events)) {
   assert.equal(c.model, "mock-model-id")
 }
 
+// the output ceiling every stage sends is the model entry's own, and none when the entry names none: a thinking model's
+// reasoning counts as output, so a harness default would starve it (decide/check/polish once sent 1024/4096)
+for (const ceiling of [3000, undefined]) {
+  const seen = new Map<string, unknown>()
+  const model = fake((o) => {
+    const d = readStage(o)
+    seen.set(d.phase, o.maxOutputTokens)
+    return d.phase === "narrate" ? { text: "不是这样而是那样。".repeat(30) } : defaultAnswer(d, canned)
+  })
+  const S = makeSession({ card, rows: () => ({}), model: () => ({ ...model, maxOutputTokens: ceiling }) })
+  const root = S.greet(card.greetings[0]).node!
+  assert.ok(
+    Exit.isSuccess(await Effect.runPromiseExit(Stream.runDrain(S.act(root.id, { text: "我看了看四周。⦅小心⦆" })))),
+  )
+  for (const p of ["decide", "narrate", "check", "polish"]) assert.equal(seen.get(p), ceiling, `${p} ${ceiling}`)
+  // record's tool loop sends what is left of its whole-loop total when that is lower (a runaway bound, not a ceiling)
+  assert.equal(seen.get("record"), ceiling ?? 16384)
+}
+
 // failed at each stage: the stage's call is the last event, with the fault, then the stream fails
 for (const [phase, demand] of [
   ["lookup", false],
