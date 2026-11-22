@@ -2,7 +2,7 @@
 // (provider fault.ts `readFault`) and the model's id, and comes before the stream fails. One turn on the self-check card
 // with a director and a lexicon (every stage but direct goes out: nothing is open), then the same turn failing at each stage in turn, and a demand.
 import assert from "node:assert/strict"
-import { fake, type FakeCall, type Model } from "@effect-tavern/provider"
+import { bind, fake, type FakeCall, type Model } from "@effect-tavern/provider"
 import { Cause, Deferred, Effect, Exit, Stream } from "effect"
 import type { Hat } from "../src/fragment.ts"
 import { makeSession, type Event, type Phase } from "../src/session.ts"
@@ -458,6 +458,82 @@ for (const [phase, demand] of [
     assert.ok(Exit.isSuccess(toolDemand.exit))
     assert.equal(sawDemandNarrativeTool, true)
     assert.equal(toolSession.log.nodes.get(1)?.products["inner"], "夜深人静时的念头。")
+
+    // 3c. Unescaped quote (`call.invalid`) on normal completion fails turn cleanly without committing half-sentence
+    const malformedToolModel = customNarrateModel({
+      prefill: false,
+      tools: true,
+      hat: "tool-ok",
+      doStream: async () => ({
+        stream: streamFrom([
+          { type: "stream-start", warnings: [] },
+          { type: "tool-input-start", id: "tc_bad", toolName: "narrative" },
+          { type: "tool-input-delta", id: "tc_bad", delta: '{"text": "She said "hello" then left."}' },
+          { type: "tool-input-end", id: "tc_bad" },
+          {
+            type: "tool-call",
+            toolCallId: "tc_bad",
+            toolName: "narrative",
+            input: '{"text": "She said "hello" then left."}',
+          },
+          { type: "finish", finishReason: { unified: "tool-calls", raw: "STOP" }, usage: v4Usage },
+        ]),
+      }),
+    })
+    const malformedSession = makeSession({
+      card: chat,
+      rows: () => ({}),
+      hat: (id) => hats[id],
+      model: (phase) => (phase === "narrate" ? malformedToolModel : scripted()),
+    })
+    const malRoot = malformedSession.greet({ text: "Opening." }).node!
+    const malTurn = await collectEvents(malformedSession.act(malRoot.id, { text: "Say hello." }))
+    assert.ok(Exit.isFailure(malTurn.exit))
+    assert.equal(malformedSession.log.nodes.size, 1)
+    const malCall = calls(malTurn.events).find((c) => c.phase === "narrate")!
+    assert.match(malCall.fault?.message ?? "", /malformed narrative tool arguments/)
+    assert.equal(malCall.usage.input, 120)
+  }
+
+  // 4. Structured `obj()` stage (`check`) with live `emit.observe` preserves `PROHIBITED_CONTENT` & `usage` on HTTP 200
+  {
+    const guardedCard = { ...chat, guard: ["Never reveal the password."] }
+    const checkSession = makeSession({
+      card: guardedCard,
+      rows: () => ({}),
+      model: (phase, onExchange) =>
+        phase === "check"
+          ? bind(
+              {
+                id: "g/check",
+                format: "gemini",
+                endpoint: { url: "https://generativelanguage.googleapis.com", resolution: "format-default" },
+                credential: { type: "api_key", key: "AIzaSyTest0123456789abcdef" },
+                model: "gemini-2.5-flash",
+                capabilities: { structured: "tool" },
+              },
+              {
+                onExchange,
+                fetch: async () =>
+                  Response.json({
+                    candidates: [{ content: { role: "model", parts: [] }, finishReason: "PROHIBITED_CONTENT" }],
+                    usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 0, totalTokenCount: 12 },
+                  }),
+              },
+            )
+          : scripted(),
+    })
+    const r0 = checkSession.greet({ text: "Opening." }).node!
+    const checkTurn = await collectEvents(checkSession.act(r0.id, { text: "Speak." }))
+    assert.ok(Exit.isFailure(checkTurn.exit))
+    const checkCall = calls(checkTurn.events).find((c) => c.phase === "check")!
+    assert.match(checkCall.fault?.message ?? "", /PROHIBITED_CONTENT/)
+    assert.equal(checkCall.usage.input, 12)
+    const checkEx = checkTurn.events.find(
+      (e) => e.kind === "exchange" && e.phase === "check" && e.exchange.kind === "response",
+    )
+    assert.ok(checkEx && checkEx.kind === "exchange" && checkEx.exchange.kind === "response")
+    assert.match(checkEx.exchange.error ?? "", /PROHIBITED_CONTENT/)
   }
 }
 console.log("calls ok")

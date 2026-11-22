@@ -711,6 +711,10 @@ const en: Dict = {
     deliverTool: "Deliver: narrative tool",
     diagDeliverNeedsTools:
       "This template uses narrative tool delivery, which the selected model connection does not support.",
+    diagDeliverNoPrefill:
+      "This template uses narrative tool delivery and cannot end with an assistant prefill message.",
+    diagPrefillDisallowed:
+      "This request ends with an assistant message, which is disabled on the selected model connection.",
     upstreamSkipped: "lookup / decide / direct not run",
     upstreamSimulated: "{n|simulated read|simulated reads}",
     updating: "Updating…",

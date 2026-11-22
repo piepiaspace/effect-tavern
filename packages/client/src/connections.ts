@@ -82,7 +82,7 @@ export const hatConflicts = (
   if (!hatId) return []
   const h = hats.find((x) => x.id === hatId)
   if (!h) return []
-  const endsInAssistant = h.narrate?.tail?.at(-1)?.role === "assistant"
+  const endsInAssistant = h.narrate?.tail?.filter((m) => m.text.trim()).at(-1)?.role === "assistant"
   const p = pair ? providers.find((x) => x.id === pair.provider) : undefined
   const m = pair && p ? p.models.find((x) => x.id === pair.model) : undefined
   if (h.deliver === "tool") {

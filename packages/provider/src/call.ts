@@ -186,6 +186,10 @@ export class ModelError extends Schema.TaggedError<ModelError>()("ModelError", {
   fault: Schema.optional(
     Schema.declare((v): v is Fault => typeof v === "object" && v !== null && "code" in v && "message" in v),
   ),
+  usage: Schema.optional(
+    Schema.declare((v): v is Usage => typeof v === "object" && v !== null && "input" in v && "output" in v),
+  ),
+  partial: Schema.optional(Schema.String),
 }) {}
 // tryPromise wraps the rejection in an UnknownError; the ai-sdk error underneath carries the provider's message.
 export const modelError = (wrapped: unknown) => {
@@ -196,7 +200,8 @@ export const modelError = (wrapped: unknown) => {
 
 export const observedError = (wrapped: unknown, observer?: Observer, partial?: string, raw?: unknown) => {
   const error = modelError(wrapped)
-  const fault = observer?.fail(error.cause, partial, raw)
+  const out = partial ?? error.partial
+  const fault = observer?.fail(error.fault ? error : error.cause, out, raw)
   if (
     fault &&
     error.cause &&
@@ -205,7 +210,23 @@ export const observedError = (wrapped: unknown, observer?: Observer, partial?: s
     Array.isArray(error.cause.errors)
   )
     fault.attempts = error.cause.errors.length
-  return fault ? new ModelError({ message: fault.message, cause: error.cause, fault }) : error
+  return fault
+    ? new ModelError({
+        message: fault.message,
+        cause: error.cause,
+        fault,
+        ...(error.usage && { usage: error.usage }),
+        ...(out !== undefined && { partial: out }),
+      })
+    : out !== undefined && error.partial === undefined
+      ? new ModelError({
+          message: error.message,
+          cause: error.cause,
+          ...(error.fault && { fault: error.fault }),
+          ...(error.usage && { usage: error.usage }),
+          partial: out,
+        })
+      : error
 }
 
 /** A reply as the exchange observer reports it: the SDK's decoded parts, not wire text. Text and reasoning as written,
@@ -483,12 +504,20 @@ export const narrativeDecoder = (): ((delta: string) => string) => {
   }
 }
 
-const upstreamOutputError = (message: string, modelId: string | undefined, cause?: unknown): ModelError => {
+const upstreamOutputError = (
+  message: string,
+  modelId: string | undefined,
+  cause?: unknown,
+  used?: Usage,
+  partial?: string,
+): ModelError => {
   const origin = cause ?? new Error(message)
   return new ModelError({
     message,
     cause: origin,
     fault: { code: "upstream", status: 200, ...(modelId && { model: modelId }), message },
+    ...(used && { usage: used }),
+    ...(partial !== undefined && { partial }),
   })
 }
 
@@ -497,6 +526,11 @@ const contentFilterMessage = (kind: string, rawFinishReason?: string) =>
 
 const missingOutputMessage = (finishReason: string, rawFinishReason?: string, detail?: string) =>
   `structured output missing (finishReason: ${finishReason}${rawFinishReason ? `, rawFinishReason: ${rawFinishReason}` : ""})${detail ? `: ${detail}` : ""}`
+
+const malformedNarrativeMessage = (err?: unknown) => {
+  const detail = err instanceof Error ? err.message : typeof err === "string" ? err : ""
+  return `malformed narrative tool arguments${detail ? `: ${detail}` : ""}`
+}
 
 const parseJsonText = (raw: string): unknown => {
   const trimmed = raw.trim()
@@ -602,17 +636,39 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
           const fin = spy.last()
           const finishReason = fin?.unified ?? err.finishReason
           const rawFinishReason = fin?.raw
+          const used = fin?.usage ?? ZERO_USAGE
           const extracted = violationParts((err as { content?: unknown }).content)
           partial = extracted.text || undefined
           if (finishReason === "content-filter")
-            throw upstreamOutputError(contentFilterMessage("structured output", rawFinishReason), modelId, err)
+            throw upstreamOutputError(
+              contentFilterMessage("structured output", rawFinishReason),
+              modelId,
+              err,
+              used,
+              partial,
+            )
           if (!extracted.text.trim())
-            throw upstreamOutputError(missingOutputMessage(finishReason, rawFinishReason), modelId, err)
-          const value = decode(parseJsonText(extracted.text))
+            throw upstreamOutputError(missingOutputMessage(finishReason, rawFinishReason), modelId, err, used, partial)
+          let value: S["Type"]
+          try {
+            value = decode(parseJsonText(extracted.text))
+          } catch (decodeErr) {
+            throw upstreamOutputError(
+              missingOutputMessage(
+                finishReason,
+                rawFinishReason,
+                decodeErr instanceof Error ? decodeErr.message : String(decodeErr),
+              ),
+              modelId,
+              decodeErr,
+              used,
+              partial,
+            )
+          }
           m.exchange?.finish(extracted.text)
           return {
             value,
-            usage: fin?.usage ?? ZERO_USAGE,
+            usage: used,
             finishReason,
             rawFinishReason,
           }
@@ -620,23 +676,53 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
         throw err
       }
       const body = replyText(result.response.messages)
+      const used = usage(result.usage)
       partial = body || undefined
       if (result.finishReason === "content-filter")
-        throw upstreamOutputError(contentFilterMessage("structured output", result.rawFinishReason), modelId)
+        throw upstreamOutputError(
+          contentFilterMessage("structured output", result.rawFinishReason),
+          modelId,
+          undefined,
+          used,
+          partial,
+        )
       const call = result.toolCalls.find((c) => c.toolName === toolName) ?? result.toolCalls[0]
-      let candidate: unknown
-      if (call !== undefined) {
-        candidate = typeof call.input === "string" ? parseJsonText(call.input) : call.input
-      } else if (result.text.trim()) {
-        candidate = parseJsonText(result.text)
-      } else {
-        throw upstreamOutputError(missingOutputMessage(result.finishReason, result.rawFinishReason), modelId)
+      let value: S["Type"]
+      try {
+        let candidate: unknown
+        if (call !== undefined) {
+          if (call.invalid) throw call.error ?? new Error("invalid tool arguments")
+          candidate = typeof call.input === "string" ? parseJsonText(call.input) : call.input
+        } else if (result.text.trim()) {
+          candidate = parseJsonText(result.text)
+        } else {
+          throw upstreamOutputError(
+            missingOutputMessage(result.finishReason, result.rawFinishReason),
+            modelId,
+            undefined,
+            used,
+            partial,
+          )
+        }
+        value = decode(candidate)
+      } catch (err) {
+        if (err instanceof ModelError) throw err
+        throw upstreamOutputError(
+          missingOutputMessage(
+            result.finishReason,
+            result.rawFinishReason,
+            err instanceof Error ? err.message : String(err),
+          ),
+          modelId,
+          err,
+          used,
+          partial,
+        )
       }
-      const value = decode(candidate)
       m.exchange?.finish(body)
       return {
         value,
-        usage: usage(result.usage),
+        usage: used,
         finishReason: result.finishReason,
         rawFinishReason: result.rawFinishReason,
       }
@@ -657,17 +743,37 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
         const fin = spy.last()
         const finishReason = fin?.unified ?? err.finishReason ?? "other"
         const rawFinishReason = fin?.raw
+        const used = fin?.usage
         partial = err.text || undefined
         if (finishReason === "content-filter")
-          throw upstreamOutputError(contentFilterMessage("structured output", rawFinishReason), modelId, err)
-        throw upstreamOutputError(missingOutputMessage(finishReason, rawFinishReason, err.message), modelId, err)
+          throw upstreamOutputError(
+            contentFilterMessage("structured output", rawFinishReason),
+            modelId,
+            err,
+            used,
+            partial,
+          )
+        throw upstreamOutputError(
+          missingOutputMessage(finishReason, rawFinishReason, err.message),
+          modelId,
+          err,
+          used,
+          partial,
+        )
       }
       throw err
     }
     const body = replyText(result.response.messages)
+    const used = usage(result.usage)
     partial = body || undefined
     if (result.finishReason === "content-filter")
-      throw upstreamOutputError(contentFilterMessage("structured output", result.rawFinishReason), modelId)
+      throw upstreamOutputError(
+        contentFilterMessage("structured output", result.rawFinishReason),
+        modelId,
+        undefined,
+        used,
+        partial,
+      )
     let value: S["Type"] | undefined
     try {
       value = result.output
@@ -680,14 +786,22 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
         ),
         modelId,
         err,
+        used,
+        partial,
       )
     }
     if (value === undefined)
-      throw upstreamOutputError(missingOutputMessage(result.finishReason, result.rawFinishReason), modelId)
+      throw upstreamOutputError(
+        missingOutputMessage(result.finishReason, result.rawFinishReason),
+        modelId,
+        undefined,
+        used,
+        partial,
+      )
     m.exchange?.finish(body)
     return {
       value,
-      usage: usage(result.usage),
+      usage: used,
       finishReason: result.finishReason,
       rawFinishReason: result.rawFinishReason,
     }
@@ -746,28 +860,40 @@ export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}
         }),
         ...settings(m.format, eff, modelId),
       })
-      m.exchange?.finish(replyText(r.response.messages))
+      const body = replyText(r.response.messages)
+      const used = usage(r.usage)
       const assistant = r.response.messages.find((msg): msg is AssistantModelMessage => msg.role === "assistant")
       if (toolDeliver) {
-        const call = r.toolCalls.find((c) => c.toolName === NARRATIVE_TOOL)
-        if (call) {
-          const resolvedText = extractNarrativeInputText(call.input)
+        const narrativeCalls = r.toolCalls.filter((c) => c.toolName === NARRATIVE_TOOL)
+        if (narrativeCalls.length > 0) {
+          const invalidCall = r.finishReason !== "length" ? narrativeCalls.find((c) => c.invalid) : undefined
+          if (invalidCall)
+            throw upstreamOutputError(
+              malformedNarrativeMessage(invalidCall.error),
+              modelId,
+              invalidCall.error,
+              used,
+              body || undefined,
+            )
+          m.exchange?.finish(body)
+          const resolvedText = narrativeCalls.map((c) => extractNarrativeInputText(c.input)).join("")
           return {
             text: resolvedText,
             reasoning: r.reasoningText,
             parts: narrativeReplyParts(assistant, resolvedText),
-            usage: usage(r.usage),
+            usage: used,
             finishReason: r.finishReason === "tool-calls" ? ("stop" as const) : r.finishReason,
             rawFinishReason: r.rawFinishReason,
           }
         }
       }
+      m.exchange?.finish(body)
       return {
         text: r.text,
         reasoning: r.reasoningText,
         /** The reply as parts the provider will take back: text, and reasoning with its signature in providerOptions. */
         parts: replyParts(assistant),
-        usage: usage(r.usage),
+        usage: used,
         finishReason: r.finishReason,
         rawFinishReason: r.rawFinishReason,
       }
@@ -826,6 +952,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
       })
       let sawNarrativeCall = false
       let decodedNarrative = ""
+      const decodedByCall = new Map<string, string>()
       let violationFinishReason: FinishReason | undefined
       const resolveFinishReason = (raw: FinishReason): FinishReason =>
         violationFinishReason ?? (toolDeliver && sawNarrativeCall && raw === "tool-calls" ? "stop" : raw)
@@ -872,6 +999,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
                       sawNarrativeCall = true
                       narrativeIds.add(p.id)
                       decoders.set(p.id, narrativeDecoder())
+                      decodedByCall.set(p.id, "")
                       await Effect.runPromise(Queue.offer(queue, { type: "text-start", id: p.id }))
                     }
                     continue
@@ -881,6 +1009,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
                     if (decode) {
                       const chunk = decode(p.delta)
                       if (chunk.length > 0) {
+                        decodedByCall.set(p.id, (decodedByCall.get(p.id) ?? "") + chunk)
                         decodedNarrative += chunk
                         if (m.exchange) partial += chunk
                         await Effect.runPromise(Queue.offer(queue, { type: "text-delta", id: p.id, text: chunk }))
@@ -896,8 +1025,10 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
                   if (p.type === "tool-call") {
                     if (p.toolName === NARRATIVE_TOOL && !narrativeIds.has(p.toolCallId)) {
                       sawNarrativeCall = true
+                      narrativeIds.add(p.toolCallId)
                       const chunk = extractNarrativeInputText(p.input)
-                      if (chunk.length > 0 && decodedNarrative.length === 0) {
+                      decodedByCall.set(p.toolCallId, chunk)
+                      if (chunk.length > 0) {
                         decodedNarrative += chunk
                         if (m.exchange) partial += chunk
                         await Effect.runPromise(Queue.offer(queue, { type: "text-start", id: p.toolCallId }))
@@ -937,20 +1068,38 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
           r.finishReason,
           r.rawFinishReason,
         ])
+        const used = usage(rawUsage)
         const assistant = rawMessages.find((msg): msg is AssistantModelMessage => msg.role === "assistant")
         if (toolDeliver) {
           const calls = await r.toolCalls
-          const call = calls.find((c) => c.toolName === NARRATIVE_TOOL)
-          if (call || sawNarrativeCall) {
-            const resolvedText = call
-              ? call.invalid
-                ? decodedNarrative || extractNarrativeInputText(call.input)
-                : extractNarrativeInputText(call.input, decodedNarrative)
-              : decodedNarrative
+          const narrativeCalls = calls.filter((c) => c.toolName === NARRATIVE_TOOL)
+          if (narrativeCalls.length > 0 || sawNarrativeCall) {
+            const invalidCall = rawReason !== "length" ? narrativeCalls.find((c) => c.invalid) : undefined
+            if (invalidCall) {
+              const rawInput =
+                typeof invalidCall.input === "string" ? invalidCall.input : JSON.stringify(invalidCall.input)
+              throw upstreamOutputError(
+                malformedNarrativeMessage(invalidCall.error),
+                modelId,
+                invalidCall.error,
+                used,
+                rawInput || decodedNarrative || undefined,
+              )
+            }
+            const resolvedText =
+              narrativeCalls.length > 0
+                ? narrativeCalls
+                    .map((c) =>
+                      c.invalid
+                        ? decodedByCall.get(c.toolCallId) || extractNarrativeInputText(c.input)
+                        : extractNarrativeInputText(c.input, decodedByCall.get(c.toolCallId)),
+                    )
+                    .join("")
+                : decodedNarrative
             return {
               text: resolvedText,
               parts: narrativeReplyParts(assistant, resolvedText),
-              usage: usage(rawUsage),
+              usage: used,
               finishReason: resolveFinishReason(rawReason),
               rawFinishReason,
             }
@@ -959,7 +1108,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         return {
           text: await r.text,
           parts: replyParts(assistant),
-          usage: usage(rawUsage),
+          usage: used,
           finishReason: resolveFinishReason(rawReason),
           rawFinishReason,
         }

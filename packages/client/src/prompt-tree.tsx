@@ -70,10 +70,12 @@ const residencyLabel = (s: ResourceEntryView["residencyStatus"]): string => {
   }
 }
 
-const diagnosticText = (d: PreviewDiagnostic): string => {
+const diagnosticText = (d: PreviewDiagnostic, deliverTool: boolean): string => {
   switch (d.code) {
     case "deliver_needs_tools":
       return t("promptTree.diagDeliverNeedsTools")
+    case "prefill_disallowed":
+      return deliverTool ? t("promptTree.diagDeliverNoPrefill") : t("promptTree.diagPrefillDisallowed")
     default:
       return d.message
   }
@@ -601,7 +603,9 @@ export const PromptTreePage = () => {
                       {(d) => (
                         <div class={{ "pt-alert": true, [d().level]: true }}>
                           <Warning aria-hidden="true" />
-                          <span>{diagnosticText(d())}</span>
+                          <span>
+                            {diagnosticText(d(), (r().connection.deliver ?? mem().candidateHat?.deliver) === "tool")}
+                          </span>
                         </div>
                       )}
                     </For>
@@ -612,6 +616,7 @@ export const PromptTreePage = () => {
                   messages={displayedMessages()}
                   traces={r().traces}
                   wireError={r().wireError}
+                  deliver={r().connection.deliver ?? mem().candidateHat?.deliver}
                   selectedKey={selectedKey()}
                   onSelectKey={(k) => update({ selectedKey: k })}
                   expandedMessages={expandedMessages()}

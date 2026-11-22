@@ -119,6 +119,34 @@ assert.deepEqual(hatConflicts([conflictProv], allHats, { provider: "p", model: "
   "deliver_prefill",
   "deliver_tools",
 ])
+// Trailing blank rows in Hat editor must be ignored just like runtime `spoken()`:
+const hiddenAssistantTail: Hat = {
+  id: "h-blank-after-asst",
+  name: "Blank After Asst",
+  deliver: "tool",
+  narrate: {
+    tail: [
+      { role: "assistant", text: " Begin:" },
+      { role: "user", text: "   " },
+    ],
+  },
+}
+const blankAssistantTail: Hat = {
+  id: "h-blank-asst",
+  name: "Blank Asst",
+  deliver: "tool",
+  narrate: {
+    tail: [
+      { role: "user", text: "Continue." },
+      { role: "assistant", text: "" },
+    ],
+  },
+}
+assert.deepEqual(
+  hatConflicts([conflictProv], [hiddenAssistantTail], { provider: "p", model: "ok" }, "h-blank-after-asst"),
+  ["deliver_prefill"],
+)
+assert.deepEqual(hatConflicts([conflictProv], [blankAssistantTail], { provider: "p", model: "ok" }, "h-blank-asst"), [])
 
 // The request round trip: a bare provider reads as the defaults and goes back unchanged
 const bare = requestOf(p)

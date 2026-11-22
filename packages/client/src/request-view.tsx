@@ -105,6 +105,13 @@ const formatActual = (v: unknown): string => {
   return JSON.stringify(v) ?? "—"
 }
 
+const wireErrorText = (err: WireErrorInfo, deliver?: "text" | "tool"): string => {
+  if (err.code !== "prefill_disallowed") return err.message
+  return deliver === "tool" || /hat deliver: tool/.test(err.message)
+    ? t("promptTree.diagDeliverNoPrefill")
+    : t("promptTree.diagPrefillDisallowed")
+}
+
 const SourceKindGlyph = (props: { kind: SourceKind; title?: string }) => {
   const icon = () => {
     switch (props.kind) {
@@ -229,6 +236,7 @@ export interface RequestViewProps {
   messages: readonly Message[]
   traces?: readonly MessageTrace[]
   wireError?: WireErrorInfo
+  deliver?: "text" | "tool"
   q?: string
   compact?: boolean
   selectedKey?: string | null
@@ -281,7 +289,7 @@ export const RequestView = (props: RequestViewProps) => {
                     format: err().format ?? "narrative",
                   })}
                 </strong>
-                <p>{err().message}</p>
+                <p>{wireErrorText(err(), props.deliver)}</p>
               </div>
               <Show when={err().source && dest()?.ok && props.onJump}>
                 <button type="button" class="btn sm" onClick={() => props.onJump?.(err().source!)}>

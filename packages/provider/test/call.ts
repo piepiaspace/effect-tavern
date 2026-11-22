@@ -11,6 +11,7 @@ import {
   text,
   wire,
   type Message,
+  type ModelError,
 } from "../src/call.ts"
 import { bind, DEFAULTS, type Connection, type Fetch } from "../src/connection.ts"
 import type { Exchange } from "../src/exchange.ts"
@@ -641,6 +642,89 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   const blockedDeliverWhole = await Effect.runPromise(text(blockedDeliverFake, msgs, { deliver: "tool" }))
   assert.equal(blockedDeliverWhole.finishReason, "content-filter")
   assert.equal(blockedDeliverWhole.rawFinishReason, "PROHIBITED_CONTENT")
+
+  // 6h. Multiple `narrative` tool calls in one turn (`A` + `B`): streamed deltas, streamed().reply, and text() all match (`AB`)
+  const multiNarrativeFake = fake(() => ({
+    text: "",
+    toolCalls: [
+      { name: NARRATIVE_TOOL, input: { text: "A" } },
+      { name: NARRATIVE_TOOL, input: { text: "B" } },
+    ],
+  }))
+  const multiStream = await Effect.runPromise(
+    Effect.gen(function* () {
+      const s = yield* streamed(multiNarrativeFake, msgs, { deliver: "tool" })
+      const deltas = yield* s.parts.pipe(
+        Stream.filter((p): p is Extract<typeof p, { type: "text-delta" }> => p.type === "text-delta"),
+        Stream.runCollect,
+      )
+      const rep = yield* s.reply
+      return { streamedText: deltas.map((d) => d.text).join(""), rep }
+    }),
+  )
+  assert.equal(multiStream.streamedText, "AB")
+  assert.equal(multiStream.rep.text, "AB")
+  assert.deepEqual(multiStream.rep.parts, [{ type: "text", text: "AB" }])
+  const multiWhole = await Effect.runPromise(text(multiNarrativeFake, msgs, { deliver: "tool" }))
+  assert.equal(multiWhole.text, "AB")
+
+  // 6i. Malformed unescaped quote on normal completion (`stop`/`tool-calls`, NOT `length`) rejects instead of saving half-sentence
+  const malformedRaw = '{"text": "She said "hello" then left."}'
+  const malformedFake = fake(() => ({
+    text: "",
+    rawFinishReason: "STOP",
+    toolCalls: [{ name: NARRATIVE_TOOL, input: null, rawInput: malformedRaw }],
+  }))
+  const malformedStreamExit = await Effect.runPromiseExit(
+    Effect.gen(function* () {
+      const s = yield* streamed(malformedFake, msgs, { deliver: "tool" })
+      yield* Stream.runDrain(s.parts)
+      return yield* s.reply
+    }),
+  )
+  assert.ok(Exit.isFailure(malformedStreamExit))
+  const malformedStreamErr = Cause.squash(malformedStreamExit.cause) as ModelError
+  assert.match(malformedStreamErr.message, /malformed narrative tool arguments/)
+  assert.equal(malformedStreamErr.fault?.code, "upstream")
+  assert.equal(malformedStreamErr.partial, malformedRaw)
+  assert.deepEqual(malformedStreamErr.usage, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+
+  const malformedWholeExit = await Effect.runPromiseExit(text(malformedFake, msgs, { deliver: "tool" }))
+  assert.ok(Exit.isFailure(malformedWholeExit))
+  assert.match((Cause.squash(malformedWholeExit.cause) as ModelError).message, /malformed narrative tool arguments/)
+
+  // 6j. With `onExchange` enabled, HTTP-200 `PROHIBITED_CONTENT` on `object()` (`structured: "tool"`) preserves filter reason & usage
+  const exchanges: Array<{ kind: string; status?: number; error?: string }> = []
+  const gemObserved = bind(
+    {
+      id: "g/pro",
+      format: "gemini",
+      endpoint: { url: "https://generativelanguage.googleapis.com", resolution: "format-default" },
+      credential: { type: "api_key", key: "AIzaSyTest0123456789abcdef" },
+      model: "gemini-2.5-pro",
+      capabilities: { structured: "tool" },
+    },
+    {
+      onExchange: (ev) => exchanges.push(ev),
+      fetch: async () =>
+        Response.json({
+          candidates: [{ content: { role: "model", parts: [] }, finishReason: "PROHIBITED_CONTENT" }],
+          usageMetadata: { promptTokenCount: 12, candidatesTokenCount: 0, totalTokenCount: 12 },
+        }),
+    },
+  )
+  const observedExit = await Effect.runPromiseExit(
+    object(gemObserved, Schema.Struct({ ok: Schema.Boolean }), msgs, { name: "check" }),
+  )
+  assert.ok(Exit.isFailure(observedExit))
+  const observedErr = Cause.squash(observedExit.cause) as ModelError
+  assert.match(observedErr.message, /PROHIBITED_CONTENT/)
+  assert.match(observedErr.fault?.message ?? "", /PROHIBITED_CONTENT/)
+  assert.equal(observedErr.fault?.status, 200)
+  assert.equal(observedErr.usage?.input, 12)
+  const respEx = exchanges.find((e) => e.kind === "response")
+  assert.equal(respEx?.status, 200)
+  assert.match(respEx?.error ?? "", /PROHIBITED_CONTENT/)
 }
 
 console.log("call ok")

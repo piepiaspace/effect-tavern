@@ -708,6 +708,8 @@ const zh = {
     hatActive: "模板：{name}",
     deliverTool: "交付：narrative 工具",
     diagDeliverNeedsTools: "当前模板开启了工具交付（narrative），但所选模型连接不支持工具调用。",
+    diagDeliverNoPrefill: "当前模板开启了工具交付（narrative），请求不能以助手消息预填结尾。",
+    diagPrefillDisallowed: "当前请求以助手消息结尾，但所选模型连接已关闭预填。",
     upstreamSkipped: "未执行 lookup / decide / direct",
     upstreamSimulated: "已模拟读取 {n} 条目",
     updating: "更新中…",

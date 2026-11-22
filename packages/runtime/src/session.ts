@@ -165,19 +165,21 @@ const failedCall = (
   t0: number,
   e: unknown,
   meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage },
-) =>
-  ({
+) => {
+  const errMeta = e instanceof ModelError ? e : undefined
+  return {
     kind: "call",
     phase,
     msgs,
-    out: meta?.out,
-    usage: meta?.usage ?? NO_USAGE,
+    out: meta?.out ?? errMeta?.partial,
+    usage: meta?.usage ?? errMeta?.usage ?? NO_USAGE,
     ms: Date.now() - t0,
     ...(model && { model }),
     ...(meta?.trace && { trace: meta.trace }),
     ...(meta?.wireError && { wireError: meta.wireError }),
     fault: readFault(e),
-  }) satisfies Event
+  } satisfies Event
+}
 
 const checkDeliver = (deliver: "tool" | undefined, M: Model, msgs: readonly Message[]) => {
   if (deliver !== "tool") return undefined

@@ -255,14 +255,17 @@ async function run() {
     holdNodes = undefined
     await quiet()
 
-    // Tool-delivery Hat surfaces the `narrative` delivery badge and localized `deliver_needs_tools` diagnostic.
+    // Tool-delivery Hat surfaces the `narrative` delivery badge and localized `deliver_needs_tools` + `prefill_disallowed` diagnostics.
     selectTab(1)
     patchPromptTreeMemory(1, {
       candidateHat: {
         id: "h-tool",
         name: "Tool Hat",
         deliver: "tool",
-        narrate: { head: [{ role: "system", text: "Use narrative tool" }] },
+        narrate: {
+          head: [{ role: "system", text: "Use narrative tool" }],
+          tail: [{ role: "assistant", text: "Prefill line" }],
+        },
       },
     })
     flush()
@@ -271,6 +274,8 @@ async function run() {
       throw Error("Missing narrative tool delivery badge in Prompt Tree")
     if (!root.querySelector(".pt-diags")?.textContent?.includes(t("promptTree.diagDeliverNeedsTools")))
       throw Error("Missing localized deliver_needs_tools diagnostic in Prompt Tree")
+    if (!root.querySelector(".pt-diags")?.textContent?.includes(t("promptTree.diagDeliverNoPrefill")))
+      throw Error("Missing localized diagDeliverNoPrefill diagnostic in Prompt Tree")
     patchPromptTreeMemory(1, { candidateHat: undefined })
     flush()
     await quiet()
