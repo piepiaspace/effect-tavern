@@ -22,7 +22,7 @@ import {
   withPackName,
   withProductPatch,
 } from "./pack.ts"
-import { AsksTab, ProseTab } from "./packs.tsx"
+import { AsksTab, ProseTab } from "./layer-tabs.tsx"
 import { EXTRA, atOf, extraOf, withExtra } from "./requirements.ts"
 import { openSettings } from "./settings-navigation.ts"
 import { close } from "./pages.ts"

@@ -6,7 +6,7 @@ import { card, registry, tabs, page, activeOf } from "../src/store.ts"
 import { t } from "../src/i18n.ts"
 import { getPromptTreeMemory } from "../src/prompt-tree-state.ts"
 import { WritingPage } from "../src/writing.tsx"
-import { AsksTab, ProseTab } from "../src/packs.tsx"
+import { AsksTab, ProseTab } from "../src/layer-tabs.tsx"
 import { until, tracked } from "./settle.ts"
 import "../src/app.css"
 
