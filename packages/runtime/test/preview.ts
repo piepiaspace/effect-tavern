@@ -763,4 +763,113 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.equal(secRes.modelSelectable, true)
 }
 
+// 7. Hat.deliver === "tool": lead span attribution, session parity, `deliver_needs_tools`, and `prefill_disallowed`
+{
+  const card: Card = {
+    id: "tool-deliver-card",
+    title: "Tool Deliver",
+    input: "act",
+    frame: [{ id: "setting", text: "Harbor at dusk." }],
+    fiction: [],
+    greetings: [{ text: "Evening." }],
+    lore: [],
+    guard: [],
+    rules: { fields: [], actions: [] },
+  }
+  const toolHat: Hat = {
+    id: "tool-hat",
+    name: "Narrative Tool Hat",
+    deliver: "tool",
+    narrate: {
+      head: [{ role: "system", text: "HAT-HEAD-SYS" }],
+      tail: [{ role: "user", text: "HAT-TAIL-USER" }],
+    },
+  }
+  const pv = previewNarrate({
+    card,
+    rows: {},
+    hat: toolHat,
+    connection: { format: "gemini", prefill: false, tools: true, reasoningBack: true },
+    mode: "sandbox",
+    greetingIndex: 0,
+    input: { text: "Look around." },
+  })
+  assert.equal(pv.connection.deliver, "tool")
+  assert.equal(pv.connection.tools, true)
+  assert.equal(pv.wireError, undefined)
+  assert.ok(!pv.diagnostics.some((d) => d.code === "deliver_needs_tools" || d.code === "prefill_disallowed"))
+  const leadTrace = pv.traces[0]
+  assert.equal(leadTrace.zone, "head")
+  assert.equal(leadTrace.subzone, "lead")
+  const leadSpan = leadTrace.spans.find((s) => s.source.path === "asks.narrate.deliver")!
+  assert.ok(leadSpan)
+  assert.equal(leadSpan.source.kind, "harness")
+  assert.equal(leadSpan.source.builtIn, true)
+  const leadText = typeof pv.messages[0].content === "string" ? pv.messages[0].content : ""
+  assert.ok(leadText.includes("calling the narrative tool"))
+
+  // Parity with `makeSession` wearing the same `deliver: "tool"` hat
+  const s = makeSession({
+    card,
+    rows: () => ({}),
+    hat: (id) => (id === toolHat.id ? toolHat : undefined),
+    model: (phase) => ({
+      ...fake((o) => {
+        if (phase === "narrate") assertSdkPrompt(o.prompt, pv.wiredMessages ?? pv.messages)
+        return { text: "Scene prose." }
+      }),
+      format: "gemini",
+      prefill: false,
+      tools: true,
+      reasoningBack: true,
+      hat: toolHat.id,
+    }),
+  })
+  await Effect.runPromise(Stream.runDrain(s.begin({ greeting: 0 })))
+  await Effect.runPromise(Stream.runDrain(s.act(0, { text: "Look around." })))
+
+  // `deliver_needs_tools` error when connection.tools === false
+  const noTools = previewNarrate({
+    card,
+    rows: {},
+    hat: toolHat,
+    connection: { format: "openai-compatible", prefill: true, tools: false, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look around." },
+  })
+  const needsToolsDiag = noTools.diagnostics.find((d) => d.code === "deliver_needs_tools")
+  assert.ok(needsToolsDiag)
+  assert.equal(needsToolsDiag.level, "error")
+  assert.equal(needsToolsDiag.source?.hatId, toolHat.id)
+
+  // `prefill_disallowed` error when hat.deliver === "tool" and messages end in assistant, even if connection.prefill === true
+  const prefillToolHat: Hat = {
+    ...toolHat,
+    narrate: { tail: [{ role: "assistant", text: "Start here:" }] },
+  }
+  const toolPrefill = previewNarrate({
+    card,
+    rows: {},
+    hat: prefillToolHat,
+    connection: { format: "openai-compatible", prefill: true, tools: true, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look around." },
+  })
+  assert.equal(toolPrefill.wireError?.code, "prefill_disallowed")
+  assert.equal(toolPrefill.wireError?.format, "openai-compatible")
+  assert.equal(toolPrefill.wireError?.source?.hatSlot, "tail")
+  assert.ok(toolPrefill.diagnostics.some((d) => d.code === "prefill_disallowed" && d.level === "error"))
+
+  // Unconfigured format (`routingSource: "none"`) still surfaces `prefill_disallowed` diagnostic for deliver: "tool"
+  const unroutedPrefill = previewNarrate({
+    card,
+    rows: {},
+    hat: prefillToolHat,
+    connection: { prefill: true, tools: true, reasoningBack: true, routingSource: "none" },
+    mode: "sandbox",
+    input: { text: "Look around." },
+  })
+  assert.equal(unroutedPrefill.wireError, undefined)
+  assert.ok(unroutedPrefill.diagnostics.some((d) => d.code === "prefill_disallowed" && d.level === "error"))
+}
 console.log("preview: ok")

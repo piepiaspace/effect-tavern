@@ -822,6 +822,8 @@ export const library = ({
         connection = {
           format,
           prefill: caps.prefill,
+          tools: caps.tools,
+          deliver: wornHat?.deliver ?? "text",
           reasoningBack: caps.reasoningBack,
           ttl: p.cacheTtl,
           contextTokens: m.contextTokens,
@@ -834,12 +836,20 @@ export const library = ({
         connection = {
           format: envModel.format,
           prefill: envModel.prefill,
+          tools: envModel.tools ?? true,
+          deliver: wornHat?.deliver ?? "text",
           reasoningBack: envModel.reasoningBack ?? false,
           ttl: envModel.ttl,
           routingSource: "env",
         }
       } else {
-        connection = { prefill: true, reasoningBack: true, routingSource: "none" }
+        connection = {
+          prefill: true,
+          tools: true,
+          deliver: wornHat?.deliver ?? "text",
+          reasoningBack: true,
+          routingSource: "none",
+        }
       }
       const preview = previewNarrate({
         card,

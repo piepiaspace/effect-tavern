@@ -50,6 +50,7 @@ export interface Common {
   role: string // `stage.role`: off-stage framing before <world> on every non-narrate stage
   narrator: string // `narrate.role`: what the narrate call is, before its frame
   persona?: string
+  deliver?: string
   contextLead?: string
   directions: string // `narrate.turn`: the lead line of <turn>
   input: Input
@@ -375,6 +376,8 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       if (c.narrator) leadEntries.push({ text: c.narrator, source: askSource(c, "narrate.role") })
       if (sysFrame.some((m) => m.id === "persona") && c.persona)
         leadEntries.push({ text: c.persona, source: askSource(c, "narrate.persona") })
+      if (w.hat?.deliver === "tool" && c.deliver)
+        leadEntries.push({ text: c.deliver, source: askSource(c, "narrate.deliver") })
       if (leadEntries.length) {
         const lw = writer()
         leadEntries.forEach((p, idx) => {

@@ -109,6 +109,10 @@ const words: readonly Ask[] = [
     text: 'In <persona>, "you" / "你" / "我" describes the player character, not you.',
   },
   {
+    id: "narrate.deliver",
+    text: "Deliver your entire reply—prose and any requested <<aside>> blocks—by calling the narrative tool with the complete text in its text argument; write nothing outside the call.",
+  },
+  {
     id: "narrate.context",
     text: "<context> holds background lore and recalled facts for reference when relevant.",
   },

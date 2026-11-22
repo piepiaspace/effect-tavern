@@ -5,7 +5,7 @@ import { wire } from "@effect-tavern/provider/src/call.ts"
 import type { FakeCall, Message } from "@effect-tavern/provider"
 import assert from "node:assert/strict"
 import type { Hat, Msg, Slotted } from "../src/fragment.ts"
-import { request, worldBlock as renderWorld, type Ask, type Common } from "../src/request.ts"
+import { request, requestDetailed, worldBlock as renderWorld, type Ask, type Common } from "../src/request.ts"
 import { readStage } from "../support/script.ts"
 
 const frame: Slotted[] = [
@@ -417,6 +417,56 @@ for (const s of stages)
     worn(s),
     s,
   )
+
+// Hat.deliver === "tool" appends `narrate.deliver` in narrate's cached head lead subzone with SourceRef trace;
+// when Hat.deliver !== "tool", `request()` bytes remain 100% unchanged even when `c.deliver` is populated.
+{
+  const deliverText =
+    "Deliver your entire reply—prose and any requested <<aside>> blocks—by calling the narrative tool with the complete text in its text argument; write nothing outside the call."
+  const withDeliver: Common = {
+    ...c(drawn),
+    persona: "Persona guidance.",
+    deliver: deliverText,
+    tail: [{ role: "system", text: "PLAYER-TAIL" }],
+  }
+  const plainCommon: Common = {
+    ...c(drawn),
+    persona: "Persona guidance.",
+    tail: [{ role: "system", text: "PLAYER-TAIL" }],
+  }
+  assert.deepEqual(request(withDeliver, asks.narrate, { hat }), request(plainCommon, asks.narrate, { hat }))
+  assert.deepEqual(
+    request(withDeliver, asks.narrate, { hat: { ...hat, deliver: "text" } }),
+    request(plainCommon, asks.narrate, { hat }),
+  )
+
+  const toolHat: Hat = { ...hat, deliver: "tool" }
+  const detailed = requestDetailed(
+    withDeliver,
+    {
+      ...(asks.narrate as Extract<Ask, { stage: "narrate" }>),
+      blocks: { question: "After prose, <<aside>>:", asks: ["inner: Thought"] },
+    },
+    { hat: toolHat },
+  )
+  assert.equal(detailed.traces[0]?.zone, "head")
+  assert.equal(detailed.traces[0]?.subzone, "lead")
+  assert.equal(text(detailed.messages[0]), `${narrator} Persona guidance. ${deliverText}`)
+  const deliverSpan = detailed.traces[0].spans.find((sp) => sp.source.path === "asks.narrate.deliver")
+  assert.ok(deliverSpan)
+  assert.equal(deliverSpan.kind, "lead")
+  assert.equal(text(detailed.messages[0]).slice(deliverSpan.start, deliverSpan.end), deliverText)
+  // Head cache breakpoint still covers the entire head prefix (including lead + hat-head)
+  assert.equal(detailed.traces[5]?.breakpoint?.zone, "head")
+  // `narrate.blocks` stays intact in turn.blocks under deliver: "tool"
+  const blocksTrace = detailed.traces.find((t) => t.subzone === "blocks")
+  assert.ok(blocksTrace)
+  assert.equal(text(detailed.messages[blocksTrace.index]), "After prose, <<aside>>:\ninner: Thought")
+  // Non-narrate stages never read `narrate.deliver`
+  for (const s of stages.filter((s) => s !== "narrate")) {
+    assert.deepEqual(request(withDeliver, asks[s], { hat: toolHat }), worn(s), s)
+  }
+}
 
 // ───────── The scripted narrator reads what this module writes ─────────
 // support/script.ts parses the data lines back for every scripted model; a change to a line above fails here first.

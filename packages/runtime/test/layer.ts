@@ -4,10 +4,11 @@
 // storing only its difference. Then a session over a scripted model: what a row does to the documents, per request. The
 // migration of the old player row is the server's test/data.ts, the routes its test/serve.ts.
 import { fake, type Message } from "@effect-tavern/provider"
-import { Effect, Stream } from "effect"
+import { Effect, Schema, Stream } from "effect"
 import assert from "node:assert/strict"
 import { readFileSync, writeFileSync } from "node:fs"
 import type { Card } from "../src/card.ts"
+import { Hat } from "../src/fragment.ts"
 import { prose as proseOf } from "../src/journal.ts"
 import {
   decodeLayer,
@@ -1209,6 +1210,13 @@ for (const povText of ["", "{{missing}}"]) {
     false,
   )
   await collect(refused.act(null, { text: "x" }))
+
+  // Hat.deliver schema accepts "text" | "tool" | omitted and rejects invalid modes
+  const decodeHat = Schema.decodeUnknownSync(Hat)
+  assert.equal(decodeHat({ id: "h1", name: "Plain" }).deliver, undefined)
+  assert.equal(decodeHat({ id: "h2", name: "Text", deliver: "text" }).deliver, "text")
+  assert.equal(decodeHat({ id: "h3", name: "Tool", deliver: "tool" }).deliver, "tool")
+  assert.throws(() => decodeHat({ id: "h4", name: "Bad", deliver: "xml" }))
 }
 
 console.log("layer ok")

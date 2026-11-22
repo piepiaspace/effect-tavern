@@ -157,27 +157,67 @@ const nameOf = (m: unknown): string | undefined => {
   const id = typeof m === "object" && m !== null ? (m as { modelId?: unknown }).modelId : m
   return typeof id === "string" && id ? id : undefined
 }
-/** The `call` a failed call reports before the stream fails: what it asked, nothing back, the fault. */
+/** The `call` a failed call reports before the stream fails: what it asked, nothing back (or any HTTP-200 partial), the fault. */
 const failedCall = (
   phase: Phase,
   msgs: readonly Message[],
   model: string | undefined,
   t0: number,
   e: unknown,
-  meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
+  meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage },
 ) =>
   ({
     kind: "call",
     phase,
     msgs,
-    out: undefined,
-    usage: NO_USAGE,
+    out: meta?.out,
+    usage: meta?.usage ?? NO_USAGE,
     ms: Date.now() - t0,
     ...(model && { model }),
     ...(meta?.trace && { trace: meta.trace }),
     ...(meta?.wireError && { wireError: meta.wireError }),
     fault: readFault(e),
   }) satisfies Event
+
+const checkDeliver = (deliver: "tool" | undefined, M: Model, msgs: readonly Message[]) => {
+  if (deliver !== "tool") return undefined
+  if (M.tools === false)
+    return modelError(new Error("hat deliver: tool requires native tool calling on this connection"))
+  if (msgs.at(-1)?.role === "assistant")
+    return modelError(new Error("hat deliver: tool cannot end in an assistant prefill"))
+  return undefined
+}
+
+const contentFilterError = (r: { text: string; rawFinishReason?: string }, model: string | undefined): ModelError => {
+  const reason = r.rawFinishReason ? `content-filter (${r.rawFinishReason})` : "content-filter"
+  const where = r.text.length > 0 ? `output cut off after ${r.text.length} chars` : "output blocked empty"
+  const message = `narrate blocked by ${reason}: ${where}`
+  return new ModelError({
+    message,
+    cause: new Error(message),
+    fault: { code: "upstream", status: 200, ...(model && { model }), message },
+  })
+}
+
+const emptyReplyError = (
+  r: {
+    finishReason: string
+    rawFinishReason?: string
+    parts: readonly { type: string; text: string }[]
+    reasoning?: string
+  },
+  model: string | undefined,
+): ModelError => {
+  const finish = r.rawFinishReason ? `${r.finishReason} (${r.rawFinishReason})` : r.finishReason
+  const hasReasoning = r.parts.some((p) => p.type === "reasoning" && p.text.length > 0) || Boolean(r.reasoning)
+  const detail = hasReasoning ? "reasoning returned with no prose" : "0 prose chars"
+  const message = `empty reply from upstream (finishReason: ${finish}; ${detail})`
+  return new ModelError({
+    message,
+    cause: new Error(message),
+    fault: { code: "upstream", status: 200, ...(model && { model }), message },
+  })
+}
 
 const BriefOf = (open: readonly string[]) =>
   Schema.Struct({
@@ -376,6 +416,7 @@ export const makeSession = ({
         role: wording("stage.role"),
         narrator: wording("narrate.role"),
         persona: wording("narrate.persona"),
+        deliver: wording("narrate.deliver"),
         contextLead: wording("narrate.context"),
         directions: wording("narrate.turn"),
         tail: headOf(tail, { state }),
@@ -607,23 +648,38 @@ export const makeSession = ({
         },
       )
       const M = modelFor("narrate", emit.observe("narrate"))
+      const worn = M.hat === undefined ? undefined : hat?.(M.hat)
+      const deliver = worn?.deliver === "tool" ? ("tool" as const) : undefined
       yield* emit({ kind: "stage", phase: "narrate" })
       const t0 = Date.now()
       const model = nameOf(M.model)
-      const r = yield* whole(M, msgs, { name: "narrate", maxOutputTokens: M.maxOutputTokens, effort: M.effort }).pipe(
-        Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e))),
-      )
-      yield* emit({
-        kind: "call",
-        phase: "narrate",
-        msgs,
-        out: r.text,
-        usage: r.usage,
-        ms: Date.now() - t0,
-        ...(model && { model }),
-      })
-      const { reply, blocks } = split(r.parts)
-      return capped({ [p.id]: blocks[p.id] ?? proseOf(reply).trim() })
+      let callMeta: { out?: unknown; usage?: Usage } | undefined
+      const demanded = yield* Effect.gen(function* () {
+        const invalid = checkDeliver(deliver, M, msgs)
+        if (invalid) return yield* Effect.fail(invalid)
+        const r = yield* whole(M, msgs, {
+          name: "narrate",
+          maxOutputTokens: M.maxOutputTokens,
+          effort: M.effort,
+          ...(deliver && { deliver }),
+        })
+        callMeta = { out: r.text || undefined, usage: r.usage }
+        if (r.finishReason === "content-filter") return yield* Effect.fail(contentFilterError(r, model))
+        const { reply, blocks } = split(r.parts)
+        const text = (blocks[p.id] ?? proseOf(reply)).trim()
+        if (!text) return yield* Effect.fail(emptyReplyError(r, model))
+        yield* emit({
+          kind: "call",
+          phase: "narrate",
+          msgs,
+          out: r.text,
+          usage: r.usage,
+          ms: Date.now() - t0,
+          ...(model && { model }),
+        })
+        return text
+      }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
+      return capped({ [p.id]: demanded })
     })
 
   // An ungenerated passage contributes its digest and boundary to derived context, never to the transcript or log.
@@ -952,23 +1008,38 @@ export const makeSession = ({
       const write = (
         msgs: Message[],
         live: ReturnType<typeof splitter>,
+        deliver: "tool" | undefined,
         meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
+        priorParts: readonly { type: "text" | "reasoning"; text: string }[] = [],
+        allowAsideOnlyForCheck = false,
       ) =>
         Effect.gen(function* () {
           yield* emit({ kind: "stage", phase: "narrate" })
           const t0 = Date.now()
-          return yield* writing(msgs, live, t0, meta).pipe(
-            Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, meta))),
-          )
+          let callMeta:
+            | { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage }
+            | undefined = meta
+          return yield* writing(msgs, live, t0, deliver, meta, priorParts, allowAsideOnlyForCheck, (extra) => {
+            callMeta = { ...meta, ...extra }
+          }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
         })
       const writing = (
         msgs: Message[],
         live: ReturnType<typeof splitter>,
         t0: number,
-        meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
+        deliver: "tool" | undefined,
+        meta: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo } | undefined,
+        priorParts: readonly { type: "text" | "reasoning"; text: string }[],
+        allowAsideOnlyForCheck: boolean,
+        onReply: (extra: { out?: unknown; usage?: Usage }) => void,
       ) =>
         Effect.gen(function* () {
-          const { parts, reply } = yield* streamed(M, msgs, opts)
+          const invalid = checkDeliver(deliver, M, msgs)
+          if (invalid) return yield* Effect.fail(invalid)
+          const { parts, reply } = yield* streamed(M, msgs, {
+            ...opts,
+            ...(deliver && { deliver }),
+          })
           let text = ""
           let finished = false
           const pieces = (chunk: string, end?: boolean) =>
@@ -1000,6 +1071,23 @@ export const makeSession = ({
                 finishReason: "stop" as const,
               }
             : yield* reply
+          if (!cut) {
+            onReply({ out: r.text || undefined, usage: r.usage })
+            if (r.finishReason === "content-filter") return yield* Effect.fail(contentFilterError(r, model))
+            const willResume =
+              priorParts.length === 0 &&
+              r.finishReason === "length" &&
+              M.prefill &&
+              deliver !== "tool" &&
+              r.text.trim().length > 0
+            if (!willResume) {
+              const allParts = [...priorParts, ...r.parts]
+              const combinedText = proseOf(allParts).trim()
+              const splitProse = proseOf(split(allParts).reply).trim()
+              if (!combinedText || (!splitProse && !allowAsideOnlyForCheck))
+                return yield* Effect.fail(emptyReplyError(r, model))
+            }
+          }
           yield* emit({
             kind: "call",
             phase: "narrate",
@@ -1016,6 +1104,8 @@ export const makeSession = ({
       const narrate = (correction?: string) =>
         Effect.gen(function* () {
           const worn = M.hat === undefined ? undefined : hat?.(M.hat)
+          const deliver = worn?.deliver === "tool" ? ("tool" as const) : undefined
+          const allowAsideOnlyForCheck = !correction && (guard.length > 0 || brief.must.length > 0)
           const prep = prepareNarrate({
             card,
             resolvedTrace: layerTrace(),
@@ -1047,12 +1137,26 @@ export const makeSession = ({
             packNames: packNames(),
           })
           const live = splitter() // one draft, one cut, across a resumed write
-          const r = yield* write(prep.messages, live, {
-            trace: stripTraceRawText(prep.traces),
-            wireError: prep.wireError,
-          })
-          if (r.finishReason !== "length" || !M.prefill) return split(r.parts)
-          const r2 = yield* write([...prep.messages, { role: "assistant", content: r.text }], live) // resume with the partial as prefix
+          const r = yield* write(
+            prep.messages,
+            live,
+            deliver,
+            {
+              trace: stripTraceRawText(prep.traces),
+              wireError: prep.wireError,
+            },
+            [],
+            allowAsideOnlyForCheck,
+          )
+          if (r.finishReason !== "length" || !M.prefill || deliver === "tool") return split(r.parts)
+          const r2 = yield* write(
+            [...prep.messages, { role: "assistant", content: r.text }],
+            live,
+            deliver,
+            undefined,
+            r.parts,
+            allowAsideOnlyForCheck,
+          ) // resume with the partial as prefix
           return split([...r.parts, ...r2.parts])
         })
       // an edit keeps the player's prose and writes no block
@@ -1117,6 +1221,9 @@ export const makeSession = ({
         }
         fired = open.filter((d) => c.fired.includes(d.id)).map(({ id, layer }) => ({ id, layer }))
         violated = [...c.violated]
+      }
+      if (!cut && from !== "check" && !proseOf(reply).trim()) {
+        return yield* Effect.fail(emptyReplyError({ finishReason: "stop", parts: reply }, nameOf(M.model)))
       }
       // polish: code scans the final prose for the lexicon (layer.ts: the highest rank's first); hit sentences go to one call
       // keyed by target id, and only the answers that differ from their sentence are spliced into the prose. Never on a

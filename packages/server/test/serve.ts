@@ -1,4 +1,5 @@
 import type { TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
+import { readTurnEvents, type TurnStreamEvent } from "@effect-tavern/runtime/src/sse.ts"
 type Event = TimelineEvent | Extract<RuntimeEvent, { kind: "call" }>
 // The adapter on a scripted session over a real socket: an action goes in as JSON, its events come back as SSE in the
 // session's order, a bad body is a 400, a bad action is an `error` event, and whether `call` events
@@ -57,7 +58,7 @@ const wired = (v: unknown) => JSON.parse(JSON.stringify(v)) as unknown // what J
 const sse = (text: string) =>
   text
     .split("\n\n")
-    .filter(Boolean)
+    .filter((block) => Boolean(block) && !block.startsWith(":"))
     .map((block) => {
       const [ev, data] = block.split("\n")
       return { event: ev.slice(7), data: JSON.parse(data.slice(6)) as Event & { message?: string; code?: string } }
@@ -1002,6 +1003,64 @@ const sse = (text: string) =>
     const sse = await fetch(`${at}/sse`, { headers: gz, decompress: false })
     assert.equal(sse.headers.get("content-encoding"), null)
     assert.equal(await sse.text(), "data: 1\n\n")
+  } finally {
+    await server.stop(true)
+  }
+}
+
+// SSE `: keepalive\n\n` heartbeat frames stream periodically during slow turns, are ignored cleanly by `readTurnEvents`,
+// and stop their interval timer on both normal completion and client cancel.
+{
+  const data = stocked(open(":memory:"), { ...chat, greetings: [{ text: "G" }] })
+  const silentLib = library({
+    data,
+    overlay: player.harness,
+    model: () =>
+      fake((o) => {
+        const doc = readStage(o)
+        return doc.phase === "narrate" ? { text: "Silent thought then prose.", delay: 65 } : defaultAnswer(doc, canned)
+      }),
+  })
+  const storyId = silentLib.stories.create(chat.id)
+  const server = listen(handle(silentLib, { keepaliveMs: 15 }), "127.0.0.1", 0)
+  const base = `http://127.0.0.1:${server.port}`
+  try {
+    const res = await fetch(base, {
+      method: "POST",
+      headers: { "x-tavern-story": String(storyId) },
+      body: JSON.stringify({ kind: "act", parent: null, input: { text: "wait for thoughts" } }),
+    })
+    assert.equal(res.status, 200)
+    const [forRaw, forEvents] = res.body!.tee()
+    const parsedEvents: TurnStreamEvent[] = []
+    const [rawBytes] = await Promise.all([
+      new Response(forRaw).text(),
+      readTurnEvents(forEvents, (e) => parsedEvents.push(e)),
+    ])
+    assert.match(rawBytes, /(?:^|\n\n): keepalive\n\n/)
+    assert.ok(parsedEvents.some((e) => e.kind === "change" && "node" in e && e.node !== undefined))
+
+    // Cancel mid-stream on an attached `/turn` response cleans up without error while the story turn finishes cleanly
+    const r2 = await fetch(base, {
+      method: "POST",
+      headers: { "x-tavern-story": String(storyId) },
+      body: JSON.stringify({ kind: "act", input: { text: "second slow turn" } }),
+    })
+    const attachRes = await fetch(`${base}/turn`, { headers: { "x-tavern-story": String(storyId) } })
+    assert.equal(attachRes.status, 200)
+    const attachReader = attachRes.body!.getReader()
+    let seenAttach = ""
+    while (!seenAttach.includes(": keepalive\n\n")) {
+      const step = await attachReader.read()
+      if (step.done) break
+      seenAttach += new TextDecoder().decode(step.value)
+    }
+    assert.match(seenAttach, /event: attach\n/)
+    assert.match(seenAttach, /: keepalive\n\n/)
+    await attachReader.cancel()
+    const restEvents: TurnStreamEvent[] = []
+    await readTurnEvents(r2.body!, (e) => restEvents.push(e))
+    assert.ok(restEvents.some((e) => e.kind === "change"))
   } finally {
     await server.stop(true)
   }

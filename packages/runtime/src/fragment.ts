@@ -88,6 +88,7 @@ const Said_ = Schema.optionalKey(Schema.Array(Said))
 export const Hat = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
+  deliver: Schema.optionalKey(Schema.Literals(["text", "tool"])),
   narrate: Schema.optionalKey(Schema.Struct({ head: Said_, tail: Said_ })),
   review: Schema.optionalKey(Schema.Struct({ head: Said_ })),
 })

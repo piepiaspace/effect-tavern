@@ -462,9 +462,74 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     assert.equal(body.connection.routingSource, "env")
     assert.equal(body.connection.format, "gemini")
     assert.equal(body.connection.prefill, false)
+    assert.equal(body.connection.tools, true)
+    assert.equal(body.connection.deliver, "text")
     assert.equal(body.wireError?.code, "prefill_disallowed")
     assert.equal(body.wireError?.format, "gemini")
     assert.equal(llmCalls, 0)
+
+    // Hat.deliver === "tool" over HTTP `/preview`: surfaces deliver, tools, deliver_needs_tools, and prefill_disallowed
+    const toolPrefillRes = await fetch(`${base}/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cardId: lifeOfPi.id,
+        greetingIndex: 0,
+        candidateHat: {
+          id: "tool-hat",
+          name: "Tool Hat",
+          deliver: "tool",
+          narrate: { tail: [{ role: "assistant", text: "Tail prefill" }] },
+        },
+      }),
+    })
+    assert.equal(toolPrefillRes.status, 200)
+    const toolPrefillBody = (await toolPrefillRes.json()) as PreviewNarrateResult
+    assert.equal(toolPrefillBody.connection.deliver, "tool")
+    assert.equal(toolPrefillBody.wireError?.code, "prefill_disallowed")
+    assert.ok(toolPrefillBody.diagnostics.some((d) => d.code === "prefill_disallowed" && d.level === "error"))
+  } finally {
+    await server.stop(true)
+  }
+}
+
+// 7. Routed model with capabilities.tools = false + saved Hat with deliver = "tool" reports `deliver_needs_tools`
+{
+  const data = open(":memory:")
+  shelf(data).install(lifeOfPi, { via: "file" })
+  const lib = library({ data, overlay: player.harness })
+  lib.providers.put({
+    id: "no-tools",
+    name: "No Tools Gateway",
+    enabled: true,
+    defaultFormat: "openai-compatible",
+    endpoints: { "openai-compatible": { url: "https://example.com/v1" } },
+    models: [{ id: "plain-chat", capabilities: { tools: false, prefill: true } }],
+  })
+  lib.hats.put({
+    id: "h-tool",
+    name: "Tool Delivery Hat",
+    deliver: "tool",
+    narrate: { tail: [{ role: "user", text: "Go ahead." }] },
+  })
+  lib.routing.write({ default: { provider: "no-tools", model: "plain-chat" }, hat: "h-tool" })
+  const server = listen(handle(lib), "127.0.0.1", 0)
+  const base = `http://127.0.0.1:${server.port}`
+  try {
+    const hatsRes = (await (await fetch(`${base}/hats`)).json()) as { id: string; deliver?: string }[]
+    assert.equal(hatsRes[0]?.deliver, "tool")
+    const res = await fetch(`${base}/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cardId: lifeOfPi.id, greetingIndex: 0 }),
+    })
+    assert.equal(res.status, 200)
+    const body = (await res.json()) as PreviewNarrateResult
+    assert.equal(body.connection.tools, false)
+    assert.equal(body.connection.deliver, "tool")
+    assert.equal(body.connection.prefill, true)
+    assert.ok(body.diagnostics.some((d) => d.code === "deliver_needs_tools" && d.level === "error"))
+    assert.ok(JSON.stringify(body.messages[0]).includes("calling the narrative tool"))
   } finally {
     await server.stop(true)
   }

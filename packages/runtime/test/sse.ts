@@ -173,4 +173,25 @@ for (const bytes of truncatedCases) {
   assert.equal(cancelSettled, true)
 }
 
+// SSE comment heartbeats (`: keepalive\n\n` and CRLF, including consecutive/trailing/byte-split) are ignored cleanly.
+{
+  const withHeartbeats =
+    ": keepalive\n\n" +
+    'event: attach\r\ndata: {"phase":"narrate","draft":null}\r\n\r\n' +
+    ": keepalive\r\n\r\n" +
+    ": keepalive\n\n" +
+    'event: delta\ndata: {"kind":"delta","part":{"type":"text-delta","id":"0","text":"山风"}}\n\n' +
+    ": keepalive\n\n"
+  const got: TurnStreamEvent[] = []
+  await readTurnEvents(byteByByte(encoder.encode(withHeartbeats)), (e) => got.push(e))
+  assert.deepEqual(got, [
+    { kind: "attach", phase: "narrate", draft: null },
+    { kind: "delta", part: { type: "text-delta", id: "0", text: "山风" } },
+  ])
+
+  const onlyHeartbeats: TurnStreamEvent[] = []
+  await readTurnEvents(byteByByte(encoder.encode(": keepalive\n\n: keepalive\r\n\r\n")), (e) => onlyHeartbeats.push(e))
+  assert.deepEqual(onlyHeartbeats, [])
+}
+
 console.log("sse ok")

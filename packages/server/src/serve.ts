@@ -223,6 +223,9 @@ const json = (status: number, v: unknown) => {
   })
 }
 
+export const KEEPALIVE_MS = 15_000
+const KEEPALIVE_FRAME = encoder.encode(": keepalive\n\n")
+
 export interface HandleOptions {
   /** A local directory may be added as a card library: only where the caller is the person at the terminal (a
    *  command that opened the library itself), never on a listener. */
@@ -231,9 +234,14 @@ export interface HandleOptions {
   scripted?: boolean
   /** The page is served beside the API: said on GET /host. */
   page?: boolean
+  /** SSE comment heartbeat interval in ms while a turn stream is open; default `KEEPALIVE_MS` (15_000). */
+  keepaliveMs?: number
 }
 
-export const handle = (lib: Library, { dirs = false, scripted = false, page = false }: HandleOptions = {}): Wire => {
+export const handle = (
+  lib: Library,
+  { dirs = false, scripted = false, page = false, keepaliveMs = KEEPALIVE_MS }: HandleOptions = {},
+): Wire => {
   return async (request: Request): Promise<Response> => {
     const method = request.method
     const at = new URL(request.url)
@@ -498,14 +506,14 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
     if (method === "GET" && url === "/turn") {
       const at = lib.attach(story)
       if (!at) return new Response(null, { status: 204 })
-      return stream(at.events, ["attach", { phase: at.phase, draft: at.draft }])
+      return stream(at.events, ["attach", { phase: at.phase, draft: at.draft }], keepaliveMs)
     }
     const dropping = method === "DELETE" && /^\/nodes\/(\d+)$/.exec(url)
     if (!dropping && (method !== "POST" || url !== "/")) return json(404, { error: "not found" })
     if (dropping) return reply(() => lib.drop(story, Number(dropping[1])), 404)
     try {
       const action = await read((u) => u)
-      return stream(lib.submit(story, action))
+      return stream(lib.submit(story, action), undefined, keepaliveMs)
     } catch (e) {
       return bad(e)
     }
@@ -513,19 +521,39 @@ export const handle = (lib: Library, { dirs = false, scripted = false, page = fa
 }
 /** `events` as SSE, after `first` when given, one `event:` per kind. The subscription starts now, whoever reads; the
  *  body's cancel (the reader went away) unsubscribes, nothing more: the turn is the story's. */
-const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown]) => {
+const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown], keepaliveMs = KEEPALIVE_MS) => {
   let closed = false
   let fiber: Fiber.Fiber<void, unknown> | undefined
+  let timer: ReturnType<typeof setInterval> | undefined
+  const stopTimer = () => {
+    if (timer !== undefined) {
+      clearInterval(timer)
+      timer = undefined
+    }
+  }
   const body = new ReadableStream<Uint8Array>({
     start(c) {
       const send = (name: string, v: unknown) => {
         if (!closed) c.enqueue(encoder.encode(`event: ${name}\ndata: ${JSON.stringify(v)}\n\n`))
       }
       if (first) send(...first)
+      if (keepaliveMs > 0) {
+        timer = setInterval(() => {
+          if (closed) return stopTimer()
+          try {
+            c.enqueue(KEEPALIVE_FRAME)
+          } catch {
+            closed = true
+            stopTimer()
+          }
+        }, keepaliveMs)
+        timer.unref?.()
+      }
       fiber = Effect.runFork(
         Stream.runForEach(events, (e) => Effect.sync(() => send(e.kind, e))).pipe(
           Effect.ensuring(
             Effect.sync(() => {
+              stopTimer()
               if (closed) return
               closed = true
               c.close()
@@ -535,6 +563,7 @@ const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown]) =
       )
     },
     cancel() {
+      stopTimer()
       if (closed) return
       closed = true
       if (fiber) Effect.runFork(Fiber.interrupt(fiber))

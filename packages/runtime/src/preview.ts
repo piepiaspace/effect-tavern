@@ -43,6 +43,8 @@ export * from "./trace.ts"
 export interface PreviewConnectionMeta {
   format?: Format
   prefill: boolean
+  tools?: boolean
+  deliver?: "text" | "tool"
   reasoningBack: boolean
   ttl?: CacheTtl
   contextTokens?: number
@@ -103,6 +105,7 @@ export interface PreviewDiagnostic {
     | "settlement_pending"
     | "folded_without_summary"
     | "prefill_disallowed"
+    | "deliver_needs_tools"
     | "invalid_invoke"
     | "connection_unavailable"
     | "invalid_read"
@@ -648,6 +651,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     role: wording("stage.role"),
     narrator: wording("narrate.role"),
     persona: wording("narrate.persona"),
+    deliver: wording("narrate.deliver"),
     contextLead: wording("narrate.context"),
     directions: wording("narrate.turn"),
     tail: keptTail,
@@ -664,9 +668,12 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
 
   let wiredMessages: Message[] = detailed.messages
   let wireError: WireErrorInfo | undefined
+  const toolPrefill = hat?.deliver === "tool" && detailed.messages.at(-1)?.role === "assistant"
+  const toolPrefillMessage =
+    "request ends in an assistant message, and hat deliver: tool cannot end in an assistant prefill: end the hat's tail in a user or system message"
   if (w.format) {
     try {
-      wiredMessages = wire(w.format, detailed.messages, w.prefill)
+      wiredMessages = wire(w.format, detailed.messages, toolPrefill ? false : w.prefill)
     } catch (err) {
       wiredMessages = wire(w.format, detailed.messages, true)
       const messageIndex = Math.max(0, detailed.messages.length - 1)
@@ -674,7 +681,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
       const source = lastTrace?.spans[0]?.source ?? lastTrace?.source
       wireError = {
         code: "prefill_disallowed",
-        message: err instanceof Error ? err.message : String(err),
+        message: toolPrefill ? toolPrefillMessage : err instanceof Error ? err.message : String(err),
         messageIndex,
         format: w.format,
         ...(source && { source: traceSource(source) }),
@@ -1024,12 +1031,35 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     extraOmitted,
   })
 
+  const effectiveDeliver = hat?.deliver ?? connection.deliver ?? "text"
+  const effectiveConnection: PreviewConnectionMeta = { ...connection, deliver: effectiveDeliver }
+
+  if (effectiveDeliver === "tool" && connection.tools === false) {
+    diagnostics.push({
+      level: "error",
+      code: "deliver_needs_tools",
+      message: "hat deliver: tool requires native tool calling on this connection (capabilities.tools is false)",
+      ...(hat && { source: { kind: "hat", hatId: hat.id, hatName: hat.name } }),
+    })
+  }
+
   if (prepped.wireError) {
     diagnostics.push({
       level: "error",
       code: "prefill_disallowed",
       message: prepped.wireError.message,
       source: prepped.wireError.source,
+    })
+  } else if (effectiveDeliver === "tool" && prepped.messages.at(-1)?.role === "assistant") {
+    const messageIndex = prepped.messages.length - 1
+    const lastTrace = prepped.traces[messageIndex]
+    const source = lastTrace?.spans[0]?.source ?? lastTrace?.source
+    diagnostics.push({
+      level: "error",
+      code: "prefill_disallowed",
+      message:
+        "request ends in an assistant message, and hat deliver: tool cannot end in an assistant prefill: end the hat's tail in a user or system message",
+      ...(source && { source: traceSource(source) }),
     })
   }
 
@@ -1262,7 +1292,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   return {
     mode: opts.mode,
     card: { id: cardId, title: card.title ?? cardId },
-    connection,
+    connection: effectiveConnection,
     messages: prepped.messages,
     ...((prepped.wiredMessages.length !== prepped.messages.length ||
       prepped.wiredMessages.some((m, i) => m !== prepped.messages[i])) && { wiredMessages: prepped.wiredMessages }),
