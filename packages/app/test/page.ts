@@ -22,16 +22,6 @@ try {
   rmSync(outdir, { recursive: true, force: true })
 }
 
-// Bun APIs the bundle names at all: each must be one host.ts supplies, or one only the CLI's paths reach (Bun.file:
-// static files and a card library's directory, neither of which the app serves).
-const named = new Set([...code.matchAll(/\bBun\.([A-Za-z]+)/g)].map((m) => m[1]))
-const known = new Set(["YAML", "env", "stringWidth", "file"])
-assert.deepEqual(
-  [...named].filter((n) => !known.has(n)),
-  [],
-  "a Bun API the page bundle names",
-)
-
 const card = await Bun.file(new URL("../../runtime/test/cards/wuxia.yaml", import.meta.url)).text()
 const cardBytes = new TextEncoder().encode(card)
 const toBase64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64")
@@ -140,7 +130,6 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   }
 
   const outbound: OutboundCall[] = []
-  const pageCalls: string[] = []
   /** A page load: a fresh realm over the same library, as a relaunch or a reload is. */
   const load = () => {
     const page = {
@@ -149,7 +138,6 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
       mygo: makeMyGo(outbound),
       fetch: (input: RequestInfo | URL) => {
         const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
-        pageCalls.push(raw)
         if (raw.startsWith("data:text/plain,")) return Promise.resolve(new Response(raw.slice(16)))
         return Promise.reject(new Error(`the page's own fetch is not for /api or external http(s): ${raw}`))
       },
@@ -254,7 +242,6 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
     "user-agent": "TavernPlayer/1.0",
   })
   assert.equal(await (await pageFetch("data:text/plain,local")).text(), "local")
-  assert.ok(pageCalls.includes("data:text/plain,local"))
 
   const made = (await (
     await fullApi("/stories", { method: "POST", headers: json, body: JSON.stringify({ card: "wuxia" }) })

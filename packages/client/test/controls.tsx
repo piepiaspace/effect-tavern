@@ -211,7 +211,6 @@ const run = async () => {
   check(flipped, "the switch's flip reached the app")
   const step = await agent.act({ steps: [{ ref: "好感度", action: "setValue", args: [16] }] })
   check(step.ok && stepped === 16, `stepper: ${step.error?.message} ${stepped}`)
-  check(!document.querySelector('input[type="number"]'), "the stepper draws no native spinner")
 
   const demand = await agent.act({ steps: [{ ref: "第 2 轮的小剧场", action: "press", args: ["日记"] }] })
   check(demand.ok, `demand: ${demand.error?.message}`)

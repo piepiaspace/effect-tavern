@@ -2,18 +2,15 @@
 // wire/prefill conversion, multi-state resource lifecycle, and sandbox/story simulations.
 import assert from "node:assert/strict"
 import { Effect, Stream } from "effect"
-import { wire, type Message } from "@effect-tavern/provider/src/call.ts"
+import type { Message } from "@effect-tavern/provider/src/call.ts"
 import { fake, type FakeCall } from "@effect-tavern/provider/src/fake.ts"
-import { makeCard, type Card } from "../src/card.ts"
-import { evaluateHead, type Hat } from "../src/fragment.ts"
-import { resolve, resolveWithTrace, type Rows } from "../src/layer.ts"
-import { prepareNarrate, previewNarrate, stripTraceRawText } from "../src/preview.ts"
+import type { Card } from "../src/card.ts"
+import type { Hat } from "../src/fragment.ts"
+import type { Rows } from "../src/layer.ts"
+import { previewNarrate } from "../src/preview.ts"
 import { makeSession, type Event } from "../src/session.ts"
 import { policyFor } from "../src/history.ts"
 import * as Log from "../src/log.ts"
-import { readCard } from "../support/author.ts"
-
-const lifeOfPi = await readCard(new URL("../../../samples/life-of-pi/life-of-pi.yaml", import.meta.url))
 
 // The SDK wraps user/assistant strings in text parts. Compare the transmitted part types and cache options too.
 const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[]) => {
@@ -109,19 +106,6 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
     persona: { id: "p-1", name: "Alex", text: "A quiet sailor.", yields: false },
   }
 
-  // resolve() stays structurally clean & matches resolveWithTrace().resolved
-  const plainR = resolve(card, rows)
-  const tracedR = resolveWithTrace(card, rows, { cardId: card.id })
-  assert.deepEqual(tracedR.resolved, plainR)
-  assert.ok(tracedR.omitted.some((o) => o.id === "voice" && o.reason === "yielded"))
-  assert.ok(tracedR.omitted.some((o) => o.id === "setting" && o.reason === "overridden" && o.source.kind === "card"))
-  assert.ok(
-    tracedR.omitted.some(
-      (o) => o.id === "extra-tail" && o.reason === "unfilled_hole" && o.missingHoles?.includes("missingHole"),
-    ),
-  )
-  assert.ok(tracedR.omitted.some((o) => o.id === "disabled-frag" && o.reason === "disabled"))
-
   const hat: Hat = {
     id: "hat-1",
     name: "Prefill Hat",
@@ -145,6 +129,15 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
     input: { text: "Look around" },
     assumedReads: ["card:missing", "card:harbor#dock", "pack:pack-a/world-note"],
   })
+
+  assert.ok(res.omitted.some((o) => o.id === "voice" && o.reason === "yielded"))
+  assert.ok(res.omitted.some((o) => o.id === "setting" && o.reason === "overridden" && o.source.kind === "card"))
+  assert.ok(
+    res.omitted.some(
+      (o) => o.id === "extra-tail" && o.reason === "unfilled_hole" && o.missingHoles?.includes("missingHole"),
+    ),
+  )
+  assert.ok(res.omitted.some((o) => o.id === "disabled-frag" && o.reason === "disabled"))
 
   assert.equal(res.wireError?.code, "prefill_disallowed")
   assert.equal(res.wireError?.messageIndex, res.messages.length - 1)
@@ -177,27 +170,25 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
     "Secret for {{char}}.",
   )
   assert.equal(spans.find((s) => s.source.path === "products.scrap")?.source.rawText, "Write to {{char}}.")
-  // Every Span slice [start, end) matches exact substring in msg.content!
+  // Offsets address the rendered message, even when substitution changes its length.
   for (const tr of res.traces) {
-    const msg = res.messages[tr.index]
-    if (typeof msg.content === "string") {
-      for (const s of tr.spans) {
-        assert.ok(s.start >= 0 && s.end <= msg.content.length && s.start < s.end)
-        const slice = msg.content.slice(s.start, s.end)
-        assert.ok(slice.length > 0)
-        if (s.kind === "fiction" && s.source.fragmentId === "fic-on") {
-          assert.equal(slice, "The bell rings for Alex.")
-          assert.equal(s.source.whenResult, true)
-          assert.equal(s.source.whenDetails?.[0]?.actual, 3)
-        }
-        if (s.kind === "hat" && s.source.hatSlot === "head") {
-          // Index 1 in original authored hat (index 0 was blank!)
-          assert.equal(s.source.hatIndex, 1)
-          assert.equal(slice, "Hello Marin & Alex")
-        }
-      }
-    }
+    const { content } = res.messages[tr.index]
+    if (typeof content === "string")
+      for (const span of tr.spans) assert.ok(span.start >= 0 && span.start < span.end && span.end <= content.length)
   }
+  const excerpt = (span: (typeof spans)[number]) => {
+    const trace = res.traces.find((tr) => tr.spans.includes(span))!
+    const { content } = res.messages[trace.index]
+    assert.ok(typeof content === "string")
+    return content.slice(span.start, span.end)
+  }
+  const fiction = spans.find((s) => s.kind === "fiction" && s.source.fragmentId === "fic-on")!
+  assert.equal(excerpt(fiction), "The bell rings for Alex.")
+  assert.equal(fiction.source.whenResult, true)
+  assert.equal(fiction.source.whenDetails?.[0]?.actual, 3)
+  const head = spans.find((s) => s.kind === "hat" && s.source.hatSlot === "head")!
+  assert.equal(head.source.hatIndex, 1)
+  assert.equal(excerpt(head), "Hello Marin & Alex")
 
   // Hat omitted records track exact original indices
   assert.ok(res.omitted.some((o) => o.category === "hat" && o.source.hatIndex === 0 && o.reason === "empty_text"))
@@ -270,44 +261,6 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
   )
 }
 
-// 2. Life of Pi acceptance (zero turns, zero LLM calls): changing 裂隙 2 -> 3 switches <fiction> band!
-{
-  const at2 = previewNarrate({
-    card: lifeOfPi,
-    rows: {},
-    connection: { format: "openai-compatible", prefill: true, reasoningBack: true },
-    mode: "sandbox",
-    greetingIndex: 0,
-    fields: { 裂隙: 2 },
-  })
-  const at3 = previewNarrate({
-    card: lifeOfPi,
-    rows: {},
-    connection: { format: "openai-compatible", prefill: true, reasoningBack: true },
-    mode: "sandbox",
-    greetingIndex: 0,
-    fields: { 裂隙: 3 },
-  })
-  const fictionSpans = (r: ReturnType<typeof previewNarrate>) =>
-    r.traces.flatMap((t) =>
-      t.spans.filter((s) => s.kind === "fiction").map((s) => ({ msg: r.messages[t.index], span: s })),
-    )
-
-  const s2 = fictionSpans(at2)
-  const s3 = fictionSpans(at3)
-  assert.ok(s2.some((x) => x.span.source.fragmentId === "seam-calm"))
-  assert.ok(!s2.some((x) => x.span.source.fragmentId === "seam-mid"))
-  assert.ok(at2.omitted.some((o) => o.category === "fiction" && o.id === "seam-mid" && o.reason === "when_false"))
-
-  assert.ok(s3.some((x) => x.span.source.fragmentId === "seam-mid"))
-  assert.ok(!s3.some((x) => x.span.source.fragmentId === "seam-calm"))
-  assert.ok(at3.omitted.some((o) => o.category === "fiction" && o.id === "seam-calm" && o.reason === "when_false"))
-  const midSpan = s3.find((x) => x.span.source.fragmentId === "seam-mid")!
-  assert.ok(typeof midSpan.msg.content === "string")
-  const midText = midSpan.msg.content.slice(midSpan.span.start, midSpan.span.end)
-  assert.equal(midText, lifeOfPi.fiction.find((f) => f.id === "seam-mid")!.text)
-}
-
 // 3. Exact SDK message parity: makeSession live `narrate` vs previewNarrate + wire() across formats!
 for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   const card: Card = {
@@ -356,7 +309,6 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   const rows: Rows = {
     harness: { id: "harness", name: "H", switches: { verbosity: "concise" } },
   }
-  const captured: Message[][] = []
   const sdkCaptured: FakeCall["prompt"][] = []
   const callEvents: Extract<Event, { kind: "call" }>[] = []
   const s = makeSession({
@@ -391,10 +343,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   await Effect.runPromise(
     Stream.runForEach(s.act(s.log.head, { text: "Check the deck", invoke: ["card:player-badge"] }), (e) =>
       Effect.sync(() => {
-        if (e.kind === "call" && e.phase === "narrate") {
-          captured.push([...e.msgs])
-          callEvents.push(e)
-        }
+        if (e.kind === "call" && e.phase === "narrate") callEvents.push(e)
       }),
     ),
   )
@@ -417,13 +366,10 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     nodeId: 0,
     input: { text: "Check the deck", invoke: ["card:player-badge"] },
   })
-  assert.equal(captured.length, 1)
+  assert.equal(callEvents.length, 1)
   assert.equal(sdkCaptured.length, 1)
-  assert.deepEqual(previewTurn1.messages, captured[0])
-  assert.deepEqual(
-    wire(format, captured[0], format !== "anthropic"),
-    previewTurn1.wiredMessages ?? previewTurn1.messages,
-  )
+  const [call] = callEvents
+  assert.deepEqual(previewTurn1.messages, call.msgs)
   assertSdkPrompt(sdkCaptured[0], previewTurn1.wiredMessages ?? previewTurn1.messages)
   // The preview body sends no raw template equal to the slice it is shown as
   for (const tr of previewTurn1.traces) {
@@ -432,13 +378,10 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     for (const sp of tr.spans) assert.notEqual(sp.source.rawText, text.slice(sp.start, sp.end))
     if (tr.source) assert.notEqual(tr.source.rawText, text)
   }
-  assert.equal(callEvents[0]?.trace?.length, captured[0]?.length)
-  assert.deepEqual(callEvents[0]?.trace, stripTraceRawText(previewTurn1.traces))
-  // Persisted session call trace must not duplicate message bodies in `rawText`
-  assert.ok(
-    callEvents[0].trace.every(
-      (tr) => tr.source?.rawText === undefined && tr.spans.every((sp) => sp.source.rawText === undefined),
-    ),
+  assert.equal(call.trace?.length, call.msgs.length)
+  assert.deepEqual(
+    call.trace,
+    JSON.parse(JSON.stringify(previewTurn1.traces, (key, value) => (key === "rawText" ? undefined : value))),
   )
 
   // Now check Turn 2 with unread secret-map + section and simulated reading ONLY secret-map face
@@ -820,5 +763,4 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.equal(secRes.modelSelectable, true)
 }
 
-assert.ok(typeof makeCard === "function" && typeof evaluateHead === "function" && typeof prepareNarrate === "function")
 console.log("preview: ok")

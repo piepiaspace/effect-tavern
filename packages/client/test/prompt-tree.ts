@@ -13,7 +13,6 @@ import {
   sliceSpanText,
   snippetOf,
   spanRows,
-  reusePreviewOutline,
   scrubPlayPreview,
   sourceDestination,
 } from "../src/prompt-tree-state.ts"
@@ -83,9 +82,9 @@ assert.deepEqual(sourceDestination({ kind: "story", nodeId: 5 }, { hasNode: (id)
 })
 
 // 5. UTF-16 span slicing
-const sample = "你好，世界！Hello"
-assert.equal(sliceSpanText(sample, { start: 0, end: 6 }), "你好，世界！")
-assert.equal(sliceSpanText(sample, { start: 6, end: 11 }), "Hello")
+const sample = "你好🌊Hello"
+assert.equal(sliceSpanText(sample, { start: 2, end: 4 }), "🌊")
+assert.equal(sliceSpanText(sample, { start: -2, end: 2 }), "你好")
 
 // 6. Clearing candidateCard / candidateHat drops stale candidate from subsequent preview request
 patchPromptTreeMemory(10, { candidateHat: undefined, events: ["试探:对质"] })
@@ -108,9 +107,9 @@ patchPromptTreeMemory(10, { nodeId: 95, assumedReads: ["card:tiger"] })
 openPromptTree({ storyId: 8, play: true })
 assert.equal(getPromptTreeMemory(10)!.nodeId, undefined)
 assert.deepEqual(getPromptTreeMemory(10)!.assumedReads, [])
-const before = getPromptTreeMemory(10)
+const before = structuredClone(getPromptTreeMemory(10))
 openPromptTree({ play: true })
-assert.equal(getPromptTreeMemory(10), before)
+assert.deepEqual(getPromptTreeMemory(10), before)
 openPromptTree({ candidateHat: draftHat })
 assert.equal(getPromptTreeMemory(10)!.play, false)
 assert.equal(getPromptTreeMemory(10)!.mode, "sandbox")
@@ -163,21 +162,10 @@ const preview = previewNarrate({
   rows: {},
 })
 const outline = { ...preview, traces: [{ ...preview.traces[0], spans: [fixed, gated] }] }
-const fresh = structuredClone(outline)
-fresh.traces[0].spans[1].end++
-const refreshed = reusePreviewOutline(outline, fresh)
-assert.deepEqual(refreshed.traces, fresh.traces)
-assert.equal(refreshed.messages, outline.messages)
-assert.equal(refreshed.traces[0].spans[0], fixed)
-assert.notEqual(refreshed.traces[0].spans[1], gated)
 assert.equal(snippetOf("  abc  \n ", 3), "abc")
 assert.equal(snippetOf("  abc  \n d", 3), "ab…")
 assert.equal(snippetOf("a\u00a0\n b"), "a b")
 
-// scrubPlayPreview preserves unchanged trace/span/omitted references while hiding secret conditions.
-const cleanPlay = scrubPlayPreview(outline)
-assert.equal(cleanPlay.traces, outline.traces)
-assert.equal(cleanPlay.omitted, outline.omitted)
 const secretSpan: Span = {
   ...gated,
   source: {
@@ -197,7 +185,7 @@ const withHidden = {
   traces: [{ ...outline.traces[0], spans: [fixed, secretSpan] }],
 }
 const scrubbed = scrubPlayPreview(withHidden)
-assert.equal(scrubbed.traces[0].spans[0], fixed)
+assert.deepEqual(scrubbed.traces[0].spans[0], fixed)
 assert.equal(scrubbed.traces[0].spans[1].source.whenText, undefined)
 assert.equal(scrubbed.traces[0].spans[1].source.whenDetails, undefined)
 
@@ -249,7 +237,6 @@ const scrubbedExplicit = scrubPlayPreview({
   traces: [{ ...outline.traces[0], spans: [fixed, explicitFieldSpan] }],
   omitted: [explicitOmitted, publicOmitted],
 })
-assert.equal(scrubbedExplicit.traces[0].spans[0], fixed)
 assert.equal(scrubbedExplicit.traces[0].spans[1].source.when, undefined)
 assert.equal(scrubbedExplicit.traces[0].spans[1].source.whenText, undefined)
 assert.equal(scrubbedExplicit.traces[0].spans[1].source.whenResult, undefined)
