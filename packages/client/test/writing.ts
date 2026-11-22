@@ -10,6 +10,7 @@ import {
   orderedPacks,
   packHoles,
   productEdit,
+  stageAskLabels,
   toggleMount,
   withoutProductPatch,
   withoutProductText,
@@ -26,6 +27,20 @@ import {
   withExtra,
 } from "../src/requirements.ts"
 import { chosen, moot, pressing, sentence, SWITCHES, takenBy } from "../src/switches.ts"
+
+// stageAskLabels covers every non-switch ask in `harness`, with `narrate.deliver` right after `narrate.persona`
+const askPairs = stageAskLabels()
+const personaIdx = askPairs.findIndex(([id]) => id === "narrate.persona")
+assert.ok(personaIdx >= 0 && askPairs[personaIdx + 1]?.[0] === "narrate.deliver")
+assert.equal(askPairs[personaIdx + 1]?.[1], "工具交付说明")
+assert.deepEqual(
+  new Set(askPairs.map(([id]) => id)),
+  new Set(
+    harness("act")
+      .asks!.filter((a) => !a.id.startsWith("switch."))
+      .map((a) => a.id),
+  ),
+)
 
 // every value the table offers compiles to a sentence in `harness`, and only those values do
 for (const s of SWITCHES)

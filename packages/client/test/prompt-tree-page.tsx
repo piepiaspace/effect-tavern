@@ -279,7 +279,7 @@ async function run() {
     if (!root.querySelector(".pt-diags")?.textContent?.includes(t("promptTree.diagDeliverNoPrefill")))
       throw Error("Missing localized diagDeliverNoPrefill diagnostic in Prompt Tree")
 
-    // Structured Hat handshake (`role: "tool"`), new slots (`lead`, `turn`), `Hat.asks`, and jump back to Settings → 提示词模板
+    // Structured Hat handshake (`role: "tool"`), slots (`lead`, `turn`), and jump back to Settings → 提示词模板
     selectTab(2)
     flush()
     patchPromptTreeMemory(1, {
@@ -291,7 +291,6 @@ async function run() {
           head: [{ role: "tool", toolName: "read_file", toolInput: '{"path":"world.md"}', text: "World ready" }],
           turn: [{ role: "system", text: "Turn lead line" }],
         },
-        asks: { "narrate.role": "Override narrator framing" },
       },
     })
     selectTab(1)
@@ -306,11 +305,11 @@ async function run() {
       throw Error("Missing formatted tool-call snippet in RequestView")
     if (!root.querySelector(".pt-diags")?.textContent?.includes(t("promptTree.diagHatNeedsTools")))
       throw Error("Missing localized hat_needs_tools diagnostic in Prompt Tree")
-    const askSpan = [...root.querySelectorAll<HTMLButtonElement>(".rv-span-row")].find((row) =>
-      row.textContent?.includes("Override narrator framing"),
+    const leadSpan = [...root.querySelectorAll<HTMLButtonElement>(".rv-span-row")].find((row) =>
+      row.textContent?.includes("Top lead line"),
     )
-    if (!askSpan) throw Error("Missing Hat.asks span in RequestView")
-    askSpan.click()
+    if (!leadSpan) throw Error("Missing hat-lead span in RequestView")
+    leadSpan.click()
     flush()
     root.querySelector<HTMLButtonElement>(".rv-jump")?.click()
     flush()
@@ -319,7 +318,7 @@ async function run() {
       registry.get(section) !== "templates" ||
       registry.get(pickedAtom).templates !== "h-structured"
     )
-      throw Error("Jumping from Hat.asks source did not open Settings → 提示词模板 on h-structured")
+      throw Error("Jumping from Hat slot source did not open Settings → 提示词模板 on h-structured")
     selectTab(1)
     registry.set(tabs, { active: 1, list: [author, player] })
     patchPromptTreeMemory(1, { candidateHat: undefined, selectedKey: null })

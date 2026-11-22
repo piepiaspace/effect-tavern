@@ -536,22 +536,16 @@ for (const [phase, demand] of [
     assert.match(checkEx.exchange.error ?? "", /PROHIBITED_CONTENT/)
   }
 
-  // 5. Hat tool handshake fast-fails when `M.tools === false`, and `Hat.asks` overrides off-stage asks (`stage.role`, `check`, `polish`, `record.tools`)
+  // 5. Hat tool handshake fast-fails when `M.tools === false`, and `Layer.asks` overrides off-stage asks (`stage.role`, `check`, `polish`, `record.tools`)
   {
     const handshakeHat: Hat = {
       id: "hs-hat",
-      name: "Handshake & Asks Hat",
+      name: "Handshake Hat",
       narrate: {
         head: [{ role: "tool", toolName: "boot_ctx", text: "ok" }],
       },
       review: {
         head: [{ role: "tool", toolName: "audit_ctx", text: "ok" }],
-      },
-      asks: {
-        "stage.role": "CUSTOM-STAGE-ROLE for {{char}}",
-        check: "CUSTOM-CHECK-QUESTION",
-        polish: "CUSTOM-POLISH-QUESTION",
-        "record.tools": "CUSTOM-RECORD-TOOLS",
       },
     }
     let toolsEnabled = false
@@ -575,7 +569,21 @@ for (const [phase, demand] of [
     }
     const S = makeSession({
       card: richCard,
-      rows: () => ({}),
+      rows: () => ({
+        packs: [
+          {
+            id: "p-asks",
+            name: "Pack Asks",
+            asks: [
+              { id: "stage.role", text: "CUSTOM-STAGE-ROLE for {{char}}" },
+              { id: "check", text: "CUSTOM-CHECK-QUESTION" },
+              { id: "polish", text: "CUSTOM-POLISH-QUESTION" },
+              { id: "record.tools", text: "CUSTOM-RECORD-TOOLS" },
+            ],
+          },
+        ],
+        local: { id: "local", name: "local", card: richCard.id, mounts: ["p-asks"] },
+      }),
       hat: (id) => (id === handshakeHat.id ? handshakeHat : undefined),
       model: (phase) => ({
         ...fake((o) => {

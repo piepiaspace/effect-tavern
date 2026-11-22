@@ -1218,7 +1218,7 @@ for (const povText of ["", "{{missing}}"]) {
   assert.equal(decodeHat({ id: "h3", name: "Tool", deliver: "tool" }).deliver, "tool")
   assert.throws(() => decodeHat({ id: "h4", name: "Bad", deliver: "xml" }))
 
-  // Legacy 3-slot Hat decodes unchanged; full protocol-shell Hat decodes all slots, tool handshakes, reasoning, and asks
+  // Legacy 3-slot Hat decodes unchanged; full protocol-shell Hat decodes all slots, tool handshakes, and reasoning
   const legacyHat = decodeHat({
     id: "legacy",
     name: "Legacy",
@@ -1227,7 +1227,6 @@ for (const povText of ["", "{{missing}}"]) {
   })
   assert.equal(legacyHat.narrate?.lead, undefined)
   assert.equal(legacyHat.narrate?.turn, undefined)
-  assert.equal(legacyHat.asks, undefined)
   assert.equal(hatHasToolHandshake(legacyHat), false)
 
   const richHat = decodeHat({
@@ -1243,11 +1242,9 @@ for (const povText of ["", "{{missing}}"]) {
     review: {
       head: [{ role: "tool", toolName: "audit", text: "clean" }],
     },
-    asks: { "narrate.role": "Custom narrator", "stage.role": "Custom stage" },
   })
   assert.equal(richHat.narrate?.lead?.length, 1)
   assert.equal(richHat.narrate?.turn?.length, 1)
-  assert.equal(richHat.asks?.["narrate.role"], "Custom narrator")
   assert.equal(hatHasToolHandshake(richHat, "narrate"), true)
   assert.equal(hatHasToolHandshake(richHat, "review"), true)
   assert.equal(hatEntryActive({ role: "assistant", text: "", reasoning: "think" }), true)

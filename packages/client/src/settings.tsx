@@ -26,7 +26,6 @@ import {
   Switch,
   Tick,
   ToList,
-  type DialogHandle,
   type Pane,
 } from "./controls.tsx"
 import {
@@ -71,7 +70,7 @@ import {
   type HatStage,
 } from "./connections.ts"
 import { Cards } from "./cards.tsx"
-import { DEFAULT_ASKS, leaveArea, leaveInput, stageAskLabels } from "./layer-tabs.tsx"
+import { leaveArea, leaveInput } from "./layer-tabs.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close } from "./pages.ts"
@@ -460,10 +459,6 @@ const withSlot = (h: Hat, s: Slot, entries: HatEntry[]): Hat => {
   const { narrate: _, ...rest } = h
   return Object.keys(clean).length ? { ...rest, narrate: clean } : rest
 }
-const withAsks = (h: Hat, asks: Record<string, string>): Hat => {
-  const { asks: _, ...rest } = h
-  return Object.keys(asks).length ? { ...rest, asks } : rest
-}
 const lastNonBlankTailIndex = (said: readonly HatEntry[]): number => {
   for (let i = said.length - 1; i >= 0; i--) {
     const cur = said[i]
@@ -520,8 +515,6 @@ const withReasoning = (x: HatEntry, reasoning: string, trimBlank = false): HatEn
 }
 const sameArray = <T,>(a: readonly T[], b: readonly T[]): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i])
-const samePairs = (a: readonly [string, string][], b: readonly [string, string][]): boolean =>
-  a.length === b.length && a.every(([k, v], i) => b[i]?.[0] === k && b[i]?.[1] === v)
 
 const Templates = (props: Pane) => {
   const list = read(hats)
@@ -573,14 +566,6 @@ const Templates = (props: Pane) => {
     const h = hat()
     if (!h) return
     const next = withSlot(h, s, f([...slotOf(h, s)]))
-    pin(h.id)
-    setDraft(next)
-    if (commit) void save(next)
-  }
-  const editAsks = (asks: Record<string, string>, commit = true) => {
-    const h = hat()
-    if (!h) return
-    const next = withAsks(h, asks)
     pin(h.id)
     setDraft(next)
     if (commit) void save(next)
@@ -737,8 +722,6 @@ const Templates = (props: Pane) => {
       <section class="detail-card" aria-label={t("settings.hatDetail")}>
         <Show when={hat()} fallback={<div class="empty">{t("settings.noHats")}</div>}>
           {(h) => {
-            const asksDlg = dialogHandle()
-            const askCount = () => Object.keys(h().asks ?? {}).length
             const mounts = () => hatMounts(route(), h().id)
             const mountTargets = createMemo(
               () => [
@@ -824,30 +807,17 @@ const Templates = (props: Pane) => {
                     </p>
                   </Show>
                   <For each={conflicts()}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
-                  <div class="hat-settings-card">
-                    <div class="hat-setting-row">
-                      <h3>{t("settings.hatDeliver")}</h3>
-                      <span class="spacer" />
-                      <Segment
-                        label={t("settings.hatDeliver")}
-                        value={h().deliver ?? "text"}
-                        options={[
-                          { value: "text", label: t("settings.hatDeliverText") },
-                          { value: "tool", label: t("settings.hatDeliverTool") },
-                        ]}
-                        onPick={(v) => setDeliver(v)}
-                      />
-                    </div>
-                    <div class="hat-setting-row hat-asks-row">
-                      <h3>{t("settings.hatAsks")}</h3>
-                      <Show when={askCount() > 0}>
-                        <span class="tag mono">{askCount()}</span>
-                      </Show>
-                      <span class="spacer" />
-                      <button type="button" class="btn sm" onClick={() => void asksDlg.open()}>
-                        {askCount() > 0 ? t("common.edit") : t("common.add")}
-                      </button>
-                    </div>
+                  <div class="hat-deliver-bar">
+                    <h3>{t("settings.hatDeliver")}</h3>
+                    <Segment
+                      label={t("settings.hatDeliver")}
+                      value={h().deliver ?? "text"}
+                      options={[
+                        { value: "text", label: t("settings.hatDeliverText") },
+                        { value: "tool", label: t("settings.hatDeliverTool") },
+                      ]}
+                      onPick={(v) => setDeliver(v)}
+                    />
                   </div>
                   <div class="hat-stack">
                     <SlotEditor
@@ -895,12 +865,6 @@ const Templates = (props: Pane) => {
                       onEdit={(f) => editSlot("review", f)}
                     />
                   </div>
-                  <HatAsks
-                    controller={asksDlg}
-                    asks={h().asks}
-                    onStage={(asks) => editAsks(asks, false)}
-                    onEdit={(asks) => editAsks(asks, true)}
-                  />
                 </div>
               </>
             )
@@ -1407,116 +1371,6 @@ const SlotEditor = (props: {
     </Show>
   </section>
 )
-
-/** Per-Hat wording overrides (`Hat.asks`) in a dialog of their own, opened from the deliver card: not a message slot, so
- *  not in the slot stack. An item's id is fixed once added; the one add menu in the head lists the unused ids, and closes
- *  on its pick, so nothing re-filters under an open popup. The body keeps one height and scrolls inside. */
-const HatAsks = (props: {
-  controller: DialogHandle
-  asks: Readonly<Record<string, string>> | undefined
-  onStage: (asks: Record<string, string>) => void
-  onEdit: (asks: Record<string, string>) => void
-}) => {
-  const catalog = createMemo(
-    () => {
-      const pairs = stageAskLabels().filter(([k]) => !k.includes(".decision"))
-      const idx = pairs.findIndex(([k]) => k === "narrate.role")
-      if (idx > 0) {
-        const [first] = pairs.splice(idx, 1)
-        if (first) pairs.unshift(first)
-      }
-      return pairs
-    },
-    { equals: samePairs },
-  )
-  const labelOf = (id: string) => catalog().find(([k]) => k === id)?.[1]
-  const entries = createMemo(() => Object.entries(props.asks ?? {}), { equals: samePairs })
-  const unused = () => {
-    const used = new Set(Object.keys(props.asks ?? {}))
-    return catalog()
-      .filter(([id]) => !used.has(id))
-      .map(([value, label]) => ({ value, label }))
-  }
-  /** the id just added, whose textarea takes the focus once drawn */
-  let focusNext: string | undefined
-  const addAsk = (id: string) => {
-    if (Object.hasOwn(props.asks ?? {}, id)) return
-    focusNext = id
-    props.onEdit({ ...props.asks, [id]: DEFAULT_ASKS.get(id) ?? "" })
-  }
-  const removeAsk = (id: string) => {
-    const { [id]: _, ...rest } = props.asks ?? {}
-    props.onEdit(rest)
-  }
-  const setAskText = (id: string, text: string, commit: boolean) => {
-    const next = { ...props.asks, [id]: text }
-    if (commit) props.onEdit(next)
-    else props.onStage(next)
-  }
-
-  return (
-    <Modal
-      title={t("settings.hatAsks")}
-      controller={props.controller}
-      actions={
-        <Menu
-          small
-          label={t("settings.addAsk")}
-          placeholder={t("common.add")}
-          value={undefined}
-          options={unused()}
-          onPick={addAsk}
-        />
-      }
-    >
-      <div class="modal-body hat-asks-body scroller">
-        <For each={entries()} keyed={(e) => e[0]}>
-          {(e) => {
-            const id = () => e()[0]
-            const val = () => e()[1]
-            const label = () => labelOf(id()) ?? id()
-            const placeholder = () =>
-              DEFAULT_ASKS.get(id()) || (id() === "narrate.role" ? t("packs.narratorExample") : "")
-            return (
-              <div class="msg-capsule hat-ask-item">
-                <div class="msg-bar">
-                  {/* a key the catalog does not name (custom or stale) is its id alone */}
-                  <Show when={labelOf(id())}>{(l) => <span class="hat-ask-label">{l()}</span>}</Show>
-                  <span class="tag mono">{id()}</span>
-                  <span class="spacer" />
-                  <button
-                    type="button"
-                    class="icon sm"
-                    aria-label={t("settings.removeAsk")}
-                    onClick={() => removeAsk(id())}
-                  >
-                    <Close aria-hidden="true" />
-                  </button>
-                </div>
-                <textarea
-                  ref={(el) => {
-                    autosize(() => val())(el)
-                    if (focusNext !== id()) return
-                    focusNext = undefined
-                    requestAnimationFrame(() => requestAnimationFrame(() => el.focus()))
-                  }}
-                  class="msg-text"
-                  rows="2"
-                  aria-label={label()}
-                  placeholder={placeholder()}
-                  value={val()}
-                  onKeyDown={leaveArea}
-                  onInput={(ev) => setAskText(id(), ev.currentTarget.value, false)}
-                  onChange={(ev) => setAskText(id(), ev.currentTarget.value, true)}
-                />
-              </div>
-            )
-          }}
-        </For>
-      </div>
-    </Modal>
-  )
-}
 
 // ───────── 玩家人设 ─────────
 const Personas = (props: Pane) => {

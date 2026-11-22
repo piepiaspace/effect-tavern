@@ -873,7 +873,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.ok(unroutedPrefill.diagnostics.some((d) => d.code === "prefill_disallowed" && d.level === "error"))
 }
 
-// 8. Protocol-shell Hat: all 4 narrate slots, paired tool handshakes, assistant reasoning, `Hat.asks` overrides,
+// 8. Protocol-shell Hat: all 4 narrate slots, paired tool handshakes, assistant reasoning, Layer.asks attribution,
 //    `hat_needs_tools` diagnostic, and 100% live `makeSession` parity across anthropic, gemini, and openai-compatible
 {
   const card: Card = {
@@ -906,7 +906,10 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
       {
         id: "pack-ask",
         name: "Ask Pack",
-        asks: [{ id: "narrate.role", text: "Pack narrator role." }],
+        asks: [
+          { id: "narrate.role", text: "Pack narrator for {{char}}." },
+          { id: "narrate.blocks", text: "Pack aside blocks:" },
+        ],
       },
     ],
     local: { id: "local", name: "local", card: card.id, mounts: ["pack-ask"] },
@@ -928,12 +931,6 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
       turn: [{ role: "system", text: "Turn anchor for {{user}}." }],
       tail: [{ role: "user", text: "Proceed in character." }],
     },
-    asks: {
-      "narrate.role": "Hat narrator for {{char}}.",
-      "narrate.blocks": "Hat aside blocks:",
-      "stage.role": "",
-      "narrate.turn": "Unfilled {{missing_hat_hole}}",
-    },
   }
 
   for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
@@ -949,46 +946,24 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     assert.equal(pv.wireError, undefined)
     assert.ok(!pv.diagnostics.some((d) => d.code === "hat_needs_tools"))
 
-    // `narrate.lead` is message 0, `lead` (with Hat.asks["narrate.role"]) is message 1
+    // `narrate.lead` is message 0, `lead` (with Layer.asks["narrate.role"] from pack-ask) is message 1
     assert.equal(pv.traces[0]?.subzone, "hat-lead")
     assert.equal(pv.traces[0]?.source?.hatSlot, "lead")
     assert.equal(pv.messages[0]?.content, "Protocol lead for Astra.")
     assert.equal(pv.traces[1]?.subzone, "lead")
     const roleSpan = pv.traces[1].spans.find((sp) => sp.source.path === "asks.narrate.role")!
-    assert.equal(roleSpan.source.kind, "hat")
-    assert.equal(roleSpan.source.hatId, "shell-hat")
-    assert.equal(roleSpan.source.rawText, "Hat narrator for {{char}}.")
+    assert.equal(roleSpan.source.kind, "pack")
+    assert.equal(roleSpan.source.packId, "pack-ask")
+    assert.equal(roleSpan.source.rawText, "Pack narrator for {{char}}.")
     assert.ok(
-      typeof pv.messages[1].content === "string" && pv.messages[1].content.startsWith("Hat narrator for Astra."),
+      typeof pv.messages[1].content === "string" && pv.messages[1].content.startsWith("Pack narrator for Astra."),
     )
 
-    // Overridden pack ask, blank ask, and unfilled-hole ask are all tracked in `omitted`
-    assert.ok(
-      pv.omitted.some(
-        (o) =>
-          o.category === "ask" &&
-          o.id === "narrate.role" &&
-          o.reason === "overridden" &&
-          o.source.kind === "pack" &&
-          o.by?.kind === "hat",
-      ),
-    )
-    assert.ok(pv.omitted.some((o) => o.category === "ask" && o.id === "stage.role" && o.reason === "empty_text"))
-    assert.ok(
-      pv.omitted.some(
-        (o) =>
-          o.category === "ask" &&
-          o.id === "narrate.turn" &&
-          o.reason === "unfilled_hole" &&
-          o.missingHoles?.includes("missing_hat_hole"),
-      ),
-    )
-
-    // `Hat.asks["narrate.blocks"]` overrides `blocks` question with `kind: "hat"` source
+    // `Layer.asks["narrate.blocks"]` provides `blocks` question with `kind: "pack"` source
     const blocksTrace = pv.traces.find((t) => t.subzone === "blocks")!
-    assert.equal(blocksTrace.spans[0]?.source.kind, "hat")
+    assert.equal(blocksTrace.spans[0]?.source.kind, "pack")
     const blocksContent = pv.messages[blocksTrace.index].content
-    assert.ok(typeof blocksContent === "string" && blocksContent.startsWith("Hat aside blocks:\ninner:"))
+    assert.ok(typeof blocksContent === "string" && blocksContent.startsWith("Pack aside blocks:\ninner:"))
 
     // `hat-turn` sits immediately before player `input`, and `wire()` rewrites `system` after `tool` on anthropic/gemini
     const hatTurnIdx = pv.traces.findIndex((t) => t.subzone === "hat-turn")

@@ -272,7 +272,7 @@ assert.equal(
   true,
 )
 
-// Structured Hat slots (`lead`, `head`, `turn`, `tail`), `role: "tool"` handshake, `assistant` reasoning, and `Hat.asks`
+// Structured Hat slots (`lead`, `head`, `turn`, `tail`), `role: "tool"` handshake, and `assistant` reasoning
 assert.equal(messageText({ role: "assistant", content: [{ type: "reasoning", text: "Silent plan" }] }), "Silent plan")
 assert.equal(
   messageText({
@@ -315,7 +315,6 @@ const structuredHat: Hat = {
     turn: [{ role: "system", text: "Before input" }],
     tail: [{ role: "assistant", text: "", reasoning: "Think before speaking" }],
   },
-  asks: { "narrate.role": "Custom protocol narrator" },
 }
 const structuredPreview = previewNarrate({
   mode: "sandbox",
@@ -330,7 +329,10 @@ const structuredPreview = previewNarrate({
   },
   hat: structuredHat,
   connection: { prefill: true, reasoningBack: true, tools: false },
-  rows: {},
+  rows: {
+    packs: [{ id: "pack-role", name: "Role Pack", asks: [{ id: "narrate.role", text: "Custom pack narrator" }] }],
+    local: { id: "local", name: "local", card: "sandbox", mounts: ["pack-role"] },
+  },
 })
 assert.equal(
   structuredPreview.diagnostics.some((d) => d.code === "hat_needs_tools"),
@@ -361,7 +363,7 @@ assert.deepEqual(leadSrc && sourceDestination(leadSrc), {
 })
 assert.deepEqual(askSrc && sourceDestination(askSrc), {
   ok: true,
-  target: { kind: "hat", hatId: "hat-structured" },
+  target: { kind: "pack", packId: "pack-role" },
 })
 assert.deepEqual(turnSrc && sourceDestination(turnSrc), {
   ok: true,

@@ -663,6 +663,170 @@
   opacity: 0.5;
 }
 
+/* 问法 (`AsksTab`): pane-level scroll with clean gutter, grouped collapsible rows, inline autosizing textareas */
+.asks-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-3) var(--space-4) calc(var(--space-5) + var(--safe-bottom));
+}
+@media (min-width: 72rem) {
+  .asks-panel {
+    padding: var(--space-4) var(--space-5) calc(var(--space-6) + var(--safe-bottom));
+  }
+}
+.wpage .modal-body > .asks-panel {
+  flex: none;
+  padding: 0;
+  overflow: visible;
+  scrollbar-gutter: auto;
+}
+.asks-section {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.asks-group {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line);
+  overflow: hidden;
+}
+.ask-item {
+  display: flex;
+  flex-direction: column;
+}
+.ask-item + .ask-item {
+  box-shadow: inset 0 var(--hairline) 0 var(--line);
+}
+.ask-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  min-height: 42px;
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-4);
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background var(--dur-2) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .ask-head:has(.ask-toggle:hover) {
+    background: var(--ghost-hover);
+  }
+}
+.ask-head:has(.ask-toggle:active) {
+  background: var(--ghost-active);
+}
+.ask-head:has(.ask-toggle:focus-visible) {
+  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+}
+.ask-toggle {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  outline: none;
+}
+.ask-toggle::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.ask-label {
+  flex: none;
+  font-size: var(--text-body);
+  font-weight: 550;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.ask-id {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--ink-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ask-preview {
+  flex: 1 1 2rem;
+  min-width: 0;
+  font-size: var(--text-footnote);
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ask-mod {
+  background: var(--alpha-2);
+  color: var(--ink);
+  font-weight: 550;
+}
+.ask-head > .ask-mod {
+  pointer-events: none;
+}
+.ask-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.ask-caret {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+.ask-item.open .ask-caret {
+  color: var(--ink-2);
+}
+.ask-body {
+  padding: var(--space-half) var(--space-4) var(--space-4);
+}
+.ask-textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  height: auto;
+  min-height: 4.5rem;
+  padding: var(--space-3);
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--alpha-1);
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-field);
+  line-height: 1.6;
+  field-sizing: content;
+  resize: none;
+  outline: none;
+  mask-image: none;
+  overflow-y: hidden;
+  overflow-wrap: anywhere;
+  transition: box-shadow var(--dur-2) var(--ease);
+}
+.ask-textarea:focus {
+  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+}
+.ask-item[data-off="true"] .ask-label,
+.ask-item[data-off="true"] .ask-textarea {
+  opacity: 0.6;
+}
+
 /* lexicon table (used in packs.tsx) */
 .lex-title {
   flex-wrap: wrap;

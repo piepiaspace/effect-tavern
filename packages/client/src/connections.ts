@@ -184,6 +184,7 @@ const parseHatEntries = (v: unknown): HatEntry[] | null => {
   }
   return out
 }
+const HAT_KEYS = ["name", "deliver", "narrate", "review"] as const
 export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id"> | null => {
   let body: unknown
   try {
@@ -193,7 +194,7 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) return null
   const rec = body as Record<string, unknown>
-  if (!["name", "deliver", "narrate", "review", "asks"].some((key) => Object.hasOwn(rec, key))) return null
+  if (!HAT_KEYS.some((key) => Object.hasOwn(rec, key))) return null
   if (rec.deliver !== undefined && rec.deliver !== "text" && rec.deliver !== "tool") return null
   if (rec.name !== undefined && typeof rec.name !== "string") return null
   const narrate = rec.narrate
@@ -217,23 +218,12 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
     if (!parsed) return null
     if (parsed.length) revHead = parsed
   }
-  let asks: Record<string, string> | undefined
-  if (rec.asks !== undefined) {
-    if (!rec.asks || typeof rec.asks !== "object" || Array.isArray(rec.asks)) return null
-    const clean: Record<string, string> = {}
-    for (const [k, v] of Object.entries(rec.asks as Record<string, unknown>)) {
-      if (typeof v !== "string") return null
-      if (k.trim()) clean[k.trim()] = v
-    }
-    if (Object.keys(clean).length) asks = clean
-  }
   const name = typeof rec.name === "string" && rec.name.trim() ? rec.name.trim() : fallbackName
   return {
     name,
     ...(rec.deliver === "tool" && { deliver: "tool" as const }),
     ...(Object.keys(parsedNarrate).length > 0 && { narrate: parsedNarrate }),
     ...(revHead?.length && { review: { head: revHead } }),
-    ...(asks && { asks }),
   }
 }
 /** The entry with one key set, or removed when the value is undefined. */

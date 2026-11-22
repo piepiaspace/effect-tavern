@@ -263,7 +263,7 @@ export type Opener<A> = (open: (a: A) => void) => void
 export const dialogHandle = () => createDialogController()
 export type DialogHandle = ReturnType<typeof dialogHandle>
 /** A modal: the head with its close, then the caller's body and foot, drawn only while it is open. Scrim click and
- *  Escape close it too; `onClose` runs once it has left. `actions` sit in the head before the close (one add menu). */
+ *  Escape close it too; `onClose` runs once it has left. */
 export const Modal = (props: {
   title: string
   narrow?: boolean
@@ -271,14 +271,12 @@ export const Modal = (props: {
   full?: boolean
   controller: DialogHandle
   onClose?: () => void
-  actions?: JSX.Element
   children: JSX.Element
 }) => (
   <Dialog controller={props.controller} onOpenChangeComplete={(open) => !open && props.onClose?.()}>
     <DialogContent class={{ modal: true, narrow: !!props.narrow, full: !!props.full }}>
       <div class="modal-head">
         <DialogTitle render={(part) => <h3 {...part} />}>{props.title}</DialogTitle>
-        {props.actions}
         <DialogClose class="icon sm" aria-label={t("common.close")}>
           <Close />
         </DialogClose>

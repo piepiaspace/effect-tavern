@@ -6,6 +6,31 @@
 import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import { HOLE, holes } from "@effect-tavern/runtime/src/names.ts"
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
+import { t } from "./i18n.ts"
+
+export const stageAskLabels = (): [string, string][] => [
+  ["stage.role", t("packs.askStageRole")],
+  ["lookup", t("settings.stageLookup")],
+  ["direct", t("settings.stageDirect")],
+  ["decide.first", t("packs.askDecideFirst")],
+  ["decide.again", t("packs.askDecideAgain")],
+  ["check", t("settings.stageCheck")],
+  ["check.decision.rule", t("packs.askCheckRule")],
+  ["check.decision.open", t("packs.askCheckOpen")],
+  ["polish", t("settings.stagePolish")],
+  ["record.tools", t("packs.askRecordTools")],
+  ["record.readout", t("packs.askRecordReadout")],
+  ["narrate.persona", t("packs.askPersona")],
+  ["narrate.deliver", t("packs.askNarrateDeliver")],
+  ["narrate.context", t("packs.askContext")],
+  ["lookup.decision", t("packs.askDecision")],
+  ["narrate.role", t("packs.askNarrateRole")],
+  ["narrate.turn", t("packs.askNarrateTurn")],
+  ["narrate.correction", t("packs.askNarrateCorrection")],
+  ["narrate.blocks", t("packs.askNarrateBlocks")],
+  ["narrate.demand", t("packs.askNarrateDemand")],
+  ["input.thought", t("packs.askInputThought")],
+]
 
 /** Fills every `{{key}}` that `names` has a value for, leaving any unfilled hole as written. */
 export const fillKnown = (text: string, names?: Readonly<Record<string, string>>): string =>

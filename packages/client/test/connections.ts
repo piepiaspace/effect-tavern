@@ -189,7 +189,7 @@ assert.equal(parseHatFile("{bad", "Fallback"), null)
 assert.equal(parseHatFile('{"deliver":"invalid"}', "Fallback"), null)
 assert.equal(parseHatFile('{"narrate":{"head":[{"role":"tool","text":"x"}]}}', "Fallback"), null)
 
-// Structured Hat entries (`assistant` reasoning, `role: "tool"` handshake), all 5 slots, and `asks`
+// Structured Hat entries (`assistant` reasoning, `role: "tool"` handshake) and all 5 slots
 assert.equal(validToolInput(""), true)
 assert.equal(validToolInput("  {} "), true)
 assert.equal(validToolInput('{"path":"notes.md"}'), true)
@@ -287,7 +287,6 @@ const richHat: Hat = {
     tail: [{ role: "assistant", text: "Prose", reasoning: "Drafting" }],
   },
   review: { head: [{ role: "system", text: "Review framing" }] },
-  asks: { "narrate.role": "Custom narrator", "stage.role": "Custom stage" },
 }
 const { id: _richId, ...expectedRich } = richHat
 assert.deepEqual(parseHatFile(serializeHat(richHat), "Fallback"), expectedRich)
@@ -305,8 +304,8 @@ assert.equal(
   parseHatFile('{"narrate":{"head":[{"role":"tool","toolName":"read","toolInput":"{bad","text":"x"}]}}', "Fallback"),
   null,
 )
-assert.equal(parseHatFile('{"asks":{"narrate.role":123}}', "Fallback"), null)
-assert.equal(parseHatFile('{"asks":["bad"]}', "Fallback"), null)
+assert.equal(parseHatFile('{"asks":{"narrate.role":"legacy"}}', "Fallback"), null)
+assert.deepEqual(parseHatFile('{"name":"Legacy","asks":{"narrate.role":"dropped"}}', "Fallback"), { name: "Legacy" })
 
 // Hat names stay unique: a free name trimmed and kept; a taken one numbered from 2 on its root, skipping numbers taken
 // spaced or run together; the hat itself (`selfId`) never collides with its own name; a blank name is the caller's.

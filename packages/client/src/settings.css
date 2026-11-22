@@ -1188,47 +1188,21 @@
 .hat-scroll {
   gap: var(--space-4);
 }
-/* the template's own settings, not message slots: how prose is delivered, and the wording overrides (a dialog) */
-.hat-settings-card {
+.hat-deliver-bar {
   display: flex;
-  flex-direction: column;
-  padding: 0 var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-card);
   background: var(--surface-2);
   box-shadow: inset 0 0 0 var(--hairline) var(--line);
 }
-.hat-setting-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-3);
-  min-height: 44px;
-  padding: var(--space-2) 0;
-}
-.hat-setting-row + .hat-setting-row {
-  box-shadow: inset 0 var(--hairline) 0 var(--line);
-}
-.hat-setting-row h3,
+.hat-deliver-bar h3,
 .hat-slot-empty h3 {
   font-size: var(--text-body);
   font-weight: 600;
-}
-/* one height whatever it holds: the dialog never moves as overrides come and go */
-.settings .modal .hat-asks-body {
-  flex: none;
-  height: min(26rem, calc(100dvh - 10rem));
-  gap: var(--space-2);
-  overflow-y: auto;
-}
-.hat-ask-label {
-  min-width: 0;
-  font-size: var(--text-footnote);
-  font-weight: 600;
-  color: var(--ink-2);
-}
-.modal-head > .select.sm {
-  width: auto;
-  max-width: 12rem;
 }
 .hat-stack {
   display: flex;
@@ -1511,7 +1485,7 @@
   }
 }
 @media (width < 72rem) {
-  .settings .modal:has(.hat-modal-text, .hat-asks-body) {
+  .settings .modal:has(.hat-modal-text) {
     width: 100%;
     max-height: calc(100dvh - var(--space-6));
     margin: auto 0 0;
@@ -1519,9 +1493,6 @@
   }
   .settings .modal:has(.hat-modal-text) .modal-foot {
     padding-bottom: calc(var(--space-3) + var(--safe-bottom));
-  }
-  .settings .modal .hat-asks-body {
-    padding-bottom: calc(var(--space-4) + var(--safe-bottom));
   }
 }
 .persona-text {

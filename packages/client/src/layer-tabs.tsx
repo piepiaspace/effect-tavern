@@ -3,8 +3,10 @@
 import { SLOTS, type Fragment } from "@effect-tavern/runtime/src/fragment.ts"
 import { harness, type Layer } from "@effect-tavern/runtime/src/layer.ts"
 import { createSignal, For, Show } from "solid-js"
+import { autosize } from "./autosize.ts"
 import { Menu, newId, Switch, Well } from "./controls.tsx"
-import { Close, Snippets as Plus } from "./icons.tsx"
+import { Caret, Close, Snippets as Plus, Up } from "./icons.tsx"
+import { stageAskLabels } from "./pack.ts"
 import { EXTRA, addFragment, atOf, removeFragment, setFragmentAt, setFragmentText } from "./requirements.ts"
 import { SWITCHES } from "./switches.ts"
 import { t } from "./i18n.ts"
@@ -23,29 +25,7 @@ const SLOT_NAMES: Record<string, () => string> = {
   verbosity: () => t("switches.verbosity"),
 }
 const slotName = (s: string) => SLOT_NAMES[s]?.() ?? s
-
-export const stageAskLabels = (): [string, string][] => [
-  ["stage.role", t("packs.askStageRole")],
-  ["lookup", t("settings.stageLookup")],
-  ["direct", t("settings.stageDirect")],
-  ["decide.first", t("packs.askDecideFirst")],
-  ["decide.again", t("packs.askDecideAgain")],
-  ["check", t("settings.stageCheck")],
-  ["check.decision.rule", t("packs.askCheckRule")],
-  ["check.decision.open", t("packs.askCheckOpen")],
-  ["polish", t("settings.stagePolish")],
-  ["record.tools", t("packs.askRecordTools")],
-  ["record.readout", t("packs.askRecordReadout")],
-  ["narrate.persona", t("packs.askPersona")],
-  ["narrate.context", t("packs.askContext")],
-  ["lookup.decision", t("packs.askDecision")],
-  ["narrate.role", t("packs.askNarrateRole")],
-  ["narrate.turn", t("packs.askNarrateTurn")],
-  ["narrate.correction", t("packs.askNarrateCorrection")],
-  ["narrate.blocks", t("packs.askNarrateBlocks")],
-  ["narrate.demand", t("packs.askNarrateDemand")],
-  ["input.thought", t("packs.askInputThought")],
-]
+export { stageAskLabels }
 
 export const leaveArea = (e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
   if (e.isComposing || e.key !== "Escape") return
@@ -265,6 +245,11 @@ export const ProseTab = (props: { pack: Layer; onSave: Save; inherited?: readonl
 }
 
 // ───────── 6. 问法 (`Layer.asks`: stage instructions & switch sentences) ─────────
+interface AskItem {
+  id: string
+  label: string
+}
+
 export const AsksTab = (props: {
   pack: Layer
   onSave: Save
@@ -272,6 +257,15 @@ export const AsksTab = (props: {
 }) => {
   const ownMap = () => new Map((props.pack.asks ?? []).map((a) => [a.id, a.text]))
   const isHarness = () => props.pack.id === "harness"
+  const [openState, setOpenState] = createSignal<{ packId: string; ids: Set<string> }>({ packId: "", ids: new Set() })
+  const isOpen = (id: string) => openState().packId === props.pack.id && openState().ids.has(id)
+  const toggleOpen = (id: string) => {
+    const cur = openState()
+    const next = cur.packId === props.pack.id ? new Set(cur.ids) : new Set<string>()
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    setOpenState({ packId: props.pack.id, ids: next })
+  }
 
   const setAsk = (id: string, raw?: string) => {
     void props.onSave((p) => {
@@ -283,23 +277,29 @@ export const AsksTab = (props: {
   }
   const modified = (id: string) => ownMap().has(id) && (!isHarness() || ownMap().get(id) !== DEFAULT_ASKS.get(id))
   const disabled = (id: string) => ownMap().get(id) === ""
-  const actions = (id: string) => (
-    <>
-      <span class="tag">
-        {modified(id) ? (disabled(id) ? t("packs.disabled") : t("packs.overridden")) : t("packs.inherited")}
-      </span>
-      <button type="button" class="btn xs ghost" disabled={disabled(id)} onClick={() => setAsk(id, "")}>
-        {t("packs.disable")}
-      </button>
-      <Show when={modified(id)}>
-        <button type="button" class="btn xs ghost" onClick={() => setAsk(id)}>
-          {isHarness() ? t("packs.restoreDefault") : t("packs.restoreInheritance")}
-        </button>
-      </Show>
-    </>
-  )
+  const valOf = (id: string) =>
+    isHarness() ? (ownMap().get(id) ?? DEFAULT_ASKS.get(id) ?? "") : (ownMap().get(id) ?? "")
+  const placeholderOf = (id: string) => {
+    const def = DEFAULT_ASKS.get(id) ?? ""
+    if (
+      id === "narrate.role" &&
+      !props.inherited?.[id]?.text &&
+      props.inherited?.[id]?.from !== "card" &&
+      !modified(id)
+    ) {
+      return t("packs.narratorExample")
+    }
+    if (disabled(id)) return ""
+    return props.inherited?.[id]?.text ?? (props.inherited?.[id]?.from === "card" ? t("writing.cardPrompt") : def)
+  }
+  const previewOf = (id: string) => (valOf(id) || placeholderOf(id)).replace(/\s+/g, " ").trim()
 
-  const switchAsks = () =>
+  const visibleStageAsks = (): AskItem[] =>
+    (isHarness() ? stageAskLabels() : stageAskLabels().filter(([id]) => id === "narrate.role" || ownMap().has(id))).map(
+      ([id, label]) => ({ id, label }),
+    )
+
+  const switchAsks = (): AskItem[] =>
     SWITCHES.flatMap((s) =>
       s.values.map(([val, labelKey]) => ({
         id: `switch.${s.key}.${String(val)}`,
@@ -307,85 +307,99 @@ export const AsksTab = (props: {
       })),
     )
 
-  return (
-    <section class="wpanel" role="tabpanel" aria-label={t("packs.tabAsks")}>
-      <div class="prose-card grow">
-        <div class="frag-list scroller fade">
-          <div class="block-title">
-            <h3>{t("packs.stageAsks")}</h3>
-          </div>
-          <For each={stageAskLabels()} keyed={(row) => row[0]}>
-            {(row) => {
-              const id = () => row()[0]
-              const def = () => DEFAULT_ASKS.get(id()) ?? ""
-              const val = () => (isHarness() ? (ownMap().get(id()) ?? def()) : (ownMap().get(id()) ?? ""))
-              return (
-                <div class="frag-row">
-                  <div class="frag-bar">
-                    <span class="d-name">{row()[1]}</span>
-                    <span class="tag mono">{id()}</span>
-                    <span class="spacer" />
-                    {actions(id())}
+  const renderGroup = (items: () => AskItem[]) => (
+    <div class="asks-group">
+      <For each={items()} keyed={(row) => row.id}>
+        {(row) => {
+          const id = () => row().id
+          const open = () => isOpen(id())
+          return (
+            <div
+              class={{ "ask-item": true, open: open() }}
+              data-ask={id()}
+              data-off={modified(id()) && disabled(id()) ? "true" : undefined}
+            >
+              <div class="ask-head">
+                <button
+                  type="button"
+                  class="ask-toggle"
+                  aria-expanded={open() ? "true" : "false"}
+                  onClick={() => toggleOpen(id())}
+                >
+                  <span class="ask-label">{row().label}</span>
+                  <span class="tag mono ask-id">{id()}</span>
+                  <Show when={!open()}>
+                    <span class="ask-preview">{previewOf(id())}</span>
+                  </Show>
+                </button>
+                <Show
+                  when={open()}
+                  fallback={
+                    <Show when={modified(id())}>
+                      <span class="tag ask-mod">{disabled(id()) ? t("packs.disabled") : t("packs.overridden")}</span>
+                    </Show>
+                  }
+                >
+                  <div class="ask-actions">
+                    <span class={{ tag: true, "ask-mod": modified(id()) }}>
+                      {modified(id())
+                        ? disabled(id())
+                          ? t("packs.disabled")
+                          : t("packs.overridden")
+                        : t("packs.inherited")}
+                    </span>
+                    <button
+                      type="button"
+                      class="btn xs ghost"
+                      disabled={disabled(id())}
+                      onClick={() => setAsk(id(), "")}
+                    >
+                      {t("packs.disable")}
+                    </button>
+                    <Show when={modified(id())}>
+                      <button type="button" class="btn xs ghost" onClick={() => setAsk(id())}>
+                        {isHarness() ? t("packs.restoreDefault") : t("packs.restoreInheritance")}
+                      </button>
+                    </Show>
                   </div>
-                  <Well label={row()[1]}>
-                    <textarea
-                      aria-label={row()[1]}
-                      placeholder={
-                        id() === "narrate.role" &&
-                        !props.inherited?.[id()]?.text &&
-                        props.inherited?.[id()]?.from !== "card" &&
-                        !modified(id())
-                          ? t("packs.narratorExample")
-                          : disabled(id())
-                            ? ""
-                            : (props.inherited?.[id()]?.text ??
-                              (props.inherited?.[id()]?.from === "card" ? t("writing.cardPrompt") : def()))
-                      }
-                      value={val()}
-                      onChange={(e) => setAsk(id(), e.currentTarget.value)}
-                      onKeyDown={leaveArea}
-                    />
-                  </Well>
+                </Show>
+                <Show when={open()} fallback={<Caret class="ask-caret" aria-hidden="true" />}>
+                  <Up class="ask-caret" aria-hidden="true" />
+                </Show>
+              </div>
+              <Show when={open()}>
+                <div class="ask-body">
+                  <textarea
+                    ref={autosize(() => valOf(id()) || placeholderOf(id()))}
+                    class="ask-textarea"
+                    aria-label={row().label}
+                    placeholder={placeholderOf(id())}
+                    value={valOf(id())}
+                    onChange={(e) => setAsk(id(), e.currentTarget.value)}
+                    onKeyDown={leaveArea}
+                  />
                 </div>
-              )
-            }}
-          </For>
+              </Show>
+            </div>
+          )
+        }}
+      </For>
+    </div>
+  )
 
-          <div class="block-title">
-            <h3>{t("packs.switchSentences")}</h3>
-          </div>
-          <For each={switchAsks()} keyed={(row) => row.id}>
-            {(row) => {
-              const id = () => row().id
-              const def = () => DEFAULT_ASKS.get(id()) ?? ""
-              const val = () => (isHarness() ? (ownMap().get(id()) ?? def()) : (ownMap().get(id()) ?? ""))
-              return (
-                <div class="frag-row">
-                  <div class="frag-bar">
-                    <span class="d-name">{row().label}</span>
-                    <span class="tag mono">{id()}</span>
-                    <span class="spacer" />
-                    {actions(id())}
-                  </div>
-                  <Well label={row().label}>
-                    <textarea
-                      aria-label={row().label}
-                      placeholder={
-                        disabled(id())
-                          ? ""
-                          : (props.inherited?.[id()]?.text ??
-                            (props.inherited?.[id()]?.from === "card" ? t("writing.cardPrompt") : def()))
-                      }
-                      value={val()}
-                      onChange={(e) => setAsk(id(), e.currentTarget.value)}
-                      onKeyDown={leaveArea}
-                    />
-                  </Well>
-                </div>
-              )
-            }}
-          </For>
+  return (
+    <section class="asks-panel scroller" role="tabpanel" aria-label={t("packs.tabAsks")}>
+      <div class="asks-section">
+        <div class="block-title">
+          <h3>{t("packs.stageAsks")}</h3>
         </div>
+        {renderGroup(visibleStageAsks)}
+      </div>
+      <div class="asks-section">
+        <div class="block-title">
+          <h3>{t("packs.switchSentences")}</h3>
+        </div>
+        {renderGroup(switchAsks)}
       </div>
     </section>
   )

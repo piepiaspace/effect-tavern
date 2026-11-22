@@ -405,8 +405,6 @@ export const prepareHat = (
     turn: (SourceRef | undefined)[]
     tail: (SourceRef | undefined)[]
   }
-  asks: Record<string, string>
-  askSources: Record<string, SourceRef>
   omitted: OmittedItem[]
 } => {
   const omitted: OmittedItem[] = []
@@ -482,44 +480,6 @@ export const prepareHat = (
   const tail = prep(worn.narrate?.tail, "narrate", "tail")
   const review = prep(worn.review?.head, "review", "head")
 
-  const asks: Record<string, string> = {}
-  const askSources: Record<string, SourceRef> = {}
-  for (const [id, raw] of Object.entries(worn.asks ?? {})) {
-    const src: SourceRef = {
-      kind: "hat",
-      hatId: worn.id,
-      hatName: worn.name,
-      path: `asks.${id}`,
-      label: id,
-      rawText: raw,
-    }
-    if (!raw.trim()) {
-      omitted.push({
-        category: "ask",
-        id,
-        label: id,
-        reason: "empty_text",
-        source: src,
-      })
-      continue
-    }
-    const expanded = expand(raw, names, "hat")
-    if (expanded === undefined) {
-      omitted.push({
-        category: "ask",
-        id,
-        label: id,
-        reason: "unfilled_hole",
-        missingHoles: unfilled(raw, names),
-        preview: raw,
-        source: src,
-      })
-      continue
-    }
-    asks[id] = expanded
-    askSources[id] = src
-  }
-
   return {
     hat: {
       ...worn,
@@ -527,8 +487,6 @@ export const prepareHat = (
       review: { head: review.kept },
     },
     sources: { lead: lead.sources, head: head.sources, turn: turn.sources, tail: tail.sources },
-    asks,
-    askSources,
     omitted,
   }
 }
@@ -668,31 +626,12 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     })
 
   const prepHat = hat ? prepareHat(hat, R.names) : undefined
-  const askSources: Record<string, SourceRef> = { ...RT.sources.asks }
-  const hatOverriddenAsks: OmittedItem[] = []
-  if (prepHat) {
-    for (const [id, src] of Object.entries(prepHat.askSources)) {
-      const prev = RT.sources.asks[id]
-      if (prev && !prev.builtIn) {
-        hatOverriddenAsks.push({
-          category: "ask",
-          id,
-          label: id,
-          reason: "overridden",
-          ...(R.asks[id]?.text && { preview: R.asks[id].text }),
-          source: prev,
-          by: src,
-        })
-      }
-      askSources[id] = src
-    }
-  }
 
   const keptFrame = enrichKept(evalFrame.kept)
   const keptTail = enrichKept(evalTail.kept)
   const keptFiction = enrichKept(evalFiction.kept)
 
-  const wording = (id: string) => prepHat?.asks[id] ?? R.asks[id]?.text ?? ""
+  const wording = (id: string) => R.asks[id]?.text ?? ""
   // Only attach a template when it reproduces the frozen delivery. A resident snapshot may predate an editor change.
   const lore = new Map(card.lore.map((entry) => [entry.id, entry]))
   const rawDelivery = (d: DeliverySnapshot) => {
@@ -745,7 +684,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     may: o.may.map(disclosure),
     tone: o.tone,
     correction: o.correction,
-    blocks: o.blocks ? { ...o.blocks, question: prepHat?.asks["narrate.blocks"] ?? o.blocks.question } : undefined,
+    blocks: o.blocks,
   }
   const common: Common = {
     cardId,
@@ -760,7 +699,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     tail: keptTail,
     input: o.input,
     thought: wording("input.thought"),
-    askSources,
+    askSources: RT.sources.asks,
     productSources: RT.sources.products,
   }
   const detailed = requestDetailed(common, ask, {
@@ -805,7 +744,6 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
       ...omittedFromHead("frame", evalFrame.omitted),
       ...omittedFromHead("tail", evalTail.omitted),
       ...omittedFromHead("fiction", evalFiction.omitted),
-      ...hatOverriddenAsks,
       ...(prepHat?.omitted ?? []),
       ...detailed.omitted,
     ],

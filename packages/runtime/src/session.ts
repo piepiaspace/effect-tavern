@@ -378,18 +378,6 @@ export const makeSession = ({
   const policyOf = () => (typeof P === "function" ? P() : P)
 
   const wording = (id: string) => layer().asks[id].text
-  const wordingWith = (worn: Hat | undefined, id: string): string => {
-    const raw = worn?.asks?.[id]
-    if (raw?.trim()) {
-      const expanded = expand(raw, layer().names, "hat")
-      if (expanded !== undefined) return expanded
-    }
-    return wording(id)
-  }
-  const wordingFor = (phase: Phase, id: string): string => {
-    const h = modelFor(phase).hat
-    return wordingWith(h === undefined ? undefined : hat?.(h), id)
-  }
   const products = () => layer().products
   /** Narrate blocks under the declared product's cap; a block of an undeclared id is kept as written (the Inspector's). */
   const capped = (bs: Readonly<Record<string, string>>) =>
@@ -424,20 +412,19 @@ export const makeSession = ({
     const { frame, tail, names: N } = layer()
     const worn = M.hat === undefined ? undefined : hat?.(M.hat)
     const prepHat = worn ? prepareHat(worn, N) : undefined
-    const askText = (id: string) => prepHat?.asks[id] ?? wording(id)
     return request(
       {
         frame: headOf(frame, { state }),
         world: headOf(worldOf(card, frame), { state }),
-        role: askText("stage.role"),
-        narrator: askText("narrate.role"),
-        persona: askText("narrate.persona"),
-        deliver: askText("narrate.deliver"),
-        contextLead: askText("narrate.context"),
-        directions: askText("narrate.turn"),
+        role: wording("stage.role"),
+        narrator: wording("narrate.role"),
+        persona: wording("narrate.persona"),
+        deliver: wording("narrate.deliver"),
+        contextLead: wording("narrate.context"),
+        directions: wording("narrate.turn"),
         tail: headOf(tail, { state }),
         input,
-        thought: askText("input.thought"),
+        thought: wording("input.thought"),
       },
       a,
       {
@@ -591,8 +578,8 @@ export const makeSession = ({
         .filter((d) => scene.input.invoke?.includes(d.resourceId))
         .map(deliveryText),
       asks: productAsks(picks, context),
-      ...(settlement && { tools: wordingFor("record", "record.tools") }),
-      readout: qs ? wordingFor("record", "record.readout") : "",
+      ...(settlement && { tools: wording("record.tools") }),
+      readout: qs ? wording("record.readout") : "",
       questions: qs?.lines,
       prose: interval ? "" : proseOf(scene.reply),
       ...(interval && { history: derived.at(path).history() }),
@@ -643,7 +630,7 @@ export const makeSession = ({
       const sum = here.summary()
       const msgs = ask(
         here.context(state),
-        { text: "", note: wordingFor("narrate", "narrate.demand") },
+        { text: "", note: wording("narrate.demand") },
         {
           stage: "narrate",
           fiction: fictionAt(here.context(state)),
@@ -654,7 +641,7 @@ export const makeSession = ({
           current: here.known().current,
           must: [],
           may: [],
-          blocks: { question: wordingFor("narrate", "narrate.blocks"), asks: [`${p.id}: ${p.text}`] },
+          blocks: { question: wording("narrate.blocks"), asks: [`${p.id}: ${p.text}`] },
         },
       )
       const M = modelFor("narrate", emit.observe("narrate"))
@@ -890,7 +877,7 @@ export const makeSession = ({
               ask(here.context(s0), input, {
                 stage: "lookup",
                 ledger: here.ledger(),
-                question: wordingFor("lookup", "lookup"),
+                question: wording("lookup"),
                 // lookup's own reading: an entry's unread sections listed under it; narrate's `told` stays bare
                 context: latest([...resident, ...deliveries]).map(lookup.told),
                 current: here.known().current,
@@ -925,7 +912,7 @@ export const makeSession = ({
           // (`again`). Only an input that asked for more enters the per-beat loop, where each later question sees the
           // outcomes so far (§10.2) and continues by default. Verified on Haiku: one question for both roles answers
           // the input again every time, whichever way it is worded.
-          const q = wordingFor("decide", beats.length ? "decide.again" : "decide.first")
+          const q = wording(beats.length ? "decide.again" : "decide.first")
           const d = yield* obj(
             emit,
             "decide",
@@ -974,7 +961,7 @@ export const makeSession = ({
                 BriefOf(openIds),
                 ask(here.context(s1), input, {
                   stage: "direct",
-                  question: wordingFor("direct", "direct"),
+                  question: wording("direct"),
                   ledger: here.ledger(),
                   rules: guard,
                   open: told(open),
@@ -1139,7 +1126,7 @@ export const makeSession = ({
             input,
             correction,
             blocks: {
-              question: wordingWith(worn, "narrate.blocks"),
+              question: wording("narrate.blocks"),
               asks: penned.map((p) => `${p.id}: ${p.text}`),
               sources: penned.map((p) => layerTrace().sources.products[p.id]),
             },
@@ -1200,7 +1187,7 @@ export const makeSession = ({
             Check(openIds, guard),
             ask(here.context(s1), input, {
               stage: "check",
-              question: wordingFor("check", "check"),
+              question: wording("check"),
               rules: guard,
               open: told(open),
               must: brief.must,
@@ -1217,9 +1204,8 @@ export const makeSession = ({
         const missed = brief.must.filter((id) => !c.fired.includes(id))
         // the player's own prose (an edit) is never rewritten: its verdict is recorded and stands
         if (from !== "check" && (c.violated.length || missed.length)) {
-          const worn = M.hat === undefined ? undefined : hat?.(M.hat)
           const again = yield* narrate(
-            `${wordingWith(worn, "narrate.correction")} ${[...c.violated.map((r) => `rule "${r}"`), ...missed.map((m) => `missed MUST ${m}`)].join("; ")}`,
+            `${wording("narrate.correction")} ${[...c.violated.map((r) => `rule "${r}"`), ...missed.map((m) => `missed MUST ${m}`)].join("; ")}`,
           )
           // A stop that fired while check ran halts the rewrite before its first character: the first draft stands,
           // stopped, with its verdict (the halted rewrite once became an empty stopped node).
@@ -1249,7 +1235,7 @@ export const makeSession = ({
           Schema.Struct(Object.fromEntries(targets.map((t) => [t.id, Schema.String]))),
           ask(here.context(s1), input, {
             stage: "polish",
-            question: wordingFor("polish", "polish"),
+            question: wording("polish"),
             hints: targets.flatMap((t) => (t.hints.length ? [`${t.id}: ${t.hints.join("; ")}`] : [])),
             prose: marked(text, targets),
           }),
