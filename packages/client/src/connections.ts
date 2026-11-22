@@ -69,12 +69,11 @@ export const withCapability = <K extends keyof Capabilities>(
 }
 /** Whether any compatibility control shown in ModelDialog differs from the model's format default. */
 export const hasCompatOverrides = (p: Provider, m: ModelEntry): boolean => {
-  const fmt = formatOf(p, m)
-  const def = DEFAULTS[fmt]
+  const def = DEFAULTS[formatOf(p, m)]
   return (
     capOf(p, m, "prefill") !== def.prefill ||
     capOf(p, m, "reasoningBack") !== def.reasoningBack ||
-    (fmt === "openai-compatible" && capOf(p, m, "structured") !== def.structured)
+    capOf(p, m, "structured") !== def.structured
   )
 }
 export const withDeliver = (h: Hat, choice: "text" | NonNullable<Hat["toolChoice"]>): Hat => {

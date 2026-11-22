@@ -476,6 +476,15 @@
 .pt-meta-item.muted {
   color: var(--ink-3);
 }
+.pt-absent {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.pt-absent svg {
+  width: 1em;
+  height: 1em;
+}
 .pt-alert {
   display: flex;
   align-items: center;

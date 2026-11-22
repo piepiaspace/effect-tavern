@@ -90,6 +90,7 @@ assert.equal(hasCompatOverrides(p, { id: "a", capabilities: { structured: "tool"
 assert.equal(hasCompatOverrides(p, { id: "a", capabilities: { structured: "json" } }), true)
 assert.equal(hasCompatOverrides(p, { id: "c", format: "gemini" }), false)
 assert.equal(hasCompatOverrides(p, { id: "c", format: "gemini", capabilities: { prefill: true } }), true)
+assert.equal(hasCompatOverrides(p, { id: "b", format: "anthropic", capabilities: { structured: "tool" } }), true)
 assert.deepEqual(without({ id: "a", hat: "h" }, "hat", undefined), { id: "a" })
 assert.deepEqual(without({ id: "a" }, "effort", "high"), { id: "a", effort: "high" })
 

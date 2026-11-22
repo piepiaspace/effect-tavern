@@ -805,6 +805,29 @@ const run = async () => {
     `the renamed template stays shown after the list re-sorts: list ${JSON.stringify(listed())}, detail ${nameBox()?.value}, selected ${selected()?.textContent}`,
   )
 
+  // A touch tap on another template's row leaves the focused message unblurred: the pick commits it first.
+  registry.update(hats, (l) =>
+    l.map((h) => (h.name === "终稿模板" ? { ...h, narrate: { head: [{ role: "system", text: "旧" }] } } : h)),
+  )
+  await quiet()
+  const typed = document.querySelector<HTMLTextAreaElement>(".msg-capsule textarea.msg-text")!
+  typed.focus()
+  typed.value = "切换前未失焦的输入"
+  typed.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  await quiet()
+  const writesBefore = otherHatWrites.length
+  ;[...document.querySelectorAll<HTMLButtonElement>(".master-list .p-row")]
+    .find((b) => b.textContent?.includes("新模板 2"))
+    ?.click()
+  await quiet()
+  check(
+    otherHatWrites.length === writesBefore + 1 &&
+      otherHatWrites.at(-1)?.name === "终稿模板" &&
+      otherHatWrites.at(-1)?.narrate?.head?.[0]?.text === "切换前未失焦的输入" &&
+      nameBox()?.value === "新模板 2",
+    `picking another template commits the unblurred message: ${JSON.stringify(otherHatWrites.slice(writesBefore))}`,
+  )
+
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }

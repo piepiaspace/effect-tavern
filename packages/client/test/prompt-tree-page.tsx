@@ -270,10 +270,13 @@ async function run() {
           head: [{ role: "system", text: "Use narrative tool" }],
           tail: [{ role: "assistant", text: "Prefill line" }],
         },
+        review: { head: [{ role: "system", text: "Review lead" }] },
       },
     })
     flush()
     await quiet()
+    if (root.querySelector(".pt-absent")?.textContent !== t("settings.slotReview"))
+      throw Error("A Hat with review.head must mark that slot absent from the narrate preview")
     if (
       root.querySelector(".pt-deliver-chip")?.textContent !==
       `${t("promptTree.deliverTool")} · ${t("settings.hatToolForce")}`
@@ -302,6 +305,7 @@ async function run() {
     flush()
     await quiet()
     if (!root.querySelector('.rv-role[data-role="tool"]')) throw Error("Missing role=tool pill in RequestView")
+    if (root.querySelector(".pt-absent")) throw Error("A Hat without review.head marks no absent slot")
     if (!root.textContent?.includes(t("promptTree.toolCallParts", { n: 1 })))
       throw Error("Missing tool-call part badge in RequestView")
     if (!root.textContent?.includes(t("promptTree.toolResultParts", { n: 1 })))

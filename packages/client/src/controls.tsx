@@ -38,6 +38,11 @@ export const FORMAT: Record<Format, string> = {
 }
 // an id the player never sees; not crypto.randomUUID, which a phone on plain http (no secure context) lacks
 let made = 0
+/** Commit any focused field before acting: iOS WebKit taps a button without blurring the active input. */
+export const blurField = () => {
+  const field = document.activeElement
+  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.blur()
+}
 export const newId = (kind: string) => `${kind}-${Date.now().toString(36)}${(made++).toString(36)}`
 /** A model's group: its owner when the name table knows it (`meta`, `anthropic`), else its id up to the first `-`, `/`
  *  or `_` (the prototype's grouping). Tracked: the table arrives after the lists. */

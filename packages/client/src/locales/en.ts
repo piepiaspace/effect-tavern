@@ -799,6 +799,7 @@ const en: Dict = {
     fields: "State fields",
     resetFields: "Reset",
     hiddenField: "Hidden",
+    reviewNotPreviewed: "The review lead belongs to the review stages, not this narrate request",
     modified: "Modified",
     playerInput: "Test player input",
     playerNote: "Director note (optional)",

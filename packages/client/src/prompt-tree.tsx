@@ -6,6 +6,7 @@ import type { PreviewDiagnostic, PreviewNarrateResult, ResourceEntryView } from 
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import type { OmittedReason, SourceRef } from "@effect-tavern/runtime/src/trace.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
+import { hatEntryActive } from "@effect-tavern/runtime/src/fragment.ts"
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Menu, Stepper, Switch, Tick } from "./controls.tsx"
@@ -27,7 +28,18 @@ import {
 } from "./prompt-tree-state.ts"
 import { RequestView, SourceDetailCard } from "./request-view.tsx"
 import { openSettings } from "./settings-navigation.ts"
-import { activeOf, cards, cardTitle, characterCards, FREE_CHAT_ID, isFreeChat, log, stories, tabs } from "./store.ts"
+import {
+  activeOf,
+  cards,
+  cardTitle,
+  characterCards,
+  FREE_CHAT_ID,
+  hats,
+  isFreeChat,
+  log,
+  stories,
+  tabs,
+} from "./store.ts"
 import { fetchPreview, fetchStoryNodes } from "./wire.ts"
 
 const omittedReasonLabel = (r: OmittedReason): string => {
@@ -430,6 +442,12 @@ export const PromptTreePage = () => {
   }
 
   const sampleCards = createMemo(() => characterCards(shelf()))
+  const hatList = read(hats)
+  /** The worn hat leads review stages too; this preview is narrate's request, so that slot is marked absent. */
+  const reviewHeld = (hatId: string | undefined) => {
+    const h = mem().candidateHat ?? hatList().find((x) => x.id === hatId)
+    return (h?.review?.head ?? []).some(hatEntryActive)
+  }
 
   const [selectedOmitted, setSelectedOmitted] = createSignal<string | null>(null)
   const [eventDraft, setEventDraft] = createSignal("")
@@ -561,6 +579,12 @@ export const PromptTreePage = () => {
                   <span class="pt-meta-item mono">{t("promptTree.messageCount", { n: r().traces.length })}</span>
                   <Show when={r().connection.hatName}>
                     {(hn) => <span class="pt-meta-item">{t("promptTree.hatActive", { name: hn() })}</span>}
+                  </Show>
+                  <Show when={reviewHeld(r().connection.hatId)}>
+                    <span class="pt-meta-item muted pt-absent" title={t("promptTree.reviewNotPreviewed")}>
+                      <EyeOff aria-hidden="true" />
+                      {t("settings.slotReview")}
+                    </span>
                   </Show>
                   <Show when={(r().connection.deliver ?? mem().candidateHat?.deliver) === "tool"}>
                     <span class="pill soft pt-deliver-chip">

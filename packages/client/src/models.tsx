@@ -138,22 +138,23 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
                       onFlip={() => setCap("reasoningBack", !capOf(c().x, c().m, "reasoningBack"))}
                     />
                   </div>
-                  <Show when={formatOf(c().x, c().m) === "openai-compatible"}>
-                    <div class="inline-row">
-                      <span>{t("models.structured")}</span>
-                      <Menu
-                        small
-                        label={t("models.structured")}
-                        value={capOf(c().x, c().m, "structured")}
-                        options={[
-                          { value: "schema", label: t("models.structuredSchema") },
-                          { value: "tool", label: t("models.structuredTool") },
-                          { value: "json", label: t("models.structuredJson") },
-                        ]}
-                        onPick={(v) => setCap("structured", v)}
-                      />
-                    </div>
-                  </Show>
+                  <div class="inline-row">
+                    <span>{t("models.structured")}</span>
+                    <Menu
+                      small
+                      label={t("models.structured")}
+                      value={capOf(c().x, c().m, "structured")}
+                      options={[
+                        { value: "schema", label: t("models.structuredSchema") },
+                        { value: "tool", label: t("models.structuredTool") },
+                        // `json` only differs from `schema` where the compat driver gates response_format on it
+                        ...(formatOf(c().x, c().m) === "openai-compatible"
+                          ? [{ value: "json" as const, label: t("models.structuredJson") }]
+                          : []),
+                      ]}
+                      onPick={(v) => setCap("structured", v)}
+                    />
+                  </div>
                 </div>
               </details>
             </div>

@@ -10,12 +10,13 @@
 import { hatEntryActive, type Hat, type HatEntry } from "@effect-tavern/runtime/src/fragment.ts"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { Dynamic, type JSX } from "@solidjs/web"
-import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js"
+import { createMemo, createSignal, flush, For, onSettled, Show, untrack } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
 import {
   ask,
   Avatar,
+  blurField,
   Confirm,
   dialogHandle,
   Menu,
@@ -562,6 +563,15 @@ const Templates = (props: Pane) => {
   const pin = (id: string) => {
     if (props.picked !== id) props.onPick(id)
   }
+  /** A tap on touch WebKit neither blurs the focused field nor lets it fire change, and a pick removes it from the DOM:
+   *  blur it (its change, if any, lands now through flush), then write what is still staged. One write either way. */
+  const commitPending = () => {
+    blurField()
+    flush()
+    const pending = draft()
+    if (pending) void save(pending)
+  }
+  const pick = (id: string) => (commitPending(), props.onPick(id))
   const editSlot = (s: Slot, f: (said: HatEntry[]) => HatEntry[], commit = true) => {
     const h = hat()
     if (!h) return
@@ -627,6 +637,7 @@ const Templates = (props: Pane) => {
     msgDlg.close()
   }
   const previewHat = async () => {
+    blurField()
     const origin = activeOf(registry.get(tabs))
     await Promise.resolve() // let the blur commit its edit before reading the draft
     const h = hat()
@@ -637,6 +648,7 @@ const Templates = (props: Pane) => {
     if (!editing || editing.id !== h.id || editing === h) openPromptTree({ hatId: h.id, mode: "sandbox" })
   }
   const create = async () => {
+    commitPending()
     const id = newId("hat")
     await putHat({ id, name: uniqueHatName(list(), t("settings.newHat")) })
     setImportError("")
@@ -656,6 +668,7 @@ const Templates = (props: Pane) => {
     }
   }
   const exportHat = (h: Hat) => {
+    commitPending()
     void saveFile(new Blob([serializeHat(h)], { type: "application/json" }), `${h.name}.hat.json`).catch((e: unknown) =>
       setFailure({ id: h.id, message: e instanceof Error ? e.message : String(e) }),
     )
@@ -675,7 +688,7 @@ const Templates = (props: Pane) => {
                   type="button"
                   class="p-row"
                   aria-selected={h().id === hat()?.id ? "true" : "false"}
-                  onClick={() => props.onPick(h().id)}
+                  onClick={() => pick(h().id)}
                 >
                   <span class="p-name">{h().name}</span>
                   <Show when={targets()[0]}>
@@ -699,7 +712,12 @@ const Templates = (props: Pane) => {
           <button type="button" class="btn" onClick={() => void create()}>
             <Plus /> <span>{t("settings.newHatShort")}</span>
           </button>
-          <button type="button" class="icon boxed" aria-label={t("common.import")} onClick={() => fileInput.click()}>
+          <button
+            type="button"
+            class="icon boxed"
+            aria-label={t("common.import")}
+            onClick={() => (commitPending(), fileInput.click())}
+          >
             <Import />
           </button>
           <input
