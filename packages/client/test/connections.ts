@@ -275,6 +275,16 @@ const richHat: Hat = {
 }
 const { id: _richId, ...expectedRich } = richHat
 assert.deepEqual(parseHatFile(serializeHat(richHat), "Fallback"), expectedRich)
+// An inline capsule switched to `Tool` before naming its tool round-trips cleanly (`toolName: ""` is valid, missing `toolName` is not)
+const unconfiguredToolHat: Hat = {
+  id: "h-unconf-tool",
+  name: "Draft Tool",
+  narrate: { head: [{ role: "tool", toolName: "", toolInput: "{}", text: "" }] },
+}
+assert.deepEqual(parseHatFile(serializeHat(unconfiguredToolHat), "Fallback"), {
+  name: "Draft Tool",
+  narrate: { head: [{ role: "tool", toolName: "", toolInput: "{}", text: "" }] },
+})
 assert.equal(
   parseHatFile('{"narrate":{"head":[{"role":"tool","toolName":"read","toolInput":"{bad","text":"x"}]}}', "Fallback"),
   null,

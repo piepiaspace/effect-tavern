@@ -168,7 +168,7 @@ const parseHatEntries = (v: unknown): HatEntry[] | null => {
         ...(typeof x.reasoning === "string" && x.reasoning !== "" && { reasoning: x.reasoning }),
       })
     } else if (x.role === "tool") {
-      if (typeof x.toolName !== "string" || !x.toolName.trim() || typeof x.text !== "string") return null
+      if (typeof x.toolName !== "string" || typeof x.text !== "string") return null
       if (x.toolInput !== undefined && (typeof x.toolInput !== "string" || !validToolInput(x.toolInput))) return null
       if (x.toolCallId !== undefined && typeof x.toolCallId !== "string") return null
       if (x.reasoning !== undefined && typeof x.reasoning !== "string") return null

@@ -4,6 +4,7 @@ import { render } from "@solidjs/web"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import { flip, locale } from "../src/i18n.ts"
+import { parseHatFile, serializeHat } from "../src/connections.ts"
 import { Settings } from "../src/settings.tsx"
 import { openSettings } from "../src/settings-navigation.ts"
 import { activeOf, hats, page, providers, registry, routing, tabs, type Routing } from "../src/store.ts"
@@ -490,7 +491,99 @@ const run = async () => {
   registry.set(routing, { default: { provider: "p", model: "m-main" }, hat: "hat-gemini" })
   await quiet()
 
-  // Basic `措辞覆盖` (`Hat.asks`): `+ 添加` prefills `narrate.role`, edits save `asks`, Close removes and collapses
+  // Inline capsule regressions:
+  // 1) Invalid `toolInput` JSON in inline capsule stays local and never leaks into `draft()` / `PUT` / exported JSON
+  const inlineToolArgs = document.querySelector<HTMLTextAreaElement>(
+    '[aria-label="输入前导"] textarea[aria-label="调用参数"]',
+  )
+  const inlineToolOut = document.querySelector<HTMLTextAreaElement>(
+    '[aria-label="输入前导"] textarea[aria-label="返回结果"]',
+  )
+  if (inlineToolArgs && inlineToolOut) {
+    inlineToolArgs.value = "{bad"
+    inlineToolArgs.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    inlineToolArgs.dispatchEvent(new Event("change", { bubbles: true }))
+    await quiet()
+    check(
+      !!document.querySelector('[aria-label="输入前导"] .hat-json-warn'),
+      "inline broken toolInput shows JSON warning",
+    )
+    inlineToolOut.value = "更新后的返回"
+    inlineToolOut.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    hatResponse = Promise.resolve(
+      Response.json(
+        registry.get(hats).map((h) =>
+          h.id === "hat-gemini"
+            ? {
+                ...h,
+                narrate: {
+                  ...h.narrate,
+                  turn: [
+                    {
+                      role: "tool" as const,
+                      toolName: "read_file",
+                      toolInput: '{"path":"lore.md"}',
+                      text: "更新后的返回",
+                    },
+                  ],
+                },
+              }
+            : h,
+        ),
+      ),
+    )
+    inlineToolOut.dispatchEvent(new Event("change", { bubbles: true }))
+    await quiet()
+    const afterInlinePut = hatWrites.at(-1)
+    const afterTurn = afterInlinePut?.narrate?.turn?.[0]
+    check(
+      afterTurn?.role === "tool" &&
+        afterTurn.toolInput === '{"path":"lore.md"}' &&
+        afterInlinePut !== undefined &&
+        parseHatFile(serializeHat(afterInlinePut), "Fallback") !== null,
+      `broken inline toolInput never leaks into PUT or breaks export/import: ${JSON.stringify(afterTurn)}`,
+    )
+  }
+
+  // 2) Clearing inline `思考` to whitespace strips `reasoning` and collapses cleanly
+  const inlineReason = document.querySelector<HTMLTextAreaElement>(
+    '[aria-label="尾部预填"] textarea[aria-label="思考"]',
+  )
+  const inlineTailText = document.querySelector<HTMLTextAreaElement>(
+    '[aria-label="尾部预填"] textarea[aria-label="消息内容"]',
+  )
+  if (inlineReason && inlineTailText) {
+    inlineTailText.value = "保留正文"
+    inlineTailText.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    inlineReason.value = "   "
+    inlineReason.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    hatResponse = Promise.resolve(
+      Response.json(
+        registry.get(hats).map((h) =>
+          h.id === "hat-gemini"
+            ? {
+                ...h,
+                narrate: {
+                  ...h.narrate,
+                  tail: [{ role: "assistant" as const, text: "保留正文" }],
+                },
+              }
+            : h,
+        ),
+      ),
+    )
+    inlineReason.dispatchEvent(new Event("change", { bubbles: true }))
+    await quiet()
+    const savedTail = hatWrites.at(-1)?.narrate?.tail?.[0]
+    check(
+      savedTail !== undefined &&
+        !("reasoning" in savedTail) &&
+        !document.querySelector('[aria-label="尾部预填"] textarea[aria-label="思考"]'),
+      `whitespace-only inline reasoning strips reasoning and collapses: ${JSON.stringify(savedTail)}`,
+    )
+  }
+
+  // Basic `措辞覆盖` (`Hat.asks`): `+ 添加` prefills `narrate.role`, omits dead `switch.*`/`*.decision*` keys, edits save `asks`, Close removes and collapses
   const addAskBtn = document.querySelector<HTMLButtonElement>(
     '[aria-label="措辞覆盖"] button[aria-label="添加措辞覆盖"]',
   )
@@ -501,6 +594,23 @@ const run = async () => {
     ),
   )
   addAskBtn?.click()
+  await quiet()
+  const askMenuTrigger = document.querySelector<HTMLButtonElement>(
+    '[aria-label="措辞覆盖"] button.select[aria-label="措辞覆盖"]',
+  )
+  askMenuTrigger?.click()
+  await quiet()
+  const askOptionLabels = [
+    ...(document.querySelector(".popup-list[data-open]")?.querySelectorAll<HTMLElement>(".item") ?? []),
+  ].map((el) => el.textContent?.trim() ?? "")
+  check(
+    askOptionLabels.length > 0 &&
+      !askOptionLabels.some(
+        (l) => l.includes("规则判断") || l.includes("揭示判断") || l.includes("检索判断") || l.includes("视角："),
+      ),
+    `HatAsksEditor omits decision-service and switch asks: ${askOptionLabels.join(" | ")}`,
+  )
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))
   await quiet()
   check(
     typeof hatWrites.at(-1)?.asks?.["narrate.role"] === "string" &&

@@ -47,14 +47,6 @@ export const stageAskLabels = (): [string, string][] => [
   ["input.thought", t("packs.askInputThought")],
 ]
 
-export const switchAskLabels = (): [string, string][] =>
-  SWITCHES.flatMap((s) =>
-    s.values.map(([val, labelKey]): [string, string] => [
-      `switch.${s.key}.${String(val)}`,
-      t("packs.switchRow", { switch: t(s.label), value: t(labelKey) }),
-    ]),
-  )
-
 export const leaveArea = (e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
   if (e.isComposing || e.key !== "Escape") return
   e.preventDefault()

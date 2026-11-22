@@ -68,7 +68,7 @@ import {
   type HatStage,
 } from "./connections.ts"
 import { Cards } from "./cards.tsx"
-import { DEFAULT_ASKS, leaveArea, leaveInput, stageAskLabels, switchAskLabels } from "./layer-tabs.tsx"
+import { DEFAULT_ASKS, leaveArea, leaveInput, stageAskLabels } from "./layer-tabs.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close } from "./pages.ts"
@@ -518,9 +518,10 @@ const switchEntryRole = (x: HatEntry, role: EntryRole): HatEntry => {
   }
   return { role, text: x.text }
 }
-const withReasoning = (x: HatEntry, reasoning: string): HatEntry => {
+const withReasoning = (x: HatEntry, reasoning: string, trimBlank = false): HatEntry => {
   const { reasoning: _, ...rest } = x
-  return reasoning ? { ...rest, reasoning } : rest
+  const keep = trimBlank ? Boolean(reasoning.trim()) : Boolean(reasoning)
+  return keep ? { ...rest, reasoning } : rest
 }
 const sameArray = <T,>(a: readonly T[], b: readonly T[]): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i])
@@ -914,12 +915,12 @@ const Templates = (props: Pane) => {
                         onClick={() => {
                           const cur = editingMsg()
                           if (!cur) return
-                          if (cur.reasoning) {
+                          if (cur.reasoning.trim()) {
                             modalReasonBox?.focus()
                             return
                           }
                           const next = !cur.showReasoning
-                          setEditingMsg((prev) => (prev ? { ...prev, showReasoning: next } : prev))
+                          setEditingMsg((prev) => (prev ? { ...prev, reasoning: "", showReasoning: next } : prev))
                           if (next) requestAnimationFrame(() => modalReasonBox?.focus())
                         }}
                       >
@@ -1058,12 +1059,19 @@ const SlotCapsule = (props: {
   onEdit: (f: (said: HatEntry[]) => HatEntry[]) => void
 }) => {
   const [showReasoning, setShowReasoning] = createSignal(false)
+  const [badToolInput, setBadToolInput] = createSignal<{ base: string; raw: string } | null>(null)
   let reasonBox: HTMLTextAreaElement | undefined
   const reasoningOpen = () =>
     (props.entry.role === "assistant" || props.entry.role === "tool") &&
     (Boolean(props.entry.reasoning) || showReasoning())
   const toolName = () => (props.entry.role === "tool" ? props.entry.toolName : "")
-  const toolInput = () => (props.entry.role === "tool" ? (props.entry.toolInput ?? "{}") : "{}")
+  const savedToolInput = () => (props.entry.role === "tool" ? (props.entry.toolInput ?? "{}") : "{}")
+  const toolInput = () => {
+    const bad = badToolInput()
+    const saved = savedToolInput()
+    return bad && bad.base === saved ? bad.raw : saved
+  }
+  const toolInputOk = () => validToolInput(toolInput())
 
   return (
     <div class={{ "msg-capsule": true, conflict: props.conflict }}>
@@ -1076,6 +1084,7 @@ const SlotCapsule = (props: {
           onPick={(role) => {
             const idx = props.index
             if (role !== "assistant" && role !== "tool") setShowReasoning(false)
+            if (role !== "tool") setBadToolInput(null)
             props.onEdit((l) => l.map((x, j) => (j === idx ? switchEntryRole(x, role) : x)))
           }}
         />
@@ -1085,8 +1094,14 @@ const SlotCapsule = (props: {
             class="btn xs ghost msg-reason-btn"
             aria-pressed={reasoningOpen() ? "true" : "false"}
             onClick={() => {
-              if (props.entry.reasoning) {
+              if (props.entry.reasoning?.trim()) {
                 reasonBox?.focus()
+                return
+              }
+              if (props.entry.reasoning) {
+                const idx = props.index
+                setShowReasoning(false)
+                props.onEdit((l) => l.map((x, j) => (j === idx ? withReasoning(x, "", true) : x)))
                 return
               }
               const next = !showReasoning()
@@ -1180,7 +1195,8 @@ const SlotCapsule = (props: {
             onChange={(e) => {
               const idx = props.index
               const reasoning = e.currentTarget.value
-              props.onEdit((l) => l.map((x, j) => (j === idx ? withReasoning(x, reasoning) : x)))
+              if (!reasoning.trim()) setShowReasoning(false)
+              props.onEdit((l) => l.map((x, j) => (j === idx ? withReasoning(x, reasoning, true) : x)))
             }}
           />
         </div>
@@ -1241,13 +1257,13 @@ const SlotCapsule = (props: {
             <label class="msg-tool-cell grow">
               <span class="msg-sublabel">
                 {t("settings.toolInput")}
-                <Show when={!validToolInput(toolInput())}>
+                <Show when={!toolInputOk()}>
                   <span class="hat-json-warn">{t("settings.invalidToolJson")}</span>
                 </Show>
               </span>
               <textarea
                 ref={autosize(() => toolInput())}
-                class={{ "msg-tool-input": true, mono: true, invalid: !validToolInput(toolInput()) }}
+                class={{ "msg-tool-input": true, mono: true, invalid: !toolInputOk() }}
                 rows="1"
                 autocapitalize="none"
                 autocorrect="off"
@@ -1258,6 +1274,11 @@ const SlotCapsule = (props: {
                 onInput={(e) => {
                   const idx = props.index
                   const nextInput = e.currentTarget.value
+                  if (!validToolInput(nextInput)) {
+                    setBadToolInput({ base: savedToolInput(), raw: nextInput })
+                    return
+                  }
+                  setBadToolInput(null)
                   props.onStage((l) =>
                     l.map((x, j) => (j === idx && x.role === "tool" ? { ...x, toolInput: nextInput } : x)),
                   )
@@ -1267,6 +1288,7 @@ const SlotCapsule = (props: {
                   const raw = e.currentTarget.value
                   if (!validToolInput(raw)) return
                   const nextInput = raw.trim() || "{}"
+                  setBadToolInput(null)
                   props.onEdit((l) =>
                     l.map((x, j) => (j === idx && x.role === "tool" ? { ...x, toolInput: nextInput } : x)),
                   )
@@ -1372,7 +1394,7 @@ const HatAsksEditor = (props: {
 }) => {
   const catalog = createMemo(
     () => {
-      const pairs = [...stageAskLabels(), ...switchAskLabels()]
+      const pairs = stageAskLabels().filter(([k]) => !k.includes(".decision"))
       const idx = pairs.findIndex(([k]) => k === "narrate.role")
       if (idx > 0) {
         const [first] = pairs.splice(idx, 1)
