@@ -36,7 +36,7 @@ import { expand, fill, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
 import { cond, labels } from "./phrase.ts"
 import { askedAt } from "./product.ts"
-import { requestDetailed, type Ask, type Common } from "./request.ts"
+import { requestDetailed, type Ask, type Common, type HatSource } from "./request.ts"
 import {
   sourceKindFrom,
   type ConditionDetail,
@@ -394,27 +394,49 @@ const enrichSourceWhen = (
   }
 }
 
+/** A handshake's arguments with every hole in its JSON string values filled (never by substitution into the JSON
+ *  text, so a name with a quote or a newline stays a string); text that is not JSON is filled as text. Undefined when a
+ *  hole nothing fills: the entry does not go out. */
+const expandToolInput = (raw: string, names: Names): string | undefined => {
+  if (unfilled(raw, names).length) return undefined
+  const deep = (v: unknown): unknown =>
+    typeof v === "string"
+      ? expand(v, names, "hat")
+      : Array.isArray(v)
+        ? v.map(deep)
+        : v !== null && typeof v === "object"
+          ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, deep(x)]))
+          : v
+  try {
+    return JSON.stringify(deep(JSON.parse(raw)))
+  } catch {
+    return expand(raw, names, "hat")
+  }
+}
+
 export const prepareHat = (
   worn: Hat,
   names: Names,
 ): {
   hat: Hat
   sources: {
-    lead: (SourceRef | undefined)[]
-    head: (SourceRef | undefined)[]
-    turn: (SourceRef | undefined)[]
-    tail: (SourceRef | undefined)[]
+    lead: (HatSource | undefined)[]
+    head: (HatSource | undefined)[]
+    turn: (HatSource | undefined)[]
+    tail: (HatSource | undefined)[]
   }
   omitted: OmittedItem[]
 } => {
   const omitted: OmittedItem[] = []
   const prep = (rows: readonly HatEntry[] = [], stage: "narrate" | "review", slot: HatNarrateSlot) => {
     const kept: HatEntry[] = []
-    const sources: (SourceRef | undefined)[] = []
+    const sources: (HatSource | undefined)[] = []
     rows.forEach((m, i) => {
       const hasReasoning = (m.role === "assistant" || m.role === "tool") && Boolean(m.reasoning?.trim())
-      const rawPreview =
-        m.role === "assistant" && hasReasoning ? (m.text ? `${m.reasoning}\n${m.text}` : (m.reasoning ?? "")) : m.text
+      const rawPreview = [hasReasoning ? m.reasoning : "", m.role === "tool" ? m.toolInput : "", m.text]
+        .filter(Boolean)
+        .join("\n")
+      // A tool handshake is two messages: the call (reasoning) and the result (text), each with its own raw template.
       const src: SourceRef = {
         kind: "hat",
         hatId: worn.id,
@@ -422,7 +444,7 @@ export const prepareHat = (
         hatStage: stage,
         hatSlot: slot,
         hatIndex: i,
-        rawText: rawPreview,
+        rawText: m.role === "tool" ? m.text : rawPreview,
       }
       const isBlank =
         m.role === "tool"
@@ -441,17 +463,21 @@ export const prepareHat = (
       }
       const expandedText = expand(m.text, names, "hat")
       const expandedReasoning = hasReasoning ? expand(m.reasoning!, names, "hat") : undefined
-      if (expandedText === undefined || (hasReasoning && expandedReasoning === undefined)) {
+      const expandedInput = m.role === "tool" && m.toolInput ? expandToolInput(m.toolInput, names) : undefined
+      if (
+        expandedText === undefined ||
+        (hasReasoning && expandedReasoning === undefined) ||
+        (m.role === "tool" && m.toolInput && expandedInput === undefined)
+      ) {
         if (stage === "narrate") {
-          const combined = [m.text, hasReasoning ? m.reasoning : ""].filter(Boolean).join("\n")
           omitted.push({
             category: "hat",
             id: `${stage}.${slot}[${i}]`,
             label: worn.name,
             reason: "unfilled_hole",
-            missingHoles: unfilled(combined, names),
+            missingHoles: unfilled(rawPreview, names),
             preview: rawPreview,
-            source: src,
+            source: { ...src, rawText: rawPreview },
           })
         }
         return
@@ -460,6 +486,7 @@ export const prepareHat = (
         kept.push({
           ...m,
           toolName: m.toolName.trim(),
+          ...(expandedInput !== undefined && { toolInput: expandedInput }),
           text: expandedText,
           ...(hasReasoning ? { reasoning: expandedReasoning } : { reasoning: undefined }),
         })
@@ -470,7 +497,7 @@ export const prepareHat = (
           ...(hasReasoning && expandedReasoning !== undefined && { reasoning: expandedReasoning }),
         })
       }
-      sources.push(src)
+      sources.push(m.role === "tool" && hasReasoning ? { ...src, rawReasoning: m.reasoning } : src)
     })
     return { kept, sources }
   }

@@ -7,7 +7,7 @@ import { fake, type FakeCall } from "@effect-tavern/provider/src/fake.ts"
 import type { Card } from "../src/card.ts"
 import type { Hat } from "../src/fragment.ts"
 import type { Rows } from "../src/layer.ts"
-import { previewNarrate } from "../src/preview.ts"
+import { prepareHat, previewNarrate } from "../src/preview.ts"
 import { makeSession, type Event } from "../src/session.ts"
 import { policyFor } from "../src/history.ts"
 import * as Log from "../src/log.ts"
@@ -923,7 +923,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
         {
           role: "tool",
           toolName: "sync_world",
-          toolInput: '{"dome":true}',
+          toolInput: '{"dome":true,"who":"{{char}}","seen":["{{user}}",{"by":"{{char}}"}]}',
           text: "Synced {{char}} & {{user}}.",
           reasoning: "Syncing {{char}}.",
         },
@@ -971,6 +971,16 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     assert.equal(pv.traces[hatTurnIdx + 1]?.subzone, "input")
     const toolTraceIdx = pv.traces.findIndex((t) => t.role === "tool")
     assert.equal(pv.traces[toolTraceIdx]?.partSummary?.toolResultCount, 1)
+    // The handshake's arguments are filled in their JSON string values; the call keeps its reasoning's raw template.
+    const call = pv.messages[toolTraceIdx - 1]
+    const callPart = Array.isArray(call?.content) ? call.content.find((p) => p.type === "tool-call") : undefined
+    assert.deepEqual(callPart && "input" in callPart && callPart.input, {
+      dome: true,
+      who: "Astra",
+      seen: ["Leo", { by: "Astra" }],
+    })
+    assert.equal(pv.traces[toolTraceIdx - 1]?.source?.rawText, "Syncing {{char}}.")
+    assert.equal(pv.traces[toolTraceIdx]?.source?.rawText, "Synced {{char}} & {{user}}.")
 
     // Exact parity with live `makeSession`
     const s = makeSession({
@@ -1053,3 +1063,27 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.equal(toolTailPreview.wireError, undefined)
 }
 console.log("preview: ok")
+
+// A tool handshake's arguments: holes fill inside JSON string values (a name with a quote or a newline stays a string),
+// and an argument hole nothing fills keeps the whole handshake out, as text and reasoning do.
+{
+  const tool = (toolInput: string): Hat => ({
+    id: "h",
+    name: "H",
+    narrate: { head: [{ role: "tool", toolName: "t", toolInput, text: "ok", reasoning: "Ask {{char}}." }] },
+  })
+  const names = { char: 'A "B"\nC' }
+  const filled = prepareHat(tool('{"who":"{{char}}","n":1}'), names)
+  const e = filled.hat.narrate?.head?.[0]
+  assert.ok(e?.role === "tool")
+  assert.deepEqual(JSON.parse(e.toolInput!), { who: 'A "B"\nC', n: 1 })
+  assert.equal(e.reasoning, 'Ask A "B"\nC.')
+  assert.equal(filled.sources.head[0]?.rawReasoning, "Ask {{char}}.")
+  assert.equal(filled.sources.head[0]?.rawText, "ok")
+  assert.equal(prepareHat(tool("not json {{char}}"), names).hat.narrate?.head?.[0]?.role, "tool")
+  const holed = prepareHat(tool('{"who":"{{missing}}"}'), names)
+  assert.deepEqual(holed.hat.narrate?.head, [])
+  assert.equal(holed.omitted[0]?.reason, "unfilled_hole")
+  assert.deepEqual(holed.omitted[0]?.missingHoles, ["missing"])
+  assert.equal(holed.omitted[0]?.preview, 'Ask {{char}}.\n{"who":"{{missing}}"}\nok')
+}
