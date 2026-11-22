@@ -1086,16 +1086,19 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
                 rawInput || decodedNarrative || undefined,
               )
             }
-            const resolvedText =
-              narrativeCalls.length > 0
-                ? narrativeCalls
-                    .map((c) =>
-                      c.invalid
-                        ? decodedByCall.get(c.toolCallId) || extractNarrativeInputText(c.input)
-                        : extractNarrativeInputText(c.input, decodedByCall.get(c.toolCallId)),
-                    )
-                    .join("")
-                : decodedNarrative
+            // At the token limit the SDK can omit an unfinished call from toolCalls.
+            // Keep its streamed prefix in call order while resolving the completed calls.
+            const textByCall = new Map(rawReason === "length" ? decodedByCall : undefined)
+            for (const call of narrativeCalls) {
+              const prefix = decodedByCall.get(call.toolCallId)
+              textByCall.set(
+                call.toolCallId,
+                call.invalid
+                  ? prefix || extractNarrativeInputText(call.input)
+                  : extractNarrativeInputText(call.input, prefix),
+              )
+            }
+            const resolvedText = textByCall.size ? [...textByCall.values()].join("") : decodedNarrative
             return {
               text: resolvedText,
               parts: narrativeReplyParts(assistant, resolvedText),

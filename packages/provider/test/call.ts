@@ -573,6 +573,7 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
       cut: true,
       rawFinishReason: "MAX_TOKENS",
       toolCalls: [
+        { name: NARRATIVE_TOOL, input: { text: "First sentence. " } },
         { name: NARRATIVE_TOOL, input: null, rawInput: '{"text":"Cut mid-sentence without closing', unclosed },
       ],
     }))
@@ -587,11 +588,11 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
         return { streamedText: deltas.map((d) => d.text).join(""), rep }
       }),
     )
-    assert.equal(out.streamedText, "Cut mid-sentence without closing")
-    assert.equal(out.rep.text, "Cut mid-sentence without closing")
+    assert.equal(out.streamedText, "First sentence. Cut mid-sentence without closing")
+    assert.equal(out.rep.text, out.streamedText)
     assert.equal(out.rep.finishReason, "length")
     assert.equal(out.rep.rawFinishReason, "MAX_TOKENS")
-    assert.deepEqual(out.rep.parts, [{ type: "text", text: "Cut mid-sentence without closing" }])
+    assert.deepEqual(out.rep.parts, [{ type: "text", text: out.streamedText }])
   }
 
   // 6f. Plain-text fallback when model ignores toolChoice (even forced!) in both streamed() and text()
