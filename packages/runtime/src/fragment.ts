@@ -80,8 +80,8 @@ export const Writing = Schema.Struct({
 export type Writing = typeof Writing.Type
 
 // A hat: the protocol shell a connection wears so its model opens in continuation mode, a library row of the player's
-// (`/hats`) that a Connection names by id. Every message is player data; the harness has none of its own. narrate (writes
-// prose) wears narrate.{lead,head,turn,tail}; check, polish, record (read prose) wear review.head; lookup, decide, direct
+// (`/hats`) that the routing puts on a stage (session.ts `Routing.hat`, `stageHats`). Every message is player data; the
+// harness has none of its own. narrate (writes prose) wears narrate.{lead,head,turn,tail}; check, polish, record (read prose) wear review.head; lookup, decide, direct
 // (read ledger lines and menus) wear nothing.
 export const HatRoleMessage = Schema.Struct({
   role: Schema.Literals(["system", "user", "assistant"]),

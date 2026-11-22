@@ -19,7 +19,7 @@ const p: Provider = {
   proxy: false,
   models: [],
 }
-const base = connection(p, { id: "claude", hat: "h" }, key)
+const base = connection(p, { id: "claude" }, key)
 assert.deepEqual(base, {
   id: "relay/claude",
   format: "anthropic",
@@ -28,7 +28,6 @@ assert.deepEqual(base, {
   model: "claude",
   cacheTtl: "1h",
   proxy: false,
-  hat: "h",
 })
 const over = connection(p, { id: "gpt", format: "openai-compatible", capabilities: { prefill: false } }, key)
 assert.deepEqual(

@@ -13,7 +13,6 @@ const Endpoint = Schema.Struct({ url: Schema.String, exactPrefix: Schema.optiona
 export const ModelEntry = Schema.Struct({
   id: Schema.String,
   format: Schema.optionalKey(Format), // over the provider's defaultFormat
-  hat: Schema.optionalKey(Schema.String), // a library hat id (`/hats`)
   effort: Schema.optionalKey(Schema.Literals(["off", "low", "medium", "high", "max"])),
   maxOutputTokens: Schema.optionalKey(Schema.Number),
   contextTokens: Schema.optionalKey(Schema.Number), // the narrate model's sets the fold budget (runtime history.ts `policyFor`)
@@ -123,7 +122,6 @@ export const connection = (p: Provider, m: ModelEntry, s: Secret | undefined): C
     ...(p.cacheTtl && { cacheTtl: p.cacheTtl }),
     ...(p.headers && { headers: p.headers }),
     ...(p.proxy !== undefined && { proxy: p.proxy }),
-    ...(m.hat !== undefined && { hat: m.hat }),
     ...(m.effort !== undefined && { effort: m.effort }),
     ...(m.maxOutputTokens !== undefined && { maxOutputTokens: m.maxOutputTokens }),
   }
