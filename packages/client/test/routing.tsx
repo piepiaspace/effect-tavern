@@ -223,13 +223,12 @@ const run = async () => {
     el.getAttribute("aria-label"),
   )
   check(
-    JSON.stringify(slotLabels) ===
-      JSON.stringify(["最前导", "前置引导", "输入前导", "尾部预填", "审阅引导", "措辞覆盖"]),
-    `expected 5 slots + 措辞覆盖 in protocol order, got ${JSON.stringify(slotLabels)}`,
+    JSON.stringify(slotLabels) === JSON.stringify(["最前导", "前置引导", "输入前导", "尾部预填", "审阅引导"]),
+    `expected the 5 message slots in protocol order, 措辞覆盖 not among them, got ${JSON.stringify(slotLabels)}`,
   )
   check(
-    document.querySelectorAll(".hat-stack .hat-slot-empty").length === 5,
-    `expected 5 unconfigured slots/asks collapsed as slim empty bars, got ${document.querySelectorAll(".hat-stack .hat-slot-empty").length}`,
+    document.querySelectorAll(".hat-stack .hat-slot-empty").length === 4,
+    `expected 4 unconfigured slots collapsed as slim empty bars, got ${document.querySelectorAll(".hat-stack .hat-slot-empty").length}`,
   )
   const segItem = (groupLabel: string, itemText: string) =>
     [
@@ -596,44 +595,75 @@ const run = async () => {
     )
   }
 
-  // Basic `措辞覆盖` (`Hat.asks`): `+ 添加` prefills `narrate.role`, omits dead `switch.*`/`*.decision*` keys, edits save `asks`, Close removes and collapses
-  const addAskBtn = document.querySelector<HTMLButtonElement>(
-    '[aria-label="措辞覆盖"] button[aria-label="添加措辞覆盖"]',
+  // `措辞覆盖` (`Hat.asks`) is a row of the deliver card, not a slot: its button opens a modal and nothing else on the page
+  // moves. One add menu in the modal head lists the unused ask ids (no decision-service or switch keys); a pick appends
+  // the item, focused, and saves `asks`; its textarea saves on change; Close removes it and the modal stays put.
+  const stackBox = () => {
+    const r = document.querySelector(".hat-stack")?.getBoundingClientRect()
+    return r ? `${r.top},${r.height}` : ""
+  }
+  const dialogBox = () => {
+    const r = document.querySelector(".modal")?.getBoundingClientRect()
+    return r ? `${r.top},${r.height}` : ""
+  }
+  const asksRow = () => document.querySelector<HTMLElement>(".hat-settings-card .hat-asks-row")
+  check(!document.querySelector('.hat-stack [aria-label="措辞覆盖"]'), "措辞覆盖 is not a slot of .hat-stack")
+  check(
+    asksRow()?.querySelector("h3")?.textContent === "措辞覆盖" &&
+      !asksRow()?.querySelector(".tag") &&
+      asksRow()?.querySelector("button")?.textContent?.trim() === "添加",
+    `the deliver card's 措辞覆盖 row offers 添加 with no count: ${asksRow()?.textContent}`,
   )
-  check(addAskBtn, "missing + 添加 button on 措辞覆盖")
-  hatResponse = Promise.resolve(
-    Response.json(
-      registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, asks: { "narrate.role": "默认定调" } } : h)),
-    ),
-  )
-  addAskBtn?.click()
+  const stackBefore = stackBox()
+  asksRow()?.querySelector<HTMLButtonElement>("button")?.click()
   await quiet()
-  const askMenuTrigger = document.querySelector<HTMLButtonElement>(
-    '[aria-label="措辞覆盖"] button.select[aria-label="措辞覆盖"]',
+  check(
+    document.querySelector(".modal .hat-asks-body") && !document.querySelector(".modal .hat-ask-item"),
+    "the row opens the 措辞覆盖 modal, empty",
   )
-  askMenuTrigger?.click()
+  check(stackBox() === stackBefore, `opening the modal moves nothing on the page: ${stackBefore} → ${stackBox()}`)
+  const modalBefore = dialogBox()
+  const addAskMenu = document.querySelector<HTMLButtonElement>(
+    '.modal .modal-head button.select[aria-label="添加措辞覆盖"]',
+  )
+  check(addAskMenu, "the modal head holds the one add menu")
+  addAskMenu?.click()
   await quiet()
-  const askOptionLabels = [
+  const askOptions = [
     ...(document.querySelector(".popup-list[data-open]")?.querySelectorAll<HTMLElement>(".item") ?? []),
-  ].map((el) => el.textContent?.trim() ?? "")
+  ]
+  const askOptionLabels = askOptions.map((el) => el.textContent?.trim() ?? "")
   check(
     askOptionLabels.length > 0 &&
       !askOptionLabels.some(
         (l) => l.includes("规则判断") || l.includes("揭示判断") || l.includes("检索判断") || l.includes("视角："),
       ),
-    `HatAsksEditor omits decision-service and switch asks: ${askOptionLabels.join(" | ")}`,
+    `the add menu omits decision-service and switch asks: ${askOptionLabels.join(" | ")}`,
   )
-  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, asks: { "narrate.role": "默认定调" } } : h)),
+    ),
+  )
+  askOptions[0]?.click()
   await quiet()
+  const askArea = () => document.querySelector<HTMLTextAreaElement>(".modal .hat-ask-item textarea.msg-text")
   check(
     typeof hatWrites.at(-1)?.asks?.["narrate.role"] === "string" &&
-      document.querySelector('[aria-label="措辞覆盖"] .msg-bar .tag.mono')?.textContent === "narrate.role",
-    `clicking + 添加 on 措辞覆盖 adds narrate.role override: ${JSON.stringify(hatWrites.at(-1)?.asks)}`,
+      document.querySelectorAll(".modal .hat-ask-item").length === 1 &&
+      document.querySelector(".modal .hat-ask-item .msg-bar .tag.mono")?.textContent === "narrate.role",
+    `picking from the add menu appends narrate.role and saves asks: ${JSON.stringify(hatWrites.at(-1)?.asks)}`,
   )
-  const askArea = document.querySelector<HTMLTextAreaElement>('[aria-label="措辞覆盖"] textarea.msg-text')
-  if (askArea) {
-    askArea.value = "你是冷峻的协议叙事者。"
-    askArea.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  check(document.activeElement === askArea(), "the added override's text is focused")
+  check(!document.querySelector(".modal .hat-ask-item .select"), "an added override's id is fixed: no per-item id menu")
+  check(
+    dialogBox() === modalBefore && stackBox() === stackBefore,
+    `adding moves neither the modal nor the page: ${modalBefore} → ${dialogBox()}, ${stackBefore} → ${stackBox()}`,
+  )
+  const area = askArea()
+  if (area) {
+    area.value = "你是冷峻的协议叙事者。"
+    area.dispatchEvent(new InputEvent("input", { bubbles: true }))
     hatResponse = Promise.resolve(
       Response.json(
         registry
@@ -641,14 +671,18 @@ const run = async () => {
           .map((h) => (h.id === "hat-gemini" ? { ...h, asks: { "narrate.role": "你是冷峻的协议叙事者。" } } : h)),
       ),
     )
-    askArea.dispatchEvent(new Event("change", { bubbles: true }))
+    area.dispatchEvent(new Event("change", { bubbles: true }))
   }
   await quiet()
   check(
     hatWrites.at(-1)?.asks?.["narrate.role"] === "你是冷峻的协议叙事者。",
-    `editing 措辞覆盖 textarea saves asks["narrate.role"]: ${JSON.stringify(hatWrites.at(-1)?.asks)}`,
+    `editing an override's text saves asks["narrate.role"]: ${JSON.stringify(hatWrites.at(-1)?.asks)}`,
   )
-  // Reset hat-gemini back to single head capsule for the remaining blur/preview/unmount tests
+  check(
+    asksRow()?.querySelector(".tag")?.textContent === "1" &&
+      asksRow()?.querySelector("button")?.textContent?.trim() === "编辑",
+    `the row counts the override and offers 编辑: ${asksRow()?.textContent}`,
+  )
   hatResponse = Promise.resolve(
     Response.json(
       registry.get(hats).map((h) => {
@@ -658,13 +692,20 @@ const run = async () => {
       }),
     ),
   )
-  document.querySelector<HTMLButtonElement>('[aria-label="措辞覆盖"] button[aria-label="移除措辞覆盖"]')?.click()
+  document.querySelector<HTMLButtonElement>('.modal .hat-ask-item button[aria-label="移除措辞覆盖"]')?.click()
   await quiet()
   check(
     hatWrites.at(-1) !== undefined &&
       !("asks" in hatWrites.at(-1)!) &&
-      !!document.querySelector('[aria-label="措辞覆盖"] .hat-slot-empty'),
-    "removing last ask override omits asks and collapses 措辞覆盖 back to empty bar",
+      !document.querySelector(".modal .hat-ask-item") &&
+      dialogBox() === modalBefore,
+    "removing the last override omits asks and leaves the modal where it was",
+  )
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))
+  await quiet()
+  check(
+    !document.querySelector(".modal") && !asksRow()?.querySelector(".tag") && stackBox() === stackBefore,
+    "closing the modal leaves the row without a count and the page unmoved",
   )
   hatResponse = Promise.resolve(
     Response.json(
