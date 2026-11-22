@@ -1,7 +1,7 @@
 // Shared `narrate` request preparation and design-time Prompt Tree preview (sandbox & story branch).
 // Both `session.ts` (real play) and `previewNarrate` assemble the narrate document through `prepareNarrate`,
 // guaranteeing identical head, fiction, hat, history, <context>, <turn>, blocks and tail output.
-import { wire, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
+import { signedOnly, wire, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
 import { makeCard, shownGreeting, type Beat, type Card, type Field, type State } from "./card.ts"
 import { holds, lookup, type Cond, type State as Paths } from "./cond.ts"
@@ -115,6 +115,7 @@ export interface PreviewDiagnostic {
     | "prefill_disallowed"
     | "deliver_needs_tools"
     | "hat_needs_tools"
+    | "reasoning_unsigned"
     | "invalid_invoke"
     | "connection_unavailable"
     | "invalid_read"
@@ -729,8 +730,13 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
         ...(source && { source: traceSource(source) }),
       }
     }
+    // wire() leaves out a message anthropic would get empty (signedOnly): it has no wired role, the rest keep their order
+    let j = 0
     detailed.traces.forEach((tr, i) => {
-      if (wiredMessages[i]) tr.wiredRole = wiredMessages[i].role
+      const m = detailed.messages[i]
+      if (w.format === "anthropic" && m && !signedOnly(m)) return
+      const wm = wiredMessages[j++]
+      if (wm) tr.wiredRole = wm.role
     })
   }
 
@@ -1094,6 +1100,19 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       message: "hat tool handshake requires native tool calling on this connection (capabilities.tools is false)",
       ...(toolSrc && { source: traceSource(toolSrc) }),
     })
+  }
+
+  if (connection.format === "anthropic") {
+    const i = prepped.messages.findIndex((m) => signedOnly(m) !== m)
+    const src = i >= 0 ? (prepped.traces[i]?.spans[0]?.source ?? prepped.traces[i]?.source) : undefined
+    if (i >= 0)
+      diagnostics.push({
+        level: "warn",
+        code: "reasoning_unsigned",
+        message:
+          "anthropic takes reasoning back only with its own signature: written or unsigned reasoning is not sent",
+        ...(src && { source: traceSource(src) }),
+      })
   }
 
   if (prepped.wireError) {

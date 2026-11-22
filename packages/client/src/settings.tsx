@@ -222,6 +222,8 @@ const conflictText = (c: HatConflict): string => {
       return t("settings.hatDeliverNeedsTools")
     case "handshake_tools":
       return t("settings.hatHandshakeNeedsTools")
+    case "reasoning_unsigned":
+      return t("settings.hatReasoningUnsigned")
   }
 }
 
