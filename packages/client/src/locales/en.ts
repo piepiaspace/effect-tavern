@@ -345,7 +345,6 @@ const en: Dict = {
     hatDeliverNoPrefill: "Tool-delivered templates cannot end with an assistant prefill message",
     hatDeliverAuto: "Tool (auto)",
     hatDeliverForce: "Tool (force)",
-    hatToolLegacy: "Tool (legacy default)",
     hatToolAuto: "Auto",
     hatToolForce: "Force",
     hatDeliverText: "Plain text",

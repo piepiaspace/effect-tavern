@@ -53,7 +53,7 @@ import {
 import { author } from "./author.ts"
 import { type Card } from "@effect-tavern/runtime/src/card.ts"
 import { validateCard } from "@effect-tavern/runtime/src/author.ts"
-import { Hat, uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
+import { Hat, normalizeHatDelivery, uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   decodeLayer,
   decodeLocal,
@@ -339,7 +339,8 @@ export const library = ({
       : card.input === "note"
         ? { id: null, yields: false }
         : { id: data.personas.fallback(), yields: true }
-  const hat = (id: string) => data.hats.list().find((h) => h.id === id)
+  const listHats = (): Hat[] => data.hats.list().map(normalizeHatDelivery)
+  const hat = (id: string) => listHats().find((h) => h.id === id)
   const overlayIn = (rows: readonly Layer[]) => rows.find((p) => p.id === "harness") ?? given
   /** The player's rows on a card, as `resolve` takes them: read on every request, a session keeps none. */
   const rowsOf = (card: string, persona: Rows["persona"]): Rows => {
@@ -553,10 +554,11 @@ export const library = ({
       }
     },
     hats: {
-      list: data.hats.list,
+      list: listHats,
       /** Written under a name no other hat holds (fragment.ts `uniqueHatName`): a colliding one is numbered, the same
        *  hat rewritten keeps its own. */
-      put: (h: Hat) => data.hats.put({ ...h, name: uniqueHatName(data.hats.list(), h.name, h.id) }),
+      put: (h: Hat) =>
+        data.hats.put({ ...normalizeHatDelivery(h), name: uniqueHatName(data.hats.list(), h.name, h.id) }),
       del: (id: string) => {
         data.hats.del(id)
         pruneHat(id)

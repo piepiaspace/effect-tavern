@@ -375,7 +375,7 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   const baseFake = fake((req) => {
     const fnNames = req.tools?.filter((t) => t.type === "function").map((t) => t.name)
     assert.deepEqual(fnNames, [NARRATIVE_TOOL])
-    assert.deepEqual(req.toolChoice, { type: "tool", toolName: NARRATIVE_TOOL })
+    assert.deepEqual(req.toolChoice, { type: "auto" })
     return {
       text: "",
       reasoning: "先写雨声，再引出人物对话。",
@@ -476,7 +476,7 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   )
   const geminiOut = await Effect.runPromise(
     Effect.gen(function* () {
-      const s = yield* streamed(geminiStreamModel, msgs, { deliver: "tool" })
+      const s = yield* streamed(geminiStreamModel, msgs, { deliver: "tool", toolChoice: "force" })
       const parts = yield* Stream.runCollect(s.parts)
       const reply = yield* s.reply
       return { parts, reply }
@@ -508,11 +508,8 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
     assert.ok(lastEx.body?.includes(sceneProse))
   }
 
-  // 6c. Anthropic tool_choice: forced when effort is "off"/unset, "auto" when thinking is active
-  for (const [effort, expectedChoice] of [
-    ["off", { type: "tool", name: NARRATIVE_TOOL }],
-    ["high", { type: "auto" }],
-  ] as const) {
+  // 6c. Unspecified narrative tool choice stays auto at either thinking effort.
+  for (const effort of ["off", "high"] as const) {
     let sentAnthropic: Record<string, unknown> | undefined
     const anthConn: Connection = {
       id: "a/claude",
@@ -539,10 +536,10 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
     const res = await Effect.runPromise(text(anthModel, msgs, { deliver: "tool" }))
     assert.equal(res.text, "Anthropic prose")
     assert.equal(res.finishReason, "stop")
-    assert.deepEqual(sentAnthropic?.tool_choice, expectedChoice)
+    assert.deepEqual(sentAnthropic?.tool_choice, { type: "auto" })
   }
 
-  // An explicit choice overrides the legacy thinking-mode default at the model boundary.
+  // Pass the explicit choice to the model regardless of thinking effort.
   for (const choice of ["auto", "force"] as const) {
     const model = fake((req) => {
       assert.deepEqual(
@@ -617,7 +614,7 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   }))
   const fallbackStream = await Effect.runPromise(
     Effect.gen(function* () {
-      const s = yield* streamed(plainFallbackFake, msgs, { deliver: "tool" })
+      const s = yield* streamed(plainFallbackFake, msgs, { deliver: "tool", toolChoice: "force" })
       const deltas = yield* s.parts.pipe(
         Stream.filter((p): p is Extract<typeof p, { type: "text-delta" }> => p.type === "text-delta"),
         Stream.runCollect,
@@ -631,7 +628,7 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   assert.equal(fallbackStream.rep.finishReason, "stop")
   assert.equal(fallbackStream.rep.rawFinishReason, "STOP")
 
-  const fallbackWhole = await Effect.runPromise(text(plainFallbackFake, msgs, { deliver: "tool" }))
+  const fallbackWhole = await Effect.runPromise(text(plainFallbackFake, msgs, { deliver: "tool", toolChoice: "force" }))
   assert.equal(fallbackWhole.text, "Plain prose fallback\n<<aside>> mood\ncalm")
   assert.equal(fallbackWhole.finishReason, "stop")
   assert.equal(fallbackWhole.rawFinishReason, "STOP")

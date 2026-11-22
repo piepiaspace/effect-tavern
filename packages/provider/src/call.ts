@@ -33,7 +33,7 @@ export interface CallOptions {
   maxOutputTokens?: number
   effort?: Effort
   deliver?: DeliverMode
-  /** Explicit narrative tool choice. Older templates omit it and retain the existing connection default. */
+  /** Narrative tool choice defaults to auto. */
   toolChoice?: "auto" | "force"
   /** Merged under the model's own provider key; use for anything the connection config does not name. */
   providerOptions?: Record<string, Record<string, unknown>>
@@ -290,11 +290,11 @@ const effectiveOptions = (m: Model, o: CallOptions): CallOptions => ({
   ...o,
 })
 
-const singleToolChoice = <T extends string>(
+const structuredToolChoice = (
   format: Format,
   modelId: string | undefined,
   effort: Effort | undefined,
-  toolName: T,
+  toolName: string,
 ) =>
   effort &&
   effort !== "off" &&
@@ -307,19 +307,14 @@ const NARRATIVE_SCHEMA = standard(
     text: Schema.String.annotate({ description: "The full reply, nothing omitted." }),
   }),
 )
-const narrativeCall = (m: Model, options: CallOptions, modelId: string | undefined) => ({
+const narrativeCall = (choice: CallOptions["toolChoice"]) => ({
   tools: {
     [NARRATIVE_TOOL]: {
       description: "Deliver the complete scene narration.",
       inputSchema: NARRATIVE_SCHEMA,
     },
   },
-  toolChoice:
-    options.toolChoice === "auto"
-      ? ("auto" as const)
-      : options.toolChoice === "force"
-        ? ({ type: "tool", toolName: NARRATIVE_TOOL } as const)
-        : singleToolChoice(m.format, modelId, options.effort, NARRATIVE_TOOL),
+  toolChoice: choice === "force" ? ({ type: "tool", toolName: NARRATIVE_TOOL } as const) : ("auto" as const),
 })
 
 const HEX_CHARS = new Set("0123456789abcdefABCDEF".split(""))
@@ -651,7 +646,7 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
         result = await generateText({
           model: spy.model,
           tools,
-          toolChoice: singleToolChoice(m.format, modelId, eff.effort, toolName),
+          toolChoice: structuredToolChoice(m.format, modelId, eff.effort, toolName),
           messages: wired,
           abortSignal,
           ...settings(m.format, eff, modelId),
@@ -879,7 +874,7 @@ export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}
         model: spy ? spy.model : m.model,
         messages: wired,
         abortSignal,
-        ...(toolDeliver && narrativeCall(m, eff, modelId)),
+        ...(toolDeliver && narrativeCall(eff.toolChoice)),
         ...settings(m.format, eff, modelId),
       })
       const body = replyText(r.response.messages)
@@ -966,7 +961,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         // object, stack and all, to the console
         onError: () => {},
         includeRawChunks: !!m.exchange,
-        ...(toolDeliver && narrativeCall(m, eff, modelId)),
+        ...(toolDeliver && narrativeCall(eff.toolChoice)),
         ...settings(m.format, eff, modelId),
       })
       let sawNarrativeCall = false

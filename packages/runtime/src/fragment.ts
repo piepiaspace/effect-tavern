@@ -124,6 +124,9 @@ export const Hat = Schema.Struct({
 })
 export type Hat = typeof Hat.Type
 
+export const normalizeHatDelivery = <T extends Omit<Hat, "id">>({ toolChoice, ...hat }: T) =>
+  hat.deliver === "tool" ? { ...hat, toolChoice: toolChoice ?? "auto" } : hat
+
 /** Whether a HatEntry carries non-blank content (skipping empty editor rows). */
 export const hatEntryActive = (entry: HatEntry): boolean =>
   entry.role === "tool"

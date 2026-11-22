@@ -1078,7 +1078,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   const effectiveConnection: PreviewConnectionMeta = {
     ...connection,
     deliver: effectiveDeliver,
-    ...(effectiveDeliver === "tool" && hat?.toolChoice && { toolChoice: hat.toolChoice }),
+    ...(effectiveDeliver === "tool" && { toolChoice: hat?.toolChoice ?? "auto" }),
   }
 
   if (effectiveDeliver === "tool" && connection.tools === false) {

@@ -10,6 +10,7 @@ import {
   HAT_NARRATE_SLOTS,
   hatEntryActive,
   hatHasToolHandshake,
+  normalizeHatDelivery,
   type Hat,
   type HatEntry,
 } from "@effect-tavern/runtime/src/fragment.ts"
@@ -149,7 +150,8 @@ export const hatTemplateConflicts = (providers: readonly Provider[], route: Rout
   }
   return [...conflicts]
 }
-export const serializeHat = (h: Hat): string => JSON.stringify({ ...h, id: undefined }, null, 2) + "\n"
+export const serializeHat = (h: Hat): string =>
+  JSON.stringify({ ...normalizeHatDelivery(h), id: undefined }, null, 2) + "\n"
 const parseHatEntries = (v: unknown): HatEntry[] | null => {
   if (!Array.isArray(v)) return null
   const out: HatEntry[] = []
@@ -183,7 +185,7 @@ const parseHatEntries = (v: unknown): HatEntry[] | null => {
   }
   return out
 }
-const HAT_KEYS = ["name", "deliver", "toolChoice", "narrate", "review"] as const
+const HAT_KEYS = ["name", "deliver", "narrate", "review"] as const
 export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id"> | null => {
   let body: unknown
   try {
@@ -219,13 +221,13 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
     if (parsed.length) revHead = parsed
   }
   const name = typeof rec.name === "string" && rec.name.trim() ? rec.name.trim() : fallbackName
-  return {
+  return normalizeHatDelivery({
     name,
     ...(rec.toolChoice !== undefined && { toolChoice: rec.toolChoice }),
     ...(rec.deliver === "tool" && { deliver: "tool" as const }),
     ...(Object.keys(parsedNarrate).length > 0 && { narrate: parsedNarrate }),
     ...(revHead?.length && { review: { head: revHead } }),
-  }
+  })
 }
 /** The entry with one key set, or removed when the value is undefined. */
 export const without = <K extends Exclude<keyof ModelEntry, "id">>(

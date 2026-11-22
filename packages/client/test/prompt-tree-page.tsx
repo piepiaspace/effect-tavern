@@ -74,7 +74,7 @@ globalThis.fetch = tracked(async (input, init) => {
   const req = JSON.parse(init.body)
   if (req.fields?.score !== undefined) steps.push(req.fields.score)
   await hold
-  return Response.json(
+  const preview =
     req.mode === "story"
       ? storyFor(req.nodeId)
       : previewNarrate({
@@ -87,8 +87,9 @@ globalThis.fetch = tracked(async (input, init) => {
             ...(req.candidateHat ? { tools: false } : {}),
             ...(req.candidateHat?.deliver === "tool" ? { deliver: "tool" as const } : {}),
           },
-        }),
-  )
+        })
+  // A preview response can omit the choice while the unsaved candidate still specifies it.
+  return Response.json({ ...preview, connection: { ...preview.connection, toolChoice: undefined } })
 })
 
 async function run() {

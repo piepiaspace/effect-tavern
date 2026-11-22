@@ -509,7 +509,6 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   lib.hats.put({
     id: "h-tool",
     name: "Tool Delivery Hat",
-    toolChoice: "auto",
     deliver: "tool",
     narrate: { tail: [{ role: "user", text: "Go ahead." }] },
   })
@@ -517,8 +516,13 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   const server = listen(handle(lib), "127.0.0.1", 0)
   const base = `http://127.0.0.1:${server.port}`
   try {
-    const hatsRes = (await (await fetch(`${base}/hats`)).json()) as { id: string; deliver?: string }[]
+    const hatsRes = (await (await fetch(`${base}/hats`)).json()) as {
+      id: string
+      deliver?: string
+      toolChoice?: string
+    }[]
     assert.equal(hatsRes[0]?.deliver, "tool")
+    assert.equal(hatsRes[0]?.toolChoice, "auto")
     const res = await fetch(`${base}/preview`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -536,7 +540,6 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     // 8. `/hats` PUT/GET round-trip and `/preview` `candidateHat` with structured tool handshakes, all 4 slots, and reasoning
     const fullShellHat = {
       name: "Structured Shell Hat",
-      toolChoice: "force" as const,
       deliver: "text" as const,
       narrate: {
         lead: [{ role: "system" as const, text: "HTTP-HAT-LEAD" }],
@@ -560,12 +563,16 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
     const putRes = await fetch(`${base}/hats/h-shell`, {
       method: "PUT",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(fullShellHat),
+      body: JSON.stringify({ ...fullShellHat, toolChoice: "force" }),
     })
     assert.equal(putRes.status, 200)
     const listedHats = (await (await fetch(`${base}/hats`)).json()) as Array<typeof fullShellHat & { id: string }>
     const storedShell = listedHats.find((h) => h.id === "h-shell")
     assert.deepEqual(storedShell, { id: "h-shell", ...fullShellHat })
+    assert.deepEqual(
+      data.hats.list().find((h) => h.id === "h-shell"),
+      storedShell,
+    )
 
     // Preview against `no-tools` connection with `h-shell` surfaces `hat_needs_tools`, all slots, and tool messages
     const shellPrevRes = await fetch(`${base}/preview`, {
@@ -593,6 +600,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
           id: "unsaved-shell",
           ...fullShellHat,
           deliver: "tool",
+          toolChoice: "force",
           narrate: {
             ...fullShellHat.narrate,
             lead: [{ role: "system" as const, text: "UNSAVED-CANDIDATE-LEAD" }],

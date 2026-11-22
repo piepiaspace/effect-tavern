@@ -565,11 +565,10 @@ export const PromptTreePage = () => {
                   <Show when={(r().connection.deliver ?? mem().candidateHat?.deliver) === "tool"}>
                     <span class="pill soft pt-deliver-chip">
                       {t("promptTree.deliverTool")}
-                      <Show when={r().connection.toolChoice}>
-                        {(choice) =>
-                          ` · ${choice() === "auto" ? t("settings.hatToolAuto") : t("settings.hatToolForce")}`
-                        }
-                      </Show>
+                      {" · "}
+                      {(r().connection.toolChoice ?? mem().candidateHat?.toolChoice) === "force"
+                        ? t("settings.hatToolForce")
+                        : t("settings.hatToolAuto")}
                     </span>
                   </Show>
                   <Show when={r().mode === "sandbox"}>

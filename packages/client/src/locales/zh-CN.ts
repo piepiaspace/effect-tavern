@@ -344,7 +344,6 @@ const zh = {
     hatDeliverNoPrefill: "该模板使用工具调用交付正文，不能以助手消息预填结尾，请求将失败",
     hatDeliverAuto: "工具（自动）",
     hatDeliverForce: "工具（强制）",
-    hatToolLegacy: "工具（沿用旧规则）",
     hatToolAuto: "自动",
     hatToolForce: "强制",
     hatDeliverText: "纯文本",

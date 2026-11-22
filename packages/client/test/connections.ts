@@ -191,8 +191,11 @@ assert.equal(parseHatFile('{"scripts":{}}', "package"), null)
 assert.deepEqual(parseHatFile(serializeHat({ id: "empty", name: "Empty" }), "Fallback"), { name: "Empty" })
 assert.equal(parseHatFile("{bad", "Fallback"), null)
 assert.equal(parseHatFile('{"deliver":"invalid"}', "Fallback"), null)
-assert.equal(parseHatFile('{"toolChoice":"invalid"}', "Fallback"), null)
-assert.deepEqual(parseHatFile('{"deliver":"tool"}', "Legacy"), { name: "Legacy", deliver: "tool" })
+assert.equal(parseHatFile('{"deliver":"tool","toolChoice":"invalid"}', "Fallback"), null)
+assert.equal(parseHatFile('{"toolChoice":"force"}', "Fallback"), null)
+assert.deepEqual(parseHatFile('{"deliver":"text","toolChoice":"force"}', "Text"), { name: "Text" })
+assert.deepEqual(JSON.parse(serializeHat({ id: "h", name: "Text", toolChoice: "force" })), { name: "Text" })
+assert.deepEqual(parseHatFile('{"deliver":"tool"}', "Legacy"), { name: "Legacy", deliver: "tool", toolChoice: "auto" })
 assert.equal(parseHatFile('{"narrate":{"head":[{"role":"tool","text":"x"}]}}', "Fallback"), null)
 
 // Structured Hat entries (`assistant` reasoning, `role: "tool"` handshake) and all 5 slots

@@ -290,11 +290,10 @@ const run = async () => {
   openSettings("templates", "hat-tool")
   await quiet()
   check(
-    document.querySelector(".hat-deliver-bar h3")?.textContent?.includes("工具（沿用旧规则）") &&
-      !segItem("正文交付", "纯文本")?.hasAttribute("data-checked") &&
-      !segItem("正文交付", "工具（自动）")?.hasAttribute("data-checked") &&
+    !segItem("正文交付", "纯文本")?.hasAttribute("data-checked") &&
+      segItem("正文交付", "工具（自动）")?.hasAttribute("data-checked") &&
       !segItem("正文交付", "工具（强制）")?.hasAttribute("data-checked"),
-    "legacy template keeps its original policy until a choice is made",
+    "tool delivery without an explicit choice selects auto",
   )
   openSettings("templates", "hat-gemini")
   await quiet()
