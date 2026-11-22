@@ -11,9 +11,9 @@
 // Deleting a persona drops it from every story, every card pick and the default mark (no silent fallback). The
 // library holds no "open story": each request names its own (serve.ts reads `x-tavern-story`) and `session(id)` opens
 // that story's session on first use and keeps it, so two clients on two stories never move each other. What every story shares is
-// the install's: the player's rows, personas, hats, providers and routing. A hat is the player's too, named by a
-// connection (`Model.hat`) and read from the table on every request the same way: an edit is in force from the
-// next request, and a deleted hat leaves the connection bare (the id resolves to nothing). The player's rows the same way:
+// the install's: the player's rows, personas, hats, providers and routing. A hat is the player's too, worn where the
+// routing puts it (`Routing.hat`, `stageHats`) and read from the table on every request the same way: an edit is in
+// force from the next request, and deleting a hat takes it off the routing (`pruneHat`). The player's rows the same way:
 // read on every request (`rowsOf`), so a session holds none of them; deleting a pack takes it off every card it hung on.
 // The model each stage runs on is the routing row's (provider, model) pair, the stage's own or the default, resolved
 // from the tables on every call the same way: a routing or provider edit is in force from the next request. A pair
@@ -212,7 +212,7 @@ export const library = ({
   /** A pair as the session runs it: the flattened connection, bound, wearing the routing's hat. */
   const resolve = (pair: Pair, hatId: string | undefined, onExchange?: CompileOptions["onExchange"]): Model => {
     const { p, m } = routedEntry(pair)
-    const { hat: _, ...conn } = connection(p, m, secretOf(p))
+    const conn = connection(p, m, secretOf(p))
     return bind(hatId !== undefined ? { ...conn, hat: hatId } : conn, { onExchange })
   }
   const model = (phase: Phase | "author", onExchange?: CompileOptions["onExchange"]): Model => {

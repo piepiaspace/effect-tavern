@@ -12,7 +12,7 @@ Effect Tavern 彻底取消了预设这一概念，将传统预设混装的五类
 | 传统 Preset 混装的成分 | Effect Tavern 归属模块 | 拆分原因 |
 | --- | --- | --- |
 | 消息拼装顺序、阶段隔离与角色标记 | Harness 代码（`packages/runtime/src/request.ts`） | 协议不变量——保证各阶段工具契约与 KV 缓存断点不被篡改。 |
-| 模型续写握手壳与 `assistant` 预填（Prefill / JB） | **帽子 `Hat`**（`/hats`，挂在 `Connection.hat`） | 取决于模型家族与端点能力（如当前 Claude 不支持末尾 `assistant` 预填），绝不该污染卡片或文风包。 |
+| 模型续写握手壳与 `assistant` 预填（Prefill / JB） | **帽子 `Hat`**（`/hats`，由阶段路由佩戴：`Routing.hat`、`Routing.stageHats`） | 取决于模型家族与端点能力（如当前 Claude 不支持末尾 `assistant` 预填），绝不该污染卡片或文风包。 |
 | 人称、防抢话（防 `bleedthrough`）、篇幅与文风滤镜 | **玩家层 `Layer` / `Pack` 与写作开关 `switches`** | 属于玩家个人审美；当卡片自带显式 `pov`（如无主角卡 `yandao.yaml`）时自动让位。 |
 | `<thinking>` 思维链、`<status>` 状态栏与选项输出指令 | **卡片 `products` / `rules`** + 按需开启的独立阶段 | 状态结算与边栏小剧场由独立阶段与强类型 Schema 承担，不再靠叙事提示词硬抠格式。 |
 | 接口地址、模型 ID、思考预算与最大输出长度 | **模型连接 `Connection`**（`/providers`）、阶段路由与 **`DecisionModel`**（`/decision`） | 基础设施与密钥只留在本机库，绝不随卡片或写作包外流；底座亦不硬编码任何采样参数（`temperature`、`topP` 等）。 |
@@ -35,7 +35,7 @@ harness（代码默认 + 玩家全局叠加行）
   - `"yield"`（全局叠加行相对卡片的默认）：若低等级已填入该槽位则主动让位；
   - `"both"`：保留双方内容并按等级序拼接。
 - **全局默认 `persona` 继承与三态 `local.persona`：** `/personas` 库允许标记一份全实例默认人设。单卡上的 `local.persona` 为三态（`undefined` = 跟随全局默认，`null` = 显式不挂人设，`<id>` = 指定覆盖）。参与者视角卡片以让位模式（`yield`）继承全局默认人设——保留卡片自带的 `persona` 槽位文本，同时兜底提供最低优先级的 `names.user`；作者视角卡片（`input: "note"` 且无 `persona`）绝不继承；正文为空的人设仅提供 `names.user` 代称而不清空 `persona` 槽位。
-- **未填 `{{key}}` 占位洞规则（`names.ts`）：** 卡片原文中未填满的 `{{key}}` 占位符按字面透传，不锁定开局或回合；而玩家行、写作包或帽子条目若引用未填满的占位洞，则安全丢弃至 `Resolved.dropped`。
+- **未填 `{{key}}` 占位洞规则（`names.ts`）：** 卡片原文中未填满的 `{{key}}` 占位符按字面透传，不锁定开局或回合；而玩家行、写作包或帽子条目若引用未填满的占位洞，则该条不进请求，记入追踪的 `omitted`（原因 `unfilled_hole`），而非 `Resolved.dropped`。
 - **零抛错安全锁（`locked`）：** 玩家行与写作包在入库解码时自动剥离 `when` 条件与自定义 `role`，且不得篡改产物的 `shape` 或 `role`；不合法条目归入 `Resolved.dropped` 供界面提示，绝不因挂载第三方包而炸毁会话。
 
 ## 2. 框架槽位与写作开关（`switches`）
@@ -46,7 +46,7 @@ harness（代码默认 + 玩家全局叠加行）
 
 | 开关 | 可选值 | 作用 |
 | --- | --- | --- |
-| `pov` | `"second"` \| `"third"` \| `"none"` | 叙事人称（“你”、人设名字，或无玩家角色） |
+| `pov` | `"first"` \| `"second"` \| `"third"` \| `"none"` \| `"custom"` | 玩家在正文中的人称（“我”、“你”、人设名字、无玩家角色，或 `povText` 中玩家自写的一句） |
 | `echo` | `boolean` | 是否先转述玩家的动作台词再写反应 |
 | `agency` | `"strict"` \| `"free"` | 严格禁止抢话（防 `bleedthrough`）或允许顺着续写 |
 | `verbosity` | `"concise"` \| `"medium"` \| `"detailed"` | 编译进入 `verbosity` 篇幅槽位 |
@@ -66,12 +66,18 @@ harness（代码默认 + 玩家全局叠加行）
 
 ## 4. 帽子（`Hat`）、模型连接与决策预检
 
-不同模型家族往往需要不同的续写握手外壳，这类适配既不属于卡片设定，也不属于文风包。**`Hat`**（`/hats`，由 `Connection.hat` 按 ID 引用）专门承载这层协议壳：
+不同模型家族往往需要不同的续写握手外壳，这类适配既不属于卡片设定，也不属于文风包。**`Hat`**（`/hats`）专门承载这层协议壳，由阶段路由佩戴而非挂在模型条目上：`Routing.hat` 是所有可戴帽阶段的主帽，`Routing.stageHats.<阶段>` 逐阶段覆盖（帽子 ID，或 `null` 表示不戴）；切换阶段模型不会丢帽。共五个槽位：
 
-- **`narrate.head`**：接在 `frame` 与 `fiction` 之后、头区缓存断点与历史转录稿之前；
+- **`narrate.lead`**：`narrate` 请求最前，位于 `narrate.role` 与 `frame` 之前；
+- **`narrate.head`**：系统消息接在 `frame` 与 `fiction` 之后，握手消息排在全部头区系统消息之后，位于头区缓存断点与历史转录稿之前；
+- **`narrate.turn`**：历史之后、本回合玩家输入之前；
 - **`narrate.tail`**：落在 `narrate` 请求最末尾（若连接声明 `prefill: false`，如当前 Claude 模型，则拒绝以 `assistant` 消息收尾）；
-- **`review.head`**：供读取正文的阶段（`check`、`polish`、`record`）佩戴；
+- **`review.head`**：供读取正文的阶段（`check`、`polish`、`record`）佩戴，接在 `<world>` 之后；
 - `lookup`、`decide`、`direct` 不戴任何帽子；未配置帽子时请求逐字节不增删。
+
+每个槽位条目要么是角色消息（`system`、`user` 或 `assistant`，`assistant` 可带 `reasoning`，作为思考片段回传），要么是 **`tool` 握手**（`toolName`、`toolInput`、结果正文 `text`、可选 `reasoning`），发送为一条 `assistant` 的 `tool-call` 加其 `tool-result`，要求连接支持原生工具调用。
+
+**`deliver`** 决定 `narrate` 如何交付正文：`"text"`（默认）直接流式输出纯文本；`"tool"` 让模型调用唯一的 `narrative({ text })` 工具并边流边解码，在请求开头追加 `narrate.deliver` 问法，要求原生工具调用，且请求不得以 `assistant` 预填收尾。工具交付下 **`toolChoice`** 取 `"auto"`（默认，适配拒绝强制工具的思考模型）或 `"force"`；非工具交付时不保留该字段。
 
 语言模型连接 **`Connection`**（`/providers`）仅维护接口凭据、模型 ID、`maxOutputTokens` 与思考预算（`effort`），底座**不发送任何硬编码采样参数**（`temperature`、`topP` 等），一律交由推理端点默认策略决定。只有 `narrate` 读取完整 `frame` 与叙事帽；其余所有幕后阶段仅读取各自的职能描述（`stage.role`）加紧凑的 XML 标签化 `<world>` 摘要（`worldOf`，剥离写作指令与 `fiction` 正文）。
 

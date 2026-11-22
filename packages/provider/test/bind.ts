@@ -24,13 +24,11 @@ const p: Provider = {
 assert.equal(DEFAULTS.gemini.prefill, false)
 
 // every knob set: the entry's over the format's defaults (anthropic: no prefill, no reasoning back)
-const { model: _fullModel, ...full } = bind(
-  connection(
-    p,
-    { id: "claude", hat: "h", effort: "high", maxOutputTokens: 2048, capabilities: { prefill: true } },
-    key,
-  ),
-)
+// a hat is the routing's, put on by the library: bind carries it, the model entry names none
+const { model: _fullModel, ...full } = bind({
+  ...connection(p, { id: "claude", effort: "high", maxOutputTokens: 2048, capabilities: { prefill: true } }, key),
+  hat: "h",
+})
 assert.deepEqual(full, {
   format: "anthropic",
   tools: true,

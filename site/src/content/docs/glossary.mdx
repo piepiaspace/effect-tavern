@@ -19,7 +19,7 @@ Canonical naming primitives for developers, card authors, and coding agents. The
 | `has no agency` | Mechanical rule that `decide` ignores `thought` when choosing card `actions`. |
 | `participant mode` / `author mode` | Coordinate pair (`persona` filled vs. empty, paired with default `input: "act" \| "note"`). |
 | `persona` | Frame slot (`persona`) and reusable player asset (`/personas`, with optional install-wide default and tri-state `local.persona`; inherited in `yield` mode on participant cards). |
-| `hat` | Provider-specific continuation shell (`/hats`, `Connection.hat`): `narrate.head`, `narrate.tail`, and `review.head`. |
+| `hat` | Provider-specific continuation shell (`/hats`), worn by the routing (`Routing.hat`, per stage `Routing.stageHats`): five slots `narrate.lead`, `narrate.head`, `narrate.turn`, `narrate.tail`, `review.head` of role messages (with optional `reasoning`) or `tool` handshakes, plus `deliver` (`"text"` \| `"tool"`, with `toolChoice` `"auto"` \| `"force"`). |
 | `slop` (`claudeism`) | Over-repeated model stock phrases and clichés targeted by `lexicon` and `polish`. |
 
 ## Runtime, Turn & State

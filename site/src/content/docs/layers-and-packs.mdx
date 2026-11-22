@@ -12,7 +12,7 @@ Effect Tavern eliminates presets completely, decomposing what a legacy preset us
 | Legacy Preset Ingredient | Effect Tavern Owner | Why Separated |
 | --- | --- | --- |
 | Prompt order, stage boundaries & message roles | Harness (`packages/runtime/src/request.ts`) | Structural invariant—keeps KV cache breakpoints and stage schemas intact. |
-| Model continuation framing & assistant prefills | **`Hat`** (`/hats`, bound via `Connection.hat`) | Belongs to the model family/endpoint (e.g. `prefill: false` on Claude), never to a card or prose pack. |
+| Model continuation framing & assistant prefills | **`Hat`** (`/hats`, worn by stage routing: `Routing.hat`, `Routing.stageHats`) | Belongs to the model family/endpoint (e.g. `prefill: false` on Claude), never to a card or prose pack. |
 | POV, agency ("don't speak for `{{user}}`"), length & prose register | **`Layer` / `Pack` & `switches`** (`pov`, `echo`, `agency`, `verbosity`, `polish`) | Player taste, cleanly yielding when a card (`yandao.yaml`) requires a fixed POV. |
 | CoT `<thinking>`, `<status>` bars, memory & option lists | **`Card` `products` / `rules`** + opt-in harness stages (`decide`, `check`, `record`) | Structured state and side blocks belong to typed schemas, not fragile narrator prompt prose. |
 | Endpoint URL, model ID, reasoning budget & token limits | **`Connection`** (`/providers`), stage routing & **`DecisionModel`** (`/decision`) | Infrastructure and credentials never travel inside exported cards or style packs; the harness sends zero hardcoded sampling knobs (`temperature`, `topP`, etc.). |
@@ -35,7 +35,7 @@ harness (code defaults + global player overlay)
   - `"yield"` (default on the global player overlay against the card): defers whenever a lower rank has already filled the slot.
   - `"both"`: keeps both fragments in rank order.
 - **Default `persona` inheritance & tri-state `local.persona`:** One persona in `/personas` may be marked as the install-wide default. Per card, `local.persona` is tri-state (`undefined` = follow install default, `null` = none, `<id>` = explicit override). Participant cards inherit the install default in `yield` mode—leaving a card's own authored `persona` slot intact while still supplying lowest-rank `names.user`; author-mode cards (`input: "note"` without `persona`) never inherit it; an empty-text persona supplies `names.user` without blanking `persona`.
-- **Open `{{key}}` holes (`names.ts`):** Unfilled `{{key}}` placeholders in card-authored text pass through literally without locking turns, whereas player, pack, or hat entries referencing an unfilled hole are dropped cleanly into `Resolved.dropped`.
+- **Open `{{key}}` holes (`names.ts`):** Unfilled `{{key}}` placeholders in card-authored text pass through literally without locking turns, whereas a player, pack, or hat entry referencing an unfilled hole is left out of the request and listed in the trace's `omitted` (reason `unfilled_hole`), not in `Resolved.dropped`.
 - **Zero-throw safety locks (`locked`):** Player rows and packs cannot inject `Cond` (`when`), alter message `role`, or mutate a card product's `shape` or `role`. Disallowed entries land in `Resolved.dropped` for UI inspection instead of crashing session startup.
 
 ## 2. Frame Slots & Writing Switches
@@ -46,7 +46,7 @@ For everyday preferences, players toggle bounded **Writing Switches** (`Writing`
 
 | Switch | Values | Effect |
 | --- | --- | --- |
-| `pov` | `"second"` \| `"third"` \| `"none"` | Narrator address (`你`, persona name, or no player character) |
+| `pov` | `"first"` \| `"second"` \| `"third"` \| `"none"` \| `"custom"` | The player in the prose (`我`, `你`, persona name, no player character, or the player's own sentence in `povText`) |
 | `echo` | `boolean` | Whether narration restates the player's action before reacting |
 | `agency` | `"strict"` \| `"free"` | Strict boundary against bleedthrough vs. co-writing continuation |
 | `verbosity` | `"concise"` \| `"medium"` \| `"detailed"` | Compiled into the `verbosity` slot |
@@ -66,12 +66,18 @@ An enhancer **`Pack`** (analogous to a *text LoRA*) is a reusable, mountable `La
 
 ## 4. Hats (`/hats`), Connections & Decision Pre-Check
 
-Different model families respond best to different continuation framing—without that framing belonging in a card or style pack. A **`Hat`** is a named protocol shell bound to a `Connection` (`Connection.hat`):
+Different model families respond best to different continuation framing—without that framing belonging in a card or style pack. A **`Hat`** is a named protocol shell the stage routing wears, not a model entry: `Routing.hat` is the main hat for every hat stage, and `Routing.stageHats.<stage>` overrides it per stage (a hat id, or `null` for bare). Switching a stage's model keeps its hat. It has five slots:
 
-- **`narrate.head`**: System/handshake messages placed after `frame` and `fiction` (right before the head cache breakpoint and `transcript`).
-- **`narrate.tail`**: Placed at the very end of the `narrate` request (note: rejected at the boundary if it ends with an `assistant` prefill on a connection where `prefill: false`, such as current Claude models).
-- **`review.head`**: Worn by prose-reading stages (`check`, `polish`, `record`).
+- **`narrate.lead`**: First in the `narrate` request, before `narrate.role` and `frame`.
+- **`narrate.head`**: System messages after `frame` and `fiction`, handshake messages after every head system message (right before the head cache breakpoint and `transcript`).
+- **`narrate.turn`**: Just before this turn's player input, after the history.
+- **`narrate.tail`**: At the very end of the `narrate` request (rejected at the wire if it ends with an `assistant` prefill on a connection where `prefill: false`, such as current Claude models).
+- **`review.head`**: Worn by prose-reading stages (`check`, `polish`, `record`), after `<world>`.
 - `lookup`, `decide`, and `direct` never wear a hat. When no hat is attached, zero extra messages are emitted.
+
+Each slot entry is either a role message (`system`, `user`, or `assistant`, an assistant's optional `reasoning` sent back as a reasoning part) or a **`tool` handshake** (`toolName`, `toolInput`, the result `text`, optional `reasoning`), sent as an assistant `tool-call` followed by its `tool-result` and requiring native tool calling on the connection.
+
+**`deliver`** sets how `narrate` hands back its prose: `"text"` (default) streams plain text; `"tool"` has the model call one `narrative({ text })` tool, decoded as it streams, adds the `narrate.deliver` ask to the lead, needs native tool calling, and refuses a request ending in an `assistant` prefill. With `deliver: "tool"`, **`toolChoice`** is `"auto"` (default, for thinking models that refuse a forced tool) or `"force"`; it is not kept otherwise.
 
 Language-model **`Connection`** configurations (`/providers`) carry endpoint credentials, model IDs, `maxOutputTokens`, and optional reasoning effort, while the harness deliberately sends **zero hardcoded sampling parameters** (`temperature`, `topP`, etc.) so provider defaults govern decoding. Only `narrate` receives the full `frame` and prose hats; every off-stage pass reads its dedicated `stage.role` plus a compact XML-tagged `<world>` projection (`worldOf`) stripped of writing switches and `fiction`.
 

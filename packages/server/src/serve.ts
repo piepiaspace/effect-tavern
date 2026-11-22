@@ -44,7 +44,7 @@
 //                 its row); a new story takes the card's (library.ts `personaFor`: `local.persona`, null = none,
 //                 absent = the install's default where the card has no player character of its own).
 //   GET  /hats    the player's hats; PUT /hats/<id> {name, narrate?, review?} writes one (decoded as `Hat`, in force
-//                 from the next request on a connection that names it), DELETE /hats/<id> removes it. Both answer the list.
+//                 from the next request on a stage the routing puts it on), DELETE /hats/<id> removes it. Both answer the list.
 //   GET  /packs   the player's rows, one template (runtime layer.ts `Layer`): [harness, ...packs], the harness row
 //                 whole (the code's defaults under its overlay). PUT /packs/<id> {name, fragments?, switches?, asks?,
 //                 products?, entries?, lexicon?, snippets?, format?, names?} writes one whole (decoded at this boundary,
@@ -69,8 +69,9 @@
 //                 answered); a 400 {error} is the provider's configuration (no key, no endpoint, a bad URL).
 //   GET  /models/names  the model-name table (provider names.ts `Names`): {[owner/model]: {name, family}}, what the
 //                 settings lists name and group a model id by, without the network.
-//   GET  /routing which (provider, model) runs each stage: {default?, stages?}; PUT /routing replaces it (in force
-//                 from the next request).
+//   GET  /routing which (provider, model) runs each stage and the hat it wears: {default?, hat?, stages?, stageHats?}
+//                 (runtime session.ts `Routing`; a stage hat null = bare); PUT /routing replaces it (in force from the
+//                 next request).
 //   GET  /decision  the decision model's connection (provider decision.ts `DecisionConfig`: {enabled, driver, model,
 //                 url?, secret?, proxy?, headers?}), or null when none was ever saved; a key only as a secret id.
 //                 PUT /decision replaces it. POST /decision/test sends one minimal real request through the saved

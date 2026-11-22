@@ -39,8 +39,8 @@ export interface Connection {
    *  (https_proxy), `false` forces a direct connection, a URL routes this connection through it. Node's fetch ignores
    *  the option and reads the environment only with NODE_USE_ENV_PROXY=1; the runtime is Bun. */
   proxy?: string | false
-  /** The hat this connection wears (a library id, `/hats`): what its model needs around the harness's document to
-   *  answer in continuation mode. Resolved per request by the library, like the player's persona. */
+  /** The hat this connection wears (a library id, `/hats`): the routing's for the stage, put on by the library per
+   *  request (server library.ts `hatFor`); a model entry names none. */
   hat?: string
   /** The model entry's call settings (providers.ts `ModelEntry`), carried through to `bind`. */
   effort?: Effort

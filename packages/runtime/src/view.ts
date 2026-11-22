@@ -238,6 +238,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
       role: R.asks["stage.role"].text,
       narrator: R.asks["narrate.role"].text,
       persona: R.asks["narrate.persona"].text,
+      deliver: R.asks["narrate.deliver"].text,
       contextLead: R.asks["narrate.context"].text,
       directions: R.asks["narrate.turn"].text,
       tail: head(R.tail, { state: context }),

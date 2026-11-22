@@ -3,7 +3,7 @@
 // player's rows (runtime layer.ts `Layer`): `harness` (the overlay, only what differs from the code's defaults) and each
 // writing pack, mounted per card by `local.mounts`. `local`: one row a card, the player on that card (`Local`).
 // `persona`: named frame fragments, the player's own (who they are in the fiction; a card still gives a
-// default in its frame; a story names the one in force on it, `story.persona`). `hat`: the player's hats (runtime fragment.ts `Hat`), named by a provider's model. `secret`:
+// default in its frame; a story names the one in force on it, `story.persona`). `hat`: the player's hats (runtime fragment.ts `Hat`), worn where the routing puts it. `secret`:
 // the key vault (provider providers.ts `Secret`), the only table holding key material; `provider`: the player's model
 // providers, each naming a secret by id; `routing`: one row, which (provider, model) each stage runs on; `names`: one row,
 // the model-name table last fetched from models.dev and its ETag (names.ts). Export of cards

@@ -468,8 +468,9 @@ const over = (data: Data, m: () => Model = model) =>
   assert.equal(on(lib.model("narrate")), "env") // the stage follows the environment's model again
 
   // Routing hats: default hat applies to narrate + review stages only; stageHats overrides or opts out with null;
-  // deleting a hat prunes routing; deleting a provider preserves routing hats; provider ModelEntry.hat is ignored.
-  lib.providers.put({ ...relay, enabled: true, models: [{ id: "m", hat: "legacy" }, { id: "n" }] })
+  // deleting a hat prunes routing; deleting a provider preserves routing hats; a stored model entry's stray `hat` is ignored.
+  const legacy = { id: "m", hat: "legacy" } // a stored entry from before the routing wore hats
+  lib.providers.put({ ...relay, enabled: true, models: [legacy, { id: "n" }] })
   lib.hats.put({ id: "h-main", name: "Main" })
   lib.hats.put({ id: "h-narrate", name: "Narrate" })
   lib.routing.write({
