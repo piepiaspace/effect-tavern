@@ -721,11 +721,6 @@
 .pt-group > .select {
   width: 100%;
 }
-.popup-list.fit:not([data-presentation="sheet"]) {
-  width: var(--anchor-width);
-  max-width: var(--anchor-width);
-  scrollbar-gutter: auto;
-}
 .pt-input {
   min-height: var(--control);
 }
@@ -850,10 +845,6 @@
   flex-direction: column;
   gap: var(--space-1);
 }
-.workspace-tools > :nth-child(3):last-child {
-  grid-column: 1 / -1;
-}
-
 /* Desktop: 2-column layout (outline + floating concentric controls card) */
 @media (min-width: 64rem) {
   .pt-card-chip {

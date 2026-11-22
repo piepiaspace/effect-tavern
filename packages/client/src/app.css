@@ -1,9 +1,11 @@
 /* Five cascade layers, lowest first: ui-sdk (the little CSS @ui-sdk adds for its popups), the tokens, the components (which may only use tokens), the card's CSS, the
-   reader's own. A later layer wins unconditionally, so nobody needs !important. The components layer is three files in
+   reader's own. A later layer wins unconditionally, so nobody needs !important. The components layer is these files in
    source order: reader.css (the flow, the composer), chrome.css (the Record pill and sheet, the readings, Options, the
    snippets menu, the manager, the picker), inspector.css (the Inspect page), timeline.css (the Timeline page), card.css
-   (the card page), settings.css (the settings page), writing.css (the Writing page), shell.css (the shell: the canvas,
-   the sidebar, the stage card and its keys, the 读数 page, the phone's drawer; #117), workshop.css (the workshop's
+   (the card page), controls.css (the base controls every page shares: buttons, boxed inputs, the select, the
+   switch, tags, the drawer, the dialogs), settings.css (the settings page), writing.css (the Writing page), shell.css (the shell: the canvas,
+   the sidebar, the stage card and its keys, the 读数 page, the phone's drawer; #117), home.css (the home page: its
+   mechanism, title, action cards and composer; #209), workshop.css (the workshop's
    list and a card's manuscript). Structure names (.said,
    .prose, .actions, .composer, .send, .strip, .canvas, .panel, .scroll, .side, .stage, .status-page, .status,
    .snippets) are the public surface a card or a reader styles against: rename with care.
@@ -15,8 +17,10 @@
 @import "./inspector.css" layer(components);
 @import "./timeline.css" layer(components);
 @import "./card.css" layer(components);
+@import "./controls.css" layer(components);
 @import "./settings.css" layer(components);
 @import "./writing.css" layer(components);
 @import "./shell.css" layer(components);
+@import "./home.css" layer(components);
 @import "./workshop.css" layer(components);
 @import "./prompt-tree.css" layer(components);

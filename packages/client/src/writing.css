@@ -872,7 +872,7 @@
   opacity: 0.6;
 }
 
-/* modal over .wpage (surface & .modal.full shared with settings.css) */
+/* modal over .wpage (surface & .modal.full shared with controls.css) */
 .wpage .modal-body {
   overflow-y: auto;
   overscroll-behavior: contain;

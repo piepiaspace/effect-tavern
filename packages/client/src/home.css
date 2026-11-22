@@ -1,0 +1,613 @@
+/* ───────── Home (home.tsx, home-mechanism.tsx, home-figure.tsx) ───────── */
+/* ── home (home.tsx, #209): spacious editorial stage with the interactive Projector Rosette mechanism, hairline
+   action cards, and a bottom composer ready to start a free chat. Covers the reader like a page; on a phone it starts
+   under the strip so the drawer's key stays in view ── */
+.home-page {
+  position: absolute;
+  inset: calc(var(--strip) + var(--safe-top)) 0 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--surface-1);
+  color: var(--ink-3);
+}
+/* Whisper-quiet architectural hairline grid + pointer-reactive radial sheen, fading seamlessly to surface-1 */
+.home-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, var(--alpha-1) var(--hairline), transparent var(--hairline)),
+    linear-gradient(to bottom, var(--alpha-1) var(--hairline), transparent var(--hairline));
+  background-size: 48px 48px;
+  background-position: center center;
+  mask-image: radial-gradient(ellipse 68% 58% at 50% 42%, rgb(0 0 0 / 0.85) 0%, transparent 78%);
+  opacity: 0.72;
+}
+.home-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle 28rem at var(--home-px) var(--home-py), var(--alpha-1) 0%, transparent 70%);
+  opacity: var(--home-spot);
+  transition: opacity var(--dur-4) var(--ease);
+}
+.home-stage {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6) var(--space-5) var(--space-4);
+}
+.home-mark {
+  width: 100%;
+  max-width: var(--measure);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+  margin-bottom: 1.5svh; /* optical centre sits gently above the bottom composer */
+}
+
+/* Interactive Projector Rosette mechanism + hairline drafting frame (home-mechanism.tsx) */
+.home-mech {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+.home-mech-stage {
+  position: relative;
+  width: clamp(14.5rem, 33svh, 19.5rem);
+  height: clamp(14rem, 32svh, 18.75rem);
+  display: grid;
+  place-items: center;
+  user-select: none;
+  touch-action: pan-y;
+}
+/* Directional figure-switch reveal (opt-in under no-preference) */
+@media (prefers-reduced-motion: no-preference) {
+  .home-mech-stage[data-dir="next"] {
+    animation:
+      home-fade var(--dur-3) var(--ease) both,
+      home-fig-next var(--dur-4) var(--ease) both;
+    animation-timing-function: var(--ease), var(--ease-spring);
+  }
+  .home-mech-stage[data-dir="prev"] {
+    animation:
+      home-fade var(--dur-3) var(--ease) both,
+      home-fig-prev var(--dur-4) var(--ease) both;
+    animation-timing-function: var(--ease), var(--ease-spring);
+  }
+  @supports not (animation-timing-function: linear(0, 1)) {
+    .home-mech-stage[data-dir="next"],
+    .home-mech-stage[data-dir="prev"] {
+      animation-timing-function: var(--ease), var(--ease);
+    }
+  }
+}
+@keyframes home-fig-next {
+  from {
+    translate: 20px 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+@keyframes home-fig-prev {
+  from {
+    translate: -20px 0;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+/* Flank figure switcher buttons: whisper-faint at rest, reveal crisply on hover/focus; hidden on touch phones where swipe takes over */
+.home-nav {
+  position: absolute;
+  top: 40%;
+  translate: 0 -50%;
+  z-index: 2;
+  width: var(--space-7);
+  height: var(--space-7);
+  border-radius: var(--radius-pill);
+  display: inline-grid;
+  place-items: center;
+  color: var(--ink-2);
+  opacity: 0.14;
+  transition:
+    opacity var(--dur-3) var(--ease),
+    background var(--dur-2) var(--ease),
+    box-shadow var(--dur-2) var(--ease),
+    color var(--dur-2) var(--ease),
+    scale var(--dur-1) var(--ease);
+}
+.home-nav-prev {
+  left: clamp(var(--space-3), 6cqi, var(--space-7));
+}
+.home-nav-next {
+  right: clamp(var(--space-3), 6cqi, var(--space-7));
+}
+.home-nav svg {
+  width: var(--icon);
+  height: var(--icon);
+  transition: translate var(--dur-3) var(--ease);
+  transition-timing-function: var(--ease-spring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-stage:hover .home-nav {
+    opacity: 0.34;
+  }
+  .home-stage .home-nav:hover {
+    opacity: 1;
+    color: var(--ink);
+    background: var(--surface-2);
+    box-shadow:
+      var(--shadow-1),
+      inset 0 0 0 var(--hairline) var(--line-strong);
+  }
+  .home-nav-prev:hover svg {
+    translate: -2px 0;
+  }
+  .home-nav-next:hover svg {
+    translate: 2px 0;
+  }
+}
+.home-nav:focus-visible {
+  opacity: 1;
+  color: var(--ink);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.home-nav:active {
+  scale: 0.94;
+}
+/* On touch devices keep the buttons visually hidden until keyboard/screen-reader focus so swipe stays uncluttered
+   while tablets with keyboards and assistive tech still reach both named controls */
+@media (hover: none), (pointer: coarse) {
+  .home-nav {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .home-nav:focus-visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+/* Compact layout for short / landscape phone viewports so the emblem, title, and primary action cards stay reachable */
+@media (max-height: 36rem) {
+  .home-stage {
+    padding: var(--space-3) var(--space-4) var(--space-2);
+  }
+  .home-mark {
+    gap: var(--space-3);
+    margin-bottom: 0;
+  }
+  .home-mech {
+    gap: var(--space-2);
+  }
+  .home-mech-stage {
+    width: clamp(8.5rem, 32svh, 11.5rem);
+    height: clamp(8rem, 30svh, 11rem);
+  }
+  .home-mark h1 {
+    font-size: var(--text-title);
+  }
+}
+.home-mech-index {
+  color: var(--ink-3);
+  opacity: 0.85;
+}
+.home-hairline-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  will-change: transform;
+}
+.home-hairline-svg .hl-ring-lo {
+  stroke: var(--line-strong);
+  stroke-width: 1.6;
+  opacity: 0.72;
+}
+.home-hairline-svg .hl-ring-faint {
+  stroke: var(--line);
+  stroke-width: 1.3;
+  opacity: 0.85;
+}
+.home-hairline-svg .hl-axis,
+.home-hairline-svg .hl-reg {
+  stroke: var(--ink-3);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  opacity: 0.65;
+}
+.home-hairline-svg .hl-belt {
+  stroke: var(--ink-2);
+  stroke-width: 1.6;
+  opacity: 0.42;
+  transition: opacity var(--dur-3) var(--ease);
+}
+.home-hairline-svg .hl-callout {
+  stroke: var(--line-strong);
+  stroke-width: 1.4;
+  fill: var(--surface-1);
+  opacity: 0.82;
+}
+.home-hairline-svg .hl-vernier {
+  stroke: var(--ink-2);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  opacity: 0.82;
+  transition: opacity var(--dur-3) var(--ease);
+}
+.home-hairline-svg .hl-vernier-pip {
+  fill: var(--surface-1);
+  stroke: var(--ink);
+  stroke-width: 2.2;
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-mech:hover .home-hairline-svg .hl-belt,
+  .home-mech:hover .home-hairline-svg .hl-vernier {
+    opacity: 1;
+  }
+}
+.home-emblem-wrap {
+  position: relative;
+  z-index: 1;
+  height: 88%;
+  display: grid;
+  place-items: center;
+  will-change: transform;
+}
+.home-mech[data-shape="square"] .home-emblem-wrap {
+  height: 76%;
+}
+.home-emblem {
+  width: auto;
+  height: 100%;
+  user-select: none;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  opacity: 0.88;
+  transition: opacity var(--dur-3) var(--ease);
+}
+.home-emblem.tall {
+  height: 100%;
+}
+.home-page[data-dark="true"] .home-emblem,
+.home-emblem-wrap[data-dark="true"] .home-emblem {
+  filter: invert(1);
+  mix-blend-mode: screen;
+  opacity: 0.9;
+}
+.home-mech[data-paused="true"] .home-hairline-svg,
+.home-mech[data-paused="true"] .home-emblem-wrap {
+  will-change: auto;
+}
+/* Resolution-aware LOD: drop sub-pixel micro-textures on compact/mobile viewports so lines stay crisp and raster work stays low */
+@container stage (max-width: 44rem) {
+  .home-mech .pr-detail-micro {
+    display: none;
+  }
+}
+@container stage (max-width: 30rem) {
+  .home-mech .pr-detail-fine {
+    display: none;
+  }
+}
+/* Quiet mono telemetry + Web Audio sound toggle + WCAG 2.2.2 pause/play toggle under the drafting frame */
+.home-mech-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-half) var(--space-1) var(--space-half) var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--alpha-1);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line);
+  color: var(--ink-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  opacity: 0.78;
+  transition:
+    opacity var(--dur-2) var(--ease),
+    box-shadow var(--dur-2) var(--ease);
+}
+.home-mech-sep {
+  width: var(--hairline);
+  height: 10px;
+  background: var(--line);
+  margin-inline: var(--space-half);
+}
+.home-mech-toggle[data-active="true"] {
+  color: var(--ink);
+  background: var(--alpha-2);
+}
+.home-mech-bar:focus-within {
+  opacity: 1;
+  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-mech:hover .home-mech-bar {
+    opacity: 1;
+  }
+}
+.home-mech-readout {
+  min-width: 11.5ch;
+  text-align: center;
+}
+.home-mech-toggle {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius-pill);
+  display: inline-grid;
+  place-items: center;
+  color: var(--ink-2);
+  transition:
+    background var(--dur-2) var(--ease),
+    color var(--dur-2) var(--ease),
+    scale var(--dur-1) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-mech-toggle:hover {
+    background: var(--alpha-2);
+    color: var(--ink);
+  }
+}
+.home-mech-toggle:active {
+  scale: 0.92;
+}
+.home-mech-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.home-mech-toggle svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* Editorial title block */
+.home-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+.home-mark h1 {
+  margin: 0;
+  font-size: var(--text-hero);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  letter-spacing: -0.025em;
+  color: var(--ink);
+}
+.home-mark .home-sub {
+  margin: 0;
+  font-size: var(--text-body);
+  line-height: var(--leading-body);
+  color: var(--ink-3);
+}
+
+/* Spacious hairline action cards (Linear-inspired minimal tiles) */
+.home-first,
+.home-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+}
+.home-card {
+  box-sizing: border-box;
+  min-width: 10.5rem;
+  height: auto;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-size: var(--text-body);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  box-shadow:
+    var(--shadow-1),
+    inset 0 0 0 var(--hairline) var(--line);
+  transition:
+    background var(--dur-2) var(--ease),
+    box-shadow var(--dur-3) var(--ease),
+    translate var(--dur-3) var(--ease),
+    scale var(--dur-1) var(--ease);
+}
+.home-card-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+  background: var(--alpha-1);
+  color: var(--ink-2);
+  display: inline-grid;
+  place-items: center;
+  transition:
+    background var(--dur-2) var(--ease),
+    color var(--dur-2) var(--ease);
+}
+.home-card-icon svg {
+  width: 15px;
+  height: 15px;
+}
+.home-card-label {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+.home-card-arrow {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+  transition:
+    color var(--dur-2) var(--ease),
+    translate var(--dur-3) var(--ease);
+  transition-timing-function: var(--ease), var(--ease-spring);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-card:hover {
+    background: var(--surface-3);
+    box-shadow:
+      var(--shadow-2),
+      inset 0 0 0 var(--hairline) var(--line-strong);
+    translate: 0 -1px;
+  }
+  .home-card:hover .home-card-icon {
+    background: var(--alpha-2);
+    color: var(--ink);
+  }
+  .home-card:hover .home-card-arrow {
+    color: var(--ink);
+    translate: 3px 0;
+  }
+}
+.home-card:active {
+  scale: 0.985;
+}
+.home-card:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Staggered, weightless entrance animation: defaults to final static state and opts in under no-preference.
+   Opacity uses smooth exponential ease while spatial rise uses spring easing so opacity never overshoots. */
+@media (prefers-reduced-motion: no-preference) {
+  .home-reveal {
+    animation:
+      home-fade var(--dur-4) var(--ease) both,
+      home-rise var(--dur-5) var(--ease) both;
+    animation-timing-function: var(--ease), var(--ease-spring);
+  }
+  .home-reveal-1 {
+    animation-delay: 0ms, 0ms;
+  }
+  .home-reveal-2 {
+    animation-delay: 45ms, 45ms;
+  }
+  .home-reveal-3 {
+    animation-delay: 90ms, 90ms;
+  }
+  .home-reveal-4 {
+    animation-delay: 130ms, 130ms;
+  }
+  @supports not (animation-timing-function: linear(0, 1)) {
+    .home-reveal {
+      animation-timing-function: var(--ease), var(--ease);
+    }
+    .home-card-arrow {
+      transition-timing-function: var(--ease), var(--ease);
+    }
+  }
+}
+@keyframes home-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes home-rise {
+  from {
+    translate: 0 10px;
+  }
+  to {
+    translate: 0 0;
+  }
+}
+/* Home's own bottom input, decoupled from Reader's .composer so DOM queries and CSS anchors never collide */
+.home-composer {
+  position: relative;
+  z-index: 2;
+  flex: none;
+  height: calc(var(--control) + 2 * var(--space-2) + var(--composer-foot));
+}
+.home-composer .home-box {
+  position: absolute;
+  inset: auto var(--composer-side) var(--composer-foot);
+  max-width: var(--measure);
+  margin: 0 auto;
+  background: var(--surface-3);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-composer);
+  padding: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  transition:
+    box-shadow var(--dur-3) var(--ease),
+    translate var(--dur-3) var(--ease);
+}
+.home-composer .home-box:focus-within {
+  box-shadow: var(--shadow-composer-focus);
+  translate: 0 -1px;
+}
+.home-composer .home-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+.home-composer textarea {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: var(--control);
+  max-height: 35dvh;
+  padding: calc((var(--control) - 1lh) / 2) var(--space-2);
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: var(--text-field);
+  line-height: 20px;
+  color: var(--ink);
+  resize: none;
+  outline: none;
+  field-sizing: content;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--alpha-3) transparent;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--space-1),
+    #000 calc(100% - var(--space-1)),
+    transparent
+  );
+}
+.home-composer textarea::placeholder {
+  color: var(--ink-3);
+  opacity: 1;
+}
+@media (min-width: 72rem) {
+  .home-page {
+    inset: 0; /* no strip on the canvas: home fills the stage card */
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-card:hover,
+  .home-card:hover .home-card-arrow,
+  .home-nav-prev:hover svg,
+  .home-nav-next:hover svg,
+  .home-composer .home-box:focus-within {
+    translate: 0 0;
+  }
+}
