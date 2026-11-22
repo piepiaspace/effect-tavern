@@ -2,16 +2,21 @@
 // and capabilities, the request drawer's round trip, the routing pairs.
 import assert from "node:assert/strict"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
+import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   applied,
   capOf,
   correctedModels,
   formatOf,
+  hasCompatOverrides,
+  hatConflicts,
   pairKey,
   pairOf,
   requestOf,
   staleModels,
   stalePair,
+  withCapability,
+  withDeliver,
   without,
   withModels,
   withoutModels,
@@ -58,8 +63,62 @@ assert.equal(formatOf(p, { id: "a", format: "anthropic" }), "anthropic")
 assert.equal(capOf(p, { id: "a" }, "prefill"), true)
 assert.equal(capOf(p, { id: "a", format: "anthropic" }, "prefill"), false)
 assert.equal(capOf(p, { id: "a", format: "anthropic", capabilities: { prefill: true } }, "prefill"), true)
+assert.equal(capOf(p, { id: "c", format: "gemini" }, "prefill"), false)
+assert.equal(capOf(p, { id: "c", format: "gemini", capabilities: { prefill: true } }, "prefill"), true)
+assert.equal(capOf(p, { id: "a" }, "structured"), "schema")
+assert.deepEqual(withCapability(p, { id: "a" }, "structured", "tool"), {
+  id: "a",
+  capabilities: { structured: "tool" },
+})
+assert.deepEqual(withCapability(p, { id: "a" }, "structured", "json"), {
+  id: "a",
+  capabilities: { structured: "json" },
+})
+assert.deepEqual(withCapability(p, { id: "a", capabilities: { structured: "tool" } }, "structured", "schema"), {
+  id: "a",
+})
+assert.equal(hasCompatOverrides(p, { id: "a" }), false)
+assert.equal(hasCompatOverrides(p, { id: "a", capabilities: { structured: "tool" } }), true)
+assert.equal(hasCompatOverrides(p, { id: "a", capabilities: { structured: "json" } }), true)
+assert.equal(hasCompatOverrides(p, { id: "c", format: "gemini" }), false)
+assert.equal(hasCompatOverrides(p, { id: "c", format: "gemini", capabilities: { prefill: true } }), true)
 assert.deepEqual(without({ id: "a", hat: "h" }, "hat", undefined), { id: "a" })
 assert.deepEqual(without({ id: "a" }, "effort", "high"), { id: "a", effort: "high" })
+
+// Hat prose delivery (`text` omitted, `tool` explicit) and narrate routing conflicts
+const baseHat: Hat = { id: "h1", name: "Base", narrate: { head: [{ role: "system", text: "Go" }] } }
+const toolHat = withDeliver(baseHat, "tool")
+assert.equal(toolHat.deliver, "tool")
+const resetHat = withDeliver(toolHat, "text")
+assert.equal("deliver" in resetHat, false)
+assert.deepEqual(resetHat, baseHat)
+
+const tailHat: Hat = { id: "h-tail", name: "Tail", narrate: { tail: [{ role: "assistant", text: "Sure," }] } }
+const toolTailHat: Hat = { ...tailHat, id: "h-tool-tail", deliver: "tool" }
+const conflictProv: Provider = {
+  ...p,
+  models: [
+    { id: "ok" },
+    { id: "no-prefill", capabilities: { prefill: false } },
+    { id: "no-tools", capabilities: { tools: false } },
+  ],
+}
+const allHats = [baseHat, toolHat, tailHat, toolTailHat]
+assert.deepEqual(hatConflicts([conflictProv], allHats, { provider: "p", model: "ok" }, "h-tail"), [])
+assert.deepEqual(hatConflicts([conflictProv], allHats, { provider: "p", model: "no-prefill" }, "h-tail"), ["prefill"])
+assert.deepEqual(hatConflicts([conflictProv], allHats, { provider: "p", model: "ok" }, "h1"), [])
+assert.deepEqual(hatConflicts([conflictProv], allHats, { provider: "p", model: "no-tools" }, "h1"), [])
+assert.deepEqual(
+  hatConflicts([conflictProv], [{ ...toolHat, id: "h-tool" }], { provider: "p", model: "no-tools" }, "h-tool"),
+  ["deliver_tools"],
+)
+assert.deepEqual(hatConflicts([conflictProv], allHats, { provider: "p", model: "ok" }, "h-tool-tail"), [
+  "deliver_prefill",
+])
+assert.deepEqual(hatConflicts([conflictProv], allHats, { provider: "p", model: "no-tools" }, "h-tool-tail"), [
+  "deliver_prefill",
+  "deliver_tools",
+])
 
 // The request round trip: a bare provider reads as the defaults and goes back unchanged
 const bare = requestOf(p)

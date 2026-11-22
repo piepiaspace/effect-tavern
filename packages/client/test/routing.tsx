@@ -25,12 +25,19 @@ const provider: Provider = {
   models: [
     { id: "m-main", capabilities: { prefill: false } },
     { id: "m-author", capabilities: { prefill: true } },
+    { id: "m-notools", capabilities: { tools: false } },
   ],
 }
 registry.set(providers, [provider])
 registry.set(hats, [
   { id: "hat-claude", name: "Claude 续写", narrate: { tail: [{ role: "assistant", text: "好的，" }] } },
   { id: "hat-gemini", name: "Gemini 引导", narrate: { head: [{ role: "system", text: "继续" }] } },
+  {
+    id: "hat-tool",
+    name: "工具续写",
+    deliver: "tool",
+    narrate: { tail: [{ role: "assistant", text: "开场" }] },
+  },
 ])
 registry.set(routing, { default: { provider: "p", model: "m-main" } })
 openSettings("routing")
@@ -91,6 +98,29 @@ const run = async () => {
     document.querySelectorAll(".setting-card > .warn").length === 1,
     "prefill conflict warning shown on main card when model has prefill=false and hat ends in assistant",
   )
+
+  // Tool-delivery conflict warnings: assistant prefill conflict + tools=false conflict stacked cleanly
+  await pick("默认提示词模板", "工具续写")
+  const toolPrefillWarns = [...document.querySelectorAll<HTMLElement>(".setting-card > .warn")]
+  check(
+    toolPrefillWarns.length === 1 && toolPrefillWarns[0]?.textContent?.includes("不能以助手消息预填结尾"),
+    `expected tool prefill conflict warning, got ${toolPrefillWarns.map((w) => w.textContent).join(" | ")}`,
+  )
+  await pick("主模型", "Relay · m-notools")
+  const bothWarns = [...document.querySelectorAll<HTMLElement>(".setting-card > .warn")]
+  check(
+    bothWarns.length === 2 &&
+      bothWarns[0]?.textContent?.includes("不能以助手消息预填结尾") &&
+      bothWarns[1]?.textContent?.includes("不支持工具调用"),
+    `expected both tool delivery warnings, got ${bothWarns.map((w) => w.textContent).join(" | ")}`,
+  )
+  if (bothWarns.length === 2) {
+    const r0 = bothWarns[0].getBoundingClientRect()
+    const r1 = bothWarns[1].getBoundingClientRect()
+    check(r1.top >= r0.bottom - 1, `stacked warnings must not overlap (${r0.bottom} vs ${r1.top})`)
+  }
+  await pick("主模型", "Relay · m-main")
+  await pick("默认提示词模板", "Claude 续写")
 
   const toggle = document.querySelector<HTMLButtonElement>('button.switch[aria-label="按阶段指定模型"]')
   check(toggle, "missing 按阶段指定模型 switch")
@@ -171,6 +201,29 @@ const run = async () => {
   openSettings("templates", "hat-gemini")
   await quiet()
   check(document.querySelector(".settings")?.getAttribute("data-pane") === "detail", "a template link opens its detail")
+
+  // Hat prose delivery selector (`text` omitted vs `tool` saved)
+  check(triggerOf("正文交付")?.querySelector(".label")?.textContent === "纯文本", "hat deliver starts on 纯文本")
+  hatResponse = Promise.resolve(
+    Response.json(registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, deliver: "tool" } : h))),
+  )
+  await pick("正文交付", "工具调用 (narrative)")
+  check(hatWrites.at(-1)?.deliver === "tool", `expected deliver=tool written, got ${JSON.stringify(hatWrites.at(-1))}`)
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry.get(hats).map((h) => {
+        if (h.id !== "hat-gemini") return h
+        const { deliver: _, ...rest } = h
+        return rest
+      }),
+    ),
+  )
+  await pick("正文交付", "纯文本")
+  check(
+    hatWrites.at(-1) !== undefined && !("deliver" in hatWrites.at(-1)!),
+    `expected deliver omitted when switched back to text, got ${JSON.stringify(hatWrites.at(-1))}`,
+  )
+  hatWrites.length = 0
   const field = document.querySelector<HTMLTextAreaElement>(".msg-card textarea.field")!
   const preview = [...document.querySelectorAll<HTMLButtonElement>(".detail-header .btn")].find((b) =>
     b.textContent?.includes("请求预览"),

@@ -732,6 +732,12 @@
   gap: var(--space-3);
   min-height: var(--control-lg);
 }
+.inline-row > .select,
+.block-title .right > .select {
+  flex: none;
+  width: auto;
+  max-width: 100%;
+}
 
 /* effort horizontal slider (@ui-sdk/solid/slider): five bounded levels on one rail; unset hides thumb/fill */
 .effort-reset {
@@ -1053,7 +1059,6 @@
 }
 .routing-grid .setting-card > .warn {
   grid-column: 1 / -1;
-  grid-row: 3;
 }
 /* a phone: the stages are one surface, a row each, the name beside its model menu, the ghost template chip tucked under it */
 @media (width < 72rem) {

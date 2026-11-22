@@ -2,7 +2,7 @@
 // Outline-first, calm 2-column layout: left shows ordered narrate messages, cache breakpoints, role rewrites,
 // prefill conflicts, and clickable source attribution (with collapsed omitted & resources sections);
 // right holds restrained sandbox controls (opening, fields including hidden, player input) or story branch node picker.
-import type { PreviewNarrateResult, ResourceEntryView } from "@effect-tavern/runtime/src/preview.ts"
+import type { PreviewDiagnostic, PreviewNarrateResult, ResourceEntryView } from "@effect-tavern/runtime/src/preview.ts"
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import type { OmittedReason, SourceRef } from "@effect-tavern/runtime/src/trace.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
@@ -67,6 +67,15 @@ const residencyLabel = (s: ResourceEntryView["residencyStatus"]): string => {
       return t("promptTree.resPermanent")
     case "delivered_this_turn":
       return t("promptTree.resThisTurn")
+  }
+}
+
+const diagnosticText = (d: PreviewDiagnostic): string => {
+  switch (d.code) {
+    case "deliver_needs_tools":
+      return t("promptTree.diagDeliverNeedsTools")
+    default:
+      return d.message
   }
 }
 
@@ -408,6 +417,7 @@ export const PromptTreePage = () => {
     if (c.providerName) parts.push(c.providerName)
     if (c.modelId) parts.push(c.modelId)
     if (c.format) parts.push(c.format)
+    if (c.deliver === "tool") parts.push(t("promptTree.deliverTool"))
     return parts.join(" / ") || c.routingSource || ""
   }
 
@@ -548,6 +558,9 @@ export const PromptTreePage = () => {
                   <Show when={r().connection.hatName}>
                     {(hn) => <span class="pt-meta-item">{t("promptTree.hatActive", { name: hn() })}</span>}
                   </Show>
+                  <Show when={(r().connection.deliver ?? mem().candidateHat?.deliver) === "tool"}>
+                    <span class="pill soft pt-deliver-chip">{t("promptTree.deliverTool")}</span>
+                  </Show>
                   <Show when={r().mode === "sandbox"}>
                     <span class="pt-meta-item muted">
                       {r().upstream.lookup.status === "simulated_assumed"
@@ -588,7 +601,7 @@ export const PromptTreePage = () => {
                       {(d) => (
                         <div class={{ "pt-alert": true, [d().level]: true }}>
                           <Warning aria-hidden="true" />
-                          <span>{d().message}</span>
+                          <span>{diagnosticText(d())}</span>
                         </div>
                       )}
                     </For>

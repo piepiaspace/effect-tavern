@@ -74,7 +74,18 @@ globalThis.fetch = tracked(async (input, init) => {
   if (req.fields?.score !== undefined) steps.push(req.fields.score)
   await hold
   return Response.json(
-    req.mode === "story" ? storyFor(req.nodeId) : previewNarrate({ ...options, mode: "sandbox", fields: req.fields }),
+    req.mode === "story"
+      ? storyFor(req.nodeId)
+      : previewNarrate({
+          ...options,
+          mode: "sandbox",
+          fields: req.fields,
+          ...(req.candidateHat && { hat: req.candidateHat }),
+          connection: {
+            ...options.connection,
+            ...(req.candidateHat?.deliver === "tool" ? { deliver: "tool" as const, tools: false } : {}),
+          },
+        }),
   )
 })
 
@@ -242,6 +253,26 @@ async function run() {
     if (nodeAborts !== 0) throw Error(`Typing or span selection aborted fetchStoryNodes (${nodeAborts})`)
     nodesGate.resolve()
     holdNodes = undefined
+    await quiet()
+
+    // Tool-delivery Hat surfaces the `narrative` delivery badge and localized `deliver_needs_tools` diagnostic.
+    selectTab(1)
+    patchPromptTreeMemory(1, {
+      candidateHat: {
+        id: "h-tool",
+        name: "Tool Hat",
+        deliver: "tool",
+        narrate: { head: [{ role: "system", text: "Use narrative tool" }] },
+      },
+    })
+    flush()
+    await quiet()
+    if (root.querySelector(".pt-deliver-chip")?.textContent !== t("promptTree.deliverTool"))
+      throw Error("Missing narrative tool delivery badge in Prompt Tree")
+    if (!root.querySelector(".pt-diags")?.textContent?.includes(t("promptTree.diagDeliverNeedsTools")))
+      throw Error("Missing localized deliver_needs_tools diagnostic in Prompt Tree")
+    patchPromptTreeMemory(1, { candidateHat: undefined })
+    flush()
     await quiet()
 
     // A page restored from disk has its tab address but no per-tab preview memory.

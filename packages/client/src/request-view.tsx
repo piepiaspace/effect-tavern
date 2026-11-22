@@ -276,7 +276,10 @@ export const RequestView = (props: RequestViewProps) => {
               <Warning aria-hidden="true" />
               <div class="rv-wire-err-body">
                 <strong>
-                  {t("promptTree.prefillConflictTitle", { n: err().messageIndex + 1, format: err().format })}
+                  {t("promptTree.prefillConflictTitle", {
+                    n: err().messageIndex + 1,
+                    format: err().format ?? "narrative",
+                  })}
                 </strong>
                 <p>{err().message}</p>
               </div>

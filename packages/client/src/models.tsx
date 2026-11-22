@@ -2,13 +2,22 @@
 // about one model, which take only the provider's id and an opener: one model's settings (a draft of its entry,
 // written when the dialog closes) and a model added by id. Every write goes through wire.ts and comes back as the list.
 import type { Effort } from "@effect-tavern/provider/src/call.ts"
-import { DEFAULTS, type Capabilities } from "@effect-tavern/provider/src/capabilities.ts"
+import type { Capabilities } from "@effect-tavern/provider/src/capabilities.ts"
 import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
 import { createSignal, For, Show, onSettled } from "solid-js"
 import { Slider, SliderControl, SliderIndicator, SliderThumb, SliderTrack } from "@ui-sdk/solid/slider"
 import { read } from "./bridge.ts"
 import { FORMAT, Menu, Modal, type Opener, Switch, dialogHandle } from "./controls.tsx"
-import { capOf, FORMATS, formatOf, without, withModels, withoutModels } from "./connections.ts"
+import {
+  capOf,
+  FORMATS,
+  formatOf,
+  hasCompatOverrides,
+  withCapability,
+  without,
+  withModels,
+  withoutModels,
+} from "./connections.ts"
 import { Next } from "./icons.tsx"
 import { providers, registry } from "./store.ts"
 import { putProvider, type Listed } from "./wire.ts"
@@ -54,22 +63,7 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
   /** An override set only where it differs from the format's default. */
   const setCap = <K extends keyof Capabilities>(k: K, v: Capabilities[K]) => {
     const x = p()
-    if (x)
-      change((m) => {
-        const { [k]: _, ...caps } = m.capabilities ?? {}
-        const next = v === DEFAULTS[formatOf(x, m)][k] ? caps : { ...caps, [k]: v }
-        const { capabilities: _c, ...rest } = m
-        return Object.keys(next).length ? { ...rest, capabilities: next } : rest
-      })
-  }
-  const hasCompatOverrides = (x: Provider, m: ModelEntry) => {
-    const fmt = formatOf(x, m)
-    const def = DEFAULTS[fmt]
-    return (
-      capOf(x, m, "prefill") !== def.prefill ||
-      capOf(x, m, "reasoningBack") !== def.reasoningBack ||
-      (fmt === "openai-compatible" && capOf(x, m, "structured") !== def.structured)
-    )
+    if (x) change((m) => withCapability(x, m, k, v))
   }
   const commit = () => {
     const m = entry()
@@ -146,13 +140,17 @@ export const ModelDialog = (props: { id: string; opener: Opener<ModelEntry> }) =
                   </div>
                   <Show when={formatOf(c().x, c().m) === "openai-compatible"}>
                     <div class="inline-row">
-                      <span>{t("models.nativeJsonSchema")}</span>
-                      <Switch
-                        on={capOf(c().x, c().m, "structured") === "schema"}
-                        label={t("models.nativeJsonSchema")}
-                        onFlip={() =>
-                          setCap("structured", capOf(c().x, c().m, "structured") === "schema" ? "json" : "schema")
-                        }
+                      <span>{t("models.structured")}</span>
+                      <Menu
+                        small
+                        label={t("models.structured")}
+                        value={capOf(c().x, c().m, "structured")}
+                        options={[
+                          { value: "schema", label: t("models.structuredSchema") },
+                          { value: "tool", label: t("models.structuredTool") },
+                          { value: "json", label: t("models.structuredJson") },
+                        ]}
+                        onPick={(v) => setCap("structured", v)}
                       />
                     </div>
                   </Show>

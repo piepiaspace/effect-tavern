@@ -6,6 +6,7 @@
 import { DEFAULTS, type Capabilities } from "@effect-tavern/provider/src/capabilities.ts"
 import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
+import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Pair } from "./store.ts"
 import type { Listed } from "./wire.ts"
 
@@ -43,6 +44,55 @@ export const formatOf = (p: Provider, m: ModelEntry): Format => m.format ?? p.de
 /** A capability: the entry's override, else its format's default. */
 export const capOf = <K extends keyof Capabilities>(p: Provider, m: ModelEntry, k: K): Capabilities[K] =>
   (m.capabilities?.[k] as Capabilities[K] | undefined) ?? DEFAULTS[formatOf(p, m)][k]
+/** Sets one capability override, omitting it (and `capabilities` when empty) when equal to the format's default. */
+export const withCapability = <K extends keyof Capabilities>(
+  p: Provider,
+  m: ModelEntry,
+  k: K,
+  v: Capabilities[K],
+): ModelEntry => {
+  const { [k]: _, ...caps } = m.capabilities ?? {}
+  const next = v === DEFAULTS[formatOf(p, m)][k] ? caps : { ...caps, [k]: v }
+  const { capabilities: _c, ...rest } = m
+  return Object.keys(next).length ? { ...rest, capabilities: next } : rest
+}
+/** Whether any compatibility control shown in ModelDialog differs from the model's format default. */
+export const hasCompatOverrides = (p: Provider, m: ModelEntry): boolean => {
+  const fmt = formatOf(p, m)
+  const def = DEFAULTS[fmt]
+  return (
+    capOf(p, m, "prefill") !== def.prefill ||
+    capOf(p, m, "reasoningBack") !== def.reasoningBack ||
+    (fmt === "openai-compatible" && capOf(p, m, "structured") !== def.structured)
+  )
+}
+/** Sets a Hat's prose delivery mode, omitting `deliver` when `"text"` so default Hats stay minimal. */
+export const withDeliver = (h: Hat, deliver: "text" | "tool"): Hat => {
+  const { deliver: _, ...rest } = h
+  return deliver === "tool" ? { ...rest, deliver: "tool" } : rest
+}
+export type HatConflict = "prefill" | "deliver_prefill" | "deliver_tools"
+/** Narrate routing conflicts between an effective Hat and its paired model connection. */
+export const hatConflicts = (
+  providers: readonly Provider[],
+  hats: readonly Hat[],
+  pair: Pair | undefined,
+  hatId: string | undefined,
+): HatConflict[] => {
+  if (!hatId) return []
+  const h = hats.find((x) => x.id === hatId)
+  if (!h) return []
+  const endsInAssistant = h.narrate?.tail?.at(-1)?.role === "assistant"
+  const p = pair ? providers.find((x) => x.id === pair.provider) : undefined
+  const m = pair && p ? p.models.find((x) => x.id === pair.model) : undefined
+  if (h.deliver === "tool") {
+    const out: HatConflict[] = []
+    if (endsInAssistant) out.push("deliver_prefill")
+    if (p && m && !capOf(p, m, "tools")) out.push("deliver_tools")
+    return out
+  }
+  return endsInAssistant && p && m && !capOf(p, m, "prefill") ? ["prefill"] : []
+}
 /** The entry with one key set, or removed when the value is undefined. */
 export const without = <K extends Exclude<keyof ModelEntry, "id">>(
   m: ModelEntry,

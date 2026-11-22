@@ -6,10 +6,12 @@ import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import { createAgent } from "@ui-sdk/solid/agent"
 import { createSignal, flush } from "solid-js"
 import { cardView } from "@effect-tavern/runtime/src/session.ts"
+import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
 import { Composer } from "../src/composer.tsx"
 import { CardPage } from "../src/card.tsx"
+import { ModelDialog } from "../src/models.tsx"
 import { Sidebar } from "../src/side.tsx"
-import { cards, composition, locals, personas, stories, tabs } from "../src/store.ts"
+import { cards, composition, locals, personas, providers, stories, tabs } from "../src/store.ts"
 import { ask, Confirm, Drawer, dialogHandle, Menu, Modal, Prompt, Stepper, Switch, Tick } from "../src/controls.tsx"
 import { openPicker, StoryDialogs } from "../src/dialogs.tsx"
 import { Edge } from "../src/edge.tsx"
@@ -28,9 +30,25 @@ bridge.begin()
 if (locale() !== "zh-CN") flip()
 const post = globalThis.fetch
 const requests: string[] = [] // the bodies the client posts
+const compatProvider: Provider = {
+  id: "compat-prov",
+  name: "Uncut Bridge",
+  enabled: true,
+  defaultFormat: "openai-compatible",
+  endpoints: { "openai-compatible": { url: "https://bridge.example/v1" } },
+  models: [{ id: "uncut-model" }],
+}
+let savedModels: readonly ModelEntry[] = compatProvider.models
+registry.set(providers, [compatProvider])
 globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
   if (typeof init?.body === "string") requests.push(init.body)
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  if (init?.method === "PUT" && url.includes("/providers/compat-prov")) {
+    const next = { id: "compat-prov", ...JSON.parse(typeof init.body === "string" ? init.body : "{}") } as Provider
+    savedModels = next.models
+    return Response.json([next])
+  }
+  if (url.endsWith("/routing")) return Response.json({})
   // the composer's menu reads the player's catalog: one entry filed under a pack, one of the card's
   if (url.includes("/context?"))
     return Response.json({
@@ -87,6 +105,7 @@ let ticked = false
 const sheet = dialogHandle()
 const prompt = dialogHandle()
 const modal = dialogHandle()
+let openModel: ((m: ModelEntry) => void) | undefined
 const [drawerOpen, setDrawerOpen] = createSignal(false)
 let left = 0 // the modal's onClose
 // the stage's edge over a canvas at the window's left: what the shell would keep, and every width the track showed
@@ -188,6 +207,7 @@ render(
       <Modal controller={modal} title="模型设置" onClose={() => left++}>
         <div class="modal-body">正文</div>
       </Modal>
+      <ModelDialog id="compat-prov" opener={(fn) => (openModel = fn)} />
       <div id="native-pop" popover>
         <button type="button">版本一</button>
       </div>
@@ -454,6 +474,25 @@ const run = async () => {
   modal.close()
   await quiet()
   check(!document.querySelector(".modal") && left === 1, `the modal's onClose runs once it has left (${left})`)
+
+  // ModelDialog 3-way structured output menu (`schema` | `tool` | `json`) via @ui-sdk agent bridge
+  openModel?.({ id: "uncut-model" })
+  await quiet()
+  const compatDetails = document.querySelector<HTMLDetailsElement>(".model-compat")
+  check(compatDetails, "ModelDialog mounts .model-compat")
+  if (compatDetails) compatDetails.open = true
+  await quiet()
+  for (const e of agent.snapshot().filter((e) => !e.offPage)) check(e.label, `${e.component} ${e.ref} has no name`)
+  const pickStructured = await agent.act({ steps: [{ ref: "结构化输出", action: "setValue", args: ["工具调用"] }] })
+  await quiet()
+  check(pickStructured.ok, `structured menu setValue: ${pickStructured.error?.message}`)
+  check(!!document.querySelector(".model-compat .compat-dot"), "picking structured=tool marks compat override dot")
+  const closeModel = await agent.act({ steps: [{ ref: "uncut-model", action: "setOpen", args: [false] }] })
+  await quiet()
+  check(
+    closeModel.ok && savedModels[0]?.capabilities?.structured === "tool",
+    `closing ModelDialog commits structured=tool: ${JSON.stringify(savedModels)}`,
+  )
 
   const trigger = document.getElementById("drawer-trigger")!
   trigger.focus()

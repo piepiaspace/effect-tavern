@@ -55,6 +55,13 @@ const savedHatRequest = buildPreviewRequest(getPromptTreeMemory(10)!)
 assert.equal(savedHatRequest.hatId, draftHat.id)
 assert.equal(savedHatRequest.candidateHat, undefined)
 
+// Candidate Hat with `deliver: "tool"` carries `deliver` into PreviewRequest and triggers `deliver_needs_tools` when `tools: false`
+const toolCandidate: Hat = { ...draftHat, deliver: "tool" }
+openPromptTree({ candidateHat: toolCandidate })
+const toolReq = buildPreviewRequest(getPromptTreeMemory(10)!)
+assert.equal(toolReq.candidateHat?.deliver, "tool")
+openPromptTree({ hatId: draftHat.id, mode: "sandbox" })
+
 // 4. Source destination mapping & disabled reasons
 assert.deepEqual(sourceDestination({ kind: "harness", builtIn: true }), {
   ok: false,
@@ -242,4 +249,25 @@ assert.equal(scrubbedExplicit.traces[0].spans[1].source.whenText, undefined)
 assert.equal(scrubbedExplicit.traces[0].spans[1].source.whenResult, undefined)
 assert.equal(scrubbedExplicit.traces[0].spans[1].source.whenDetails, undefined)
 assert.deepEqual(scrubbedExplicit.omitted, [publicOmitted])
+
+const toolDiagPreview = previewNarrate({
+  mode: "sandbox",
+  card: {
+    id: "sandbox",
+    frame: [],
+    fiction: [],
+    rules: { fields: [], actions: [] },
+    greetings: [],
+    guard: [],
+    lore: [],
+  },
+  hat: toolCandidate,
+  connection: { prefill: false, reasoningBack: false, tools: false },
+  rows: {},
+})
+assert.equal(toolDiagPreview.connection.deliver, "tool")
+assert.equal(
+  toolDiagPreview.diagnostics.some((d) => d.code === "deliver_needs_tools"),
+  true,
+)
 console.log("prompt-tree ok")

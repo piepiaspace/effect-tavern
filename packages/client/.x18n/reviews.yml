@@ -23,6 +23,8 @@ sources:
     en: 71011493da568
   models.prefill:
     en: 1da8a7b35d5211
+  models.structured:
+    en: 16fdba221f1e78
   packs.askNarrateCorrection:
     en: 75fdcffdadaa0
   packs.askNarrateRole:

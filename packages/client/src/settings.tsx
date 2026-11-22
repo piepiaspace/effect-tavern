@@ -29,7 +29,7 @@ import {
   Trash,
   User,
 } from "./icons.tsx"
-import { capOf, pairKey, pairOf, stalePair } from "./connections.ts"
+import { hatConflicts, pairKey, pairOf, stalePair, withDeliver, type HatConflict } from "./connections.ts"
 import { Cards } from "./cards.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
@@ -158,6 +158,16 @@ const STAGES: [Stage, Key][] = [
   ["polish", "settings.stagePolish"],
   ["author", "settings.stageAuthor"],
 ]
+const conflictText = (c: HatConflict): string => {
+  switch (c) {
+    case "prefill":
+      return t("settings.hatNeedsPrefill")
+    case "deliver_prefill":
+      return t("settings.hatDeliverNoPrefill")
+    case "deliver_tools":
+      return t("settings.hatDeliverNeedsTools")
+  }
+}
 
 /** 预检: whether lookup and check ask the decision model first (DecisionConfig.enabled). The arrow opens the Decision row on 模型服务;
  *  with no config saved the switch is off. A key is not required (a keyless service is legal), so it is not the test. */
@@ -240,15 +250,6 @@ const Routing = (props: { onDecision: () => void }) => {
     const v = route().stageHats?.[s]
     return v === null ? undefined : (v ?? route().hat)
   }
-  /** True when narrate's effective hat ends in an assistant message on a model with prefill disabled. */
-  const prefillConflict = (pair: Pair | undefined, hatId: string | undefined) => {
-    if (!pair || !hatId) return false
-    const h = hatList().find((x) => x.id === hatId)
-    if (h?.narrate?.tail?.at(-1)?.role !== "assistant") return false
-    const p = list().find((x) => x.id === pair.provider)
-    const m = p?.models.find((x) => x.id === pair.model)
-    return !!p && !!m && !capOf(p, m, "prefill")
-  }
   return (
     <section class="detail-card" aria-label={t("settings.routing")}>
       <header class="detail-header">
@@ -285,9 +286,9 @@ const Routing = (props: { onDecision: () => void }) => {
                 onPick={(v) => setMainHat(v || undefined)}
               />
             </div>
-            <Show when={prefillConflict(route().default, route().hat)}>
-              <div class="warn">{t("settings.hatNeedsPrefill")}</div>
-            </Show>
+            <For each={hatConflicts(list(), hatList(), route().default, route().hat)}>
+              {(c) => <div class="warn">{conflictText(c)}</div>}
+            </For>
           </div>
         </div>
         <div class="block">
@@ -338,13 +339,17 @@ const Routing = (props: { onDecision: () => void }) => {
                           />
                         </div>
                       </Show>
-                      <Show
-                        when={
-                          stage() === "narrate" &&
-                          prefillConflict(route().stages?.narrate ?? route().default, effectiveHat("narrate"))
-                        }
-                      >
-                        <div class="warn">{t("settings.hatNeedsPrefill")}</div>
+                      <Show when={stage() === "narrate"}>
+                        <For
+                          each={hatConflicts(
+                            list(),
+                            hatList(),
+                            route().stages?.narrate ?? route().default,
+                            effectiveHat("narrate"),
+                          )}
+                        >
+                          {(c) => <div class="warn">{conflictText(c)}</div>}
+                        </For>
                       </Show>
                     </div>
                   )
@@ -416,6 +421,13 @@ const Templates = (props: Pane) => {
     const next = withSlot(h, s, f([...slotOf(h, s)]))
     setDraft(next)
     if (commit) void save(next)
+  }
+  const setDeliver = (v: "text" | "tool") => {
+    const h = hat()
+    if (!h) return
+    const next = withDeliver(h, v)
+    setDraft(next)
+    void save(next)
   }
   const previewHat = async () => {
     const origin = activeOf(registry.get(tabs))
@@ -499,6 +511,23 @@ const Templates = (props: Pane) => {
                     {failure()?.message}
                   </p>
                 </Show>
+                <div class="block">
+                  <div class="block-title">
+                    <h3>{t("settings.hatDeliver")}</h3>
+                    <div class="right">
+                      <Menu
+                        small
+                        label={t("settings.hatDeliver")}
+                        value={h().deliver ?? "text"}
+                        options={[
+                          { value: "text", label: t("settings.hatDeliverText") },
+                          { value: "tool", label: t("settings.hatDeliverTool") },
+                        ]}
+                        onPick={(v) => setDeliver(v)}
+                      />
+                    </div>
+                  </div>
+                </div>
                 <For each={SLOTS} keyed={(s) => s[0]}>
                   {(s) => (
                     <SlotEditor
