@@ -325,6 +325,7 @@ const Step = (props: {
                     messages={c().msgs}
                     traces={c().trace}
                     wireError={c().wireError}
+                    deliver={c().deliver}
                     q={props.q}
                     resolveDestination={(source: SourceRef) => {
                       const curCard = registry.get(card)?.id ?? activeOf(registry.get(tabs)).card

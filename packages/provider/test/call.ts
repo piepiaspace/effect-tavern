@@ -275,6 +275,65 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   await Effect.runPromise(object(bridgeModel("anthropic/claude-sonnet-4-5", "off"), Check, msgs, { name: "check" }))
   assert.deepEqual(sentBodies[2].tool_choice, { type: "function", function: { name: "check" } })
 
+  // Native anthropic and gemini connections take the same single-tool path: thinking Claude gets "auto", gemini is forced.
+  const nativeSent: Record<string, unknown>[] = []
+  const nativeModel = (format: "anthropic" | "gemini", effort: "off" | "high") =>
+    bind(
+      {
+        id: `native/${format}`,
+        format,
+        endpoint: {
+          url: format === "anthropic" ? "https://api.anthropic.com" : "https://generativelanguage.googleapis.com",
+          resolution: "format-default",
+        },
+        credential: { type: "api_key", key: "sk-native0123456789abcdef" },
+        model: format === "anthropic" ? "claude-sonnet-4-5" : "gemini-2.5-flash",
+        effort,
+        capabilities: { structured: "tool" },
+      },
+      {
+        fetch: async (_input, init) => {
+          nativeSent.push(JSON.parse(init?.body as string) as Record<string, unknown>)
+          const args = { fired: ["clue"], ok: true }
+          return Response.json(
+            format === "anthropic"
+              ? {
+                  id: "msg_1",
+                  type: "message",
+                  role: "assistant",
+                  model: "claude-sonnet-4-5",
+                  content: [{ type: "tool_use", id: "toolu_1", name: "check", input: args }],
+                  stop_reason: "tool_use",
+                  usage: { input_tokens: 10, output_tokens: 5 },
+                }
+              : {
+                  candidates: [
+                    {
+                      content: { role: "model", parts: [{ functionCall: { name: "check", args } }] },
+                      finishReason: "STOP",
+                    },
+                  ],
+                  usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 2, totalTokenCount: 6 },
+                },
+          )
+        },
+      },
+    )
+  const anthStructured = await Effect.runPromise(
+    object(nativeModel("anthropic", "high"), Check, msgs, { name: "check" }),
+  )
+  assert.deepEqual(anthStructured.value, { fired: ["clue"], ok: true })
+  assert.deepEqual(nativeSent[0].tool_choice, { type: "auto" })
+  assert.equal((nativeSent[0].tools as Array<{ name: string }>)[0].name, "check")
+  await Effect.runPromise(object(nativeModel("anthropic", "off"), Check, msgs, { name: "check" }))
+  assert.deepEqual(nativeSent[1].tool_choice, { type: "tool", name: "check" })
+  const gemStructured = await Effect.runPromise(object(nativeModel("gemini", "off"), Check, msgs, { name: "check" }))
+  assert.deepEqual(gemStructured.value, { fired: ["clue"], ok: true })
+  assert.deepEqual(nativeSent[2].toolConfig, {
+    functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["check"] },
+  })
+  assert.equal((nativeSent[2].generationConfig as Record<string, unknown>)?.responseSchema, undefined)
+
   // Fallback to JSON text when "auto" (or a sloppy relay) answers in text rather than a tool call
   const jsonFallbackModel = {
     ...fake(() => ({ text: '```json\n{"fired":["secret"],"ok":false}\n```', rawFinishReason: "STOP" })),

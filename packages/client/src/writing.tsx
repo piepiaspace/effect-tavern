@@ -10,7 +10,7 @@ import { unfilled } from "@effect-tavern/runtime/src/names.ts"
 import { createSignal, For, Show } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
-import { Modal, newId, Switch, dialogHandle } from "./controls.tsx"
+import { blurField, Modal, newId, Switch, dialogHandle } from "./controls.tsx"
 import { Back, Next, Prev, Stack, Snippets as Plus, User } from "./icons.tsx"
 import {
   cardNameKeys,
@@ -103,12 +103,6 @@ const DROPPED: Record<Resolved["dropped"][number]["kind"], Key> = {
   name: "writing.droppedName",
   product: "writing.droppedProduct",
   entry: "writing.droppedEntry",
-}
-
-/** Commit any focused field before navigating: iOS WebKit taps a button without blurring the active input. */
-const blurField = () => {
-  const field = document.activeElement
-  if (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) field.blur()
 }
 
 export const WritingPage = () => {

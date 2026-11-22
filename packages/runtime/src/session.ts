@@ -138,6 +138,7 @@ export type Event =
       fault?: Fault
       trace?: readonly MessageTrace[]
       wireError?: WireErrorInfo
+      deliver?: "tool" // narrate's prose asked through the narrative tool (the worn hat's `deliver`)
     }
   | ({ kind: "change" } & Change) // the log moved: a node landed or was amended, nodes dropped, and where head is now
 /** A narrate block's text as it streams, beside the provider's `text-delta`: the block `<<aside>> <id>` opened. */
@@ -164,7 +165,7 @@ const failedCall = (
   model: string | undefined,
   t0: number,
   e: unknown,
-  meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage },
+  meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage; deliver?: "tool" },
 ) => {
   const errMeta = e instanceof ModelError ? e : undefined
   return {
@@ -177,6 +178,7 @@ const failedCall = (
     ...(model && { model }),
     ...(meta?.trace && { trace: meta.trace }),
     ...(meta?.wireError && { wireError: meta.wireError }),
+    ...(meta?.deliver && { deliver: meta.deliver }),
     fault: readFault(e),
   } satisfies Event
 }
@@ -653,7 +655,8 @@ export const makeSession = ({
       yield* emit({ kind: "stage", phase: "narrate" })
       const t0 = Date.now()
       const model = nameOf(M.model)
-      let callMeta: { out?: unknown; usage?: Usage } | undefined
+      const marked = delivery && { deliver: "tool" as const }
+      let callMeta: { out?: unknown; usage?: Usage; deliver?: "tool" } | undefined = marked
       const demanded = yield* Effect.gen(function* () {
         const invalid = checkDeliver(delivery, M, msgs)
         if (invalid) return yield* Effect.fail(invalid)
@@ -663,7 +666,7 @@ export const makeSession = ({
           effort: M.effort,
           ...delivery,
         })
-        callMeta = { out: r.text || undefined, usage: r.usage }
+        callMeta = { out: r.text || undefined, usage: r.usage, ...marked }
         if (r.finishReason === "content-filter") return yield* Effect.fail(contentFilterError(r, model))
         const { reply, blocks } = split(r.parts)
         const text = (blocks[p.id] ?? proseOf(reply)).trim()
@@ -676,6 +679,7 @@ export const makeSession = ({
           usage: r.usage,
           ms: Date.now() - t0,
           ...(model && { model }),
+          ...marked,
         })
         return text
       }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
@@ -1016,11 +1020,18 @@ export const makeSession = ({
         Effect.gen(function* () {
           yield* emit({ kind: "stage", phase: "narrate" })
           const t0 = Date.now()
+          const marked = delivery && { deliver: "tool" as const }
           let callMeta:
-            | { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage }
-            | undefined = meta
+            | {
+                trace?: readonly MessageTrace[]
+                wireError?: WireErrorInfo
+                out?: unknown
+                usage?: Usage
+                deliver?: "tool"
+              }
+            | undefined = { ...meta, ...marked }
           return yield* writing(msgs, live, t0, delivery, meta, priorParts, allowAsideOnlyForCheck, (extra) => {
-            callMeta = { ...meta, ...extra }
+            callMeta = { ...meta, ...marked, ...extra }
           }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
         })
       const writing = (
@@ -1098,6 +1109,7 @@ export const makeSession = ({
             ...(model && { model }),
             ...(meta?.trace && { trace: meta.trace }),
             ...(meta?.wireError && { wireError: meta.wireError }),
+            ...(delivery && { deliver: "tool" as const }),
           })
           return r
         })

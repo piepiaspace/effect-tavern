@@ -795,6 +795,7 @@ const zh = {
     fields: "状态字段",
     resetFields: "重置",
     hiddenField: "隐藏",
+    reviewNotPreviewed: "审阅引导用于审阅阶段，不在此叙事请求中",
     modified: "已修改",
     playerInput: "试填玩家输入",
     playerNote: "场外指导（可选）",

@@ -387,6 +387,7 @@ for (const [phase, demand] of [
     assert.equal(upstreamCalls, 0)
     assert.match(String(Cause.squash(noToolsRes.exit.cause)), /hat deliver: tool requires native tool calling/)
     assert.equal(calls(noToolsRes.events).length, 1)
+    assert.equal(calls(noToolsRes.events)[0]?.deliver, "tool") // the failed call still says how it asked
 
     // Trailing assistant prefill -> fails fast before calling upstream even when M.prefill === true
     toolsCap = true
@@ -407,6 +408,7 @@ for (const [phase, demand] of [
     )
     assert.equal(upstreamCalls, 1)
     assert.equal(calls(lenRes.events).filter((c) => c.phase === "narrate").length, 1)
+    assert.equal(calls(lenRes.events)[0]?.deliver, "tool")
     assert.ok(JSON.stringify(calls(lenRes.events)[0]?.msgs[0]).includes("calling the narrative tool"))
 
     // 3b. End-to-end `deliver: "tool"` over `narrative({ text })` in both streamed `narrate` and `demand` (`block()`)

@@ -107,9 +107,7 @@ const formatActual = (v: unknown): string => {
 
 const wireErrorText = (err: WireErrorInfo, deliver?: "text" | "tool"): string => {
   if (err.code !== "prefill_disallowed") return err.message
-  return deliver === "tool" || /hat deliver: tool/.test(err.message)
-    ? t("promptTree.diagDeliverNoPrefill")
-    : t("promptTree.diagPrefillDisallowed")
+  return deliver === "tool" ? t("promptTree.diagDeliverNoPrefill") : t("promptTree.diagPrefillDisallowed")
 }
 
 const SourceKindGlyph = (props: { kind: SourceKind; title?: string }) => {
