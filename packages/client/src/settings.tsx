@@ -7,7 +7,7 @@
 // four icons. Escape or Back returns to the page that opened it. The page holds only the nav, which section is open,
 // which record each section has picked, and the phone's pane; every edit is one write the server answers with the list
 // it changed (wire.ts), text committing on change (blur or Enter). The shared controls and shells are controls.tsx.
-import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
+import { hatEntryActive, type Hat, type HatEntry } from "@effect-tavern/runtime/src/fragment.ts"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { Dynamic, type JSX } from "@solidjs/web"
 import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js"
@@ -62,12 +62,13 @@ import {
   stalePair,
   toggleMainHat,
   toggleStageHat,
+  validToolInput,
   withDeliver,
   type HatConflict,
   type HatStage,
 } from "./connections.ts"
 import { Cards } from "./cards.tsx"
-import { leaveArea } from "./layer-tabs.tsx"
+import { DEFAULT_ASKS, leaveArea, leaveInput, stageAskLabels, switchAskLabels } from "./layer-tabs.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close } from "./pages.ts"
@@ -217,6 +218,8 @@ const conflictText = (c: HatConflict): string => {
       return t("settings.hatDeliverNoPrefill")
     case "deliver_tools":
       return t("settings.hatDeliverNeedsTools")
+    case "handshake_tools":
+      return t("settings.hatHandshakeNeedsTools")
   }
 }
 
@@ -418,48 +421,111 @@ const Routing = (props: { onDecision: () => void }) => {
 }
 
 // ───────── 提示词模板 ─────────
-type Role = "system" | "user" | "assistant"
-type Slot = "head" | "tail" | "review"
-type Said = { role: Role; text: string }
+type EntryRole = "system" | "user" | "assistant" | "tool"
+type Slot = "lead" | "head" | "turn" | "tail" | "review"
 interface MsgDraft {
   hatId: string
   slot: Slot
   index: number | null
-  role: Role
+  role: EntryRole
   text: string
+  reasoning: string
+  showReasoning: boolean
+  toolName: string
+  toolInput: string
+  toolCallId?: string
 }
-const ROLES: { value: Role; label: string }[] = [
+const ROLES: { value: EntryRole; label: string }[] = [
   { value: "system", label: "System" },
   { value: "user", label: "User" },
   { value: "assistant", label: "Assistant" },
+  { value: "tool", label: "Tool" },
 ]
 const SLOT_KEYS: Record<Slot, Key> = {
+  lead: "settings.slotLead",
   head: "settings.slotHead",
+  turn: "settings.slotTurn",
   tail: "settings.slotTail",
   review: "settings.slotReview",
 }
-const SLOTS: Slot[] = ["head", "tail", "review"]
-const slotOf = (h: Hat, s: Slot): readonly Said[] =>
-  (s === "review" ? h.review?.head : s === "head" ? h.narrate?.head : h.narrate?.tail) ?? []
-const withSlot = (h: Hat, s: Slot, said: Said[]): Hat => {
+const SLOTS: Slot[] = ["lead", "head", "turn", "tail", "review"]
+const slotOf = (h: Hat, s: Slot): readonly HatEntry[] => (s === "review" ? h.review?.head : h.narrate?.[s]) ?? []
+const withSlot = (h: Hat, s: Slot, entries: HatEntry[]): Hat => {
   if (s === "review") {
     const { review: _, ...rest } = h
-    return said.length ? { ...rest, review: { head: said } } : rest
+    return entries.length ? { ...rest, review: { head: entries } } : rest
   }
-  const nextNarrate = { ...h.narrate, [s]: said.length ? said : undefined }
+  const nextNarrate = { ...h.narrate, [s]: entries.length ? entries : undefined }
   const clean = {
+    ...(nextNarrate.lead?.length && { lead: nextNarrate.lead }),
     ...(nextNarrate.head?.length && { head: nextNarrate.head }),
+    ...(nextNarrate.turn?.length && { turn: nextNarrate.turn }),
     ...(nextNarrate.tail?.length && { tail: nextNarrate.tail }),
   }
   const { narrate: _, ...rest } = h
   return Object.keys(clean).length ? { ...rest, narrate: clean } : rest
 }
-const lastNonBlankTailIndex = (said: readonly Said[]): number => {
-  for (let i = said.length - 1; i >= 0; i--) if (said[i]?.text.trim()) return i
+const withAsks = (h: Hat, asks: Record<string, string>): Hat => {
+  const { asks: _, ...rest } = h
+  return Object.keys(asks).length ? { ...rest, asks } : rest
+}
+const lastNonBlankTailIndex = (said: readonly HatEntry[]): number => {
+  for (let i = said.length - 1; i >= 0; i--) {
+    const cur = said[i]
+    if (cur && hatEntryActive(cur)) return i
+  }
   return -1
+}
+const canCommitModal = (d: MsgDraft): boolean => {
+  if (d.role === "tool") return Boolean(d.toolName.trim()) && validToolInput(d.toolInput)
+  if (d.role === "assistant") return Boolean(d.text.trim() || d.reasoning.trim())
+  return Boolean(d.text.trim())
+}
+const draftToEntry = (d: MsgDraft): HatEntry => {
+  if (d.role === "tool") {
+    const toolInput = d.toolInput.trim() || "{}"
+    return {
+      role: "tool",
+      toolName: d.toolName.trim(),
+      toolInput,
+      text: d.text,
+      ...(d.toolCallId?.trim() && { toolCallId: d.toolCallId.trim() }),
+      ...(d.reasoning.trim() && { reasoning: d.reasoning }),
+    }
+  }
+  if (d.role === "assistant") {
+    return {
+      role: "assistant",
+      text: d.text,
+      ...(d.reasoning.trim() && { reasoning: d.reasoning }),
+    }
+  }
+  return { role: d.role, text: d.text }
+}
+const switchEntryRole = (x: HatEntry, role: EntryRole): HatEntry => {
+  if (x.role === role) return x
+  if (role === "tool") {
+    return {
+      role: "tool",
+      toolName: "",
+      toolInput: "{}",
+      text: x.text,
+      ...(x.reasoning && { reasoning: x.reasoning }),
+    }
+  }
+  if (role === "assistant") {
+    return { role: "assistant", text: x.text, ...(x.reasoning && { reasoning: x.reasoning }) }
+  }
+  return { role, text: x.text }
+}
+const withReasoning = (x: HatEntry, reasoning: string): HatEntry => {
+  const { reasoning: _, ...rest } = x
+  return reasoning ? { ...rest, reasoning } : rest
 }
 const sameArray = <T,>(a: readonly T[], b: readonly T[]): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i])
+const samePairs = (a: readonly [string, string][], b: readonly [string, string][]): boolean =>
+  a.length === b.length && a.every(([k, v], i) => b[i]?.[0] === k && b[i]?.[1] === v)
 
 const Templates = (props: Pane) => {
   const list = read(hats)
@@ -472,6 +538,7 @@ const Templates = (props: Pane) => {
   const [editingMsg, setEditingMsg] = createSignal<MsgDraft | null>(null)
   const msgDlg = dialogHandle()
   let modalSlot: Slot = "head"
+  let modalReasonBox: HTMLTextAreaElement | undefined
   let fileInput!: HTMLInputElement
   const hat = () => (draft()?.id === savedHat()?.id ? (draft() ?? savedHat()) : savedHat())
   let mounted = true
@@ -501,10 +568,17 @@ const Templates = (props: Pane) => {
     const pending = untrack(draft)
     if (pending) void save(pending)
   })
-  const editSlot = (s: Slot, f: (said: Said[]) => Said[], commit = true) => {
+  const editSlot = (s: Slot, f: (said: HatEntry[]) => HatEntry[], commit = true) => {
     const h = hat()
     if (!h) return
     const next = withSlot(h, s, f([...slotOf(h, s)]))
+    setDraft(next)
+    if (commit) void save(next)
+  }
+  const editAsks = (asks: Record<string, string>, commit = true) => {
+    const h = hat()
+    if (!h) return
+    const next = withAsks(h, asks)
     setDraft(next)
     if (commit) void save(next)
   }
@@ -523,15 +597,26 @@ const Templates = (props: Pane) => {
     modalSlot = s
     const cur = index === null ? undefined : slotOf(h, s)[index]
     if (index !== null && !cur) return
-    const role: Role = cur ? cur.role : s === "tail" ? "assistant" : slotOf(h, s).length ? "user" : "system"
-    setEditingMsg({ hatId: h.id, slot: s, index, role, text: cur?.text ?? "" })
+    const role: EntryRole = cur ? cur.role : s === "tail" ? "assistant" : slotOf(h, s).length ? "user" : "system"
+    setEditingMsg({
+      hatId: h.id,
+      slot: s,
+      index,
+      role,
+      text: cur?.text ?? "",
+      reasoning: cur?.reasoning ?? "",
+      showReasoning: Boolean(cur?.reasoning),
+      toolName: cur?.role === "tool" ? cur.toolName : "",
+      toolInput: cur?.role === "tool" ? (cur.toolInput ?? "{}") : "{}",
+      toolCallId: cur?.role === "tool" ? cur.toolCallId : undefined,
+    })
     void msgDlg.open()
   }
   const commitModal = () => {
     const d = editingMsg()
-    if (!d || !d.text.trim()) return
+    if (!d || !canCommitModal(d)) return
     if (hat()?.id !== d.hatId) return msgDlg.close()
-    const item: Said = { role: d.role, text: d.text }
+    const item = draftToEntry(d)
     editSlot(d.slot, (l) => (d.index === null ? [...l, item] : l.map((x, i) => (i === d.index ? item : x))))
     msgDlg.close()
   }
@@ -743,6 +828,13 @@ const Templates = (props: Pane) => {
                   </div>
                   <div class="hat-stack">
                     <SlotEditor
+                      label={t("settings.slotLead")}
+                      said={slotOf(h(), "lead")}
+                      onOpenModal={(i) => openModal("lead", i)}
+                      onStage={(f) => editSlot("lead", f, false)}
+                      onEdit={(f) => editSlot("lead", f)}
+                    />
+                    <SlotEditor
                       label={t("settings.slotHead")}
                       said={slotOf(h(), "head")}
                       onOpenModal={(i) => openModal("head", i)}
@@ -756,6 +848,13 @@ const Templates = (props: Pane) => {
                         <Jump aria-hidden="true" />
                       </button>
                     </div>
+                    <SlotEditor
+                      label={t("settings.slotTurn")}
+                      said={slotOf(h(), "turn")}
+                      onOpenModal={(i) => openModal("turn", i)}
+                      onStage={(f) => editSlot("turn", f, false)}
+                      onEdit={(f) => editSlot("turn", f)}
+                    />
                     <SlotEditor
                       label={t("settings.slotTail")}
                       said={slotOf(h(), "tail")}
@@ -772,6 +871,11 @@ const Templates = (props: Pane) => {
                       onStage={(f) => editSlot("review", f, false)}
                       onEdit={(f) => editSlot("review", f)}
                     />
+                    <HatAsksEditor
+                      asks={h().asks}
+                      onStage={(asks) => editAsks(asks, false)}
+                      onEdit={(asks) => editAsks(asks, true)}
+                    />
                   </div>
                 </div>
               </>
@@ -784,46 +888,158 @@ const Templates = (props: Pane) => {
           onClose={() => setEditingMsg(null)}
         >
           <Show when={editingMsg()}>
-            {(d) => (
-              <>
-                <div class="hat-modal-bar">
-                  <Segment
-                    label={t("settings.role")}
-                    value={d().role}
-                    options={ROLES}
-                    onPick={(role) => setEditingMsg({ ...d(), role })}
-                  />
-                </div>
-                <textarea
-                  class="well-full hat-modal-text"
-                  rows="7"
-                  aria-label={t("settings.messageLabel")}
-                  value={d().text}
-                  ref={(el) => requestAnimationFrame(() => el.focus())}
-                  onInput={(e) => setEditingMsg({ ...d(), text: e.currentTarget.value })}
-                  onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.isComposing && d().text.trim()) {
-                      e.preventDefault()
-                      commitModal()
-                    }
-                  }}
-                />
-                <div class="modal-foot">
-                  <Show when={d().index !== null}>
-                    <button type="button" class="btn sm ghost danger" onClick={removeFromModal}>
-                      {t("common.delete")}
-                    </button>
-                    <span class="spacer" />
+            {(d) => {
+              const reasoningShown = () =>
+                (d().role === "assistant" || d().role === "tool") && (Boolean(d().reasoning) || d().showReasoning)
+              const onModalKeyDown = (e: KeyboardEvent) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.isComposing && canCommitModal(d())) {
+                  e.preventDefault()
+                  commitModal()
+                }
+              }
+              return (
+                <>
+                  <div class="hat-modal-bar">
+                    <Segment
+                      label={t("settings.role")}
+                      value={d().role}
+                      options={ROLES}
+                      onPick={(role) => setEditingMsg((prev) => (prev ? { ...prev, role } : prev))}
+                    />
+                    <Show when={d().role === "assistant" || d().role === "tool"}>
+                      <button
+                        type="button"
+                        class="btn sm ghost hat-reason-btn"
+                        aria-pressed={reasoningShown() ? "true" : "false"}
+                        onClick={() => {
+                          const cur = editingMsg()
+                          if (!cur) return
+                          if (cur.reasoning) {
+                            modalReasonBox?.focus()
+                            return
+                          }
+                          const next = !cur.showReasoning
+                          setEditingMsg((prev) => (prev ? { ...prev, showReasoning: next } : prev))
+                          if (next) requestAnimationFrame(() => modalReasonBox?.focus())
+                        }}
+                      >
+                        {t("settings.reasoning")}
+                      </button>
+                    </Show>
+                  </div>
+                  <Show when={reasoningShown()}>
+                    <div class="hat-modal-sub">
+                      <span class="hat-field-label">{t("settings.reasoning")}</span>
+                      <textarea
+                        ref={(el) => (modalReasonBox = el)}
+                        class="hat-modal-subtext"
+                        rows="3"
+                        aria-label={t("settings.reasoning")}
+                        value={d().reasoning}
+                        onFocus={() => setEditingMsg((prev) => (prev ? { ...prev, showReasoning: true } : prev))}
+                        onInput={(e) => {
+                          const reasoning = e.currentTarget.value
+                          setEditingMsg((prev) => (prev ? { ...prev, showReasoning: true, reasoning } : prev))
+                        }}
+                        onKeyDown={onModalKeyDown}
+                      />
+                    </div>
                   </Show>
-                  <button type="button" class="btn sm ghost" onClick={() => msgDlg.close()}>
-                    {t("common.cancel")}
-                  </button>
-                  <button type="button" class="btn sm primary" disabled={!d().text.trim()} onClick={commitModal}>
-                    {t("common.done")}
-                  </button>
-                </div>
-              </>
-            )}
+                  <Show
+                    when={d().role === "tool"}
+                    fallback={
+                      <textarea
+                        class="well-full hat-modal-text"
+                        rows="7"
+                        aria-label={t("settings.messageLabel")}
+                        value={d().text}
+                        ref={(el) => requestAnimationFrame(() => !d().showReasoning && el.focus())}
+                        onInput={(e) => {
+                          const text = e.currentTarget.value
+                          setEditingMsg((prev) => (prev ? { ...prev, text } : prev))
+                        }}
+                        onKeyDown={onModalKeyDown}
+                      />
+                    }
+                  >
+                    <div class="hat-modal-tool">
+                      <div class="hat-tool-grid">
+                        <label class="hat-tool-field">
+                          <span class="hat-field-label">{t("settings.toolName")}</span>
+                          <input
+                            type="text"
+                            class="hat-tool-input mono"
+                            placeholder="read_file"
+                            autocapitalize="none"
+                            autocorrect="off"
+                            spellcheck="false"
+                            aria-label={t("settings.toolName")}
+                            value={d().toolName}
+                            ref={(el) => requestAnimationFrame(() => el.focus())}
+                            onInput={(e) => {
+                              const toolName = e.currentTarget.value
+                              setEditingMsg((prev) => (prev ? { ...prev, toolName } : prev))
+                            }}
+                            onKeyDown={onModalKeyDown}
+                          />
+                        </label>
+                        <label class="hat-tool-field">
+                          <span class="hat-field-label">
+                            {t("settings.toolInput")}
+                            <Show when={!validToolInput(d().toolInput)}>
+                              <span class="hat-json-warn">{t("settings.invalidToolJson")}</span>
+                            </Show>
+                          </span>
+                          <textarea
+                            ref={autosize(() => d().toolInput)}
+                            class={{ "hat-tool-input": true, mono: true, invalid: !validToolInput(d().toolInput) }}
+                            rows="1"
+                            autocapitalize="none"
+                            autocorrect="off"
+                            spellcheck="false"
+                            aria-label={t("settings.toolInput")}
+                            value={d().toolInput}
+                            onInput={(e) => {
+                              const toolInput = e.currentTarget.value
+                              setEditingMsg((prev) => (prev ? { ...prev, toolInput } : prev))
+                            }}
+                            onKeyDown={onModalKeyDown}
+                          />
+                        </label>
+                      </div>
+                      <label class="hat-tool-field hat-tool-result-wrap">
+                        <span class="hat-field-label">{t("settings.toolResult")}</span>
+                        <textarea
+                          class="well-full hat-modal-text hat-tool-result"
+                          rows="5"
+                          aria-label={t("settings.toolResult")}
+                          value={d().text}
+                          onInput={(e) => {
+                            const text = e.currentTarget.value
+                            setEditingMsg((prev) => (prev ? { ...prev, text } : prev))
+                          }}
+                          onKeyDown={onModalKeyDown}
+                        />
+                      </label>
+                    </div>
+                  </Show>
+                  <div class="modal-foot">
+                    <Show when={d().index !== null}>
+                      <button type="button" class="btn sm ghost danger" onClick={removeFromModal}>
+                        {t("common.delete")}
+                      </button>
+                      <span class="spacer" />
+                    </Show>
+                    <button type="button" class="btn sm ghost" onClick={() => msgDlg.close()}>
+                      {t("common.cancel")}
+                    </button>
+                    <button type="button" class="btn sm primary" disabled={!canCommitModal(d())} onClick={commitModal}>
+                      {t("common.done")}
+                    </button>
+                  </div>
+                </>
+              )
+            }}
           </Show>
         </Modal>
       </section>
@@ -831,16 +1047,270 @@ const Templates = (props: Pane) => {
   )
 }
 
+/** One message or tool-handshake capsule inside a template slot. */
+const SlotCapsule = (props: {
+  entry: HatEntry
+  index: number
+  total: number
+  conflict: boolean
+  onOpenModal: () => void
+  onStage: (f: (said: HatEntry[]) => HatEntry[]) => void
+  onEdit: (f: (said: HatEntry[]) => HatEntry[]) => void
+}) => {
+  const [showReasoning, setShowReasoning] = createSignal(false)
+  let reasonBox: HTMLTextAreaElement | undefined
+  const reasoningOpen = () =>
+    (props.entry.role === "assistant" || props.entry.role === "tool") &&
+    (Boolean(props.entry.reasoning) || showReasoning())
+  const toolName = () => (props.entry.role === "tool" ? props.entry.toolName : "")
+  const toolInput = () => (props.entry.role === "tool" ? (props.entry.toolInput ?? "{}") : "{}")
+
+  return (
+    <div class={{ "msg-capsule": true, conflict: props.conflict }}>
+      <div class="msg-bar">
+        <Segment
+          small
+          label={t("settings.role")}
+          value={props.entry.role}
+          options={ROLES}
+          onPick={(role) => {
+            const idx = props.index
+            if (role !== "assistant" && role !== "tool") setShowReasoning(false)
+            props.onEdit((l) => l.map((x, j) => (j === idx ? switchEntryRole(x, role) : x)))
+          }}
+        />
+        <Show when={props.entry.role === "assistant" || props.entry.role === "tool"}>
+          <button
+            type="button"
+            class="btn xs ghost msg-reason-btn"
+            aria-pressed={reasoningOpen() ? "true" : "false"}
+            onClick={() => {
+              if (props.entry.reasoning) {
+                reasonBox?.focus()
+                return
+              }
+              const next = !showReasoning()
+              setShowReasoning(next)
+              if (next) requestAnimationFrame(() => reasonBox?.focus())
+            }}
+          >
+            {t("settings.reasoning")}
+          </button>
+        </Show>
+        <span class="spacer" />
+        <Show when={props.total > 1}>
+          <button
+            type="button"
+            class="icon sm"
+            disabled={props.index === 0}
+            aria-label={t("settings.moveUp")}
+            onClick={() => {
+              const idx = props.index
+              props.onEdit((l) => {
+                const next = [...l]
+                const prev = next[idx - 1]
+                const cur = next[idx]
+                if (prev && cur) {
+                  next[idx - 1] = cur
+                  next[idx] = prev
+                }
+                return next
+              })
+            }}
+          >
+            <Send aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            class="icon sm"
+            disabled={props.index === props.total - 1}
+            aria-label={t("settings.moveDown")}
+            onClick={() => {
+              const idx = props.index
+              props.onEdit((l) => {
+                const next = [...l]
+                const cur = next[idx]
+                const after = next[idx + 1]
+                if (cur && after) {
+                  next[idx] = after
+                  next[idx + 1] = cur
+                }
+                return next
+              })
+            }}
+          >
+            <Down aria-hidden="true" />
+          </button>
+        </Show>
+        <button type="button" class="icon sm" aria-label={t("common.expand")} onClick={() => props.onOpenModal()}>
+          <Expand aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          class="icon sm"
+          aria-label={t("settings.removeMessage")}
+          onClick={() => {
+            const idx = props.index
+            props.onEdit((l) => l.filter((_, j) => j !== idx))
+          }}
+        >
+          <Close aria-hidden="true" />
+        </button>
+      </div>
+      <Show when={reasoningOpen()}>
+        <div class="msg-sub">
+          <span class="msg-sublabel">{t("settings.reasoning")}</span>
+          <textarea
+            ref={(el) => {
+              reasonBox = el
+              autosize(() => props.entry.reasoning ?? "")(el)
+            }}
+            class="msg-text msg-subtext"
+            rows="2"
+            aria-label={t("settings.reasoning")}
+            value={props.entry.reasoning ?? ""}
+            onFocus={() => setShowReasoning(true)}
+            onKeyDown={leaveArea}
+            onInput={(e) => {
+              const idx = props.index
+              const reasoning = e.currentTarget.value
+              setShowReasoning(true)
+              props.onStage((l) => l.map((x, j) => (j === idx ? withReasoning(x, reasoning) : x)))
+            }}
+            onChange={(e) => {
+              const idx = props.index
+              const reasoning = e.currentTarget.value
+              props.onEdit((l) => l.map((x, j) => (j === idx ? withReasoning(x, reasoning) : x)))
+            }}
+          />
+        </div>
+      </Show>
+      <Show
+        when={props.entry.role === "tool"}
+        fallback={
+          <textarea
+            ref={autosize(() => props.entry.text)}
+            class="msg-text"
+            rows="2"
+            aria-label={t("settings.messageLabel")}
+            value={props.entry.text}
+            onKeyDown={leaveArea}
+            onInput={(e) => {
+              const idx = props.index
+              const text = e.currentTarget.value
+              props.onStage((l) => l.map((x, j) => (j === idx ? { ...x, text } : x)))
+            }}
+            onChange={(e) => {
+              const idx = props.index
+              const text = e.currentTarget.value
+              props.onEdit((l) => l.map((x, j) => (j === idx ? { ...x, text } : x)))
+            }}
+          />
+        }
+      >
+        <div class="msg-tool">
+          <div class="msg-tool-row">
+            <label class="msg-tool-cell">
+              <span class="msg-sublabel">{t("settings.toolName")}</span>
+              <input
+                type="text"
+                class="msg-tool-input mono"
+                placeholder="read_file"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                aria-label={t("settings.toolName")}
+                value={toolName()}
+                onKeyDown={leaveInput}
+                onInput={(e) => {
+                  const idx = props.index
+                  const nextName = e.currentTarget.value
+                  props.onStage((l) =>
+                    l.map((x, j) => (j === idx && x.role === "tool" ? { ...x, toolName: nextName } : x)),
+                  )
+                }}
+                onChange={(e) => {
+                  const idx = props.index
+                  const nextName = e.currentTarget.value.trim()
+                  props.onEdit((l) =>
+                    l.map((x, j) => (j === idx && x.role === "tool" ? { ...x, toolName: nextName } : x)),
+                  )
+                }}
+              />
+            </label>
+            <label class="msg-tool-cell grow">
+              <span class="msg-sublabel">
+                {t("settings.toolInput")}
+                <Show when={!validToolInput(toolInput())}>
+                  <span class="hat-json-warn">{t("settings.invalidToolJson")}</span>
+                </Show>
+              </span>
+              <textarea
+                ref={autosize(() => toolInput())}
+                class={{ "msg-tool-input": true, mono: true, invalid: !validToolInput(toolInput()) }}
+                rows="1"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                aria-label={t("settings.toolInput")}
+                value={toolInput()}
+                onKeyDown={leaveArea}
+                onInput={(e) => {
+                  const idx = props.index
+                  const nextInput = e.currentTarget.value
+                  props.onStage((l) =>
+                    l.map((x, j) => (j === idx && x.role === "tool" ? { ...x, toolInput: nextInput } : x)),
+                  )
+                }}
+                onChange={(e) => {
+                  const idx = props.index
+                  const raw = e.currentTarget.value
+                  if (!validToolInput(raw)) return
+                  const nextInput = raw.trim() || "{}"
+                  props.onEdit((l) =>
+                    l.map((x, j) => (j === idx && x.role === "tool" ? { ...x, toolInput: nextInput } : x)),
+                  )
+                }}
+              />
+            </label>
+          </div>
+          <div class="msg-sub">
+            <span class="msg-sublabel">{t("settings.toolResult")}</span>
+            <textarea
+              ref={autosize(() => props.entry.text)}
+              class="msg-text msg-subtext"
+              rows="2"
+              aria-label={t("settings.toolResult")}
+              value={props.entry.text}
+              onKeyDown={leaveArea}
+              onInput={(e) => {
+                const idx = props.index
+                const text = e.currentTarget.value
+                props.onStage((l) => l.map((x, j) => (j === idx ? { ...x, text } : x)))
+              }}
+              onChange={(e) => {
+                const idx = props.index
+                const text = e.currentTarget.value
+                props.onEdit((l) => l.map((x, j) => (j === idx ? { ...x, text } : x)))
+              }}
+            />
+          </div>
+        </div>
+      </Show>
+    </div>
+  )
+}
+
 /** One slot of a template: compact empty bar when unconfigured; unified inline capsules when populated, with `+ 添加`
  *  and `<Expand />` opening the focused message modal. */
 const SlotEditor = (props: {
   label: string
-  said: readonly Said[]
+  said: readonly HatEntry[]
   muted?: boolean
   conflictIndex?: number
   onOpenModal: (index: number | null) => void
-  onStage: (f: (said: Said[]) => Said[]) => void
-  onEdit: (f: (said: Said[]) => Said[]) => void
+  onStage: (f: (said: HatEntry[]) => HatEntry[]) => void
+  onEdit: (f: (said: HatEntry[]) => HatEntry[]) => void
 }) => (
   <section class="hat-slot" aria-label={props.label}>
     <Show
@@ -877,92 +1347,15 @@ const SlotEditor = (props: {
         <div class="msgs">
           <For each={props.said} keyed={false}>
             {(m, i) => (
-              <div class={{ "msg-capsule": true, conflict: props.conflictIndex === i }}>
-                <div class="msg-bar">
-                  <Segment
-                    small
-                    label={t("settings.role")}
-                    value={m().role}
-                    options={ROLES}
-                    onPick={(role) => props.onEdit((l) => l.map((x, j) => (j === i ? { ...x, role } : x)))}
-                  />
-                  <span class="spacer" />
-                  <Show when={props.said.length > 1}>
-                    <button
-                      type="button"
-                      class="icon sm"
-                      disabled={i === 0}
-                      aria-label={t("settings.moveUp")}
-                      onClick={() =>
-                        props.onEdit((l) => {
-                          const next = [...l]
-                          const prev = next[i - 1]
-                          const cur = next[i]
-                          if (prev && cur) {
-                            next[i - 1] = cur
-                            next[i] = prev
-                          }
-                          return next
-                        })
-                      }
-                    >
-                      <Send aria-hidden="true" />
-                    </button>
-                    <button
-                      type="button"
-                      class="icon sm"
-                      disabled={i === props.said.length - 1}
-                      aria-label={t("settings.moveDown")}
-                      onClick={() =>
-                        props.onEdit((l) => {
-                          const next = [...l]
-                          const cur = next[i]
-                          const after = next[i + 1]
-                          if (cur && after) {
-                            next[i] = after
-                            next[i + 1] = cur
-                          }
-                          return next
-                        })
-                      }
-                    >
-                      <Down aria-hidden="true" />
-                    </button>
-                  </Show>
-                  <button
-                    type="button"
-                    class="icon sm"
-                    aria-label={t("common.expand")}
-                    onClick={() => props.onOpenModal(i)}
-                  >
-                    <Expand aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    class="icon sm"
-                    aria-label={t("settings.removeMessage")}
-                    onClick={() => props.onEdit((l) => l.filter((_, j) => j !== i))}
-                  >
-                    <Close aria-hidden="true" />
-                  </button>
-                </div>
-                <textarea
-                  ref={autosize(() => m().text)}
-                  class="msg-text"
-                  rows="2"
-                  aria-label={t("settings.messageLabel")}
-                  value={m().text}
-                  onKeyDown={leaveArea}
-                  onInput={(e) => {
-                    const text = e.currentTarget.value
-                    props.onStage((l) => l.map((x, j) => (j === i ? { ...x, text } : x)))
-                  }}
-                  onChange={(e) => {
-                    const text = e.currentTarget.value
-                    props.onEdit((l) => l.map((x, j) => (j === i ? { ...x, text } : x)))
-                  }}
-                />
-              </div>
+              <SlotCapsule
+                entry={m()}
+                index={i}
+                total={props.said.length}
+                conflict={props.conflictIndex === i}
+                onOpenModal={() => props.onOpenModal(i)}
+                onStage={(f) => props.onStage(f)}
+                onEdit={(f) => props.onEdit(f)}
+              />
             )}
           </For>
         </div>
@@ -970,6 +1363,144 @@ const SlotEditor = (props: {
     </Show>
   </section>
 )
+
+/** Minimal per-Hat wording overrides (`Hat.asks`), collapsed as a single dashed bar when unused. */
+const HatAsksEditor = (props: {
+  asks: Readonly<Record<string, string>> | undefined
+  onStage: (asks: Record<string, string>) => void
+  onEdit: (asks: Record<string, string>) => void
+}) => {
+  const catalog = createMemo(
+    () => {
+      const pairs = [...stageAskLabels(), ...switchAskLabels()]
+      const idx = pairs.findIndex(([k]) => k === "narrate.role")
+      if (idx > 0) {
+        const [first] = pairs.splice(idx, 1)
+        if (first) pairs.unshift(first)
+      }
+      return pairs
+    },
+    { equals: samePairs },
+  )
+  const labelOf = (id: string) => catalog().find(([k]) => k === id)?.[1]
+  const entries = createMemo(() => Object.entries(props.asks ?? {}), { equals: samePairs })
+  const nextUnusedId = () => {
+    const used = new Set(Object.keys(props.asks ?? {}))
+    return catalog().find(([id]) => !used.has(id))?.[0]
+  }
+  const addAsk = () => {
+    const id = nextUnusedId()
+    if (!id) return
+    props.onEdit({ ...props.asks, [id]: DEFAULT_ASKS.get(id) ?? "" })
+  }
+  const removeAsk = (id: string) => {
+    const { [id]: _, ...rest } = props.asks ?? {}
+    props.onEdit(rest)
+  }
+  const renameAsk = (oldId: string, nextId: string) => {
+    if (oldId === nextId || Object.hasOwn(props.asks ?? {}, nextId)) return
+    const curVal = props.asks?.[oldId] ?? ""
+    const nextVal =
+      curVal === "" || curVal === (DEFAULT_ASKS.get(oldId) ?? "") ? (DEFAULT_ASKS.get(nextId) ?? "") : curVal
+    const next: Record<string, string> = {}
+    for (const [k, v] of Object.entries(props.asks ?? {})) {
+      next[k === oldId ? nextId : k] = k === oldId ? nextVal : v
+    }
+    props.onEdit(next)
+  }
+  const setAskText = (id: string, text: string, commit: boolean) => {
+    const next = { ...props.asks, [id]: text }
+    if (commit) props.onEdit(next)
+    else props.onStage(next)
+  }
+  const optionsFor = (currentId: string) => {
+    const used = new Set(Object.keys(props.asks ?? {}))
+    return catalog()
+      .filter(([id]) => id === currentId || !used.has(id))
+      .map(([value, label]) => ({ value, label }))
+  }
+
+  return (
+    <section class="hat-slot" aria-label={t("settings.hatAsks")}>
+      <Show
+        when={entries().length > 0}
+        fallback={
+          <div class="hat-slot-empty">
+            <h3>{t("settings.hatAsks")}</h3>
+            <button type="button" class="btn sm ghost" aria-label={t("settings.addAsk")} onClick={addAsk}>
+              <Plus aria-hidden="true" /> <span>{t("common.add")}</span>
+            </button>
+          </div>
+        }
+      >
+        <div class="block">
+          <div class="block-title">
+            <h3>{t("settings.hatAsks")}</h3>
+            <span class="tag mono">{entries().length}</span>
+            <div class="right">
+              <button
+                type="button"
+                class="btn sm"
+                disabled={!nextUnusedId()}
+                aria-label={t("settings.addAsk")}
+                onClick={addAsk}
+              >
+                <Plus aria-hidden="true" /> <span>{t("common.add")}</span>
+              </button>
+            </div>
+          </div>
+          <div class="msgs">
+            <For each={entries()} keyed={(e) => e[0]}>
+              {(e) => {
+                const id = () => e()[0]
+                const val = () => e()[1]
+                const label = () => labelOf(id()) ?? id()
+                const stale = () => (labelOf(id()) !== undefined ? undefined : { value: id(), label: id() })
+                const placeholder = () =>
+                  DEFAULT_ASKS.get(id()) || (id() === "narrate.role" ? t("packs.narratorExample") : "")
+                return (
+                  <div class="msg-capsule">
+                    <div class="msg-bar">
+                      <Menu
+                        small
+                        label={t("settings.hatAsks")}
+                        value={id()}
+                        options={optionsFor(id())}
+                        stale={stale()}
+                        onPick={(nextId) => renameAsk(id(), nextId)}
+                      />
+                      <span class="tag mono">{id()}</span>
+                      <span class="spacer" />
+                      <button
+                        type="button"
+                        class="icon sm"
+                        aria-label={t("settings.removeAsk")}
+                        onClick={() => removeAsk(id())}
+                      >
+                        <Close aria-hidden="true" />
+                      </button>
+                    </div>
+                    <textarea
+                      ref={autosize(() => val())}
+                      class="msg-text"
+                      rows="2"
+                      aria-label={label()}
+                      placeholder={placeholder()}
+                      value={val()}
+                      onKeyDown={leaveArea}
+                      onInput={(ev) => setAskText(id(), ev.currentTarget.value, false)}
+                      onChange={(ev) => setAskText(id(), ev.currentTarget.value, true)}
+                    />
+                  </div>
+                )
+              }}
+            </For>
+          </div>
+        </div>
+      </Show>
+    </section>
+  )
+}
 
 // ───────── 玩家人设 ─────────
 const Personas = (props: Pane) => {

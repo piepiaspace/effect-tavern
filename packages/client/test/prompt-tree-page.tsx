@@ -7,7 +7,8 @@ import { PromptTreePage } from "../src/prompt-tree.tsx"
 import { t } from "../src/i18n.ts"
 import { patchPromptTreeMemory } from "../src/prompt-tree-state.ts"
 import { SourceDetailCard } from "../src/request-view.tsx"
-import { registry, stories, tabs, type Tab } from "../src/store.ts"
+import { pickedAtom, section } from "../src/settings-navigation.ts"
+import { page, registry, stories, tabs, type Tab } from "../src/store.ts"
 import { quiet, tracked, until } from "./settle.ts"
 
 import "../src/app.css"
@@ -83,7 +84,8 @@ globalThis.fetch = tracked(async (input, init) => {
           ...(req.candidateHat && { hat: req.candidateHat }),
           connection: {
             ...options.connection,
-            ...(req.candidateHat?.deliver === "tool" ? { deliver: "tool" as const, tools: false } : {}),
+            ...(req.candidateHat ? { tools: false } : {}),
+            ...(req.candidateHat?.deliver === "tool" ? { deliver: "tool" as const } : {}),
           },
         }),
   )
@@ -276,7 +278,51 @@ async function run() {
       throw Error("Missing localized deliver_needs_tools diagnostic in Prompt Tree")
     if (!root.querySelector(".pt-diags")?.textContent?.includes(t("promptTree.diagDeliverNoPrefill")))
       throw Error("Missing localized diagDeliverNoPrefill diagnostic in Prompt Tree")
-    patchPromptTreeMemory(1, { candidateHat: undefined })
+
+    // Structured Hat handshake (`role: "tool"`), new slots (`lead`, `turn`), `Hat.asks`, and jump back to Settings → 提示词模板
+    selectTab(2)
+    flush()
+    patchPromptTreeMemory(1, {
+      candidateHat: {
+        id: "h-structured",
+        name: "Structured Hat",
+        narrate: {
+          lead: [{ role: "system", text: "Top lead line" }],
+          head: [{ role: "tool", toolName: "read_file", toolInput: '{"path":"world.md"}', text: "World ready" }],
+          turn: [{ role: "system", text: "Turn lead line" }],
+        },
+        asks: { "narrate.role": "Override narrator framing" },
+      },
+    })
+    selectTab(1)
+    flush()
+    await quiet()
+    if (!root.querySelector('.rv-role[data-role="tool"]')) throw Error("Missing role=tool pill in RequestView")
+    if (!root.textContent?.includes(t("promptTree.toolCallParts", { n: 1 })))
+      throw Error("Missing tool-call part badge in RequestView")
+    if (!root.textContent?.includes(t("promptTree.toolResultParts", { n: 1 })))
+      throw Error("Missing tool-result part badge in RequestView")
+    if (!root.textContent?.includes('read_file({"path":"world.md"})'))
+      throw Error("Missing formatted tool-call snippet in RequestView")
+    if (!root.querySelector(".pt-diags")?.textContent?.includes(t("promptTree.diagHatNeedsTools")))
+      throw Error("Missing localized hat_needs_tools diagnostic in Prompt Tree")
+    const askSpan = [...root.querySelectorAll<HTMLButtonElement>(".rv-span-row")].find((row) =>
+      row.textContent?.includes("Override narrator framing"),
+    )
+    if (!askSpan) throw Error("Missing Hat.asks span in RequestView")
+    askSpan.click()
+    flush()
+    root.querySelector<HTMLButtonElement>(".rv-jump")?.click()
+    flush()
+    if (
+      registry.get(page) !== "settings" ||
+      registry.get(section) !== "templates" ||
+      registry.get(pickedAtom).templates !== "h-structured"
+    )
+      throw Error("Jumping from Hat.asks source did not open Settings → 提示词模板 on h-structured")
+    selectTab(1)
+    registry.set(tabs, { active: 1, list: [author, player] })
+    patchPromptTreeMemory(1, { candidateHat: undefined, selectedKey: null })
     flush()
     await quiet()
 

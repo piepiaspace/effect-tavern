@@ -6,7 +6,13 @@
 import { DEFAULTS, type Capabilities } from "@effect-tavern/provider/src/capabilities.ts"
 import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
-import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
+import {
+  HAT_NARRATE_SLOTS,
+  hatEntryActive,
+  hatHasToolHandshake,
+  type Hat,
+  type HatEntry,
+} from "@effect-tavern/runtime/src/fragment.ts"
 import type { Pair, Routing } from "./store.ts"
 import type { Listed } from "./wire.ts"
 
@@ -73,7 +79,18 @@ export const withDeliver = (h: Hat, deliver: "text" | "tool"): Hat => {
   const { deliver: _, ...rest } = h
   return deliver === "tool" ? { ...rest, deliver: "tool" } : rest
 }
-export type HatConflict = "prefill" | "deliver_prefill" | "deliver_tools"
+export type HatConflict = "prefill" | "deliver_prefill" | "deliver_tools" | "handshake_tools"
+/** Whether a Hat tool handshake's `toolInput` text is blank (defaulting to `{}`) or a valid JSON object. */
+export const validToolInput = (raw: string): boolean => {
+  const trimmed = raw.trim()
+  if (!trimmed) return true
+  try {
+    const parsed: unknown = JSON.parse(trimmed)
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+  } catch {
+    return false
+  }
+}
 /** Narrate routing conflicts between an effective Hat and its paired model connection. */
 export const hatConflicts = (
   providers: readonly Provider[],
@@ -84,16 +101,19 @@ export const hatConflicts = (
   if (!hatId) return []
   const h = hats.find((x) => x.id === hatId)
   if (!h) return []
-  const endsInAssistant = h.narrate?.tail?.filter((m) => m.text.trim()).at(-1)?.role === "assistant"
+  const endsInAssistant = h.narrate?.tail?.filter(hatEntryActive).at(-1)?.role === "assistant"
+  const hasHandshake = hatHasToolHandshake(h, "narrate")
   const p = pair ? providers.find((x) => x.id === pair.provider) : undefined
   const m = pair && p ? p.models.find((x) => x.id === pair.model) : undefined
+  const out: HatConflict[] = []
   if (h.deliver === "tool") {
-    const out: HatConflict[] = []
     if (endsInAssistant) out.push("deliver_prefill")
     if (p && m && !capOf(p, m, "tools")) out.push("deliver_tools")
-    return out
+  } else if (endsInAssistant && p && m && !capOf(p, m, "prefill")) {
+    out.push("prefill")
   }
-  return endsInAssistant && p && m && !capOf(p, m, "prefill") ? ["prefill"] : []
+  if (hasHandshake && p && m && !capOf(p, m, "tools")) out.push("handshake_tools")
+  return out
 }
 /** Where `hatId` is currently mounted in `route` (`stageHats` only applies while `route.stages` is enabled). */
 export const hatMounts = (route: Routing, hatId: string): { main: boolean; stages: HatStage[] } => ({
@@ -133,17 +153,39 @@ export const hatTemplateConflicts = (
   return hatConflicts([], [hat], undefined, hat.id)
 }
 export const serializeHat = (h: Hat): string => JSON.stringify({ ...h, id: undefined }, null, 2) + "\n"
-const validSaid = (v: unknown): v is readonly { role: "system" | "user" | "assistant"; text: string }[] =>
-  Array.isArray(v) &&
-  v.every(
-    (x) =>
-      !!x &&
-      typeof x === "object" &&
-      ((x as { role?: unknown }).role === "system" ||
-        (x as { role?: unknown }).role === "user" ||
-        (x as { role?: unknown }).role === "assistant") &&
-      typeof (x as { text?: unknown }).text === "string",
-  )
+const parseHatEntries = (v: unknown): HatEntry[] | null => {
+  if (!Array.isArray(v)) return null
+  const out: HatEntry[] = []
+  for (const raw of v) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+    const x = raw as Record<string, unknown>
+    if (x.role === "system" || x.role === "user" || x.role === "assistant") {
+      if (typeof x.text !== "string") return null
+      if (x.reasoning !== undefined && typeof x.reasoning !== "string") return null
+      out.push({
+        role: x.role,
+        text: x.text,
+        ...(typeof x.reasoning === "string" && x.reasoning !== "" && { reasoning: x.reasoning }),
+      })
+    } else if (x.role === "tool") {
+      if (typeof x.toolName !== "string" || !x.toolName.trim() || typeof x.text !== "string") return null
+      if (x.toolInput !== undefined && (typeof x.toolInput !== "string" || !validToolInput(x.toolInput))) return null
+      if (x.toolCallId !== undefined && typeof x.toolCallId !== "string") return null
+      if (x.reasoning !== undefined && typeof x.reasoning !== "string") return null
+      out.push({
+        role: "tool",
+        toolName: x.toolName.trim(),
+        ...(typeof x.toolInput === "string" && { toolInput: x.toolInput }),
+        text: x.text,
+        ...(typeof x.toolCallId === "string" && x.toolCallId.trim() && { toolCallId: x.toolCallId.trim() }),
+        ...(typeof x.reasoning === "string" && x.reasoning !== "" && { reasoning: x.reasoning }),
+      })
+    } else {
+      return null
+    }
+  }
+  return out
+}
 export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id"> | null => {
   let body: unknown
   try {
@@ -153,32 +195,47 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) return null
   const rec = body as Record<string, unknown>
-  if (!["name", "deliver", "narrate", "review"].some((key) => Object.hasOwn(rec, key))) return null
+  if (!["name", "deliver", "narrate", "review", "asks"].some((key) => Object.hasOwn(rec, key))) return null
   if (rec.deliver !== undefined && rec.deliver !== "text" && rec.deliver !== "tool") return null
   if (rec.name !== undefined && typeof rec.name !== "string") return null
   const narrate = rec.narrate
   if (narrate !== undefined && (!narrate || typeof narrate !== "object" || Array.isArray(narrate))) return null
   const nRec = narrate as Record<string, unknown> | undefined
-  if (nRec?.head !== undefined && !validSaid(nRec.head)) return null
-  if (nRec?.tail !== undefined && !validSaid(nRec.tail)) return null
+  const parsedNarrate: Partial<Record<(typeof HAT_NARRATE_SLOTS)[number], HatEntry[]>> = {}
+  if (nRec) {
+    for (const slot of HAT_NARRATE_SLOTS) {
+      if (nRec[slot] === undefined) continue
+      const parsed = parseHatEntries(nRec[slot])
+      if (!parsed) return null
+      if (parsed.length) parsedNarrate[slot] = parsed
+    }
+  }
   const review = rec.review
   if (review !== undefined && (!review || typeof review !== "object" || Array.isArray(review))) return null
   const rRec = review as Record<string, unknown> | undefined
-  if (rRec?.head !== undefined && !validSaid(rRec.head)) return null
+  let revHead: HatEntry[] | undefined
+  if (rRec?.head !== undefined) {
+    const parsed = parseHatEntries(rRec.head)
+    if (!parsed) return null
+    if (parsed.length) revHead = parsed
+  }
+  let asks: Record<string, string> | undefined
+  if (rec.asks !== undefined) {
+    if (!rec.asks || typeof rec.asks !== "object" || Array.isArray(rec.asks)) return null
+    const clean: Record<string, string> = {}
+    for (const [k, v] of Object.entries(rec.asks as Record<string, unknown>)) {
+      if (typeof v !== "string") return null
+      if (k.trim()) clean[k.trim()] = v
+    }
+    if (Object.keys(clean).length) asks = clean
+  }
   const name = typeof rec.name === "string" && rec.name.trim() ? rec.name.trim() : fallbackName
-  const head = nRec?.head?.map((m) => ({ role: m.role, text: m.text }))
-  const tail = nRec?.tail?.map((m) => ({ role: m.role, text: m.text }))
-  const revHead = rRec?.head?.map((m) => ({ role: m.role, text: m.text }))
   return {
     name,
     ...(rec.deliver === "tool" && { deliver: "tool" as const }),
-    ...((head?.length || tail?.length) && {
-      narrate: {
-        ...(head?.length && { head }),
-        ...(tail?.length && { tail }),
-      },
-    }),
+    ...(Object.keys(parsedNarrate).length > 0 && { narrate: parsedNarrate }),
     ...(revHead?.length && { review: { head: revHead } }),
+    ...(asks && { asks }),
   }
 }
 /** The entry with one key set, or removed when the value is undefined. */

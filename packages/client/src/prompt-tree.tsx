@@ -74,6 +74,8 @@ const diagnosticText = (d: PreviewDiagnostic, deliverTool: boolean): string => {
   switch (d.code) {
     case "deliver_needs_tools":
       return t("promptTree.diagDeliverNeedsTools")
+    case "hat_needs_tools":
+      return t("promptTree.diagHatNeedsTools")
     case "prefill_disallowed":
       return deliverTool ? t("promptTree.diagDeliverNoPrefill") : t("promptTree.diagPrefillDisallowed")
     default:

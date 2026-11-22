@@ -205,6 +205,18 @@ const run = async () => {
   check(document.querySelector(".settings")?.getAttribute("data-pane") === "detail", "a template link opens its detail")
 
   // Hat prose delivery segmented control (`text` omitted vs `tool` saved), modal message add, and lightweight mounting
+  const slotLabels = [...document.querySelectorAll<HTMLElement>(".hat-stack .hat-slot")].map((el) =>
+    el.getAttribute("aria-label"),
+  )
+  check(
+    JSON.stringify(slotLabels) ===
+      JSON.stringify(["最前导", "前置引导", "输入前导", "尾部预填", "审阅引导", "措辞覆盖"]),
+    `expected 5 slots + 措辞覆盖 in protocol order, got ${JSON.stringify(slotLabels)}`,
+  )
+  check(
+    document.querySelectorAll(".hat-stack .hat-slot-empty").length === 5,
+    `expected 5 unconfigured slots/asks collapsed as slim empty bars, got ${document.querySelectorAll(".hat-stack .hat-slot-empty").length}`,
+  )
   const segItem = (groupLabel: string, itemText: string) =>
     [
       ...(document
@@ -349,6 +361,197 @@ const run = async () => {
   document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))
   await quiet()
   // Clean up tail message so remaining hat-gemini assertions start with 1 head capsule
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry
+        .get(hats)
+        .map((h) =>
+          h.id === "hat-gemini"
+            ? { id: "hat-gemini", name: "Gemini 引导", narrate: { head: [{ role: "system", text: "继续" }] } }
+            : h,
+        ),
+    ),
+  )
+  document.querySelector<HTMLButtonElement>('[aria-label="尾部预填"] button[aria-label="移除消息"]')?.click()
+  await quiet()
+
+  // Reasoning-only Assistant message in `尾部预填` commits cleanly and triggers prefill warning on m-main (`prefill: false`)
+  document.querySelector<HTMLButtonElement>('[aria-label="尾部预填"] button[aria-label="添加消息"]')?.click()
+  await quiet()
+  const reasonToggle = document.querySelector<HTMLButtonElement>(".modal .hat-reason-btn")
+  check(
+    reasonToggle && !document.querySelector(".modal .hat-modal-subtext"),
+    "Assistant modal keeps reasoning collapsed by default",
+  )
+  reasonToggle?.click()
+  await quiet()
+  const modalReason = document.querySelector<HTMLTextAreaElement>(".modal .hat-modal-subtext")
+  check(modalReason, "clicking 思考 reveals reasoning textarea in modal")
+  if (modalReason) {
+    modalReason.value = "先构思场景"
+    modalReason.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  }
+  await quiet()
+  const doneBtn = () => document.querySelector<HTMLButtonElement>(".modal .modal-foot .btn.primary")
+  check(doneBtn() && !doneBtn()!.disabled, "reasoning-only Assistant message enables 完成")
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry.get(hats).map((h) =>
+        h.id === "hat-gemini"
+          ? {
+              ...h,
+              narrate: {
+                ...h.narrate,
+                tail: [{ role: "assistant" as const, text: "", reasoning: "先构思场景" }],
+              },
+            }
+          : h,
+      ),
+    ),
+  )
+  doneBtn()?.click()
+  await quiet()
+  check(
+    hatWrites.at(-1)?.narrate?.tail?.[0]?.reasoning === "先构思场景" &&
+      [...document.querySelectorAll<HTMLElement>(".hat-scroll > .warn")].some((w) =>
+        w.textContent?.includes("已关闭预填"),
+      ),
+    `reasoning-only assistant tail persists and triggers prefill warning: ${JSON.stringify(hatWrites.at(-1))}`,
+  )
+
+  // Tool handshake in `输入前导` (`turn`): JSON validation, save, and `handshake_tools` conflict on `m-notools`
+  document.querySelector<HTMLButtonElement>('[aria-label="输入前导"] button[aria-label="添加消息"]')?.click()
+  await quiet()
+  ;[...document.querySelectorAll<HTMLButtonElement>('.modal [data-slot="segmented-control-item"]')]
+    .find((el) => el.textContent?.trim() === "Tool")
+    ?.click()
+  await quiet()
+  const toolNameInput = document.querySelector<HTMLInputElement>('.modal input[aria-label="工具名"]')
+  const toolArgsInput = document.querySelector<HTMLTextAreaElement>('.modal textarea[aria-label="调用参数"]')
+  const toolOutInput = document.querySelector<HTMLTextAreaElement>('.modal textarea[aria-label="返回结果"]')
+  check(toolNameInput && toolArgsInput && toolOutInput, "Tool role modal renders 工具名, 调用参数, 返回结果")
+  if (toolNameInput && toolArgsInput && toolOutInput) {
+    toolNameInput.value = "read_file"
+    toolNameInput.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    toolArgsInput.value = "{bad"
+    toolArgsInput.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    await quiet()
+    check(
+      doneBtn()?.disabled && document.querySelector(".modal .hat-json-warn")?.textContent?.includes("JSON"),
+      "broken toolInput JSON shows inline warning and disables 完成",
+    )
+    toolArgsInput.value = '{"path":"lore.md"}'
+    toolArgsInput.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    toolOutInput.value = "世界设定已加载"
+    toolOutInput.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    await quiet()
+    check(!doneBtn()?.disabled, "valid toolName + JSON object enables 完成")
+  }
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry.get(hats).map((h) =>
+        h.id === "hat-gemini"
+          ? {
+              ...h,
+              narrate: {
+                ...h.narrate,
+                turn: [
+                  {
+                    role: "tool" as const,
+                    toolName: "read_file",
+                    toolInput: '{"path":"lore.md"}',
+                    text: "世界设定已加载",
+                  },
+                ],
+              },
+            }
+          : h,
+      ),
+    ),
+  )
+  doneBtn()?.click()
+  await quiet()
+  const savedTurnEntry = hatWrites.at(-1)?.narrate?.turn?.[0]
+  check(
+    savedTurnEntry?.role === "tool" &&
+      savedTurnEntry.toolName === "read_file" &&
+      savedTurnEntry.toolInput === '{"path":"lore.md"}' &&
+      savedTurnEntry.text === "世界设定已加载",
+    `Tool handshake saved on narrate.turn: ${JSON.stringify(savedTurnEntry)}`,
+  )
+  registry.set(routing, { default: { provider: "p", model: "m-notools" }, hat: "hat-gemini" })
+  await quiet()
+  check(
+    [...document.querySelectorAll<HTMLElement>(".hat-scroll > .warn")].some((w) =>
+      w.textContent?.includes("工具握手消息"),
+    ),
+    "handshake_tools warning shown when routed model has tools=false",
+  )
+  registry.set(routing, { default: { provider: "p", model: "m-main" }, hat: "hat-gemini" })
+  await quiet()
+
+  // Basic `措辞覆盖` (`Hat.asks`): `+ 添加` prefills `narrate.role`, edits save `asks`, Close removes and collapses
+  const addAskBtn = document.querySelector<HTMLButtonElement>(
+    '[aria-label="措辞覆盖"] button[aria-label="添加措辞覆盖"]',
+  )
+  check(addAskBtn, "missing + 添加 button on 措辞覆盖")
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, asks: { "narrate.role": "默认定调" } } : h)),
+    ),
+  )
+  addAskBtn?.click()
+  await quiet()
+  check(
+    typeof hatWrites.at(-1)?.asks?.["narrate.role"] === "string" &&
+      document.querySelector('[aria-label="措辞覆盖"] .msg-bar .tag.mono')?.textContent === "narrate.role",
+    `clicking + 添加 on 措辞覆盖 adds narrate.role override: ${JSON.stringify(hatWrites.at(-1)?.asks)}`,
+  )
+  const askArea = document.querySelector<HTMLTextAreaElement>('[aria-label="措辞覆盖"] textarea.msg-text')
+  if (askArea) {
+    askArea.value = "你是冷峻的协议叙事者。"
+    askArea.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    hatResponse = Promise.resolve(
+      Response.json(
+        registry
+          .get(hats)
+          .map((h) => (h.id === "hat-gemini" ? { ...h, asks: { "narrate.role": "你是冷峻的协议叙事者。" } } : h)),
+      ),
+    )
+    askArea.dispatchEvent(new Event("change", { bubbles: true }))
+  }
+  await quiet()
+  check(
+    hatWrites.at(-1)?.asks?.["narrate.role"] === "你是冷峻的协议叙事者。",
+    `editing 措辞覆盖 textarea saves asks["narrate.role"]: ${JSON.stringify(hatWrites.at(-1)?.asks)}`,
+  )
+  // Reset hat-gemini back to single head capsule for the remaining blur/preview/unmount tests
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry.get(hats).map((h) => {
+        if (h.id !== "hat-gemini") return h
+        const { asks: _, ...rest } = h
+        return rest
+      }),
+    ),
+  )
+  document.querySelector<HTMLButtonElement>('[aria-label="措辞覆盖"] button[aria-label="移除措辞覆盖"]')?.click()
+  await quiet()
+  check(
+    hatWrites.at(-1) !== undefined &&
+      !("asks" in hatWrites.at(-1)!) &&
+      !!document.querySelector('[aria-label="措辞覆盖"] .hat-slot-empty'),
+    "removing last ask override omits asks and collapses 措辞覆盖 back to empty bar",
+  )
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry
+        .get(hats)
+        .map((h) => (h.id === "hat-gemini" ? { ...h, narrate: { head: h.narrate?.head, tail: h.narrate?.tail } } : h)),
+    ),
+  )
+  document.querySelector<HTMLButtonElement>('[aria-label="输入前导"] button[aria-label="移除消息"]')?.click()
+  await quiet()
   hatResponse = Promise.resolve(
     Response.json(
       registry

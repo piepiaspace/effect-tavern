@@ -5,6 +5,7 @@ import type { Message } from "@effect-tavern/provider/src/call.ts"
 import type { MessageTrace, OmittedItem, SourceRef, Span } from "@effect-tavern/runtime/src/trace.ts"
 import type { PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
 import type { PreviewRequest } from "./wire.ts"
+import { textOf } from "./inspect.ts"
 import {
   activeOf,
   cards,
@@ -255,12 +256,8 @@ export const sourceDestination = (
   }
 }
 
-/** Extracts plain text from a provider Message (string or parts array). */
-export const messageText = (m: Message | undefined): string => {
-  if (!m) return ""
-  if (typeof m.content === "string") return m.content
-  return m.content.map((p) => ("text" in p && typeof p.text === "string" ? p.text : "")).join("")
-}
+/** Extracts plain text from a provider Message (string or structured parts array). */
+export const messageText = (m: Message | undefined): string => (m ? textOf(m) : "")
 
 /** Safely slices a UTF-16 half-open span `[start, end)` from message text. */
 export const sliceSpanText = (text: string, span: Pick<Span, "start" | "end">): string => {
@@ -442,7 +439,7 @@ export const breakpointChars = (
   let acc = 0
   for (let i = 0; i < traces.length; i++) {
     const tr = traces[i]
-    const len = messages[i] ? messageText(messages[i]).length : tr.chars
+    const len = messages[i] ? messageText(messages[i]).length || tr.chars : tr.chars
     acc += len
     if (tr.breakpoint) {
       out.set(tr.index, acc)

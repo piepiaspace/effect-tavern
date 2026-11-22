@@ -546,6 +546,9 @@
 .inspect .msg[data-role="assistant"] {
   border-left-color: var(--ok);
 }
+.inspect .msg[data-role="tool"] {
+  border-left-color: var(--warn);
+}
 .inspect .role {
   display: flex;
   align-items: center;

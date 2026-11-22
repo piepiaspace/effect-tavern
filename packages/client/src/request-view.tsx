@@ -158,6 +158,8 @@ export const SourceDetailCard = (props: {
     if (s.personaName && s.personaName !== lbl) out.push(s.personaName)
     if (s.fragmentId && s.fragmentId !== lbl) out.push(s.fragmentId)
     if (s.entryId && s.entryId !== lbl) out.push(s.entryId)
+    if (s.hatSlot && s.hatSlot !== lbl) out.push(`${s.hatStage ?? "narrate"}.${s.hatSlot}`)
+    if (s.path && s.path !== lbl && !out.includes(s.path)) out.push(s.path)
     if (s.nodeId !== undefined) out.push(`#${s.nodeId}`)
     if (s.summaryRange) out.push(`#${s.summaryRange.from}–#${s.summaryRange.to}`)
     return out
@@ -380,6 +382,12 @@ export const RequestView = (props: RequestViewProps) => {
                       </Show>
                       <Show when={tr().partSummary?.reasoningCount}>
                         {(n) => <span class="rv-badge">{t("promptTree.reasoningParts", { n: n() })}</span>}
+                      </Show>
+                      <Show when={tr().partSummary?.toolCallCount}>
+                        {(n) => <span class="rv-badge">{t("promptTree.toolCallParts", { n: n() })}</span>}
+                      </Show>
+                      <Show when={tr().partSummary?.toolResultCount}>
+                        {(n) => <span class="rv-badge">{t("promptTree.toolResultParts", { n: n() })}</span>}
                       </Show>
                       <span class="rv-spacer" />
                       <span class="rv-chars mono">{fmt(text().length || tr().chars)}c</span>

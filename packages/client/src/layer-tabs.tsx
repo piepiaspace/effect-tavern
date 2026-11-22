@@ -9,7 +9,7 @@ import { EXTRA, addFragment, atOf, removeFragment, setFragmentAt, setFragmentTex
 import { SWITCHES } from "./switches.ts"
 import { t } from "./i18n.ts"
 
-const DEFAULT_ASKS = new Map((harness("act").asks ?? []).map((a) => [a.id, a.text]))
+export const DEFAULT_ASKS = new Map((harness("act").asks ?? []).map((a) => [a.id, a.text]))
 export type Save = (edit: (p: Layer) => Layer) => Promise<void>
 
 /** A head slot's name (fragment.ts SLOTS) in the locale in force; an id the table lacks stays as written. */
@@ -24,7 +24,7 @@ const SLOT_NAMES: Record<string, () => string> = {
 }
 const slotName = (s: string) => SLOT_NAMES[s]?.() ?? s
 
-const stageAskLabels = (): [string, string][] => [
+export const stageAskLabels = (): [string, string][] => [
   ["stage.role", t("packs.askStageRole")],
   ["lookup", t("settings.stageLookup")],
   ["direct", t("settings.stageDirect")],
@@ -46,6 +46,14 @@ const stageAskLabels = (): [string, string][] => [
   ["narrate.demand", t("packs.askNarrateDemand")],
   ["input.thought", t("packs.askInputThought")],
 ]
+
+export const switchAskLabels = (): [string, string][] =>
+  SWITCHES.flatMap((s) =>
+    s.values.map(([val, labelKey]): [string, string] => [
+      `switch.${s.key}.${String(val)}`,
+      t("packs.switchRow", { switch: t(s.label), value: t(labelKey) }),
+    ]),
+  )
 
 export const leaveArea = (e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
   if (e.isComposing || e.key !== "Escape") return

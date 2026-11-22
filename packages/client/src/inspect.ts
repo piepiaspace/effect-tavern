@@ -77,10 +77,38 @@ export const groups = (rs: readonly Row[]): Group[] => {
   return out
 }
 
+const toolOutputText = (output: unknown): string => {
+  if (typeof output === "string") return output
+  if (output && typeof output === "object" && "value" in output) {
+    const v = output.value
+    return typeof v === "string" ? v : (JSON.stringify(v) ?? "")
+  }
+  return output === undefined ? "" : (JSON.stringify(output) ?? "")
+}
+
+export const partText = (c: unknown): string => {
+  if (!c || typeof c !== "object") return ""
+  const rec = c as {
+    type?: unknown
+    text?: unknown
+    toolName?: unknown
+    input?: unknown
+    output?: unknown
+  }
+  if ((rec.type === "text" || rec.type === "reasoning") && typeof rec.text === "string") return rec.text
+  if (rec.type === "tool-call" && typeof rec.toolName === "string") {
+    const args = typeof rec.input === "string" ? rec.input : (JSON.stringify(rec.input ?? {}) ?? "{}")
+    return `${rec.toolName}(${args})`
+  }
+  if (rec.type === "tool-result" && typeof rec.toolName === "string") {
+    const out = toolOutputText(rec.output)
+    return out || `${rec.toolName}()`
+  }
+  return typeof rec.text === "string" ? rec.text : ""
+}
+
 export const textOf = (m: Message): string =>
-  typeof m.content === "string"
-    ? m.content
-    : m.content.map((c) => ("text" in c && typeof c.text === "string" ? c.text : "")).join("")
+  typeof m.content === "string" ? m.content : m.content.map(partText).filter(Boolean).join("\n\n")
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 /** The query as a literal, case-insensitive pattern; `split` with it keeps the matches at the odd indexes. */

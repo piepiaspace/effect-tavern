@@ -7,6 +7,7 @@ import {
   clearPromptTreeMemory,
   forgetPreviewHat,
   getPromptTreeMemory,
+  messageText,
   openPromptTree,
   patchPromptTreeMemory,
   previewFromPlay,
@@ -270,4 +271,100 @@ assert.equal(
   toolDiagPreview.diagnostics.some((d) => d.code === "deliver_needs_tools"),
   true,
 )
+
+// Structured Hat slots (`lead`, `head`, `turn`, `tail`), `role: "tool"` handshake, `assistant` reasoning, and `Hat.asks`
+assert.equal(messageText({ role: "assistant", content: [{ type: "reasoning", text: "Silent plan" }] }), "Silent plan")
+assert.equal(
+  messageText({
+    role: "assistant",
+    content: [
+      { type: "reasoning", text: "Plan" },
+      { type: "text", text: "Scene" },
+    ],
+  }),
+  "Plan\n\nScene",
+)
+assert.equal(
+  messageText({
+    role: "assistant",
+    content: [{ type: "tool-call", toolCallId: "c1", toolName: "read_file", input: { path: "lore.md" } }],
+  }),
+  'read_file({"path":"lore.md"})',
+)
+assert.equal(
+  messageText({
+    role: "tool",
+    content: [{ type: "tool-result", toolCallId: "c1", toolName: "read_file", output: { type: "text", value: "OK" } }],
+  }),
+  "OK",
+)
+assert.equal(
+  messageText({
+    role: "tool",
+    content: [{ type: "tool-result", toolCallId: "c1", toolName: "ack", output: { type: "text", value: "" } }],
+  }),
+  "ack()",
+)
+
+const structuredHat: Hat = {
+  id: "hat-structured",
+  name: "Structured Shell",
+  narrate: {
+    lead: [{ role: "system", text: "Lead preamble" }],
+    head: [{ role: "tool", toolName: "read_file", toolInput: '{"path":"world.md"}', text: "World loaded" }],
+    turn: [{ role: "system", text: "Before input" }],
+    tail: [{ role: "assistant", text: "", reasoning: "Think before speaking" }],
+  },
+  asks: { "narrate.role": "Custom protocol narrator" },
+}
+const structuredPreview = previewNarrate({
+  mode: "sandbox",
+  card: {
+    id: "sandbox",
+    frame: [],
+    fiction: [],
+    rules: { fields: [], actions: [] },
+    greetings: [],
+    guard: [],
+    lore: [],
+  },
+  hat: structuredHat,
+  connection: { prefill: true, reasoningBack: true, tools: false },
+  rows: {},
+})
+assert.equal(
+  structuredPreview.diagnostics.some((d) => d.code === "hat_needs_tools"),
+  true,
+)
+assert.deepEqual(
+  structuredPreview.traces.map((tr) => [tr.subzone, tr.role]),
+  [
+    ["hat-lead", "system"],
+    ["lead", "system"],
+    ["hat-head", "assistant"],
+    ["hat-head", "tool"],
+    ["hat-turn", "system"],
+    ["input", "user"],
+    ["hat-tail", "assistant"],
+  ],
+)
+for (const tr of structuredPreview.traces) {
+  const rendered = messageText(structuredPreview.messages[tr.index])
+  assert.ok(rendered.length > 0, `expected non-empty rendered messageText for trace #${tr.index} (${tr.subzone})`)
+}
+const leadSrc = structuredPreview.traces[0]?.source
+const askSrc = structuredPreview.traces[1]?.spans[0]?.source
+const turnSrc = structuredPreview.traces[4]?.source
+assert.deepEqual(leadSrc && sourceDestination(leadSrc), {
+  ok: true,
+  target: { kind: "hat", hatId: "hat-structured" },
+})
+assert.deepEqual(askSrc && sourceDestination(askSrc), {
+  ok: true,
+  target: { kind: "hat", hatId: "hat-structured" },
+})
+assert.deepEqual(turnSrc && sourceDestination(turnSrc), {
+  ok: true,
+  target: { kind: "hat", hatId: "hat-structured" },
+})
 console.log("prompt-tree ok")

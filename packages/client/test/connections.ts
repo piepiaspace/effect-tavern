@@ -21,6 +21,7 @@ import {
   stalePair,
   toggleMainHat,
   toggleStageHat,
+  validToolInput,
   withCapability,
   withDeliver,
   without,
@@ -191,6 +192,95 @@ assert.deepEqual(parseHatFile(serializeHat({ id: "empty", name: "Empty" }), "Fal
 assert.equal(parseHatFile("{bad", "Fallback"), null)
 assert.equal(parseHatFile('{"deliver":"invalid"}', "Fallback"), null)
 assert.equal(parseHatFile('{"narrate":{"head":[{"role":"tool","text":"x"}]}}', "Fallback"), null)
+
+// Structured Hat entries (`assistant` reasoning, `role: "tool"` handshake), all 5 slots, and `asks`
+assert.equal(validToolInput(""), true)
+assert.equal(validToolInput("  {} "), true)
+assert.equal(validToolInput('{"path":"notes.md"}'), true)
+assert.equal(validToolInput("[1,2]"), false)
+assert.equal(validToolInput('"str"'), false)
+assert.equal(validToolInput("{bad"), false)
+
+const reasoningOnlyTail: Hat = {
+  id: "h-reason-tail",
+  name: "Reason Tail",
+  narrate: { tail: [{ role: "assistant", text: "", reasoning: "Let me think…" }] },
+}
+const handshakeAfterAsstTail: Hat = {
+  id: "h-tool-end",
+  name: "Handshake End",
+  narrate: {
+    lead: [{ role: "system", text: "Preamble" }],
+    turn: [{ role: "tool", toolName: "read_file", toolInput: '{"path":"a"}', text: "ok" }],
+    tail: [
+      { role: "assistant", text: "Checking…" },
+      { role: "tool", toolName: "ack", text: "ready" },
+    ],
+  },
+}
+assert.deepEqual(
+  hatConflicts([conflictProv], [reasoningOnlyTail], { provider: "p", model: "no-prefill" }, "h-reason-tail"),
+  ["prefill"],
+)
+assert.deepEqual(
+  hatConflicts(
+    [conflictProv],
+    [{ ...reasoningOnlyTail, deliver: "tool" }],
+    { provider: "p", model: "ok" },
+    "h-reason-tail",
+  ),
+  ["deliver_prefill"],
+)
+// Ending in a `role: "tool"` handshake ends in `tool-result`, not `assistant`, so no prefill conflict fires;
+// `tools: false` triggers `handshake_tools`.
+assert.deepEqual(
+  hatConflicts([conflictProv], [handshakeAfterAsstTail], { provider: "p", model: "no-prefill" }, "h-tool-end"),
+  [],
+)
+assert.deepEqual(
+  hatConflicts([conflictProv], [handshakeAfterAsstTail], { provider: "p", model: "no-tools" }, "h-tool-end"),
+  ["handshake_tools"],
+)
+assert.deepEqual(
+  hatTemplateConflicts(
+    [conflictProv],
+    [handshakeAfterAsstTail],
+    { default: { provider: "p", model: "no-tools" }, hat: "h-tool-end" },
+    handshakeAfterAsstTail,
+  ),
+  ["handshake_tools"],
+)
+
+const richHat: Hat = {
+  id: "h-rich",
+  name: "Rich Protocol Shell",
+  deliver: "tool",
+  narrate: {
+    lead: [{ role: "system", text: "Top framing" }],
+    head: [
+      {
+        role: "tool",
+        toolName: "load_world",
+        toolInput: '{"chapter":1}',
+        text: "Loaded",
+        toolCallId: "call_1",
+        reasoning: "Need world context",
+      },
+    ],
+    turn: [{ role: "user", text: "Turn bridge" }],
+    tail: [{ role: "assistant", text: "Prose", reasoning: "Drafting" }],
+  },
+  review: { head: [{ role: "system", text: "Review framing" }] },
+  asks: { "narrate.role": "Custom narrator", "stage.role": "Custom stage" },
+}
+const { id: _richId, ...expectedRich } = richHat
+assert.deepEqual(parseHatFile(serializeHat(richHat), "Fallback"), expectedRich)
+assert.equal(
+  parseHatFile('{"narrate":{"head":[{"role":"tool","toolName":"read","toolInput":"{bad","text":"x"}]}}', "Fallback"),
+  null,
+)
+assert.equal(parseHatFile('{"asks":{"narrate.role":123}}', "Fallback"), null)
+assert.equal(parseHatFile('{"asks":["bad"]}', "Fallback"), null)
 
 // The request round trip: a bare provider reads as the defaults and goes back unchanged
 const bare = requestOf(p)
