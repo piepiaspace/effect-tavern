@@ -557,6 +557,32 @@ const run = async () => {
     )
   }
 
+  // A half-written argument belongs to the original handshake when two equal defaults swap positions.
+  const beforeSwap = registry.get(hats)
+  const swapHat: Hat = {
+    id: "swap-tools",
+    name: "Swap",
+    narrate: { turn: ["first", "second"].map((toolName) => ({ role: "tool", toolName, text: "ok" })) },
+  }
+  registry.set(hats, [...beforeSwap, swapHat])
+  openSettings("templates", swapHat.id)
+  await quiet()
+  const firstArgs = () => document.querySelector<HTMLTextAreaElement>("textarea.msg-tool-input")!
+  firstArgs().value = "{"
+  firstArgs().dispatchEvent(new InputEvent("input", { bubbles: true }))
+  await quiet()
+  check(firstArgs().classList.contains("invalid"), "unfinished arguments are visible on the first handshake")
+  document.querySelector<HTMLButtonElement>('.msg-capsule [aria-label="下移"]')!.click()
+  await quiet()
+  const moved = otherHatWrites.at(-1)?.narrate?.turn?.[0]
+  check(
+    moved?.role === "tool" && moved.toolName === "second" && firstArgs().value === "{}",
+    "reordering keeps the second handshake's own arguments",
+  )
+  registry.set(hats, beforeSwap)
+  openSettings("templates", "hat-gemini")
+  await quiet()
+
   // 2) Clearing inline `思考` to whitespace strips `reasoning` and collapses cleanly
   const inlineReason = document.querySelector<HTMLTextAreaElement>(
     '[aria-label="尾部预填"] textarea[aria-label="思考"]',
@@ -795,6 +821,7 @@ const run = async () => {
       return rest
     })
   registry.set(hats, [])
+  otherHatWrites.length = 0
   unpick()
   openSettings("templates")
   await quiet()

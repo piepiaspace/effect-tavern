@@ -182,8 +182,6 @@ const failedCall = (
 }
 
 const checkDeliver = (deliver: "tool" | undefined, M: Model, msgs: readonly Message[]) => {
-  if (M.tools === false && msgs.some((m) => m.role === "tool"))
-    return modelError(new Error("hat tool handshake requires native tool calling on this connection"))
   if (deliver !== "tool") return undefined
   if (M.tools === false)
     return modelError(new Error("hat deliver: tool requires native tool calling on this connection"))

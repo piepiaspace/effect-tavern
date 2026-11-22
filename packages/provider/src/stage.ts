@@ -8,7 +8,7 @@ import {
   settings,
   standard,
   usage,
-  wire,
+  wireForModel,
   type CallOptions,
   type Message,
   type Model,
@@ -145,6 +145,7 @@ export const runStageTools = (model: Model, initial: readonly Message[], options
         return { status: "completed", value, trace, usage: total }
       }
       try {
+        const messages = wireForModel(model, initial)
         if (model.tools === false) throw new Error("this connection does not support native tool calling")
         const { budget, completion } = options
         for (const [key, value] of Object.entries(budget))
@@ -164,7 +165,6 @@ export const runStageTools = (model: Model, initial: readonly Message[], options
           ]),
         )
         const cache = new Map<string, { signature: string; result: ToolResult }>()
-        const messages = wire(model.format, initial, model.prefill)
         for (let index = 0; index < budget.maxSteps; index++) {
           ac.signal.throwIfAborted()
           const remaining =

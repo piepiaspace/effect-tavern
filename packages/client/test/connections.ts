@@ -169,15 +169,10 @@ routeState = toggleMainHat(routeState, "h-tail")
 assert.equal("hat" in routeState, false)
 
 // Intrinsic tool+prefill conflict shows even when unmounted; prefill model conflict shows once mounted on narrate
-assert.deepEqual(hatTemplateConflicts([conflictProv], allHats, {}, toolTailHat), ["deliver_prefill"])
-assert.deepEqual(hatTemplateConflicts([conflictProv], allHats, {}, tailHat), [])
+assert.deepEqual(hatTemplateConflicts([conflictProv], {}, toolTailHat), ["deliver_prefill"])
+assert.deepEqual(hatTemplateConflicts([conflictProv], {}, tailHat), [])
 assert.deepEqual(
-  hatTemplateConflicts(
-    [conflictProv],
-    allHats,
-    { default: { provider: "p", model: "no-prefill" }, hat: "h-tail" },
-    tailHat,
-  ),
+  hatTemplateConflicts([conflictProv], { default: { provider: "p", model: "no-prefill" }, hat: "h-tail" }, tailHat),
   ["prefill"],
 )
 
@@ -245,12 +240,32 @@ assert.deepEqual(
 assert.deepEqual(
   hatTemplateConflicts(
     [conflictProv],
-    [handshakeAfterAsstTail],
     { default: { provider: "p", model: "no-tools" }, hat: "h-tool-end" },
     handshakeAfterAsstTail,
   ),
   ["handshake_tools"],
 )
+
+const reviewHat: Hat = {
+  id: "review",
+  name: "Review",
+  review: { head: [{ role: "tool", toolName: "ack", text: "ok" }] },
+}
+const noTools = { provider: "p", model: "no-tools" }
+const withTools = { provider: "p", model: "ok" }
+for (const stage of ["check", "polish", "record"] as const) {
+  const route = { default: withTools, hat: reviewHat.id, stages: { [stage]: noTools } }
+  assert.deepEqual(hatTemplateConflicts([conflictProv], route, reviewHat), ["handshake_tools"])
+  assert.deepEqual(hatTemplateConflicts([conflictProv], { ...route, stageHats: { [stage]: null } }, reviewHat), [])
+  assert.deepEqual(
+    hatTemplateConflicts(
+      [conflictProv],
+      { default: noTools, stages: {}, stageHats: { [stage]: reviewHat.id } },
+      reviewHat,
+    ),
+    ["handshake_tools"],
+  )
+}
 
 const richHat: Hat = {
   id: "h-rich",

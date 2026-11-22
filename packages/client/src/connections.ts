@@ -93,28 +93,30 @@ export const validToolInput = (raw: string): boolean => {
     return false
   }
 }
-/** Narrate routing conflicts between an effective Hat and its paired model connection. */
+/** Conflicts between the slots a stage uses and its paired model connection. */
 export const hatConflicts = (
   providers: readonly Provider[],
   hats: readonly Hat[],
   pair: Pair | undefined,
   hatId: string | undefined,
+  stage: HatStage = "narrate",
 ): HatConflict[] => {
   if (!hatId) return []
   const h = hats.find((x) => x.id === hatId)
   if (!h) return []
-  const endsInAssistant = h.narrate?.tail?.filter(hatEntryActive).at(-1)?.role === "assistant"
-  const hasHandshake = hatHasToolHandshake(h, "narrate")
   const p = pair ? providers.find((x) => x.id === pair.provider) : undefined
   const m = pair && p ? p.models.find((x) => x.id === pair.model) : undefined
+  const noTools = p && m && !capOf(p, m, "tools")
+  if (stage !== "narrate") return noTools && hatHasToolHandshake(h, "review") ? ["handshake_tools"] : []
+  const endsInAssistant = h.narrate?.tail?.filter(hatEntryActive).at(-1)?.role === "assistant"
   const out: HatConflict[] = []
   if (h.deliver === "tool") {
     if (endsInAssistant) out.push("deliver_prefill")
-    if (p && m && !capOf(p, m, "tools")) out.push("deliver_tools")
+    if (noTools) out.push("deliver_tools")
   } else if (endsInAssistant && p && m && !capOf(p, m, "prefill")) {
     out.push("prefill")
   }
-  if (hasHandshake && p && m && !capOf(p, m, "tools")) out.push("handshake_tools")
+  if (noTools && hatHasToolHandshake(h, "narrate")) out.push("handshake_tools")
   return out
 }
 /** Where `hatId` is currently mounted in `route` (`stageHats` only applies while `route.stages` is enabled). */
@@ -134,25 +136,19 @@ export const toggleStageHat = (route: Routing, stage: HatStage, hatId: string): 
   const withStages = active ? base : { ...base, stages: base.stages ?? {} }
   return Object.keys(nextHats).length ? { ...withStages, stageHats: nextHats } : withStages
 }
-/** Conflicts for a Hat being edited in Settings → 提示词模板: intrinsic `deliver_prefill` always shows; model-capability
- *  conflicts show whenever this Hat is effective on `narrate`. */
-export const hatTemplateConflicts = (
-  providers: readonly Provider[],
-  hats: readonly Hat[],
-  route: Routing,
-  hat: Hat,
-): HatConflict[] => {
-  const liveHats = [...hats.filter((x) => x.id !== hat.id), hat]
-  const effectiveNarrateHat = route.stages
-    ? route.stageHats?.narrate === null
-      ? undefined
-      : (route.stageHats?.narrate ?? route.hat)
-    : route.hat
-  if (effectiveNarrateHat === hat.id) {
-    const pair = (route.stages ? route.stages.narrate : undefined) ?? route.default
-    return hatConflicts(providers, liveHats, pair, hat.id)
+export const routedHatId = (route: Routing, stage: HatStage): string | undefined => {
+  const override = route.stages && route.stageHats?.[stage]
+  return override === null ? undefined : (override ?? route.hat)
+}
+/** Include intrinsic delivery conflicts while editing an unmounted template. */
+export const hatTemplateConflicts = (providers: readonly Provider[], route: Routing, hat: Hat): HatConflict[] => {
+  const conflicts = new Set(hatConflicts([], [hat], undefined, hat.id))
+  for (const stage of HAT_STAGES) {
+    if (routedHatId(route, stage) !== hat.id) continue
+    const pair = route.stages?.[stage] ?? route.default
+    for (const conflict of hatConflicts(providers, [hat], pair, hat.id, stage)) conflicts.add(conflict)
   }
-  return hatConflicts([], [hat], undefined, hat.id)
+  return [...conflicts]
 }
 export const serializeHat = (h: Hat): string => JSON.stringify({ ...h, id: undefined }, null, 2) + "\n"
 const parseHatEntries = (v: unknown): HatEntry[] | null => {

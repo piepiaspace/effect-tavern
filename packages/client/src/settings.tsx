@@ -59,6 +59,7 @@ import {
   pairKey,
   pairOf,
   parseHatFile,
+  routedHatId,
   serializeHat,
   stalePair,
   toggleMainHat,
@@ -305,9 +306,14 @@ const Routing = (props: { onDecision: () => void }) => {
     const v = route().stageHats?.[s]
     return v === null ? HAT_NONE : (v ?? "")
   }
-  const effectiveHat = (s: HatStage): string | undefined => {
-    const v = route().stageHats?.[s]
-    return v === null ? undefined : (v ?? route().hat)
+  const defaultConflicts = () => {
+    const r = route()
+    const h = hatList().find((item) => item.id === r.hat)
+    return !r.stages && h ? hatTemplateConflicts(list(), r, h) : []
+  }
+  const stageConflicts = (s: Stage) => {
+    const r = route()
+    return isHatStage(s) ? hatConflicts(list(), hatList(), r.stages?.[s] ?? r.default, routedHatId(r, s), s) : []
   }
   return (
     <section class="detail-card" aria-label={t("settings.routing")}>
@@ -345,9 +351,7 @@ const Routing = (props: { onDecision: () => void }) => {
                 onPick={(v) => setMainHat(v || undefined)}
               />
             </div>
-            <For each={hatConflicts(list(), hatList(), route().default, route().hat)}>
-              {(c) => <div class="warn">{conflictText(c)}</div>}
-            </For>
+            <For each={defaultConflicts()}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
           </div>
         </div>
         <div class="block">
@@ -398,18 +402,7 @@ const Routing = (props: { onDecision: () => void }) => {
                           />
                         </div>
                       </Show>
-                      <Show when={stage() === "narrate"}>
-                        <For
-                          each={hatConflicts(
-                            list(),
-                            hatList(),
-                            route().stages?.narrate ?? route().default,
-                            effectiveHat("narrate"),
-                          )}
-                        >
-                          {(c) => <div class="warn">{conflictText(c)}</div>}
-                        </For>
-                      </Show>
+                      <For each={stageConflicts(stage())}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
                     </div>
                   )
                 }}
@@ -754,7 +747,7 @@ const Templates = (props: Pane) => {
               ],
               { equals: sameArray },
             )
-            const conflicts = createMemo(() => hatTemplateConflicts(providerList(), list(), route(), h()), {
+            const conflicts = createMemo(() => hatTemplateConflicts(providerList(), route(), h()), {
               equals: sameArray,
             })
             const tailConflictIdx = createMemo(() => {
@@ -1089,7 +1082,7 @@ const SlotCapsule = (props: {
   onEdit: (f: (said: HatEntry[]) => HatEntry[]) => void
 }) => {
   const [showReasoning, setShowReasoning] = createSignal(false)
-  const [badToolInput, setBadToolInput] = createSignal<{ base: string; raw: string } | null>(null)
+  const [badToolInput, setBadToolInput] = createSignal<{ entry: HatEntry; raw: string } | null>(null)
   let reasonBox: HTMLTextAreaElement | undefined
   const reasoningOpen = () =>
     (props.entry.role === "assistant" || props.entry.role === "tool") &&
@@ -1098,8 +1091,7 @@ const SlotCapsule = (props: {
   const savedToolInput = () => (props.entry.role === "tool" ? (props.entry.toolInput ?? "{}") : "{}")
   const toolInput = () => {
     const bad = badToolInput()
-    const saved = savedToolInput()
-    return bad && bad.base === saved ? bad.raw : saved
+    return bad && bad.entry === props.entry ? bad.raw : savedToolInput()
   }
   const toolInputOk = () => validToolInput(toolInput())
 
@@ -1305,7 +1297,7 @@ const SlotCapsule = (props: {
                   const idx = props.index
                   const nextInput = e.currentTarget.value
                   if (!validToolInput(nextInput)) {
-                    setBadToolInput({ base: savedToolInput(), raw: nextInput })
+                    setBadToolInput({ entry: props.entry, raw: nextInput })
                     return
                   }
                   setBadToolInput(null)

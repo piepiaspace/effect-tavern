@@ -146,6 +146,13 @@ export const wire = (format: Format, messages: readonly Message[], prefill?: boo
   })
 }
 
+/** Apply the bound connection's capabilities to the assembled messages before any SDK call. */
+export const wireForModel = (model: Model, messages: readonly Message[]): Message[] => {
+  if (model.tools === false && messages.some((m) => m.role === "tool"))
+    throw new Error("hat tool handshake requires native tool calling on this connection")
+  return wire(model.format, messages, model.prefill)
+}
+
 const mergeProviderOptions = (
   ...layers: Array<Record<string, Record<string, unknown>> | undefined>
 ): Record<string, Record<string, unknown>> => {
@@ -612,7 +619,7 @@ export const object = <S extends Schema.Top & Schema.Constraint & Schema.Constra
   return Effect.tryPromise(async (abortSignal) => {
     const eff = effectiveOptions(m, o)
     const modelId = modelIdOf(m.model)
-    const wired = wire(m.format, messages, m.prefill)
+    const wired = wireForModel(m, messages)
     const decode = Schema.decodeUnknownSync(schema)
 
     if (m.structured === "tool") {
@@ -849,7 +856,7 @@ export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}
   Effect.tryPromise(async (abortSignal) => {
     const eff = effectiveOptions(m, o)
     const modelId = modelIdOf(m.model)
-    const wired = wire(m.format, messages, m.prefill)
+    const wired = wireForModel(m, messages)
     const toolDeliver = eff.deliver === "tool"
     const spy = toolDeliver ? spyGenerate(m.model) : undefined
     try {
@@ -933,7 +940,7 @@ export interface Reply {
  *  would crash the process. So the iterator is never cancelled: interruption aborts the signal and the drain runs on
  *  to the `abort` part ai-sdk then emits, which is dropped. */
 export const streamed = (m: Model, messages: readonly Message[], o: CallOptions = {}) =>
-  Effect.try({ try: () => wire(m.format, messages, m.prefill), catch: modelError }).pipe(
+  Effect.try({ try: () => wireForModel(m, messages), catch: modelError }).pipe(
     Effect.map((wired) => {
       const eff = effectiveOptions(m, o)
       const modelId = modelIdOf(m.model)

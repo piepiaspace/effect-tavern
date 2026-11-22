@@ -555,6 +555,7 @@ for (const [phase, demand] of [
       },
     }
     let toolsEnabled = false
+    let checkToolsEnabled = false
     const richCard = {
       ...chat,
       names: { char: "Lin" },
@@ -576,14 +577,14 @@ for (const [phase, demand] of [
       card: richCard,
       rows: () => ({}),
       hat: (id) => (id === handshakeHat.id ? handshakeHat : undefined),
-      model: () => ({
+      model: (phase) => ({
         ...fake((o) => {
           const doc = readStage(o)
           if (doc.phase === "narrate")
             return { text: `${"夜雨落在廊檐青石上，风声穿过竹林。".repeat(14)}他的指节发白。` }
           return defaultAnswer(doc, { notes: "Recorded." })
         }),
-        tools: toolsEnabled,
+        tools: phase === "check" ? checkToolsEnabled : toolsEnabled,
         hat: handshakeHat.id,
       }),
     })
@@ -596,6 +597,14 @@ for (const [phase, demand] of [
     )
 
     toolsEnabled = true
+    const blockedCheck = await collectEvents(S.act(root.id, { text: "Speak." }))
+    assert.ok(Exit.isFailure(blockedCheck.exit))
+    assert.match(
+      calls(blockedCheck.events).find((c) => c.phase === "check")?.fault?.message ?? "",
+      /hat tool handshake/,
+    )
+
+    checkToolsEnabled = true
     const okTurn = await collectEvents(S.act(root.id, { text: "Speak." }))
     assert.ok(Exit.isSuccess(okTurn.exit))
     const stageCalls = calls(okTurn.events)

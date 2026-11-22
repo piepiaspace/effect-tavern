@@ -21,7 +21,6 @@ import {
 import { gateOf, makeDerived } from "./derived.ts"
 import {
   evaluateHead,
-  hatHasToolHandshake,
   type Hat,
   type HatEntry,
   type HatNarrateSlot,
@@ -1147,10 +1146,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       ...(hat && { source: { kind: "hat", hatId: hat.id, hatName: hat.name } }),
     })
   }
-  if (
-    connection.tools === false &&
-    (prepped.messages.some((m) => m.role === "tool") || hatHasToolHandshake(hat, "narrate"))
-  ) {
+  if (connection.tools === false && prepped.messages.some((m) => m.role === "tool")) {
     const toolSrc =
       prepped.traces.find((tr) => tr.role === "tool")?.source ??
       (hat ? ({ kind: "hat", hatId: hat.id, hatName: hat.name } satisfies SourceRef) : undefined)

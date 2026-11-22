@@ -1034,6 +1034,19 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.equal(hatToolsDiag.source?.hatId, shellHat.id)
   assert.equal(hatToolsDiag.source?.hatSlot, "head")
 
+  const omittedHandshake = previewNarrate({
+    card,
+    rows,
+    hat: { ...shellHat, narrate: { head: [{ role: "tool", toolName: "ack", text: "{{missing}}" }] } },
+    connection: { format: "openai-compatible", prefill: true, tools: false, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look." },
+  })
+  assert.ok(
+    omittedHandshake.omitted.some((item) => item.reason === "unfilled_hole" && item.source?.hatId === shellHat.id),
+  )
+  assert.ok(!omittedHandshake.diagnostics.some((d) => d.code === "hat_needs_tools"))
+
   // Reasoning-only assistant tail triggers `prefill_disallowed` when `prefill === false`; tool-result tail does NOT
   const reasoningTailPreview = previewNarrate({
     card,
