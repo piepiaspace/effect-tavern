@@ -275,24 +275,27 @@ const Routing = (props: { onDecision: () => void }) => {
   }
   const staleHat = (id: string | null | undefined) =>
     id && !hatList().some((h) => h.id === id) ? { value: id, label: id, reason: "removed" as const } : undefined
-  const setStage = (s: Stage, k: string) => {
-    const { [s]: _, ...rest } = route().stages ?? {}
-    void putRouting({ ...route(), stages: k ? { ...rest, [s]: pairOf(k) } : rest })
-  }
-  const setMainHat = (id: string | undefined) => {
-    const { hat: _, ...rest } = route()
-    void putRouting(id ? { ...rest, hat: id } : rest)
-  }
-  const setStageHat = (s: HatStage, v: string) => {
-    const { [s]: _, ...rest } = route().stageHats ?? {}
-    const next = v === "" ? rest : { ...rest, [s]: v === HAT_NONE ? null : v }
-    const { stageHats: _sh, ...base } = route()
-    void putRouting(Object.keys(next).length ? { ...base, stageHats: next } : base)
-  }
-  const flipStages = () => {
-    const { stages, stageHats: _, ...rest } = route()
-    void putRouting(stages ? rest : { ...rest, stages: {} })
-  }
+  const setStage = (s: Stage, k: string) =>
+    void putRouting((r) => {
+      const { [s]: _, ...rest } = r.stages ?? {}
+      return { ...r, stages: k ? { ...rest, [s]: pairOf(k) } : rest }
+    })
+  const setMainHat = (id: string | undefined) =>
+    void putRouting((r) => {
+      const { hat: _, ...rest } = r
+      return id ? { ...rest, hat: id } : rest
+    })
+  const setStageHat = (s: HatStage, v: string) =>
+    void putRouting(({ stageHats, ...base }) => {
+      const { [s]: _, ...rest } = stageHats ?? {}
+      const next = v === "" ? rest : { ...rest, [s]: v === HAT_NONE ? null : v }
+      return Object.keys(next).length ? { ...base, stageHats: next } : base
+    })
+  const flipStages = () =>
+    void putRouting((r) => {
+      const { stages, stageHats: _, ...rest } = r
+      return stages ? rest : { ...rest, stages: {} }
+    })
   const stageHatValue = (s: HatStage): string => {
     const v = route().stageHats?.[s]
     return v === null ? HAT_NONE : (v ?? "")
@@ -323,7 +326,7 @@ const Routing = (props: { onDecision: () => void }) => {
                 value={route().default && pairKey(route().default!)}
                 options={pairs()}
                 stale={stale(route().default)}
-                onPick={(k) => void putRouting({ ...route(), default: pairOf(k) })}
+                onPick={(k) => void putRouting((r) => ({ ...r, default: pairOf(k) }))}
               />
             </div>
             <div class="stage-hat" data-active={route().hat ? "" : undefined}>
@@ -419,6 +422,7 @@ type Role = "system" | "user" | "assistant"
 type Slot = "head" | "tail" | "review"
 type Said = { role: Role; text: string }
 interface MsgDraft {
+  hatId: string
   slot: Slot
   index: number | null
   role: Role
@@ -511,6 +515,8 @@ const Templates = (props: Pane) => {
     setDraft(next)
     void save(next)
   }
+  const toggleMount = (id: string, stage?: HatStage) =>
+    void putRouting((r) => (stage ? toggleStageHat(r, stage, id) : toggleMainHat(r, id)))
   const openModal = (s: Slot, index: number | null) => {
     const h = hat()
     if (!h) return
@@ -518,12 +524,13 @@ const Templates = (props: Pane) => {
     const cur = index === null ? undefined : slotOf(h, s)[index]
     if (index !== null && !cur) return
     const role: Role = cur ? cur.role : s === "tail" ? "assistant" : slotOf(h, s).length ? "user" : "system"
-    setEditingMsg({ slot: s, index, role, text: cur?.text ?? "" })
+    setEditingMsg({ hatId: h.id, slot: s, index, role, text: cur?.text ?? "" })
     void msgDlg.open()
   }
   const commitModal = () => {
     const d = editingMsg()
     if (!d || !d.text.trim()) return
+    if (hat()?.id !== d.hatId) return msgDlg.close()
     const item: Said = { role: d.role, text: d.text }
     editSlot(d.slot, (l) => (d.index === null ? [...l, item] : l.map((x, i) => (i === d.index ? item : x))))
     msgDlg.close()
@@ -531,6 +538,7 @@ const Templates = (props: Pane) => {
   const removeFromModal = () => {
     const d = editingMsg()
     if (!d || d.index === null) return
+    if (hat()?.id !== d.hatId) return msgDlg.close()
     const idx = d.index
     editSlot(d.slot, (l) => l.filter((_, i) => i !== idx))
     msgDlg.close()
@@ -675,11 +683,7 @@ const Templates = (props: Pane) => {
                     </PopoverTrigger>
                     <PopoverContent class="popup-list hat-mount-pop" sideOffset={4} align="end">
                       <PopoverTitle class="sr-only">{t("settings.mountHat")}</PopoverTitle>
-                      <Tick
-                        class="item hat-mount-item"
-                        on={mounts().main}
-                        onFlip={() => void putRouting(toggleMainHat(route(), h().id))}
-                      >
+                      <Tick class="item hat-mount-item" on={mounts().main} onFlip={() => toggleMount(h().id)}>
                         <span>{t("settings.mainHat")}</span>
                       </Tick>
                       <div class="hat-mount-sep" role="separator" />
@@ -689,7 +693,7 @@ const Templates = (props: Pane) => {
                             <Tick
                               class="item hat-mount-item"
                               on={mounts().stages.includes(s())}
-                              onFlip={() => void putRouting(toggleStageHat(route(), s(), h().id))}
+                              onFlip={() => toggleMount(h().id, s())}
                             >
                               <span>{t(HAT_STAGE_KEYS[s()])}</span>
                             </Tick>

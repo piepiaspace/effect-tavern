@@ -186,6 +186,8 @@ assert.deepEqual(parseHatFile(exported, "Fallback"), {
   deliver: "tool",
   narrate: { head: [{ role: "system", text: "Go" }] },
 })
+assert.equal(parseHatFile('{"scripts":{}}', "package"), null)
+assert.deepEqual(parseHatFile(serializeHat({ id: "empty", name: "Empty" }), "Fallback"), { name: "Empty" })
 assert.equal(parseHatFile("{bad", "Fallback"), null)
 assert.equal(parseHatFile('{"deliver":"invalid"}', "Fallback"), null)
 assert.equal(parseHatFile('{"narrate":{"head":[{"role":"tool","text":"x"}]}}', "Fallback"), null)

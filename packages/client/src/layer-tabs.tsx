@@ -48,7 +48,7 @@ const stageAskLabels = (): [string, string][] => [
 ]
 
 export const leaveArea = (e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
-  if (e.key !== "Escape") return
+  if (e.isComposing || e.key !== "Escape") return
   e.preventDefault()
   e.currentTarget.blur()
 }

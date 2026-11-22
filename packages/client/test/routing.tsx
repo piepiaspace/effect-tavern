@@ -45,6 +45,7 @@ openSettings("routing")
 const post = globalThis.fetch
 const writes: Routing[] = []
 const hatWrites: Hat[] = []
+let routingDelay: Promise<void> | undefined
 let hatResponse: Promise<Response>
 globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
@@ -53,6 +54,7 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
   if (method === "PUT" && path === "/routing") {
     const next = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as Routing
     writes.push(next)
+    await routingDelay
     return Response.json(next)
   }
   if (method === "PUT" && path === "/hats/hat-gemini") {
@@ -271,6 +273,24 @@ const run = async () => {
     `modal commit saves new trailing message and closes: ${JSON.stringify(hatWrites.at(-1))}`,
   )
 
+  for (const action of ["primary", "danger"]) {
+    openSettings("templates", "hat-claude")
+    await quiet()
+    document.querySelector<HTMLButtonElement>('.msg-capsule button[aria-label="全屏编辑"]')?.click()
+    await quiet()
+    openSettings("templates", "hat-gemini")
+    await quiet()
+    const before = hatWrites.length
+    const button = document.querySelector<HTMLButtonElement>(`.modal-foot .${action}`)
+    check(button, `stale dialog still offers ${action}`)
+    button?.click()
+    await quiet()
+    check(
+      hatWrites.length === before && !document.querySelector(".modal"),
+      `stale dialog closes without writing on ${action}`,
+    )
+  }
+
   // Lightweight mount popover in template header: left-aligned snug checkboxes + 2x2 stage grid, mounts onto main model
   document.querySelector<HTMLButtonElement>(".hat-mount-btn")?.click()
   await quiet()
@@ -303,11 +323,23 @@ const run = async () => {
       `mount popover stays compact without space-between gap (gap=${leftBoxes[1].txt.left - leftBoxes[1].cb.right}, width=${popBox.width})`,
     )
   }
+  const firstMount = Promise.withResolvers<void>()
+  routingDelay = firstMount.promise
+  const writesBeforeMount = writes.length
   mountMainTick?.querySelector<HTMLElement>('[data-slot="checkbox"]')?.click()
+  await until(() => writes.length > writesBeforeMount)
+  const mountCheck = mountItems.find((el) => el.textContent?.trim() === "校验")
+  mountCheck?.querySelector<HTMLElement>('[data-slot="checkbox"]')?.click()
+  firstMount.resolve()
+  routingDelay = undefined
   await quiet()
-  check(writes.at(-1)?.hat === "hat-gemini", `mount popover writes routing.hat: ${JSON.stringify(writes.at(-1))}`)
-  registry.set(routing, writes.at(-1)!)
-  await quiet()
+  const mountedRoute = registry.get(routing)
+  check(
+    writes.length === writesBeforeMount + 2 &&
+      mountedRoute.hat === "hat-gemini" &&
+      mountedRoute.stageHats?.check === "hat-gemini",
+    `consecutive mount clicks keep both targets: ${JSON.stringify(mountedRoute)}`,
+  )
   check(
     [...document.querySelectorAll<HTMLElement>(".hat-scroll > .warn")].some((w) =>
       w.textContent?.includes("已关闭预填"),
@@ -337,6 +369,11 @@ const run = async () => {
     ![...document.querySelectorAll(".detail-header button")].some((b) => b.textContent?.includes("请求预览")),
     "header omits duplicate Prompt Tree entry",
   )
+  field.focus()
+  field.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", isComposing: true, bubbles: true }))
+  check(document.activeElement === field, "Escape during IME composition keeps the message focused")
+  field.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))
+  check(document.activeElement !== field, "Escape outside composition blurs the message")
   const preview = document.querySelector<HTMLButtonElement>(".hat-seam button")!
   const response = Promise.withResolvers<Response>()
   hatResponse = response.promise

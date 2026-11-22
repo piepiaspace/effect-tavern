@@ -153,6 +153,7 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
   }
   if (!body || typeof body !== "object" || Array.isArray(body)) return null
   const rec = body as Record<string, unknown>
+  if (!["name", "deliver", "narrate", "review"].some((key) => Object.hasOwn(rec, key))) return null
   if (rec.deliver !== undefined && rec.deliver !== "text" && rec.deliver !== "tool") return null
   if (rec.name !== undefined && typeof rec.name !== "string") return null
   const narrate = rec.narrate

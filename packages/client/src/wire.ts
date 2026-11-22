@@ -369,8 +369,15 @@ export const putDecision = async (c: DecisionConfig): Promise<void> =>
 /** One minimal real request through the saved config (POST /decision/test); a refusal is its configuration. */
 export const testDecision = (): Promise<Probe> => got(call(`${base}/decision/test`, { method: "POST" }))
 export const fetchRouting = async (): Promise<void> => registry.set(routing, await got(call(`${base}/routing`)))
-export const putRouting = async (r: Routing): Promise<void> =>
-  registry.set(routing, await got(call(`${base}/routing`, json("PUT", r))))
+let routingWrite: Promise<void> = Promise.resolve()
+/** Each click edits the route acknowledged by the previous write, even when several clicks arrive together. */
+export const putRouting = (edit: (r: Routing) => Routing): Promise<void> =>
+  (routingWrite = routingWrite
+    .catch(() => {})
+    .then(async () => {
+      const next = edit(registry.get(routing))
+      registry.set(routing, await got(call(`${base}/routing`, json("PUT", next))))
+    }))
 export const fetchHats = async (): Promise<void> => registry.set(hats, await got(call(`${base}/hats`)))
 export const putHat = async ({ id, ...body }: Hat): Promise<void> =>
   registry.set(hats, await got(call(`${base}/hats/${enc(id)}`, json("PUT", body))))
