@@ -55,7 +55,12 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
         : new Request(at, init)
     return (await served.promise)(request)
   }
-  return !same && (url.protocol === "http:" || url.protocol === "https:") ? go(input, init) : page(input, init)
+  if (same || (url.protocol !== "http:" && url.protocol !== "https:")) return page(input, init)
+  const { proxy, ...webInit } = (init ?? {}) as RequestInit & { proxy?: string | false }
+  const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+  if (proxy === undefined || proxy === "system") headers.delete("x-tavern-fetch-proxy")
+  else headers.set("x-tavern-fetch-proxy", proxy === false ? "direct" : proxy)
+  return go(input, { ...webInit, headers })
 }) as typeof fetch
 
 // The client's way to save a file (wire.ts saveFile): Go has the user pick where (save.go).

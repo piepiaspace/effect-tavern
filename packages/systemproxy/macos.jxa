@@ -1,0 +1,16 @@
+// Invoked by osascript with the destination as an argument.
+ObjC.import("CFNetwork")
+function run(args) {
+  const settings = $.CFNetworkCopySystemProxySettings()
+  const proxies = $.CFNetworkCopyProxiesForURL($.NSURL.URLWithString(args[0]), settings)
+  const p = ObjC.deepUnwrap(ObjC.castRefToObject(proxies))[0]
+  if (!p || p.kCFProxyTypeKey === "kCFProxyTypeNone") return ""
+  if (!p.kCFProxyHostNameKey) return "pac"
+  const scheme = p.kCFProxyTypeKey === "kCFProxyTypeSOCKS" ? "socks5" : "http"
+  const host = p.kCFProxyHostNameKey
+  const port = p.kCFProxyPortNumberKey
+  const user = p.kCFProxyUsernameKey
+  const password = p.kCFProxyPasswordKey
+  const auth = user ? encodeURIComponent(user) + (password ? ":" + encodeURIComponent(password) : "") + "@" : ""
+  return scheme + "://" + auth + (host.includes(":") ? "[" + host + "]" : host) + (port ? ":" + port : "")
+}

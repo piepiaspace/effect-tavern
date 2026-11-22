@@ -117,6 +117,7 @@ export const secrets = Atom.make<readonly SecretView[]>([]).pipe(Atom.keepAlive)
 /** The model-name table (GET /models/names), read through provider names.ts `lookup`: a model id's name, owner, family. */
 export const names = Atom.make<Names>({}).pipe(Atom.keepAlive)
 export const routing = Atom.make<Routing>({}).pipe(Atom.keepAlive)
+export const defaultProxy = Atom.make<string | false | null>(null).pipe(Atom.keepAlive)
 /** The decision model's connection (GET /decision; provider decision.ts): a second kind of model with its own address
  *  and key, never among the stage models. null until one is saved. */
 export const decision = Atom.make<DecisionConfig | null>(null).pipe(Atom.keepAlive)

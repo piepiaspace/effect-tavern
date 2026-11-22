@@ -5,16 +5,10 @@
 // `checkQuestions`), each scene under the card's world. Then a ladder of darker passages with one neutral question each, to see what the service blocks;
 // every extra file argument is one more rung (your own material: the script ships none past cruelty).
 // SENDS ALL OF IT TO THE DECISION SERVICE.
+import { decisionService } from "./decision-service.ts"
 import { Database } from "bun:sqlite"
 import { join } from "node:path"
-import {
-  blocked,
-  compileDecision,
-  decide,
-  type DecisionConfig,
-  type Question,
-  type Secret,
-} from "@effect-tavern/provider"
+import { blocked, compileDecision, decide, type Question } from "@effect-tavern/provider"
 import { checkQuestions, checkVerdict } from "@effect-tavern/runtime/src/decision.ts"
 import { harness, worldOf } from "@effect-tavern/runtime/src/layer.ts"
 import { worldBlock } from "@effect-tavern/runtime/src/request.ts"
@@ -26,16 +20,9 @@ const args = Bun.argv.slice(2)
 const dir = args.find((a) => !a.includes(".")) ?? join(import.meta.dir, "../../../.dev")
 const files = args.filter((a) => a.includes("."))
 
-type Row = Record<string, unknown>
 const db = new Database(join(dir, "tavern.db"), { readonly: true })
-const all = (sql: string) => db.query(sql).all() as Row[]
-const json = <T>(r: Row | undefined): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
-const config = json<DecisionConfig>(all("select json from decision where id = 1")[0])
-if (!config) throw new Error("no decision model saved in this library")
-const secret = all("select id, name, json from secret")
-  .map((r) => ({ ...json<object>(r), id: r["id"], name: r["name"] }) as Secret)
-  .find((s) => s.id === config.secret)
-const model = compileDecision(config, secret)
+const { config, secret, fetch } = decisionService(db)
+const model = compileDecision(config, secret, { fetch })
 
 const card = await readCard(join(import.meta.dir, "../../../samples/life-of-pi/life-of-pi.yaml"))
 const named = (text: string) => expand(text, { user: "你", ...card.names }, "card")!

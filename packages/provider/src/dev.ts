@@ -29,8 +29,7 @@ export const localAnthropicKey = async (): Promise<string | undefined> => {
   }
 }
 
-/** A live Anthropic connection on the developer machine, or undefined when there is no key. The shell's https_proxy
- *  becomes the connection's explicit proxy. */
+/** A live Anthropic connection on the developer machine, or undefined when there is no key. */
 export const localAnthropic = async (model = "claude-haiku-5-5"): Promise<Connection | undefined> => {
   const key = await localAnthropicKey()
   if (!key) return undefined
@@ -40,6 +39,5 @@ export const localAnthropic = async (model = "claude-haiku-5-5"): Promise<Connec
     endpoint: { url: "https://api.anthropic.com", resolution: "format-default" },
     credential: { type: "api_key", key },
     model,
-    proxy: Bun.env["https_proxy"] ?? Bun.env["HTTPS_PROXY"],
   }
 }

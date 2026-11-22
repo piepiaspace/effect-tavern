@@ -4,6 +4,7 @@
 // A secret is a key in the library's vault, named, so one key serves several providers; only a hint of it ever leaves
 // the server. No ai-sdk here: the client imports these types, and url.ts is all this file runs.
 import { Schema } from "effect"
+import { ProxySetting } from "./proxy.ts"
 import type { Connection } from "./connection.ts"
 import { normalize, UrlError, type Format, type UrlCode } from "./url.ts"
 
@@ -39,7 +40,7 @@ export const Provider = Schema.Struct({
   }),
   secret: Schema.optionalKey(Schema.String), // a secret id; none = no key
   cacheTtl: Schema.optionalKey(Schema.Literals(["5m", "1h"])),
-  proxy: Schema.optionalKey(Schema.Union([Schema.String, Schema.Literal(false)])), // Connection.proxy's three states
+  proxy: Schema.optionalKey(ProxySetting),
   headers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   models: Schema.Array(ModelEntry),
 })

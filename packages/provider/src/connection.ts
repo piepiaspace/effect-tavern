@@ -35,9 +35,7 @@ export interface Connection {
   /** Lifetime of the head's cache entry: 1h when a person is on the other end (replies 5–60 minutes apart), else 5m. */
   cacheTtl?: "5m" | "1h"
   headers?: Record<string, string>
-  /** Forward proxy, the three states of Bun's fetch `proxy` option, which carries it: unset reads the environment
-   *  (https_proxy), `false` forces a direct connection, a URL routes this connection through it. Node's fetch ignores
-   *  the option and reads the environment only with NODE_USE_ENV_PROXY=1; the runtime is Bun. */
+  /** Unset inherits the install default, "system" follows the host, false connects directly, a URL selects a proxy. */
   proxy?: string | false
   /** The hat this connection wears (a library id, `/hats`): the routing's for the stage, put on by the library per
    *  request (server library.ts `hatFor`); a model entry names none. */
@@ -72,10 +70,10 @@ export type Fetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Re
 
 /** The fetch this connection sends through: the runtime's, with `proxy` set on each request when the connection names
  *  one (`proxy` is not in the DOM RequestInit type, hence the cast). */
-export const fetchFor = (c: Pick<Connection, "proxy">): Fetch =>
-  c.proxy === undefined
-    ? globalThis.fetch
-    : (input, init) => globalThis.fetch(input, { ...init, proxy: c.proxy } as RequestInit)
+export const fetchFor =
+  (c: Pick<Connection, "proxy">): Fetch =>
+  (input, init) =>
+    globalThis.fetch(input, { ...init, proxy: c.proxy === "system" ? undefined : c.proxy } as RequestInit)
 
 /** Wraps fetch so the inspector can see what was actually sent: URL, status, latency, optionally the converted body.
  *  A fetch that throws (no route, a closed proxy, a timeout) is traced too, as status 0 with the time it took, and the

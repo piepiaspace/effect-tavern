@@ -9,17 +9,10 @@
 // are measured on every prose. A node's stored
 // `violated` is the label. CONTROLS append a hand-written violation to a real prose: the same question must then say yes.
 // Reports per request: answered / blocked (with the service's code) / failed, the latency, the input tokens, P(yes).
+import { decisionService } from "./decision-service.ts"
 import { Database } from "bun:sqlite"
 import { join } from "node:path"
-import {
-  blocked,
-  compileDecision,
-  decide,
-  type DecisionConfig,
-  type Question,
-  type Secret,
-  type Trace,
-} from "@effect-tavern/provider"
+import { blocked, compileDecision, decide, type Question, type Trace } from "@effect-tavern/provider"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
 import { resolve, worldOf, type Layer, type Local, type Resolved } from "@effect-tavern/runtime/src/layer.ts"
 import { worldBlock } from "@effect-tavern/runtime/src/request.ts"
@@ -43,11 +36,7 @@ const db = new Database(join(dir, "tavern.db"), { readonly: true })
 const all = (sql: string) => db.query(sql).all() as Row[]
 const json = <T>(r: Row | null | undefined): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
 
-const config = json<DecisionConfig>(all("select json from decision where id = 1")[0])
-if (!config) throw new Error("no decision model saved in this library")
-const secret = all("select id, name, json from secret")
-  .map((r) => ({ ...json<object>(r), id: r["id"], name: r["name"] }) as Secret)
-  .find((s) => s.id === config.secret)
+const { config, secret, fetch } = decisionService(db)
 
 const cards = new Map<string, Card>()
 for (const r of all("select id, json from card"))
@@ -129,7 +118,7 @@ interface Run {
 }
 const runs: Run[] = []
 let trace: Trace | undefined
-const model = dry ? undefined : compileDecision(config, secret, { onTrace: (t) => (trace = t) })
+const model = dry ? undefined : compileDecision(config, secret, { fetch, onTrace: (t) => (trace = t) })
 
 const ask = async (
   at: string,

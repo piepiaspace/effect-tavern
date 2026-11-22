@@ -15,6 +15,7 @@ export const bundleServer = (o: { outdir?: string; version: string }) =>
       {
         name: "page",
         setup(b) {
+          b.onResolve({ filter: /proxy-host\.ts$/ }, () => ({ path: at("./proxy-host.ts") }))
           b.onResolve({ filter: /^bun:sqlite$/ }, () => ({ path: at("./sqlite.ts") }))
         },
       },

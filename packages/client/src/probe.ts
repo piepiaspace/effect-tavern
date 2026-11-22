@@ -64,6 +64,7 @@ export interface Probing {
 }
 export const createProbing = (opts: {
   provider: Accessor<Provider | undefined>
+  defaultProxy: Accessor<string | false | null>
   /** Awaited before any request goes out: the key field's write in flight, or the probe would go out keyless. */
   ready: () => Promise<void>
   /** The wire: the connectivity's probes without a model, that model's one probe with it. */
@@ -133,6 +134,9 @@ export const createProbing = (opts: {
     clearAll()
     void reach()
   }
+  createEffect(opts.defaultProxy, (value, prev) => {
+    if (prev !== undefined && prev !== value && opts.provider()?.proxy === undefined) clearAll()
+  })
   // the configuration changed under the results (it was just saved: this is the moment to know the address)
   createEffect(
     () => {

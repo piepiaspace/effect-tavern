@@ -645,7 +645,7 @@ data.close()
   assert.equal(retried.packs.list().find((p) => p.id === "harness")!.fragments![0].text, "Keep me")
   retried.close()
   const upgraded = new DatabaseSync(file)
-  assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 7)
+  assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 8)
   assert.equal(upgraded.prepare("select name from sqlite_master where name = 'player'").get(), undefined)
   assert.equal(
     upgraded.prepare("select json_extract(json, '$.settlementStatus') as s from node where id = 0").get()!.s,
@@ -686,7 +686,7 @@ data.close()
   open(freshFile).close()
   const fresh = new DatabaseSync(freshFile)
   const prior = new DatabaseSync(file)
-  assert.equal((fresh.prepare("pragma user_version").get() as Row)["user_version"], 7)
+  assert.equal((fresh.prepare("pragma user_version").get() as Row)["user_version"], 8)
   assert.deepEqual(fresh.prepare("pragma table_info(story)").all(), prior.prepare("pragma table_info(story)").all())
   prior.close()
   // a library from before the workshop wrote the shelf itself: its draft table goes on open, its cards stay
@@ -703,9 +703,9 @@ data.close()
       stepped.prepare("select name from sqlite_master where name = 'draft'").get(),
       stepped.prepare("select title from card where id = 'kept'").get()!["title"],
     ],
-    [7, undefined, "留下"],
+    [8, undefined, "留下"],
   )
-  stepped.exec("pragma user_version = 8")
+  stepped.exec("pragma user_version = 9")
   stepped.close()
   assert.throws(() => open(freshFile), /newer than supported/)
   rmSync(dir, { recursive: true, force: true })

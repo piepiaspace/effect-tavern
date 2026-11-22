@@ -21,6 +21,7 @@
 // the row does not name runs on `model`, the environment's (dev.ts); `pinned` puts it over the row (MODEL=fake).
 // Every turn's stream passes through the `logbook` (logbook.ts), which files its calls under the node; a library given
 // none has a silent one (nothing is printed before a host says it is up).
+import type { Fetch } from "@effect-tavern/provider/src/connection.ts"
 import { FREE_CHAT_ID, type CardView, type Persona, type StoryRow } from "@effect-tavern/runtime/src/library.ts"
 export type { CardRow } from "@effect-tavern/runtime/src/library.ts"
 export { Routing } from "@effect-tavern/runtime/src/session.ts"
@@ -89,6 +90,7 @@ import { depots } from "./depot.ts"
 import { openLogbook, type Logbook } from "./logbook.ts"
 import type { Exported } from "./export.ts"
 import { names } from "./names.ts"
+import { outbound } from "./proxy-host.ts"
 import { readHttps } from "./remote.ts"
 import { shelf } from "./shelf.ts"
 import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
@@ -162,16 +164,21 @@ export const library = ({
   overlay: given,
   model: env,
   pinned = false,
-  fetch,
+  fetch: cardFetch,
   logbook = openLogbook(),
 }: {
   data: Data
   overlay?: Layer // the harness overlay until one is stored
   model?: (phase: Phase, onExchange?: CompileOptions["onExchange"]) => Model
   pinned?: boolean
-  fetch?: typeof globalThis.fetch // what a card library is read over (depot.ts); a test's own
+  fetch?: Fetch // what a card library is read over (depot.ts); a test's own
   logbook?: Logbook
 }) => {
+  const network =
+    (c: { proxy?: string | false }): Fetch =>
+    (input, init) =>
+      outbound(input, init, c.proxy ?? data.network.read() ?? undefined)
+  const fetch = cardFetch ?? network({})
   const sessions = new Map<Id, { session: Session; turn: Turn; stale?: boolean }>()
   // The install's cards (shelf.ts). A card replaced or removed takes the open sessions on it along: an idle one is
   // dropped and reopens on the new card, one with a turn in flight finishes on the card it began on.
@@ -210,7 +217,7 @@ export const library = ({
   const resolve = (pair: Pair, hatId: string | undefined, onExchange?: CompileOptions["onExchange"]): Model => {
     const { p, m } = routedEntry(pair)
     const conn = connection(p, m, secretOf(p))
-    return bind(hatId !== undefined ? { ...conn, hat: hatId } : conn, { onExchange })
+    return bind(hatId !== undefined ? { ...conn, hat: hatId } : conn, { onExchange, fetch: network(conn) })
   }
   const model = (phase: Phase | "author", onExchange?: CompileOptions["onExchange"]): Model => {
     const r = pinned ? {} : routing()
@@ -376,7 +383,7 @@ export const library = ({
       // fast pass, which records it and falls back to the LLM check
       decision: (onExchange) => {
         const c = decision()
-        return c?.enabled ? compileDecision(c, decisionKey(c), { onExchange }) : undefined
+        return c?.enabled ? compileDecision(c, decisionKey(c), { onExchange, fetch: network(c) }) : undefined
       },
       store,
       hat,
@@ -637,7 +644,7 @@ export const library = ({
       models: async (id: string): Promise<ListedModel[]> => {
         const p = providerOf(id)
         const groups = listings(id)
-        const got = await Promise.allSettled(groups.map((g) => listModels(g.c)))
+        const got = await Promise.allSettled(groups.map((g) => listModels(g.c, { fetch: network(g.c) })))
         const merged = new Map<string, Format[]>()
         got.forEach((r, i) => {
           if (r.status !== "fulfilled") return
@@ -667,17 +674,22 @@ export const library = ({
           return [
             await probed([c.format], plan(c.format, c.endpoint, c.model).generate, async (onTrace) => {
               const failed = await Effect.runPromise(
-                text(bind(c, { onTrace }), [{ role: "user", content: "Hi" }], { effort: "off" }).pipe(
-                  Effect.match({ onFailure: (e) => e, onSuccess: () => undefined }),
-                ),
+                text(bind(c, { onTrace, fetch: network(c) }), [{ role: "user", content: "Hi" }], {
+                  effort: "off",
+                }).pipe(Effect.match({ onFailure: (e) => e, onSuccess: () => undefined })),
               )
               if (failed) throw failed
             }),
           ]
         }
-        return Promise.all(listings(id).map((g) => probed(g.formats, g.url, (onTrace) => listModels(g.c, { onTrace }))))
+        return Promise.all(
+          listings(id).map((g) =>
+            probed(g.formats, g.url, (onTrace) => listModels(g.c, { onTrace, fetch: network(g.c) })),
+          ),
+        )
       },
     },
+    network: data.network,
     routing: { read: routing, write: data.routing.write },
     /** The decision model's connection (provider decision.ts): its own row, not a provider and not a routing pair. */
     decision: {
@@ -687,7 +699,7 @@ export const library = ({
       model: (o?: CompileOptions): DecisionModel => {
         const c = decision()
         if (!c?.enabled) throw new Error("decision model: not enabled")
-        return compileDecision(c, decisionKey(c), o)
+        return compileDecision(c, decisionKey(c), { fetch: network(c), ...o })
       },
       /** One minimal real request (a yes/no question about one word) as a Probe, enabled or not; a 400's worth of
        *  configuration (nothing saved, no key, no model) throws instead. */
@@ -695,7 +707,7 @@ export const library = ({
         const c = decision()
         if (!c) throw new Error("decision model: not configured")
         let trace: (t: Trace) => void = () => {}
-        const model = compileDecision(c, decisionKey(c), { onTrace: (t) => trace(t) })
+        const model = compileDecision(c, decisionKey(c), { fetch: network(c), onTrace: (t) => trace(t) })
         return probed([], decisionUrl(c), async (onTrace) => {
           trace = onTrace
           const failed = await Effect.runPromise(

@@ -48,6 +48,7 @@ import {
   routing,
   secrets,
   decision,
+  defaultProxy,
   stories,
   type CardView,
   type ShelfCard,
@@ -289,9 +290,6 @@ export const cardFile = (id: string): string => `${base}/cards/${enc(id)}/export
  *  to the host, which has the player pick where it is saved. */
 type Host = { save(file: Blob, name: string): Promise<void> }
 const host = (): Host | undefined => (globalThis as { tavernHost?: Host }).tavernHost
-/** In the app, whose host reaches every model through the system's own proxy (MyGo's fetch carries no per-request
- *  one), so a connection's proxy setting would do nothing there and is not shown. */
-export const inApp = (): boolean => host() !== undefined
 /** A file the page made (a pack, the lexicon), saved: downloaded, or handed to the app's host. */
 export const saveFile = async (file: Blob, name: string): Promise<void> => {
   const h = host()
@@ -363,6 +361,8 @@ export const secretValue = async (id: string): Promise<string> =>
   (await got<{ value: string }>(call(`${base}/secrets/${enc(id)}/value`))).value
 export const deleteSecret = async (id: string): Promise<void> =>
   registry.set(secrets, await got(call(`${base}/secrets/${enc(id)}`, { method: "DELETE" })))
+export const putDefaultProxy = async (value: string | false | null): Promise<void> =>
+  registry.set(defaultProxy, await got(call(`${base}/network/proxy`, json("PUT", value))))
 export const fetchDecision = async (): Promise<void> => registry.set(decision, await got(call(`${base}/decision`)))
 export const putDecision = async (c: DecisionConfig): Promise<void> =>
   registry.set(decision, await got(call(`${base}/decision`, json("PUT", c))))
@@ -408,6 +408,7 @@ export const fetchSettings = (): Promise<unknown> =>
     fetchSecrets(),
     fetchRouting(),
     fetchDecision(),
+    got<string | false | null>(call(`${base}/network/proxy`)).then((value) => registry.set(defaultProxy, value)),
     fetchHats(),
     fetchPacks(),
     fetchCards().then(fetchLocals),

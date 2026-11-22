@@ -5,6 +5,7 @@
 // never appear where a stage's model is picked. One per install, optional; the key is a vault secret like a provider's.
 // No ai-sdk here: the client imports these types (decide.ts is the call).
 import { Schema } from "effect"
+import { ProxySetting } from "./proxy.ts"
 
 /** Who serves it: each driver is one API shape, with the address and model a blank config falls back to, and the path
  *  its SDK appends to the address. */
@@ -26,7 +27,7 @@ export const DecisionConfig = Schema.Struct({
   model: Schema.String,
   url: Schema.optionalKey(Schema.String), // the API base the driver appends its path to; unset = the driver's own
   secret: Schema.optionalKey(Schema.String), // a secret id; none = no key
-  proxy: Schema.optionalKey(Schema.Union([Schema.String, Schema.Literal(false)])), // Connection.proxy's three states
+  proxy: Schema.optionalKey(ProxySetting),
   headers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
 })
 export type DecisionConfig = typeof DecisionConfig.Type

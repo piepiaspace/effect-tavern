@@ -620,7 +620,7 @@ for (const columns of [48, 100]) {
   const rows = plain.shown()
   // the raw texts are verbatim, unwrapped: an upstream error, the request as sent beside a failed call
   const raws = new Set(
-    rows.filter((r, i) => rows[i - 1] === "[JSON]" || r.startsWith('{"error"') || r.startsWith("ECONNRESET")),
+    rows.filter((r, i) => rows[i - 1] === "[JSON]" || r.startsWith('{"error"') || r.startsWith("UND_ERR_SOCKET")),
   )
   assert.equal(raws.size, 4)
   for (const r of rows) if (!raws.has(r)) assert.ok(width(r) <= columns - 1, r)

@@ -135,6 +135,7 @@
 //                 tavern by its address (reach.ts) reads it before anything else.
 // Both `handle` and `app` are Wires (wire.ts): a Request in, its Response out, the same whether a command calls it
 // in-process or `node` mounts it on a listener.
+import { ProxySetting } from "@effect-tavern/provider/src/proxy.ts"
 import { DecisionConfig, Provider, Secret } from "@effect-tavern/provider"
 import { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Effect, Fiber, Schema, Stream, Struct } from "effect"
@@ -192,6 +193,7 @@ const SecretMeta = Schema.decodeUnknownSync(
 )
 const TestBody = Schema.decodeUnknownSync(Schema.Struct({ model: Schema.optionalKey(Schema.String) }))
 const RoutingBody = Schema.decodeUnknownSync(Routing)
+const ProxyBody = Schema.decodeUnknownSync(Schema.NullOr(ProxySetting))
 const DecisionBody = Schema.decodeUnknownSync(DecisionConfig)
 const StoryBody = Schema.decodeUnknownSync(
   Schema.Struct({
@@ -391,6 +393,9 @@ export const handle = (
         return reply(async () => lib.providers.test(id, (await read(TestBody, "{}")).model))
     }
     if (method === "GET" && url === "/models/names") return json(200, lib.names())
+    if (method === "GET" && url === "/network/proxy") return json(200, lib.network.read())
+    if (method === "PUT" && url === "/network/proxy")
+      return reply(async () => (lib.network.write(await read(ProxyBody)), lib.network.read()))
     if (method === "GET" && url === "/decision") return json(200, lib.decision.read() ?? null)
     if (method === "PUT" && url === "/decision")
       return reply(async () => (lib.decision.write(await read(DecisionBody)), lib.decision.read()))

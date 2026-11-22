@@ -1,4 +1,5 @@
 import solid from "@solidjs/vite-plugin"
+import { readFile } from "node:fs/promises"
 import type { IncomingMessage, ServerResponse } from "node:http"
 import type { AddressInfo } from "node:net"
 import { resolve } from "node:path"
@@ -17,6 +18,11 @@ interface Session {
 }
 const api = (): Plugin => ({
   name: "tavern-api",
+  // The SSR runner imports the desktop resolver scripts as text, like Bun's binary build.
+  async load(id) {
+    if (id.endsWith("/systemproxy/macos.jxa") || id.endsWith("/systemproxy/windows.ps1"))
+      return "export default " + JSON.stringify(await readFile(id, "utf8"))
+  },
   configureServer(server) {
     const entry = resolve(import.meta.dirname, "../server/src/dev.ts")
     const session = () => (server.environments["ssr"] as RunnableDevEnvironment).runner.import<Session>(entry)

@@ -10,9 +10,10 @@
 // newest stored turn, each naming the entries it should need: the library alone holds only turns that read nothing.
 // `--card <yaml>` asks a card file's CASES over its pool at the story's start (a large card no story has played);
 // `--batch <n>` sends at most n questions per request (default: the whole pool in one, to find the service's limit).
+import { decisionService } from "./decision-service.ts"
 import { Database } from "bun:sqlite"
 import { join } from "node:path"
-import { blocked, compileDecision, decide, type DecisionConfig, type Secret } from "@effect-tavern/provider"
+import { blocked, compileDecision, decide } from "@effect-tavern/provider"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
 import type { Unit } from "@effect-tavern/runtime/src/context.ts"
 import { LOOKUP, lookupQuestions } from "@effect-tavern/runtime/src/decision.ts"
@@ -60,12 +61,8 @@ const db = new Database(join(dir, "tavern.db"), { readonly: true })
 const all = (sql: string, ...xs: (string | number)[]) => db.query(sql).all(...xs) as Row[]
 const json = <T>(r: Row | null | undefined): T | undefined => (r ? (JSON.parse(r["json"] as string) as T) : undefined)
 
-const config = json<DecisionConfig>(all("select json from decision where id = 1")[0])
-if (!config) throw new Error("no decision model saved in this library")
-const secret = all("select id, name, json from secret")
-  .map((r) => ({ ...json<object>(r), id: r["id"], name: r["name"] }) as Secret)
-  .find((s) => s.id === config.secret)
-const model = dry ? undefined : compileDecision(config, secret)
+const { config, secret, fetch } = decisionService(db)
+const model = dry ? undefined : compileDecision(config, secret, { fetch })
 
 const cards = new Map<string, Card>()
 for (const r of all("select id, json from card"))

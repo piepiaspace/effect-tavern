@@ -3,6 +3,7 @@
 // fresh install reads names without the network; `bun run names` re-fetches it by hand. On start, `refresh` asks
 // models.dev with the ETag in force (the library's `names` row, else the baseline's) and replaces the row on a 200;
 // a 304, offline or any error keeps what is there.
+import { outbound } from "./proxy-host.ts"
 import type { Names } from "@effect-tavern/provider/src/names.ts"
 import baseline from "./names.json" with { type: "json" }
 import type { Data } from "./data.ts"
@@ -16,11 +17,15 @@ const reduce = (all: Record<string, { name?: unknown; family?: unknown }>): Name
       .filter(([, m]) => typeof m.name === "string")
       .map(([k, m]) => [k, { name: m.name as string, family: typeof m.family === "string" ? m.family : "" }]),
   )
-const fetchTable = async (etag: string | null): Promise<Table | undefined> => {
-  const res = await fetch(source, {
-    headers: etag ? { "if-none-match": etag } : {},
-    signal: AbortSignal.timeout(20_000),
-  })
+const fetchTable = async (etag: string | null, proxy?: string | false): Promise<Table | undefined> => {
+  const res = await outbound(
+    source,
+    {
+      headers: etag ? { "if-none-match": etag } : {},
+      signal: AbortSignal.timeout(20_000),
+    },
+    proxy,
+  )
   if (res.status === 304) return undefined
   if (!res.ok) throw new Error(`${source}: ${res.status}`)
   return { etag: res.headers.get("etag"), names: reduce((await res.json()) as never) }
@@ -32,7 +37,7 @@ export const names = (data: Data): Names => data.names.read()?.names ?? (baselin
 /** In the background, never awaited by startup. */
 export const refresh = async (data: Data) => {
   try {
-    const t = await fetchTable(data.names.read()?.etag ?? (baseline as Table).etag)
+    const t = await fetchTable(data.names.read()?.etag ?? (baseline as Table).etag, data.network.read() ?? undefined)
     if (t) data.names.write(t)
   } catch (e) {
     console.debug(`model names not refreshed: ${e instanceof Error ? e.message : String(e)}`)

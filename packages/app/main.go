@@ -43,7 +43,7 @@ func main() {
 			files.ServeHTTP(w, r)
 		}
 	})
-	mygo.Use(fetch.Plugin)
+	mygo.Use(fetch.New(fetchOptions()))
 	// checks the v* releases in the background; installs only what the key in mygo.json signed
 	mygo.Use(updater.Plugin)
 	mygo.App.WhenReady(func() {

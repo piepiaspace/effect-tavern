@@ -250,11 +250,14 @@ export const without = <K extends Exclude<keyof ModelEntry, "id">>(
 }
 
 // ───────── The request drawer's draft ─────────
+export const proxyMode = (value?: string | false) =>
+  value === undefined ? "inherit" : value === false ? "direct" : value === "system" ? "system" : "custom"
+
 export interface Request {
   defaultFormat: Format
   endpoints: Record<Format, { url: string; exactPrefix: boolean }>
   ttl: "5m" | "1h"
-  proxy: "env" | "direct" | "custom"
+  proxy: ReturnType<typeof proxyMode>
   proxyUrl: string
   headers: [string, string][]
 }
@@ -264,12 +267,12 @@ export const requestOf = (p: Provider): Request => ({
     FORMATS.map((f) => [f, { url: p.endpoints[f]?.url ?? "", exactPrefix: !!p.endpoints[f]?.exactPrefix }]),
   ) as Request["endpoints"],
   ttl: p.cacheTtl ?? "5m",
-  proxy: p.proxy === undefined ? "env" : p.proxy === false ? "direct" : "custom",
-  proxyUrl: typeof p.proxy === "string" ? p.proxy : "",
+  proxy: proxyMode(p.proxy),
+  proxyUrl: typeof p.proxy === "string" && p.proxy !== "system" ? p.proxy : "",
   headers: Object.entries(p.headers ?? {}),
 })
-/** The draft written back: URLs trimmed and empty ones dropped, defaults (exactPrefix off, 5m, the env proxy, no
- *  headers) left out, a custom proxy with no URL is the env one, headers with an empty name dropped. */
+/** The draft written back: URLs trimmed and empty ones dropped, defaults (exactPrefix off, 5m, the inherited proxy, no
+ *  headers) left out, a custom proxy with no URL inherits the install default, headers with an empty name dropped. */
 export const applied = (p: Provider, r: Request): Provider => {
   const headers = Object.fromEntries(r.headers.filter(([k]) => k.trim()).map(([k, v]) => [k.trim(), v]))
   const { cacheTtl: _t, proxy: _p, headers: _h, ...rest } = p
@@ -283,6 +286,7 @@ export const applied = (p: Provider, r: Request): Provider => {
       ]),
     ),
     ...(r.ttl === "1h" && { cacheTtl: "1h" as const }),
+    ...(r.proxy === "system" && { proxy: "system" }),
     ...(r.proxy === "direct" && { proxy: false as const }),
     ...(r.proxy === "custom" && r.proxyUrl.trim() && { proxy: r.proxyUrl.trim() }),
     ...(Object.keys(headers).length && { headers }),

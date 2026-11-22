@@ -3,10 +3,11 @@
 // provider. The key vault's drawer is vault.tsx, the dialogs about one model are models.tsx. Every write goes through
 // wire.ts and comes back as the list; the drafts here are the drawer's and the dialog's, written on Save and on submit.
 import { DRIVERS, decisionUrl, type DecisionConfig, type Driver } from "@effect-tavern/provider/src/decision.ts"
+import { validProxyAddress } from "@effect-tavern/provider/src/proxy.ts"
 import { lookup } from "@effect-tavern/provider/src/names.ts"
 import type { ModelEntry, Probe, Provider, SecretView } from "@effect-tavern/provider/src/providers.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
-import { createSignal, For, onSettled, Show, untrack } from "solid-js"
+import { createEffect, createSignal, For, onSettled, Show, untrack } from "solid-js"
 import { read } from "./bridge.ts"
 import {
   ask,
@@ -45,9 +46,9 @@ import {
   Trash,
 } from "./icons.tsx"
 import { AddModelDialog, addModels, ModelDialog, removeModels } from "./models.tsx"
-import { applied, correctedModels, FORMATS, requestOf, staleModels, type Request } from "./connections.ts"
+import { applied, correctedModels, FORMATS, proxyMode, requestOf, staleModels, type Request } from "./connections.ts"
 import { clear, createProbing, IDLE, land, refused, result, start, type Slot } from "./probe.ts"
-import { decision, names, providers, registry, secrets } from "./store.ts"
+import { decision, defaultProxy, names, providers, registry, secrets } from "./store.ts"
 import { VaultDrawer } from "./vault.tsx"
 import { t } from "./i18n.ts"
 import {
@@ -60,7 +61,7 @@ import {
   setSecret,
   testDecision,
   testProvider,
-  inApp,
+  putDefaultProxy,
   type Listed,
 } from "./wire.ts"
 
@@ -141,7 +142,120 @@ const ProbeError = (props: { probe: Probe }) => {
   )
 }
 
+const ProxyField = (props: {
+  label: string
+  mode: "inherit" | "system" | "direct" | "custom"
+  inherit?: boolean
+  onMode: (mode: "inherit" | "system" | "direct" | "custom") => void
+}) => (
+  <div class="field-group">
+    <span class="label">{props.label}</span>
+    <Menu
+      small
+      label={props.label}
+      value={props.mode}
+      options={[
+        ...(props.inherit ? [{ value: "inherit" as const, label: t("providers.proxyInherit") }] : []),
+        { value: "system", label: t("providers.proxySystem") },
+        { value: "direct", label: t("providers.proxyDirect") },
+        { value: "custom", label: t("providers.proxyCustom") },
+      ]}
+      onPick={props.onMode}
+    />
+  </div>
+)
+
+const ProxyAddress = (props: { value: string; onInput: (value: string) => void; onBlur?: (value: string) => void }) => (
+  <div class="input-box sm">
+    <input
+      type="url"
+      inputmode="url"
+      autocapitalize="none"
+      autocorrect="off"
+      spellcheck="false"
+      class="mono"
+      placeholder="http://127.0.0.1:7890"
+      aria-label={t("providers.proxyUrl")}
+      value={props.value}
+      onInput={(e) => props.onInput(e.currentTarget.value)}
+      onBlur={(e) => props.onBlur?.(e.currentTarget.value.trim())}
+    />
+  </div>
+)
+
+const SavedProxy = (props: {
+  global?: boolean
+  value?: string | false | null
+  save: (v?: string | false) => Promise<void>
+}) => {
+  const [draft, setDraft] = createSignal<string>()
+  const [error, setError] = createSignal("")
+  const savedMode = () => proxyMode(props.value ?? (props.global ? "system" : undefined))
+  const mode = () => (draft() === undefined ? savedMode() : "custom")
+  const address = () => draft() ?? (typeof props.value === "string" && savedMode() === "custom" ? props.value : "")
+  // A blur can save an address just before the menu picks a different route.
+  let pending = Promise.resolve()
+  let revision = 0
+  const save = (v?: string | false) => {
+    const mine = ++revision
+    setError("")
+    pending = pending
+      .then(() => props.save(v))
+      .then(
+        () => {
+          if (mine === revision) setDraft(undefined)
+        },
+        (e: unknown) => {
+          if (mine === revision) setError(e instanceof Error ? e.message : String(e))
+        },
+      )
+  }
+  return (
+    <div class="field-group">
+      <ProxyField
+        label={props.global ? t("providers.defaultProxy") : t("providers.proxy")}
+        inherit={!props.global}
+        mode={mode()}
+        onMode={(v) => {
+          if (v === "custom") {
+            revision++
+            setDraft(address())
+            setError("")
+            return
+          }
+          save(v === "inherit" || (props.global && v === "system") ? undefined : v === "direct" ? false : v)
+        }}
+      />
+      <Show when={mode() === "custom"}>
+        <ProxyAddress
+          value={address()}
+          onInput={(v) => {
+            revision++
+            setDraft(v)
+            setError("")
+          }}
+          onBlur={(v) => {
+            if (v && !validProxyAddress(v)) {
+              setError(t("providers.proxyInvalid"))
+              return
+            }
+            if (v !== props.value || draft() !== undefined || error()) save(v || undefined)
+          }}
+        />
+      </Show>
+      <Show when={error()}>
+        {(message) => (
+          <div class="resolved err" role="alert">
+            {message()}
+          </div>
+        )}
+      </Show>
+    </div>
+  )
+}
+
 export const Providers = (props: Pane) => {
+  const proxy = read(defaultProxy)
   const list = read(providers)
   const [search, setSearch] = createSignal("")
   const shown = () => list().filter((p) => p.name.toLowerCase().includes(search().toLowerCase()))
@@ -186,6 +300,7 @@ export const Providers = (props: Pane) => {
         </div>
         {/* not a provider: a second kind of model, under its own heading, never in the list above or a stage's menu */}
         <div class="master-fixed">
+          <SavedProxy global value={proxy()} save={(v) => putDefaultProxy(v ?? null)} />
           <button
             type="button"
             class="p-row"
@@ -249,10 +364,11 @@ const DecisionDetail = (props: { onBack: () => void; onVault: () => void }) => {
   const vault = read(secrets)
   const c = () => saved() ?? BLANK
   const [probe, setProbe] = createSignal<Slot<Probe>>(IDLE)
-  const [custom, setCustom] = createSignal(false)
   const save = (f: (c: DecisionConfig) => DecisionConfig) => (setProbe((s) => clear(s)), putDecision(f(c())))
-  const proxyMode = () =>
-    typeof c().proxy === "string" || custom() ? "custom" : c().proxy === false ? "direct" : "env"
+  const globalProxy = read(defaultProxy)
+  createEffect(globalProxy, (value, prev) => {
+    if (prev !== undefined && prev !== value && c().proxy === undefined) setProbe(clear)
+  })
   const test = async () => {
     const s = start(probe())
     setProbe(s)
@@ -364,47 +480,12 @@ const DecisionDetail = (props: { onBack: () => void; onVault: () => void }) => {
           </div>
           <div class="resolved">{decisionUrl(c())}</div>
         </div>
-        <Show when={!inApp()}>
-          <div class="block">
-            <div class="field-group">
-              <span class="label">{t("providers.proxy")}</span>
-              <Menu
-                small
-                label={t("providers.proxy")}
-                value={proxyMode()}
-                options={[
-                  { value: "env", label: t("providers.proxySystem") },
-                  { value: "direct", label: t("providers.proxyDirect") },
-                  { value: "custom", label: t("providers.proxyCustom") },
-                ]}
-                onPick={(mode) => {
-                  setCustom(mode === "custom")
-                  if (mode === "direct") void save((x) => ({ ...x, proxy: false }))
-                  else if (mode === "env" || typeof c().proxy !== "string") void save((x) => without(x, "proxy"))
-                }}
-              />
-            </div>
-            <Show when={proxyMode() === "custom"}>
-              <div class="input-box sm">
-                <input
-                  type="url"
-                  inputmode="url"
-                  autocapitalize="none"
-                  autocorrect="off"
-                  spellcheck="false"
-                  class="mono"
-                  placeholder="http://127.0.0.1:7890"
-                  aria-label={t("providers.proxyUrl")}
-                  value={typeof c().proxy === "string" ? (c().proxy as string) : ""}
-                  onChange={(e) => {
-                    const proxy = e.currentTarget.value.trim()
-                    void save((x) => (proxy ? { ...x, proxy } : without(x, "proxy")))
-                  }}
-                />
-              </div>
-            </Show>
-          </div>
-        </Show>
+        <div class="block">
+          <SavedProxy
+            value={c().proxy}
+            save={(proxy) => save((x) => (proxy === undefined ? without(x, "proxy") : { ...x, proxy }))}
+          />
+        </div>
       </div>
     </>
   )
@@ -483,7 +564,7 @@ const ProviderDetail = (props: { id: string; onBack: () => void; onVault: () => 
     return keySaved()
   }
   // the probes, this detail's (it remounts per provider): the connectivity's, and one per model tested
-  const probing = createProbing({ provider: p, ready: flushKey, run: testProvider })
+  const probing = createProbing({ provider: p, defaultProxy: read(defaultProxy), ready: flushKey, run: testProvider })
   const reach = () => probing.probes().reach
   const test = (id: string): Slot<Probe> => probing.probes().tests[id] ?? IDLE
   const failed = (s: Slot<Probe>) => (result(s)?.ok === false ? result(s) : undefined)
@@ -834,13 +915,24 @@ const RequestDrawer = (props: { id: string; ready: () => Promise<void>; onClose:
   const setEndpoint = (f: Format, patch: Partial<Request["endpoints"][Format]>) =>
     edit((x) => ({ ...x, endpoints: { ...x.endpoints, [f]: { ...x.endpoints[f], ...patch } } }))
   const sample = () => providerOf(props.id)?.models[0]?.id
-  const save = async () => {
-    await props.ready()
-    const p = providerOf(props.id)
+  const [error, setError] = createSignal("")
+  const invalid = () => {
     const d = r()
-    if (!p || !d) return
-    await putProvider(applied(p, d))
-    props.onClose()
+    return d?.proxy === "custom" && !!d.proxyUrl.trim() && !validProxyAddress(d.proxyUrl.trim())
+  }
+  const save = async () => {
+    if (invalid()) return
+    const d = r()
+    if (!d) return
+    try {
+      await props.ready()
+      const p = providerOf(props.id)
+      if (!p) return
+      await putProvider(applied(p, d))
+      props.onClose()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    }
   }
   return (
     <Show when={r()}>
@@ -923,41 +1015,20 @@ const RequestDrawer = (props: { id: string; ready: () => Promise<void>; onClose:
                     onPick={(ttl) => edit((x) => ({ ...x, ttl }))}
                   />
                 </div>
-                <Show when={!inApp()}>
-                  <div class="field-group">
-                    <span class="label">{t("providers.proxy")}</span>
-                    <Menu
-                      small
-                      label={t("providers.proxy")}
-                      value={d().proxy}
-                      options={[
-                        { value: "env", label: t("providers.proxySystem") },
-                        { value: "direct", label: t("providers.proxyDirect") },
-                        { value: "custom", label: t("providers.proxyCustom") },
-                      ]}
-                      onPick={(proxy) => edit((x) => ({ ...x, proxy }))}
-                    />
+                <ProxyField
+                  label={t("providers.proxy")}
+                  inherit
+                  mode={d().proxy}
+                  onMode={(proxy) => edit((x) => ({ ...x, proxy }))}
+                />
+              </div>
+              <Show when={d().proxy === "custom"}>
+                <ProxyAddress value={d().proxyUrl} onInput={(proxyUrl) => edit((x) => ({ ...x, proxyUrl }))} />
+                <Show when={invalid()}>
+                  <div class="resolved err" role="alert">
+                    {t("providers.proxyInvalid")}
                   </div>
                 </Show>
-              </div>
-              <Show when={!inApp() && d().proxy === "custom"}>
-                <div class="input-box sm">
-                  <input
-                    type="url"
-                    inputmode="url"
-                    autocapitalize="none"
-                    autocorrect="off"
-                    spellcheck="false"
-                    class="mono"
-                    placeholder="http://127.0.0.1:7890"
-                    aria-label={t("providers.proxyUrl")}
-                    value={d().proxyUrl}
-                    onInput={(e) => {
-                      const proxyUrl = e.currentTarget.value
-                      edit((x) => ({ ...x, proxyUrl }))
-                    }}
-                  />
-                </div>
               </Show>
               <div class="field-group">
                 <span class="label">{t("providers.headers")}</span>
@@ -1017,11 +1088,18 @@ const RequestDrawer = (props: { id: string; ready: () => Promise<void>; onClose:
               </div>
             </div>
           </div>
+          <Show when={error()}>
+            {(message) => (
+              <div class="resolved err" role="alert">
+                {message()}
+              </div>
+            )}
+          </Show>
           <div class="drawer-foot">
             <button type="button" class="btn" onClick={() => props.onClose()}>
               {t("common.cancel")}
             </button>
-            <button type="button" class="btn primary" onClick={() => void save()}>
+            <button type="button" class="btn primary" disabled={invalid()} onClick={() => void save()}>
               {t("common.save")}
             </button>
           </div>

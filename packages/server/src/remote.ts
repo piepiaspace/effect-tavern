@@ -3,6 +3,8 @@
 // any redirect (a forge's raw links move hosts; none may leave https); a host that does not begin to answer in
 // `ANSWER` is given up on, and so is a body still arriving after `WHOLE`; a body over the card ceiling is not read.
 // What fails is `Refused` with the caller's code, never a hang.
+import type { Fetch } from "@effect-tavern/provider/src/connection.ts"
+import { outbound } from "./proxy-host.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { Refused } from "./shelf.ts"
 
@@ -15,10 +17,10 @@ export const remote = (location: string) => /^https:\/\//i.test(location)
 export const readHttps = async (
   address: string | URL,
   {
-    fetch: io = fetch,
+    fetch: io = outbound,
     code = "depot-unreadable",
     patience = { answer: ANSWER, whole: WHOLE },
-  }: { fetch?: typeof fetch; code?: Refused["code"]; patience?: { answer: number; whole: number } } = {},
+  }: { fetch?: Fetch; code?: Refused["code"]; patience?: { answer: number; whole: number } } = {},
 ): Promise<string> => {
   const refuse = (what: string) => new Refused(code, what, 502)
   let url: URL

@@ -12,6 +12,7 @@
 // pull over the card, asked for by the player; nothing here checks or fetches on its own.
 // The registry (`depots`) is the install's list of locations (data.ts `depot`). A directory is named from the CLI
 // only: the wire takes https alone, so a browser never points the server at a path.
+import type { Fetch } from "@effect-tavern/provider/src/connection.ts"
 import { sha1 } from "@noble/hashes/legacy.js"
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js"
 import {
@@ -49,7 +50,7 @@ export interface Depot {
   text(entry: DepotEntry): Promise<string>
 }
 
-export const depot = (location: string, io: { fetch?: typeof fetch } = {}): Depot => {
+export const depot = (location: string, io: { fetch?: Fetch } = {}): Depot => {
   const read = remote(location)
     ? (() => {
         // the index is the address itself when it names a .json, else index.json under it; a ?query the address
@@ -122,7 +123,7 @@ const looksLikeCard = (text: string): boolean => {
   }
 }
 
-export const depots = ({ data, shelf, fetch }: { data: Data; shelf: Shelf; fetch?: typeof globalThis.fetch }) => {
+export const depots = ({ data, shelf, fetch }: { data: Data; shelf: Shelf; fetch?: Fetch }) => {
   const row = (id: string): DepotRow => {
     const r = data.depots.list().find((d) => d.id === id)
     if (!r) throw new Refused("no-depot", `no card library ${id}`, 404)

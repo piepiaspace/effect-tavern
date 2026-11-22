@@ -4,6 +4,8 @@ go 1.27.4
 
 require (
 	github.com/egoist/mygo v0.10.0
+	github.com/piepiaspace/effect-tavern/packages/systemproxy v0.0.0
+	golang.org/x/net v0.59.0
 	modernc.org/sqlite v1.62.0
 )
 
@@ -20,7 +22,6 @@ require (
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	go.digitalxero.dev/rpm v0.3.4 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
-	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	modernc.org/libc v1.80.1 // indirect
@@ -29,3 +30,5 @@ require (
 )
 
 tool github.com/egoist/mygo/cmd/mygo
+
+replace github.com/piepiaspace/effect-tavern/packages/systemproxy => ../systemproxy

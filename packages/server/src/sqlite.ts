@@ -241,6 +241,7 @@ const steps = [
   "create table if not exists depot (id text primary key, name text not null, json text not null)",
   // the workshop's draft copies are gone (shelf.ts): it writes the card itself, so nothing reads this table
   "drop table if exists draft",
+  "create table if not exists network (id integer primary key check (id = 1), json text not null)",
 ]
 const latest = baseline + steps.length
 const upgrade = (db: Database) => {
@@ -448,6 +449,11 @@ export const openSqlite = (file: string, onClose?: () => void) => {
     routing: {
       read: (): unknown => parse<unknown>(q("select json from routing where id = 1").get() as Row | null),
       write: (r: unknown) => void q("insert or replace into routing (id, json) values (1, ?)").run(JSON.stringify(r)),
+    },
+    network: {
+      read: () => parse<string | false | null>(q("select json from network where id = 1").get() as Row | null) ?? null,
+      write: (proxy: string | false | null) =>
+        void q("insert or replace into network (id, json) values (1, ?)").run(JSON.stringify(proxy)),
     },
     /** The decision model's connection, one row; what it holds is decoded by the caller. */
     decision: {

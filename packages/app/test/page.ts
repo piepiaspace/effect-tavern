@@ -212,12 +212,18 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   assert.match(whole.rev, /^[0-9a-f]{40}$/)
 
   // HTTPS card link import streams multi-chunk response through @mygo-plugins/fetch + remote.ts getReader() loop.
+  const proxy = "socks5://proxy.example:1080"
+  assert.equal(await (await api("/network/proxy")).json(), null)
+  assert.equal((await api("/network/proxy", { method: "PUT", body: JSON.stringify(proxy) })).status, 200)
+  assert.equal((await api("/network/proxy", { method: "PUT", body: JSON.stringify("ftp://bad") })).status, 400)
   const linked = await api("/cards/link", {
     method: "POST",
     headers: json,
     body: JSON.stringify({ url: "https://cards.example/wuxia.yaml", replace: true }),
   })
   assert.equal(linked.status, 200)
+  const cardRequest = outbound.find((c) => c.url === "https://cards.example/wuxia.yaml")!
+  assert.equal(new Headers(cardRequest.headers).get("x-tavern-fetch-proxy"), proxy)
   assert.deepEqual(((await linked.json()) as { card: { origin: unknown } }).card.origin, {
     via: "link",
     url: "https://cards.example/wuxia.yaml",
@@ -243,6 +249,36 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   })
   assert.equal(await (await pageFetch("data:text/plain,local")).text(), "local")
 
+  const key = (await (
+    await api("/secrets", {
+      method: "POST",
+      body: JSON.stringify({ name: "Relay", type: "api_key", value: "local-test" }),
+    })
+  ).json()) as { id: string }
+  const provider = {
+    secret: key.id,
+    name: "Relay",
+    enabled: true,
+    defaultFormat: "openai-compatible",
+    models: [],
+    endpoints: { "openai-compatible": { url: "https://relay.example/v1", exactPrefix: true } },
+  }
+  for (const [setting, expected] of [
+    [undefined, proxy],
+    [false, "direct"],
+    ["system", null],
+    ["http://other:8080", "http://other:8080"],
+  ] as const) {
+    const saved = await api("/providers/relay", {
+      method: "PUT",
+      body: JSON.stringify({ ...provider, proxy: setting }),
+    })
+    assert.equal(saved.status, 200, await saved.text())
+    const listing = await api("/providers/relay/models")
+    assert.equal(listing.status, 200, await listing.text())
+    assert.equal(new Headers(outbound.at(-1)!.headers).get("x-tavern-fetch-proxy"), expected)
+  }
+
   const made = (await (
     await fullApi("/stories", { method: "POST", headers: json, body: JSON.stringify({ card: "wuxia" }) })
   ).json()) as { current: number }
@@ -257,6 +293,7 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   // the next page rolls it back on open and writes as before; what was committed is still there.
   db.exec("begin")
   ;({ api } = load())
+  assert.equal(await (await api("/network/proxy")).json(), proxy)
   const listed = (await (await api("/stories")).json()) as { stories: { id: number }[] }
   assert.deepEqual(
     listed.stories.map((s) => s.id),

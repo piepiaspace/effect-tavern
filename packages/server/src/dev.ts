@@ -25,6 +25,7 @@ import { resolve } from "node:path"
 import { announce as announceAt, local } from "./announce.ts"
 import { open } from "./data.ts"
 import { levels, openLogbook, type Level } from "./logbook.ts"
+import { outbound } from "./proxy-host.ts"
 import { refresh } from "./names.ts"
 import { tavern } from "./tavern.ts"
 import { node } from "./wire.ts"
@@ -92,7 +93,10 @@ const live = async () => {
   const conn = await localAnthropic()
   if (!conn) return undefined
   return (_phase: string, onExchange?: CompileOptions["onExchange"]) =>
-    bind({ ...conn, effort: "low", hat: Bun.env["HAT"] ?? conn.hat }, { onExchange }) // HAT=<id> puts a library hat on it
+    bind(
+      { ...conn, effort: "low", hat: Bun.env["HAT"] ?? conn.hat },
+      { onExchange, fetch: (input, init) => outbound(input, init, conn.proxy ?? data.network.read() ?? undefined) },
+    ) // HAT=<id> puts a library hat on it
 }
 const scripted = Bun.env["MODEL"] === "fake"
 const scriptedModel = scripted && { ...fake(answer), hat: Bun.env["HAT"] }

@@ -29,12 +29,14 @@ const answer = (model: string | undefined, r: Probe[]) => {
 const keySaved = Promise.withResolvers<void>()
 const st = createRoot(() => {
   const [prov, setProv] = createSignal<Provider | undefined>(provider())
+  const [defaultProxy, setDefaultProxy] = createSignal<string | false | null>(null)
   const probing = createProbing({
     provider: prov,
+    defaultProxy,
     ready: () => keySaved.promise,
     run: (_id, model) => new Promise<Probe[]>((resolve, reject) => pending.push({ model, resolve, reject })),
   })
-  return { ...probing, setProv }
+  return { ...probing, setProv, setDefaultProxy }
 })
 flush()
 const reach = () => st.probes().reach
@@ -159,4 +161,20 @@ assert.equal(reach().state, "running", "changing the default protocol probes the
 answer(undefined, [probe(true)])
 await settle()
 
+void st.test("m1")
+await settle()
+st.setDefaultProxy(false)
+await settle()
+answer("m1", [probe(true)])
+await settle()
+assert.equal(reach().state, "idle")
+assert.equal(test("m1")?.state, "idle")
+assert.equal(pending.length, 0)
+st.setProv((p) => p && { ...p, proxy: "system" })
+await settle()
+answer(undefined, [probe(true)])
+await settle()
+st.setDefaultProxy("http://example.invalid")
+await settle()
+assert.equal(reach().state, "done")
 console.log("probe ok")

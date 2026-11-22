@@ -367,7 +367,7 @@ assert.deepEqual(bare, {
     gemini: { url: "", exactPrefix: false },
   },
   ttl: "5m",
-  proxy: "env",
+  proxy: "inherit",
   proxyUrl: "",
   headers: [],
 })
@@ -418,7 +418,7 @@ assert.deepEqual(back, {
   headers: { "x-b": " v " },
 })
 assert.equal(applied(full, { ...requestOf(full), proxy: "direct" }).proxy, false)
-assert.equal(applied(full, { ...requestOf(full), proxy: "env" }).proxy, undefined)
+assert.equal(applied(full, { ...requestOf(full), proxy: "inherit" }).proxy, undefined)
 assert.equal(applied(full, { ...requestOf(full), proxyUrl: " http://q " }).proxy, "http://q")
 assert.equal("headers" in applied(full, { ...requestOf(full), headers: [] }), false)
 
