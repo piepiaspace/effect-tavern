@@ -181,7 +181,11 @@ export const runStageTools = (model: Model, initial: readonly Message[], options
           const r = await wait(
             generateText({
               model: model.model,
-              ...settings(model.format, { effort: model.effort, ...options.call }),
+              ...settings(
+                model.format,
+                { effort: model.effort, ...options.call },
+                typeof model.model === "string" ? model.model : model.model.modelId,
+              ),
               maxOutputTokens: Number.isFinite(limit) ? limit : undefined,
               maxRetries: 0, // a retry is an explicit new attempt, never hidden from the budget/trace
               messages,

@@ -15,13 +15,14 @@ export interface Capabilities {
 }
 
 // Anthropic: every current Claude (Haiku 5.5 included) answers 400 "does not support assistant message prefill";
-// verified live 2026-10-17. Truncation recovery by prefix is off for this format unless the user flips it for an old model.
+// verified live 2026-10-17. Gemini rejects a trailing model turn with 400 "Requests ending with a model turn are not
+// supported". Truncation recovery by prefix is off on both unless the user flips it for an endpoint that takes one.
 // Anthropic binds a thinking block to the exact content before it ("Invalid signature … bound to a different
 // conversation", verified live): a re-rendered history (ours) can never replay it. Off unless the prefix is frozen.
 export const DEFAULTS: Record<Format, Capabilities> = {
   anthropic: { tools: true, prefill: false, structured: "schema", reasoningBack: false },
   "openai-compatible": { tools: true, prefill: true, structured: "schema", reasoningBack: true },
-  gemini: { tools: true, prefill: true, structured: "schema", reasoningBack: true },
+  gemini: { tools: true, prefill: false, structured: "schema", reasoningBack: true },
 }
 
 /** A connection's capabilities: its overrides over its format's defaults. Takes only the two fields it reads, so this

@@ -1,17 +1,21 @@
 // Single model calls as Effects. Interrupting the fiber aborts the HTTP request.
 // Structured stages: `object`. Narrate: `text` or `stream`. Native tool stages live in stage.ts.
 import {
+  NoObjectGeneratedError,
   Output,
+  ToolChoiceViolationError,
   generateText,
   streamText,
-  type LanguageModel,
   type AssistantModelMessage,
   type FinishReason,
+  type LanguageModel,
   type LanguageModelUsage,
   type ModelMessage,
   type TextStreamPart,
+  type ToolSet,
 } from "ai"
 import { Cause, Effect, Queue, Schema, Stream } from "effect"
+import type { Capabilities } from "./capabilities.ts"
 import type { Observer } from "./exchange.ts"
 import type { Fault } from "./fault.ts"
 import type { Format } from "./url.ts"
@@ -19,12 +23,16 @@ import type { Format } from "./url.ts"
 export type Message = ModelMessage
 export type Part = TextStreamPart<Record<string, never>>
 
+export const NARRATIVE_TOOL = "narrative" as const
+export type DeliverMode = "text" | "tool"
+
 export type Effort = "off" | "low" | "medium" | "high" | "max"
 export interface CallOptions {
   /** Stage name; goes out as the schema name on `object` and is what a fake or a trace sees. */
   name?: string
   maxOutputTokens?: number
   effort?: Effort
+  deliver?: DeliverMode
   /** Merged under the model's own provider key; use for anything the connection config does not name. */
   providerOptions?: Record<string, Record<string, unknown>>
 }
@@ -42,9 +50,54 @@ export const breakpoint = <M extends Message>(m: M, ttl?: CacheTtl): M => ({
   },
 })
 
-// Deckled's reasoning-effort table, cut to three formats. `off` is only sent where the format has an off value.
 const GEMINI_BUDGET: Record<Effort, number> = { off: 0, low: 2048, medium: 8192, high: 24576, max: 32768 }
-export const effortOptions = (format: Format, effort: Effort): Record<string, Record<string, unknown>> => {
+const GEMINI_1_RE = /(^|[/.])gemini-1(?:[.-]|$)/i
+const GEMINI_2_RE = /(^|[/.])gemini-2(?:[.-]|$)/i
+const GEMINI_PRE2_RE = /(^|[/.])gemini-pro(?:-vision)?$/i
+const GEMINI_ROBOTICS_15_RE = /(^|[/.])gemini-robotics-er-1\.5(?:[.-]|$)/i
+const GEMINI_ANY_RE = /(^|[/.])gemini-/i
+
+const usesGemini3ThinkingLevel = (modelId: string): boolean =>
+  GEMINI_ANY_RE.test(modelId) &&
+  !GEMINI_1_RE.test(modelId) &&
+  !GEMINI_2_RE.test(modelId) &&
+  !GEMINI_PRE2_RE.test(modelId) &&
+  !GEMINI_ROBOTICS_15_RE.test(modelId) &&
+  !/gemini-3-pro-image/i.test(modelId)
+
+const gemini3MinThinkingLevel = (modelId: string): "minimal" | "low" => {
+  const name = /(?:^|[/.])(gemini-[^/]*)$/i.exec(modelId)?.[1]?.toLowerCase() ?? ""
+  if (name === "gemini-flash-latest") return "low"
+  const pro = /^gemini-(\d+)(?:\.\d+)?-pro(?:$|-)/.exec(name)
+  if (Number(pro?.[1]) >= 3) return "low"
+  const flash = /^gemini-(\d+)\.(\d+)-flash(?:$|-(?!lite(?:-|$)))/.exec(name)
+  if (!flash) return "minimal"
+  const major = Number(flash[1])
+  const minor = Number(flash[2])
+  return major > 3 || (major === 3 && minor >= 7) ? "low" : "minimal"
+}
+
+const geminiThinkingConfig = (effort: Effort, modelId?: string): Record<string, unknown> => {
+  const includeThoughts = effort !== "off"
+  if (modelId !== undefined && usesGemini3ThinkingLevel(modelId)) {
+    const thinkingLevel = effort === "off" ? gemini3MinThinkingLevel(modelId) : effort === "max" ? "high" : effort
+    return { thinkingLevel, includeThoughts }
+  }
+  let budget = GEMINI_BUDGET[effort]
+  if (modelId !== undefined && GEMINI_2_RE.test(modelId)) {
+    const min = /2\.5-pro/i.test(modelId) ? 128 : 0
+    const max = /2\.5-pro/i.test(modelId) ? 32768 : 24576
+    budget = Math.min(max, Math.max(min, budget))
+  }
+  return { thinkingBudget: budget, includeThoughts }
+}
+
+// Deckled's reasoning-effort table, cut to three formats. `off` is only sent where the format has an off value.
+export const effortOptions = (
+  format: Format,
+  effort: Effort,
+  modelId?: string,
+): Record<string, Record<string, unknown>> => {
   switch (format) {
     case "anthropic":
       return {
@@ -55,7 +108,7 @@ export const effortOptions = (format: Format, effort: Effort): Record<string, Re
       }
     case "gemini":
       return {
-        google: { thinkingConfig: { thinkingBudget: GEMINI_BUDGET[effort], includeThoughts: effort !== "off" } },
+        google: { thinkingConfig: geminiThinkingConfig(effort, modelId) },
       }
     case "openai-compatible":
       return effort === "off" ? {} : { compat: { reasoningEffort: effort } }
@@ -90,12 +143,27 @@ export const wire = (format: Format, messages: readonly Message[], prefill?: boo
   )
 }
 
-export const settings = (format: Format, o: CallOptions) => ({
+const mergeProviderOptions = (
+  ...layers: Array<Record<string, Record<string, unknown>> | undefined>
+): Record<string, Record<string, unknown>> => {
+  const out: Record<string, Record<string, unknown>> = {}
+  for (const layer of layers) {
+    if (!layer) continue
+    for (const [ns, val] of Object.entries(layer)) out[ns] = { ...out[ns], ...val }
+  }
+  return out
+}
+
+export const settings = (format: Format, o: CallOptions, modelId?: string) => ({
   allowSystemInMessages: true, // the head and mid-history lore are system messages in the message list; ai 7 refuses them by default
   maxOutputTokens: o.maxOutputTokens,
   // No sampling parameters: the harness holds no opinion on them. Claude rejects temperature, Kimi K2.5+ accepts
   // one fixed value only, and an unset field is never sent (docs/provider-reading.md §6.3).
-  providerOptions: { ...(o.effort && effortOptions(format, o.effort)), ...o.providerOptions } as never,
+  providerOptions: mergeProviderOptions(
+    format === "gemini" ? { google: { threshold: "BLOCK_NONE" } } : undefined,
+    o.effort ? effortOptions(format, o.effort, modelId) : undefined,
+    o.providerOptions,
+  ) as never,
 })
 
 export interface Usage {
@@ -104,6 +172,7 @@ export interface Usage {
   cacheRead: number
   cacheWrite: number
 }
+const ZERO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }
 export const usage = (u: LanguageModelUsage): Usage => ({
   input: u.inputTokens ?? 0,
   output: u.outputTokens ?? 0,
@@ -121,6 +190,7 @@ export class ModelError extends Schema.TaggedError<ModelError>()("ModelError", {
 // tryPromise wraps the rejection in an UnknownError; the ai-sdk error underneath carries the provider's message.
 export const modelError = (wrapped: unknown) => {
   const cause = Cause.isUnknownError(wrapped) ? wrapped.cause : wrapped
+  if (cause instanceof ModelError) return cause
   return new ModelError({ message: cause instanceof Error ? cause.message : String(cause), cause })
 }
 
@@ -166,6 +236,8 @@ export interface Model {
   tools?: boolean
   /** The connection's `capabilities.prefill`; false rejects a request ending in an assistant message at the wire. */
   prefill: boolean
+  /** The connection's `capabilities.structured`: `"schema"`, `"tool"` (forced single tool), or `"json"`. */
+  structured?: Capabilities["structured"]
   /** The connection's `capabilities.reasoningBack`: past turns' reasoning parts are sent back. */
   reasoningBack?: boolean
   effort?: Effort
@@ -174,44 +246,453 @@ export interface Model {
   hat?: string // the connection's hat, a library id (`Connection.hat`), read per request through makeSession's `hat`
 }
 
+const modelIdOf = (model: LanguageModel): string | undefined => {
+  const id = typeof model === "string" ? model : model.modelId
+  return id || undefined
+}
+
+const effectiveOptions = (m: Model, o: CallOptions): CallOptions => ({
+  ...(m.maxOutputTokens !== undefined && { maxOutputTokens: m.maxOutputTokens }),
+  ...(m.effort !== undefined && { effort: m.effort }),
+  ...o,
+})
+
+const singleToolChoice = (format: Format, modelId: string | undefined, effort: Effort | undefined, toolName: string) =>
+  effort &&
+  effort !== "off" &&
+  (format === "anthropic" || (format === "openai-compatible" && modelId !== undefined && /claude/i.test(modelId)))
+    ? ("auto" as const)
+    : { type: "tool" as const, toolName }
+
+const NARRATIVE_SCHEMA = standard(
+  Schema.Struct({
+    text: Schema.String.annotate({ description: "The full reply, nothing omitted." }),
+  }),
+)
+const narrativeTools = (): ToolSet => ({
+  [NARRATIVE_TOOL]: {
+    description: "Deliver the complete scene narration.",
+    inputSchema: NARRATIVE_SCHEMA,
+  },
+})
+
+const HEX_CHARS = new Set("0123456789abcdefABCDEF".split(""))
+const WS_CHARS = new Set([" ", "\t", "\r", "\n"])
+const SIMPLE_ESCAPES: Record<string, string> = {
+  '"': '"',
+  "\\": "\\",
+  "/": "/",
+  b: "\b",
+  f: "\f",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+}
+
+/** Pure incremental JSON prefix decoder for `{ "text": "..." }` tool arguments.
+ *  Handles arbitrary chunk boundaries (including split `\n`, `\"`, `\\`, and `\uXXXX` + UTF-16 surrogate pairs),
+ *  preceding keys/whitespace, sloppy raw control characters, and truncated/unclosed JSON on stop or `MAX_TOKENS`. */
+export const narrativeDecoder = (): ((delta: string) => string) => {
+  type State =
+    | "root"
+    | "key_or_end"
+    | "key_str"
+    | "key_esc"
+    | "key_uni"
+    | "after_key"
+    | "text_start"
+    | "text_str"
+    | "text_esc"
+    | "text_uni"
+    | "skip_val"
+    | "skip_str"
+    | "skip_str_esc"
+    | "skip_box"
+    | "skip_box_str"
+    | "skip_box_esc"
+    | "skip_prim"
+
+  let state: State = "root"
+  let done = false
+  let key = ""
+  let hex = ""
+  let depth = 0
+  let highSurrogate: number | null = null
+
+  return (delta: string): string => {
+    if (done || delta.length === 0) return ""
+    let out = ""
+    const emitUnit = (code: number) => {
+      if (highSurrogate !== null) {
+        if (code >= 0xdc00 && code <= 0xdfff) {
+          out += String.fromCharCode(highSurrogate, code)
+          highSurrogate = null
+          return
+        }
+        out += String.fromCharCode(highSurrogate)
+        highSurrogate = null
+      }
+      if (code >= 0xd800 && code <= 0xdbff) {
+        highSurrogate = code
+        return
+      }
+      out += String.fromCharCode(code)
+    }
+    const flushSurrogate = () => {
+      if (highSurrogate !== null) {
+        out += String.fromCharCode(highSurrogate)
+        highSurrogate = null
+      }
+    }
+    const emitText = (s: string) => {
+      for (let j = 0; j < s.length; j++) emitUnit(s.charCodeAt(j))
+    }
+
+    for (let i = 0; i < delta.length; i++) {
+      const ch = delta[i]
+      switch (state) {
+        case "root":
+          if (ch === "{") state = "key_or_end"
+          break
+        case "key_or_end":
+          if (WS_CHARS.has(ch) || ch === ",") break
+          if (ch === "}") done = true
+          else if (ch === '"') {
+            key = ""
+            state = "key_str"
+          }
+          break
+        case "key_str":
+          if (ch === '"') state = "after_key"
+          else if (ch === "\\") state = "key_esc"
+          else key += ch
+          break
+        case "key_esc":
+          if (ch === "u") {
+            hex = ""
+            state = "key_uni"
+          } else {
+            key += SIMPLE_ESCAPES[ch] ?? ch
+            state = "key_str"
+          }
+          break
+        case "key_uni":
+          if (HEX_CHARS.has(ch)) {
+            hex += ch
+            if (hex.length === 4) {
+              key += String.fromCharCode(Number.parseInt(hex, 16))
+              hex = ""
+              state = "key_str"
+            }
+          } else {
+            key += `\\u${hex}`
+            hex = ""
+            state = "key_str"
+            i--
+          }
+          break
+        case "after_key":
+          if (ch === ":") state = key === "text" ? "text_start" : "skip_val"
+          break
+        case "text_start":
+          if (WS_CHARS.has(ch)) break
+          if (ch === '"') state = "text_str"
+          else {
+            state = "skip_val"
+            i--
+          }
+          break
+        case "text_str":
+          if (ch === '"') {
+            flushSurrogate()
+            done = true
+          } else if (ch === "\\") {
+            state = "text_esc"
+          } else {
+            emitUnit(ch.charCodeAt(0))
+          }
+          break
+        case "text_esc":
+          if (ch === "u") {
+            hex = ""
+            state = "text_uni"
+          } else {
+            flushSurrogate()
+            emitText(SIMPLE_ESCAPES[ch] ?? ch)
+            state = "text_str"
+          }
+          break
+        case "text_uni":
+          if (HEX_CHARS.has(ch)) {
+            hex += ch
+            if (hex.length === 4) {
+              emitUnit(Number.parseInt(hex, 16))
+              hex = ""
+              state = "text_str"
+            }
+          } else {
+            flushSurrogate()
+            emitText(`\\u${hex}`)
+            hex = ""
+            state = "text_str"
+            i--
+          }
+          break
+        case "skip_val":
+          if (WS_CHARS.has(ch)) break
+          if (ch === '"') state = "skip_str"
+          else if (ch === "{" || ch === "[") {
+            depth = 1
+            state = "skip_box"
+          } else {
+            state = "skip_prim"
+            i--
+          }
+          break
+        case "skip_str":
+          if (ch === '"') state = "key_or_end"
+          else if (ch === "\\") state = "skip_str_esc"
+          break
+        case "skip_str_esc":
+          state = "skip_str"
+          break
+        case "skip_box":
+          if (ch === '"') state = "skip_box_str"
+          else if (ch === "{" || ch === "[") depth++
+          else if (ch === "}" || ch === "]") {
+            depth--
+            if (depth === 0) state = "key_or_end"
+          }
+          break
+        case "skip_box_str":
+          if (ch === '"') state = "skip_box"
+          else if (ch === "\\") state = "skip_box_esc"
+          break
+        case "skip_box_esc":
+          state = "skip_box"
+          break
+        case "skip_prim":
+          if (ch === ",") state = "key_or_end"
+          else if (ch === "}") done = true
+          else if (WS_CHARS.has(ch)) state = "key_or_end"
+          break
+      }
+      if (done) break
+    }
+    return out
+  }
+}
+
+const upstreamOutputError = (message: string, modelId: string | undefined, cause?: unknown): ModelError => {
+  const origin = cause ?? new Error(message)
+  return new ModelError({
+    message,
+    cause: origin,
+    fault: { code: "upstream", status: 200, ...(modelId && { model: modelId }), message },
+  })
+}
+
+const contentFilterMessage = (kind: string, rawFinishReason?: string) =>
+  `${kind} blocked by content-filter${rawFinishReason ? ` (${rawFinishReason})` : ""}`
+
+const missingOutputMessage = (finishReason: string, rawFinishReason?: string, detail?: string) =>
+  `structured output missing (finishReason: ${finishReason}${rawFinishReason ? `, rawFinishReason: ${rawFinishReason}` : ""})${detail ? `: ${detail}` : ""}`
+
+const parseJsonText = (raw: string): unknown => {
+  const trimmed = raw.trim()
+  const unfenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed)?.[1] ?? trimmed
+  return JSON.parse(unfenced)
+}
+
+/** Captures the raw LanguageModelV4 `doGenerate` finish/usage metadata so `ToolChoiceViolationError` (thrown by ai 7
+ *  before step construction when a forced tool call is blocked by `content-filter` or falls back to text) retains
+ *  `rawFinishReason` and `usage` without mutating the underlying model instance. */
+const spyGenerate = (model: LanguageModel) => {
+  let last: { unified: FinishReason; raw?: string; usage: Usage } | undefined
+  if (
+    typeof model !== "object" ||
+    model === null ||
+    !("specificationVersion" in model) ||
+    model.specificationVersion !== "v4"
+  )
+    return { model, last: () => last }
+  const wrapped = Object.create(model, {
+    doGenerate: {
+      value: async (opts: Parameters<typeof model.doGenerate>[0]) => {
+        const res = await model.doGenerate(opts)
+        last = {
+          unified: res.finishReason.unified === "interrupted" ? "other" : res.finishReason.unified,
+          raw: res.finishReason.raw,
+          usage: {
+            input: res.usage.inputTokens.total ?? 0,
+            output: res.usage.outputTokens.total ?? 0,
+            cacheRead: res.usage.inputTokens.cacheRead ?? 0,
+            cacheWrite: res.usage.inputTokens.cacheWrite ?? 0,
+          },
+        }
+        return res
+      },
+    },
+  }) as LanguageModel
+  return { model: wrapped, last: () => last }
+}
+
+type ViolationContent = ReadonlyArray<{
+  type: string
+  text?: string
+  providerMetadata?: Record<string, Record<string, unknown>>
+}>
+const violationParts = (content: unknown): { text: string; reasoning: string | undefined; parts: ReplyPart[] } => {
+  if (!Array.isArray(content)) return { text: "", reasoning: undefined, parts: [] }
+  const parts: ReplyPart[] = []
+  let text = ""
+  let reasoning = ""
+  let hasReasoning = false
+  for (const p of content as ViolationContent) {
+    if (p.type === "reasoning" && typeof p.text === "string") {
+      hasReasoning = true
+      reasoning += p.text
+      parts.push({
+        type: "reasoning",
+        text: p.text,
+        ...(p.providerMetadata && { providerOptions: p.providerMetadata as never }),
+      })
+    } else if (p.type === "text" && typeof p.text === "string") {
+      text += p.text
+      parts.push({ type: "text", text: p.text })
+    }
+  }
+  return { text, reasoning: hasReasoning ? reasoning : undefined, parts }
+}
+
 export const object = <S extends Schema.Top & Schema.Constraint & Schema.ConstraintDecoder<unknown>>(
   m: Model,
   schema: S,
   messages: readonly Message[],
   o: CallOptions = {},
-) =>
-  Effect.tryPromise(async (abortSignal) => {
-    const result = await generateText({
-      model: m.model,
-      output: Output.object({ schema: standard(schema), name: o.name }),
-      messages: wire(m.format, messages, m.prefill),
-      abortSignal,
-      ...settings(m.format, o),
-    })
-    m.exchange?.finish(replyText(result.response.messages))
-    return { value: result.output, usage: usage(result.usage), finishReason: result.finishReason }
-  }).pipe(Effect.mapError((e) => observedError(e, m.exchange)))
+) => {
+  let partial: string | undefined
+  return Effect.tryPromise(async (abortSignal) => {
+    const eff = effectiveOptions(m, o)
+    const modelId = modelIdOf(m.model)
+    const wired = wire(m.format, messages, m.prefill)
+    const decode = Schema.decodeUnknownSync(schema)
 
-export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}) =>
-  Effect.tryPromise((abortSignal) =>
-    generateText({
-      model: m.model,
-      messages: wire(m.format, messages, m.prefill),
-      abortSignal,
-      ...settings(m.format, o),
-    }),
-  ).pipe(
-    Effect.mapError((e) => observedError(e, m.exchange)),
-    Effect.tap((r) => Effect.sync(() => m.exchange?.finish(replyText(r.response.messages)))),
-    Effect.map((r) => ({
-      text: r.text,
-      reasoning: r.reasoningText,
-      /** The reply as parts the provider will take back: text, and reasoning with its signature in providerOptions. */
-      parts: replyParts(r.response.messages.find((m) => m.role === "assistant")),
-      usage: usage(r.usage),
-      finishReason: r.finishReason,
-    })),
-  )
+    if (m.structured === "tool") {
+      const toolName = eff.name || "structured_output"
+      const tools: ToolSet = {
+        [toolName]: {
+          description: "Return the structured output.",
+          inputSchema: standard(schema),
+        },
+      }
+      const spy = spyGenerate(m.model)
+      let result: Awaited<ReturnType<typeof generateText>>
+      try {
+        result = await generateText({
+          model: spy.model,
+          tools,
+          toolChoice: singleToolChoice(m.format, modelId, eff.effort, toolName),
+          messages: wired,
+          abortSignal,
+          ...settings(m.format, eff, modelId),
+        })
+      } catch (err) {
+        if (ToolChoiceViolationError.isInstance(err)) {
+          const fin = spy.last()
+          const finishReason = fin?.unified ?? err.finishReason
+          const rawFinishReason = fin?.raw
+          const extracted = violationParts((err as { content?: unknown }).content)
+          partial = extracted.text || undefined
+          if (finishReason === "content-filter")
+            throw upstreamOutputError(contentFilterMessage("structured output", rawFinishReason), modelId, err)
+          if (!extracted.text.trim())
+            throw upstreamOutputError(missingOutputMessage(finishReason, rawFinishReason), modelId, err)
+          const value = decode(parseJsonText(extracted.text))
+          m.exchange?.finish(extracted.text)
+          return {
+            value,
+            usage: fin?.usage ?? ZERO_USAGE,
+            finishReason,
+            rawFinishReason,
+          }
+        }
+        throw err
+      }
+      const body = replyText(result.response.messages)
+      partial = body || undefined
+      if (result.finishReason === "content-filter")
+        throw upstreamOutputError(contentFilterMessage("structured output", result.rawFinishReason), modelId)
+      const call = result.toolCalls.find((c) => c.toolName === toolName) ?? result.toolCalls[0]
+      let candidate: unknown
+      if (call !== undefined) {
+        candidate = typeof call.input === "string" ? parseJsonText(call.input) : call.input
+      } else if (result.text.trim()) {
+        candidate = parseJsonText(result.text)
+      } else {
+        throw upstreamOutputError(missingOutputMessage(result.finishReason, result.rawFinishReason), modelId)
+      }
+      const value = decode(candidate)
+      m.exchange?.finish(body)
+      return {
+        value,
+        usage: usage(result.usage),
+        finishReason: result.finishReason,
+        rawFinishReason: result.rawFinishReason,
+      }
+    }
+
+    const spy = spyGenerate(m.model)
+    let result: Awaited<ReturnType<typeof generateText>>
+    try {
+      result = await generateText({
+        model: spy.model,
+        output: Output.object({ schema: standard(schema), name: eff.name }),
+        messages: wired,
+        abortSignal,
+        ...settings(m.format, eff, modelId),
+      })
+    } catch (err) {
+      if (NoObjectGeneratedError.isInstance(err)) {
+        const fin = spy.last()
+        const finishReason = fin?.unified ?? err.finishReason ?? "other"
+        const rawFinishReason = fin?.raw
+        partial = err.text || undefined
+        if (finishReason === "content-filter")
+          throw upstreamOutputError(contentFilterMessage("structured output", rawFinishReason), modelId, err)
+        throw upstreamOutputError(missingOutputMessage(finishReason, rawFinishReason, err.message), modelId, err)
+      }
+      throw err
+    }
+    const body = replyText(result.response.messages)
+    partial = body || undefined
+    if (result.finishReason === "content-filter")
+      throw upstreamOutputError(contentFilterMessage("structured output", result.rawFinishReason), modelId)
+    let value: S["Type"] | undefined
+    try {
+      value = result.output
+    } catch (err) {
+      throw upstreamOutputError(
+        missingOutputMessage(
+          result.finishReason,
+          result.rawFinishReason,
+          err instanceof Error ? err.message : String(err),
+        ),
+        modelId,
+        err,
+      )
+    }
+    if (value === undefined)
+      throw upstreamOutputError(missingOutputMessage(result.finishReason, result.rawFinishReason), modelId)
+    m.exchange?.finish(body)
+    return {
+      value,
+      usage: usage(result.usage),
+      finishReason: result.finishReason,
+      rawFinishReason: result.rawFinishReason,
+    }
+  }).pipe(Effect.mapError((e) => observedError(e, m.exchange, partial)))
+}
 
 export type ReplyPart = Extract<
   Exclude<AssistantModelMessage["content"], string>[number],
@@ -224,11 +705,98 @@ const replyParts = (m: AssistantModelMessage | undefined): ReplyPart[] =>
       ? [{ type: "text", text: m.content }]
       : m.content.filter((p): p is ReplyPart => p.type === "text" || p.type === "reasoning")
 
+const narrativeReplyParts = (m: AssistantModelMessage | undefined, text: string): ReplyPart[] => {
+  const reasoning = replyParts(m).filter((p): p is Extract<ReplyPart, { type: "reasoning" }> => p.type === "reasoning")
+  // When Gemini attaches thoughtSignature to the functionCall part rather than the preceding thought part, preserve it
+  // on the last reasoning part so `Reply.parts` stays strictly `reasoning + { type: "text", text }` with zero tool parts.
+  if (reasoning.length > 0 && m && Array.isArray(m.content)) {
+    const toolPart = m.content.find(
+      (p): p is Extract<typeof p, { type: "tool-call" }> => p.type === "tool-call" && p.toolName === NARRATIVE_TOOL,
+    )
+    const last = reasoning.at(-1)
+    if (last && toolPart?.providerOptions && !last.providerOptions)
+      reasoning[reasoning.length - 1] = { ...last, providerOptions: toolPart.providerOptions }
+  }
+  return [...reasoning, { type: "text", text }]
+}
+
+const extractNarrativeInputText = (input: unknown, fallbackDecoded?: string): string => {
+  if (input && typeof input === "object" && "text" in input && typeof (input as { text?: unknown }).text === "string")
+    return (input as { text: string }).text
+  if (fallbackDecoded !== undefined && fallbackDecoded.length > 0) return fallbackDecoded
+  if (typeof input === "string") return narrativeDecoder()(input)
+  return ""
+}
+
+export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}) =>
+  Effect.tryPromise(async (abortSignal) => {
+    const eff = effectiveOptions(m, o)
+    const modelId = modelIdOf(m.model)
+    const wired = wire(m.format, messages, m.prefill)
+    const toolDeliver = eff.deliver === "tool"
+    const spy = toolDeliver ? spyGenerate(m.model) : undefined
+    try {
+      const r = await generateText({
+        model: spy ? spy.model : m.model,
+        messages: wired,
+        abortSignal,
+        ...(toolDeliver && {
+          tools: narrativeTools(),
+          toolChoice: singleToolChoice(m.format, modelId, eff.effort, NARRATIVE_TOOL),
+        }),
+        ...settings(m.format, eff, modelId),
+      })
+      m.exchange?.finish(replyText(r.response.messages))
+      const assistant = r.response.messages.find((msg): msg is AssistantModelMessage => msg.role === "assistant")
+      if (toolDeliver) {
+        const call = r.toolCalls.find((c) => c.toolName === NARRATIVE_TOOL)
+        if (call) {
+          const resolvedText = extractNarrativeInputText(call.input)
+          return {
+            text: resolvedText,
+            reasoning: r.reasoningText,
+            parts: narrativeReplyParts(assistant, resolvedText),
+            usage: usage(r.usage),
+            finishReason: r.finishReason === "tool-calls" ? ("stop" as const) : r.finishReason,
+            rawFinishReason: r.rawFinishReason,
+          }
+        }
+      }
+      return {
+        text: r.text,
+        reasoning: r.reasoningText,
+        /** The reply as parts the provider will take back: text, and reasoning with its signature in providerOptions. */
+        parts: replyParts(assistant),
+        usage: usage(r.usage),
+        finishReason: r.finishReason,
+        rawFinishReason: r.rawFinishReason,
+      }
+    } catch (err) {
+      if (toolDeliver && ToolChoiceViolationError.isInstance(err)) {
+        const fin = spy?.last()
+        const finishReason = fin?.unified ?? err.finishReason
+        const rawFinishReason = fin?.raw
+        const extracted = violationParts((err as { content?: unknown }).content)
+        m.exchange?.finish([extracted.reasoning, extracted.text].filter(Boolean).join("\n"))
+        return {
+          text: extracted.text,
+          reasoning: extracted.reasoning,
+          parts: extracted.parts,
+          usage: fin?.usage ?? ZERO_USAGE,
+          finishReason,
+          rawFinishReason,
+        }
+      }
+      throw err
+    }
+  }).pipe(Effect.mapError((e) => observedError(e, m.exchange)))
+
 export interface Reply {
   text: string
   parts: ReplyPart[]
   usage: Usage
   finishReason: FinishReason
+  rawFinishReason?: string
 }
 /** One streaming request with two faces: `parts` as ai-sdk emits them (the finish part carries usage), and `reply`,
  *  what `text` would have returned, resolved once `parts` is drained. Interrupting `parts` aborts the request.
@@ -238,6 +806,9 @@ export interface Reply {
 export const streamed = (m: Model, messages: readonly Message[], o: CallOptions = {}) =>
   Effect.try({ try: () => wire(m.format, messages, m.prefill), catch: modelError }).pipe(
     Effect.map((wired) => {
+      const eff = effectiveOptions(m, o)
+      const modelId = modelIdOf(m.model)
+      const toolDeliver = eff.deliver === "tool"
       const ac = new AbortController()
       const r = streamText({
         model: m.model,
@@ -247,11 +818,23 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         // object, stack and all, to the console
         onError: () => {},
         includeRawChunks: !!m.exchange,
-        ...settings(m.format, o),
+        ...(toolDeliver && {
+          tools: narrativeTools(),
+          toolChoice: singleToolChoice(m.format, modelId, eff.effort, NARRATIVE_TOOL),
+        }),
+        ...settings(m.format, eff, modelId),
       })
+      let sawNarrativeCall = false
+      let decodedNarrative = ""
+      let violationFinishReason: FinishReason | undefined
+      const resolveFinishReason = (raw: FinishReason): FinishReason =>
+        violationFinishReason ?? (toolDeliver && sawNarrativeCall && raw === "tool-calls" ? "stop" : raw)
+
       const parts = Stream.callback<Part, ModelError>((queue) =>
         Effect.gen(function* () {
           let partial = ""
+          const narrativeIds = new Set<string>()
+          const decoders = new Map<string, (delta: string) => string>()
           yield* Effect.addFinalizer(() =>
             Effect.sync(() => {
               m.exchange?.finish(partial)
@@ -272,13 +855,72 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
                       : undefined
                   continue
                 }
-                if (p.type === "error")
+                if (p.type === "error") {
+                  if (toolDeliver && ToolChoiceViolationError.isInstance(p.error)) {
+                    violationFinishReason = p.error.finishReason
+                    lastRaw = undefined
+                    continue
+                  }
                   return void (await Effect.runPromise(
                     Queue.fail(queue, observedError(p.error, m.exchange, partial, lastRaw)),
                   ))
+                }
                 lastRaw = undefined
+                if (toolDeliver) {
+                  if (p.type === "tool-input-start") {
+                    if (p.toolName === NARRATIVE_TOOL) {
+                      sawNarrativeCall = true
+                      narrativeIds.add(p.id)
+                      decoders.set(p.id, narrativeDecoder())
+                      await Effect.runPromise(Queue.offer(queue, { type: "text-start", id: p.id }))
+                    }
+                    continue
+                  }
+                  if (p.type === "tool-input-delta") {
+                    const decode = decoders.get(p.id)
+                    if (decode) {
+                      const chunk = decode(p.delta)
+                      if (chunk.length > 0) {
+                        decodedNarrative += chunk
+                        if (m.exchange) partial += chunk
+                        await Effect.runPromise(Queue.offer(queue, { type: "text-delta", id: p.id, text: chunk }))
+                      }
+                    }
+                    continue
+                  }
+                  if (p.type === "tool-input-end") {
+                    if (narrativeIds.has(p.id))
+                      await Effect.runPromise(Queue.offer(queue, { type: "text-end", id: p.id }))
+                    continue
+                  }
+                  if (p.type === "tool-call") {
+                    if (p.toolName === NARRATIVE_TOOL && !narrativeIds.has(p.toolCallId)) {
+                      sawNarrativeCall = true
+                      const chunk = extractNarrativeInputText(p.input)
+                      if (chunk.length > 0 && decodedNarrative.length === 0) {
+                        decodedNarrative += chunk
+                        if (m.exchange) partial += chunk
+                        await Effect.runPromise(Queue.offer(queue, { type: "text-start", id: p.toolCallId }))
+                        await Effect.runPromise(
+                          Queue.offer(queue, { type: "text-delta", id: p.toolCallId, text: chunk }),
+                        )
+                        await Effect.runPromise(Queue.offer(queue, { type: "text-end", id: p.toolCallId }))
+                      }
+                    }
+                    continue
+                  }
+                  if (p.type === "tool-error") continue
+                  if ((p.type === "text-start" || p.type === "text-delta" || p.type === "text-end") && sawNarrativeCall)
+                    continue
+                }
                 if (m.exchange && (p.type === "text-delta" || p.type === "reasoning-delta")) partial += p.text
                 if (p.type === "finish" || p.type === "abort") m.exchange?.finish(partial)
+                if (p.type === "finish" || p.type === "finish-step") {
+                  await Effect.runPromise(
+                    Queue.offer(queue, { ...p, finishReason: resolveFinishReason(p.finishReason) }),
+                  )
+                  continue
+                }
                 if (p.type !== "abort") await Effect.runPromise(Queue.offer(queue, p))
               }
               await Effect.runPromise(Queue.end(queue))
@@ -288,12 +930,40 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
           })()
         }),
       )
-      const reply: Effect.Effect<Reply, ModelError> = Effect.tryPromise(async (): Promise<Reply> => ({
-        text: await r.text,
-        parts: replyParts((await r.responseMessages).find((m) => m.role === "assistant") as AssistantModelMessage),
-        usage: usage(await r.usage),
-        finishReason: await r.finishReason,
-      })).pipe(Effect.mapError(modelError))
+      const reply: Effect.Effect<Reply, ModelError> = Effect.tryPromise(async (): Promise<Reply> => {
+        const [rawMessages, rawUsage, rawReason, rawFinishReason] = await Promise.all([
+          r.responseMessages,
+          r.usage,
+          r.finishReason,
+          r.rawFinishReason,
+        ])
+        const assistant = rawMessages.find((msg): msg is AssistantModelMessage => msg.role === "assistant")
+        if (toolDeliver) {
+          const calls = await r.toolCalls
+          const call = calls.find((c) => c.toolName === NARRATIVE_TOOL)
+          if (call || sawNarrativeCall) {
+            const resolvedText = call
+              ? call.invalid
+                ? decodedNarrative || extractNarrativeInputText(call.input)
+                : extractNarrativeInputText(call.input, decodedNarrative)
+              : decodedNarrative
+            return {
+              text: resolvedText,
+              parts: narrativeReplyParts(assistant, resolvedText),
+              usage: usage(rawUsage),
+              finishReason: resolveFinishReason(rawReason),
+              rawFinishReason,
+            }
+          }
+        }
+        return {
+          text: await r.text,
+          parts: replyParts(assistant),
+          usage: usage(rawUsage),
+          finishReason: resolveFinishReason(rawReason),
+          rawFinishReason,
+        }
+      }).pipe(Effect.mapError(modelError))
       return { parts, reply }
     }),
   )

@@ -151,6 +151,7 @@ export const bind = (c: Connection, o?: CompileOptions): Model => {
     ...(exchange && { exchange }),
     tools: caps.tools,
     prefill: caps.prefill,
+    structured: caps.structured,
     reasoningBack: caps.reasoningBack,
     ...(c.effort !== undefined && { effort: c.effort }),
     ...(c.maxOutputTokens !== undefined && { maxOutputTokens: c.maxOutputTokens }),
