@@ -39,12 +39,14 @@ export interface Wire {
   ttl?: CacheTtl
   hat?: Hat
   hatSources?: {
-    lead?: readonly (SourceRef | undefined)[]
-    head?: readonly (SourceRef | undefined)[]
-    turn?: readonly (SourceRef | undefined)[]
-    tail?: readonly (SourceRef | undefined)[]
+    lead?: readonly (HatSource | undefined)[]
+    head?: readonly (HatSource | undefined)[]
+    turn?: readonly (HatSource | undefined)[]
+    tail?: readonly (HatSource | undefined)[]
   }
 }
+/** A hat entry's source; a tool handshake's also carries its call's raw reasoning (the source is its result's). */
+export type HatSource = SourceRef & { rawReasoning?: string }
 /** What every stage shares: the evaluated frame, the off-stage framing line, this turn's input, and the thought ask. */
 export interface Common {
   frame: readonly Slotted[] // narrate's alone
@@ -303,7 +305,7 @@ interface CompiledHatItem {
 
 const compileHatSlot = (
   ms: readonly HatEntry[] = [],
-  sources: readonly (SourceRef | undefined)[] | undefined,
+  sources: readonly (HatSource | undefined)[] | undefined,
   w: Wire,
   stage: "narrate" | "review",
   slot: HatNarrateSlot,
@@ -312,7 +314,7 @@ const compileHatSlot = (
   const kept: CompiledHatItem[] = []
   ms.forEach((m, i) => {
     const origIndex = sources?.[i]?.hatIndex ?? i
-    const baseSource: SourceRef = sources?.[i] ?? {
+    const { rawReasoning, ...baseSource }: HatSource = sources?.[i] ?? {
       kind: "hat",
       ...(w.hat && { hatId: w.hat.id, hatName: w.hat.name }),
       hatStage: stage,
@@ -338,12 +340,9 @@ const compileHatSlot = (
       const input = parseToolInput(m.toolInput)
       const callSource: SourceRef = {
         ...baseSource,
-        rawText: m.reasoning?.trim() ? m.reasoning : undefined,
+        rawText: m.reasoning?.trim() ? (rawReasoning ?? m.reasoning) : undefined,
       }
-      const resultSource: SourceRef = {
-        ...baseSource,
-        rawText: sources?.[i]?.rawText ?? m.text,
-      }
+      const resultSource: SourceRef = { ...baseSource, rawText: baseSource.rawText ?? m.text }
       kept.push({
         entry: m,
         messages: [
@@ -787,7 +786,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
         const bw = writer()
         bw.push(a.blocks.question, "turn", askSource(c, "narrate.blocks"))
         a.blocks.asks.forEach((line, i) => {
-          bw.raw("\n")
+          if (bw.text()) bw.raw("\n")
           const colon = line.indexOf(":")
           const id = colon > 0 ? line.slice(0, colon) : line
           const src = a.blocks!.sources?.[i] ??
@@ -855,7 +854,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
             "scene",
             a.history ? "Extract from the preceding story transcript for this interval." : sceneBody(c.input, a.prose),
             [...a.asks, ...(a.tools ? [a.tools] : [])].join("\n"),
-            a.questions ? `${a.readout}\nQuestions: ${a.questions.join("\n")}` : "",
+            a.questions ? [a.readout, `Questions: ${a.questions.join("\n")}`].filter(Boolean).join("\n") : "",
           ),
         ],
         traces: [],

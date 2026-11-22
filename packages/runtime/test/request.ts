@@ -316,6 +316,17 @@ for (const s of stages) assert.ok(!doc(line[s]).includes(thought), s) // and non
 const quietRecord = request(c({ text: "x" }), { ...asks.record, questions: undefined, current: undefined } as Ask)
 assert.equal(quietRecord.length, offHead.length + 2)
 assert.ok(!doc(quietRecord).includes("Questions:"))
+// A disabled ask ("") leaves no blank line where it stood: the readout before Questions, the blocks question before its lines.
+assert.match(doc(request(c({ text: "x" }), { ...asks.record, readout: "" } as Ask)), /\n\nQuestions: warmth/)
+assert.ok(!doc(request(c({ text: "x" }), { ...asks.record, readout: "" } as Ask)).includes("\n\n\nQuestions:"))
+{
+  const quietBlocks = requestDetailed(c({ text: "x" }), {
+    ...(asks.narrate as Extract<Ask, { stage: "narrate" }>),
+    blocks: { question: "", asks: ["inner: Thought", "aside: Aside"] },
+  })
+  const bt = quietBlocks.traces.find((t) => t.subzone === "blocks")!
+  assert.equal(text(quietBlocks.messages[bt.index]), "inner: Thought\naside: Aside")
+}
 assert.equal(
   roles(
     request(c({ text: "x" }), {
