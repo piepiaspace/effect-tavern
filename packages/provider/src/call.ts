@@ -146,7 +146,25 @@ export const signedOnly = (m: Message): Message | undefined => {
  *  systemInstruction; @ai-sdk/google throws on any later one), so every system message after the first non-system one
  *  goes out as user, content unchanged. */
 export const wire = (format: Format, assembled: readonly Message[], prefill?: boolean): Message[] => {
-  const messages = format === "anthropic" ? assembled.flatMap((m) => signedOnly(m) ?? []) : assembled
+  const messages: Message[] = []
+  for (const m of assembled) {
+    const kept = format === "anthropic" ? signedOnly(m) : m
+    if (kept) {
+      messages.push(kept)
+      continue
+    }
+    // a message left out keeps its zone's cache breakpoint: it moves to the message before
+    const cache = m.providerOptions?.anthropic?.cacheControl
+    const prev = messages.at(-1)
+    if (cache && prev)
+      messages[messages.length - 1] = {
+        ...prev,
+        providerOptions: {
+          ...prev.providerOptions,
+          anthropic: { ...prev.providerOptions?.anthropic, cacheControl: cache },
+        },
+      }
+  }
   // the one prefill rule: the request does not end in an assistant message (an assistant inside, or a tool result at the end, is fine)
   if (prefill === false && messages.at(-1)?.role === "assistant")
     throw new Error(

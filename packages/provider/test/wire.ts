@@ -238,4 +238,16 @@ assert.equal(signal?.aborted, true)
     }
   }
 }
+// a left-out reasoning-only message hands its cache breakpoint to the message before it
+{
+  const cc = { anthropic: { cacheControl: { type: "ephemeral" } } }
+  const out = wire("anthropic", [
+    { role: "system", content: "head" },
+    { role: "user", content: "hi" },
+    { role: "assistant", content: [{ type: "reasoning", text: "unsigned" }], providerOptions: cc },
+    { role: "user", content: "go" },
+  ])
+  assert.equal(out.length, 3)
+  assert.deepEqual(out[1].providerOptions, cc)
+}
 console.log("wire ok")

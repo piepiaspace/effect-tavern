@@ -424,7 +424,12 @@ export const PromptTreePage = () => {
   const displayedMessages = () => {
     const r = result()
     if (!r) return []
-    return r.connection.routingSource === "none" ? r.messages : (r.wiredMessages ?? r.messages)
+    if (r.connection.routingSource === "none" || !r.wiredMessages) return r.messages
+    // RequestView reads messages[trace.index]: a message the wire leaves out (no wiredRole) shows as assembled, so the
+    // rows after it stay on their own text
+    const wired = r.wiredMessages
+    let j = 0
+    return r.traces.map((tr) => (tr.wiredRole === undefined ? r.messages[tr.index] : wired[j++]))
   }
 
   const connectionTooltip = () => {

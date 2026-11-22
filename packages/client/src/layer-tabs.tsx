@@ -375,7 +375,7 @@ export const AsksTab = (props: {
                     aria-label={row().label}
                     placeholder={placeholderOf(id())}
                     value={valOf(id())}
-                    onChange={(e) => setAsk(id(), e.currentTarget.value)}
+                    onChange={(e) => setAsk(id(), e.currentTarget.value.trim() || undefined)}
                     onKeyDown={leaveArea}
                   />
                 </div>

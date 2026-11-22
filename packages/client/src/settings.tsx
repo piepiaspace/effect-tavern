@@ -669,8 +669,10 @@ const Templates = (props: Pane) => {
       setImportError(e instanceof Error ? e.message : t("settings.invalidHatFile"))
     }
   }
-  const exportHat = (h: Hat) => {
+  const exportHat = () => {
     commitPending()
+    const h = hat()
+    if (!h) return
     void saveFile(new Blob([serializeHat(h)], { type: "application/json" }), `${h.name}.hat.json`).catch((e: unknown) =>
       setFailure({ id: h.id, message: e instanceof Error ? e.message : String(e) }),
     )
@@ -797,7 +799,7 @@ const Templates = (props: Pane) => {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <button type="button" class="icon sm" aria-label={t("common.export")} onClick={() => exportHat(h())}>
+                  <button type="button" class="icon sm" aria-label={t("common.export")} onClick={exportHat}>
                     <Export />
                   </button>
                   <button
