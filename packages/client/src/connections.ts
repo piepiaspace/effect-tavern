@@ -7,10 +7,12 @@ import { DEFAULTS, type Capabilities } from "@effect-tavern/provider/src/capabil
 import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
-import type { Pair } from "./store.ts"
+import type { Pair, Routing } from "./store.ts"
 import type { Listed } from "./wire.ts"
 
 export const FORMATS: Format[] = ["openai-compatible", "anthropic", "gemini"]
+export const HAT_STAGES = ["narrate", "record", "check", "polish"] as const
+export type HatStage = (typeof HAT_STAGES)[number]
 
 // ───────── The model list against the listing ─────────
 /** Listed models already in the list with no format of their own, which the listing puts on another endpoint. */
@@ -92,6 +94,91 @@ export const hatConflicts = (
     return out
   }
   return endsInAssistant && p && m && !capOf(p, m, "prefill") ? ["prefill"] : []
+}
+/** Where `hatId` is currently mounted in `route` (`stageHats` only applies while `route.stages` is enabled). */
+export const hatMounts = (route: Routing, hatId: string): { main: boolean; stages: HatStage[] } => ({
+  main: route.hat === hatId,
+  stages: route.stages ? HAT_STAGES.filter((s) => route.stageHats?.[s] === hatId) : [],
+})
+export const toggleMainHat = (route: Routing, hatId: string): Routing => {
+  const { hat, ...rest } = route
+  return hat === hatId ? rest : { ...rest, hat: hatId }
+}
+export const toggleStageHat = (route: Routing, stage: HatStage, hatId: string): Routing => {
+  const active = !!route.stages && route.stageHats?.[stage] === hatId
+  const { [stage]: _, ...restHats } = route.stageHats ?? {}
+  const nextHats = active ? restHats : { ...restHats, [stage]: hatId }
+  const { stageHats: _sh, ...base } = route
+  const withStages = active ? base : { ...base, stages: base.stages ?? {} }
+  return Object.keys(nextHats).length ? { ...withStages, stageHats: nextHats } : withStages
+}
+/** Conflicts for a Hat being edited in Settings → 提示词模板: intrinsic `deliver_prefill` always shows; model-capability
+ *  conflicts show whenever this Hat is effective on `narrate`. */
+export const hatTemplateConflicts = (
+  providers: readonly Provider[],
+  hats: readonly Hat[],
+  route: Routing,
+  hat: Hat,
+): HatConflict[] => {
+  const liveHats = [...hats.filter((x) => x.id !== hat.id), hat]
+  const effectiveNarrateHat = route.stages
+    ? route.stageHats?.narrate === null
+      ? undefined
+      : (route.stageHats?.narrate ?? route.hat)
+    : route.hat
+  if (effectiveNarrateHat === hat.id) {
+    const pair = (route.stages ? route.stages.narrate : undefined) ?? route.default
+    return hatConflicts(providers, liveHats, pair, hat.id)
+  }
+  return hatConflicts([], [hat], undefined, hat.id)
+}
+export const serializeHat = (h: Hat): string => JSON.stringify({ ...h, id: undefined }, null, 2) + "\n"
+const validSaid = (v: unknown): v is readonly { role: "system" | "user" | "assistant"; text: string }[] =>
+  Array.isArray(v) &&
+  v.every(
+    (x) =>
+      !!x &&
+      typeof x === "object" &&
+      ((x as { role?: unknown }).role === "system" ||
+        (x as { role?: unknown }).role === "user" ||
+        (x as { role?: unknown }).role === "assistant") &&
+      typeof (x as { text?: unknown }).text === "string",
+  )
+export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id"> | null => {
+  let body: unknown
+  try {
+    body = JSON.parse(raw)
+  } catch {
+    return null
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null
+  const rec = body as Record<string, unknown>
+  if (rec.deliver !== undefined && rec.deliver !== "text" && rec.deliver !== "tool") return null
+  if (rec.name !== undefined && typeof rec.name !== "string") return null
+  const narrate = rec.narrate
+  if (narrate !== undefined && (!narrate || typeof narrate !== "object" || Array.isArray(narrate))) return null
+  const nRec = narrate as Record<string, unknown> | undefined
+  if (nRec?.head !== undefined && !validSaid(nRec.head)) return null
+  if (nRec?.tail !== undefined && !validSaid(nRec.tail)) return null
+  const review = rec.review
+  if (review !== undefined && (!review || typeof review !== "object" || Array.isArray(review))) return null
+  const rRec = review as Record<string, unknown> | undefined
+  if (rRec?.head !== undefined && !validSaid(rRec.head)) return null
+  const name = typeof rec.name === "string" && rec.name.trim() ? rec.name.trim() : fallbackName
+  const head = nRec?.head?.map((m) => ({ role: m.role, text: m.text }))
+  const tail = nRec?.tail?.map((m) => ({ role: m.role, text: m.text }))
+  const revHead = rRec?.head?.map((m) => ({ role: m.role, text: m.text }))
+  return {
+    name,
+    ...(rec.deliver === "tool" && { deliver: "tool" as const }),
+    ...((head?.length || tail?.length) && {
+      narrate: {
+        ...(head?.length && { head }),
+        ...(tail?.length && { tail }),
+      },
+    }),
+    ...(revHead?.length && { review: { head: revHead } }),
+  }
 }
 /** The entry with one key set, or removed when the value is undefined. */
 export const without = <K extends Exclude<keyof ModelEntry, "id">>(

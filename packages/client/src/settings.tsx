@@ -8,18 +8,39 @@
 // which record each section has picked, and the phone's pane; every edit is one write the server answers with the list
 // it changed (wire.ts), text committing on change (blur or Enter). The shared controls and shells are controls.tsx.
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
+import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { Dynamic, type JSX } from "@solidjs/web"
 import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
-import { ask, Avatar, Confirm, Menu, Name, newId, Switch, ToList, type Pane } from "./controls.tsx"
+import {
+  ask,
+  Avatar,
+  Confirm,
+  dialogHandle,
+  Menu,
+  Modal,
+  Name,
+  newId,
+  Segment,
+  Switch,
+  Tick,
+  ToList,
+  type Pane,
+} from "./controls.tsx"
 import {
   Back,
   Card as CardIcon,
+  Caret,
   Close,
+  Down,
+  Expand,
+  Export,
+  Import,
   Jump,
   Package,
   Plugs,
+  Send,
   Sliders,
   Snippets as Plus,
   Stack,
@@ -29,8 +50,24 @@ import {
   Trash,
   User,
 } from "./icons.tsx"
-import { hatConflicts, pairKey, pairOf, stalePair, withDeliver, type HatConflict } from "./connections.ts"
+import {
+  HAT_STAGES,
+  hatConflicts,
+  hatMounts,
+  hatTemplateConflicts,
+  pairKey,
+  pairOf,
+  parseHatFile,
+  serializeHat,
+  stalePair,
+  toggleMainHat,
+  toggleStageHat,
+  withDeliver,
+  type HatConflict,
+  type HatStage,
+} from "./connections.ts"
 import { Cards } from "./cards.tsx"
+import { leaveArea } from "./layer-tabs.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close } from "./pages.ts"
@@ -52,7 +89,16 @@ import {
   type Routing as RoutingConfig,
 } from "./store.ts"
 import { type Key, t } from "./i18n.ts"
-import { deleteHat, deletePersona, putDecision, putHat, putPersona, putRouting, refreshActiveCard } from "./wire.ts"
+import {
+  deleteHat,
+  deletePersona,
+  putDecision,
+  putHat,
+  putPersona,
+  putRouting,
+  refreshActiveCard,
+  saveFile,
+} from "./wire.ts"
 
 const SECTIONS: [Section, Key, (p: JSX.SvgSVGAttributes<SVGSVGElement>) => JSX.Element][] = [
   ["providers", "settings.providers", Plugs],
@@ -145,9 +191,14 @@ export const Settings = () => {
 
 // ───────── 默认模型 ─────────
 type Stage = keyof NonNullable<RoutingConfig["stages"]>
-type HatStage = keyof NonNullable<RoutingConfig["stageHats"]>
 const HAT_NONE = "__none__"
 const isHatStage = (s: Stage): s is HatStage => s === "narrate" || s === "check" || s === "polish" || s === "record"
+const HAT_STAGE_KEYS: Record<HatStage, Key> = {
+  narrate: "settings.stageNarrate",
+  record: "settings.stageRecord",
+  check: "settings.stageCheck",
+  polish: "settings.stagePolish",
+}
 const STAGES: [Stage, Key][] = [
   ["narrate", "settings.stageNarrate"],
   ["record", "settings.stageRecord"],
@@ -367,26 +418,57 @@ const Routing = (props: { onDecision: () => void }) => {
 type Role = "system" | "user" | "assistant"
 type Slot = "head" | "tail" | "review"
 type Said = { role: Role; text: string }
+interface MsgDraft {
+  slot: Slot
+  index: number | null
+  role: Role
+  text: string
+}
 const ROLES: { value: Role; label: string }[] = [
   { value: "system", label: "System" },
   { value: "user", label: "User" },
   { value: "assistant", label: "Assistant" },
 ]
-const SLOTS: [Slot, Key][] = [
-  ["head", "settings.slotHead"],
-  ["tail", "settings.slotTail"],
-  ["review", "settings.slotReview"],
-]
+const SLOT_KEYS: Record<Slot, Key> = {
+  head: "settings.slotHead",
+  tail: "settings.slotTail",
+  review: "settings.slotReview",
+}
+const SLOTS: Slot[] = ["head", "tail", "review"]
 const slotOf = (h: Hat, s: Slot): readonly Said[] =>
   (s === "review" ? h.review?.head : s === "head" ? h.narrate?.head : h.narrate?.tail) ?? []
-const withSlot = (h: Hat, s: Slot, said: Said[]): Hat =>
-  s === "review" ? { ...h, review: { ...h.review, head: said } } : { ...h, narrate: { ...h.narrate, [s]: said } }
+const withSlot = (h: Hat, s: Slot, said: Said[]): Hat => {
+  if (s === "review") {
+    const { review: _, ...rest } = h
+    return said.length ? { ...rest, review: { head: said } } : rest
+  }
+  const nextNarrate = { ...h.narrate, [s]: said.length ? said : undefined }
+  const clean = {
+    ...(nextNarrate.head?.length && { head: nextNarrate.head }),
+    ...(nextNarrate.tail?.length && { tail: nextNarrate.tail }),
+  }
+  const { narrate: _, ...rest } = h
+  return Object.keys(clean).length ? { ...rest, narrate: clean } : rest
+}
+const lastNonBlankTailIndex = (said: readonly Said[]): number => {
+  for (let i = said.length - 1; i >= 0; i--) if (said[i]?.text.trim()) return i
+  return -1
+}
+const sameArray = <T,>(a: readonly T[], b: readonly T[]): boolean =>
+  a.length === b.length && a.every((x, i) => x === b[i])
 
 const Templates = (props: Pane) => {
   const list = read(hats)
+  const providerList = read(providers)
+  const route = read(routing)
   const savedHat = () => list().find((h) => h.id === props.picked) ?? list()[0]
   const [draft, setDraft] = createSignal<Hat | null>(null)
   const [failure, setFailure] = createSignal<{ id: string; message: string } | null>(null)
+  const [importError, setImportError] = createSignal("")
+  const [editingMsg, setEditingMsg] = createSignal<MsgDraft | null>(null)
+  const msgDlg = dialogHandle()
+  let modalSlot: Slot = "head"
+  let fileInput!: HTMLInputElement
   const hat = () => (draft()?.id === savedHat()?.id ? (draft() ?? savedHat()) : savedHat())
   let mounted = true
   let queued: Hat | undefined
@@ -429,6 +511,30 @@ const Templates = (props: Pane) => {
     setDraft(next)
     void save(next)
   }
+  const openModal = (s: Slot, index: number | null) => {
+    const h = hat()
+    if (!h) return
+    modalSlot = s
+    const cur = index === null ? undefined : slotOf(h, s)[index]
+    if (index !== null && !cur) return
+    const role: Role = cur ? cur.role : s === "tail" ? "assistant" : slotOf(h, s).length ? "user" : "system"
+    setEditingMsg({ slot: s, index, role, text: cur?.text ?? "" })
+    void msgDlg.open()
+  }
+  const commitModal = () => {
+    const d = editingMsg()
+    if (!d || !d.text.trim()) return
+    const item: Said = { role: d.role, text: d.text }
+    editSlot(d.slot, (l) => (d.index === null ? [...l, item] : l.map((x, i) => (i === d.index ? item : x))))
+    msgDlg.close()
+  }
+  const removeFromModal = () => {
+    const d = editingMsg()
+    if (!d || d.index === null) return
+    const idx = d.index
+    editSlot(d.slot, (l) => l.filter((_, i) => i !== idx))
+    msgDlg.close()
+  }
   const previewHat = async () => {
     const origin = activeOf(registry.get(tabs))
     await Promise.resolve() // let the blur commit its edit before reading the draft
@@ -441,178 +547,424 @@ const Templates = (props: Pane) => {
   }
   const create = async () => {
     const id = newId("hat")
-    await putHat({ id, name: t("settings.newHat"), narrate: { head: [{ role: "system", text: "" }] } })
+    await putHat({ id, name: t("settings.newHat") })
+    setImportError("")
     props.onPick(id)
+  }
+  const onImportFile = async (f: File) => {
+    const fallback = f.name.replace(/(\.hat)?\.json$/i, "").trim() || t("settings.newHat")
+    const parsed = parseHatFile(await f.text(), fallback)
+    if (!parsed) return setImportError(t("settings.invalidHatFile"))
+    const id = newId("hat")
+    try {
+      await putHat({ id, ...parsed })
+      setImportError("")
+      props.onPick(id)
+    } catch (e) {
+      setImportError(e instanceof Error ? e.message : t("settings.invalidHatFile"))
+    }
+  }
+  const exportHat = (h: Hat) => {
+    void saveFile(new Blob([serializeHat(h)], { type: "application/json" }), `${h.name}.hat.json`).catch((e: unknown) =>
+      setFailure({ id: h.id, message: e instanceof Error ? e.message : String(e) }),
+    )
   }
   return (
     <>
       <aside class="master-card" aria-label={t("settings.templates")}>
         <div class="master-list scroller top">
           <For each={list()} keyed={(h) => h.id}>
-            {(h) => (
-              <button
-                type="button"
-                class="p-row"
-                aria-selected={h().id === hat()?.id ? "true" : "false"}
-                onClick={() => props.onPick(h().id)}
-              >
-                <span class="p-name">{h().name}</span>
-                <span class="tag mono">{SLOTS.reduce((n, [s]) => n + slotOf(h(), s).length, 0)}</span>
-              </button>
-            )}
+            {(h) => {
+              const targets = () => {
+                const m = hatMounts(route(), h().id)
+                return [...(m.main ? [t("settings.mainModel")] : []), ...m.stages.map((s) => t(HAT_STAGE_KEYS[s]))]
+              }
+              return (
+                <button
+                  type="button"
+                  class="p-row"
+                  aria-selected={h().id === hat()?.id ? "true" : "false"}
+                  onClick={() => props.onPick(h().id)}
+                >
+                  <span class="p-name">{h().name}</span>
+                  <Show when={targets()[0]}>
+                    {(first) => (
+                      <span class="tag ok">
+                        {first()}
+                        {targets().length > 1 ? ` +${targets().length - 1}` : ""}
+                      </span>
+                    )}
+                  </Show>
+                  <Show when={h().deliver === "tool"}>
+                    <span class="tag">{t("settings.hatDeliverTool")}</span>
+                  </Show>
+                  <span class="tag mono">{SLOTS.reduce((n, s) => n + slotOf(h(), s).length, 0)}</span>
+                </button>
+              )
+            }}
           </For>
         </div>
-        <div class="master-foot">
+        <div class="master-foot pack-foot">
           <button type="button" class="btn" onClick={() => void create()}>
             <Plus /> <span>{t("settings.newHatShort")}</span>
           </button>
+          <button type="button" class="icon boxed" aria-label={t("common.import")} onClick={() => fileInput.click()}>
+            <Import />
+          </button>
+          <input
+            type="file"
+            accept=".json,application/json"
+            hidden
+            ref={(el) => (fileInput = el)}
+            onChange={(e) => {
+              const f = e.currentTarget.files?.[0]
+              e.currentTarget.value = ""
+              if (f) void onImportFile(f)
+            }}
+          />
+          <Show when={importError()}>{(m) => <span class="tag warn">{m()}</span>}</Show>
         </div>
       </aside>
       <section class="detail-card" aria-label={t("settings.hatDetail")}>
         <Show when={hat()} fallback={<div class="empty">{t("settings.noHats")}</div>}>
-          {(h) => (
-            <>
-              <header class="detail-header">
-                <ToList onBack={props.onBack} />
-                <Name
-                  value={h().name}
-                  label={t("settings.hatName")}
-                  onCommit={(name) => {
-                    const next = { ...h(), name }
-                    setDraft(next)
-                    void save(next)
-                  }}
-                />
-                <span class="spacer" />
-                <button type="button" class="btn sm" onClick={() => void previewHat()}>
-                  <Stack aria-hidden="true" />
-                  <span>{t("promptTree.preview")}</span>
-                </button>
-                <button
-                  type="button"
-                  class="icon sm"
-                  aria-label={t("settings.deleteHat")}
-                  onClick={() => {
-                    const { id, name } = h()
-                    ask(t("settings.confirmDeleteHat", { name }), async () => {
-                      await saving
-                      await deleteHat(id)
-                      setDraft((current) => (current?.id === id ? null : current))
-                      forgetPreviewHat(id)
-                    })
-                  }}
-                >
-                  <Trash />
-                </button>
-              </header>
-              <div class="detail-scroll scroller">
-                <Show when={failure()?.id === h().id}>
-                  <p class="warn" role="alert">
-                    {failure()?.message}
-                  </p>
-                </Show>
-                <div class="block">
-                  <div class="block-title">
+          {(h) => {
+            const mounts = () => hatMounts(route(), h().id)
+            const mountTargets = createMemo(
+              () => [
+                ...(mounts().main ? [t("settings.mainModel")] : []),
+                ...mounts().stages.map((s) => t(HAT_STAGE_KEYS[s])),
+              ],
+              { equals: sameArray },
+            )
+            const conflicts = createMemo(() => hatTemplateConflicts(providerList(), list(), route(), h()), {
+              equals: sameArray,
+            })
+            const tailConflictIdx = createMemo(() => {
+              const cs = conflicts()
+              if (!cs.includes("prefill") && !cs.includes("deliver_prefill")) return -1
+              const tail = slotOf(h(), "tail")
+              const idx = lastNonBlankTailIndex(tail)
+              return idx >= 0 && tail[idx]?.role === "assistant" ? idx : -1
+            })
+            return (
+              <>
+                <header class="detail-header hat-detail-header">
+                  <ToList onBack={props.onBack} />
+                  <Name
+                    value={h().name}
+                    label={t("settings.hatName")}
+                    onCommit={(name) => {
+                      const next = { ...h(), name }
+                      setDraft(next)
+                      void save(next)
+                    }}
+                  />
+                  <span class="spacer" />
+                  <Popover>
+                    <PopoverTrigger
+                      class={{ btn: true, sm: true, "hat-mount-btn": true, mounted: mountTargets().length > 0 }}
+                    >
+                      <Show when={mountTargets().length > 0}>
+                        <span class="dot on" aria-hidden="true" />
+                      </Show>
+                      <span class="hat-mount-label">{mountTargets()[0] ?? t("settings.mountHat")}</span>
+                      <Show when={mountTargets().length > 1}>
+                        <span class="mono">+{mountTargets().length - 1}</span>
+                      </Show>
+                      <Caret class="caret" aria-hidden="true" />
+                    </PopoverTrigger>
+                    <PopoverContent class="popup-list hat-mount-pop" sideOffset={4} align="end">
+                      <PopoverTitle class="sr-only">{t("settings.mountHat")}</PopoverTitle>
+                      <Tick
+                        class="item hat-mount-item"
+                        on={mounts().main}
+                        onFlip={() => void putRouting(toggleMainHat(route(), h().id))}
+                      >
+                        <span>{t("settings.mainHat")}</span>
+                      </Tick>
+                      <div class="hat-mount-sep" role="separator" />
+                      <div class="hat-mount-grid">
+                        <For each={HAT_STAGES} keyed={(s) => s}>
+                          {(s) => (
+                            <Tick
+                              class="item hat-mount-item"
+                              on={mounts().stages.includes(s())}
+                              onFlip={() => void putRouting(toggleStageHat(route(), s(), h().id))}
+                            >
+                              <span>{t(HAT_STAGE_KEYS[s()])}</span>
+                            </Tick>
+                          )}
+                        </For>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <button type="button" class="icon sm" aria-label={t("common.export")} onClick={() => exportHat(h())}>
+                    <Export />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon sm"
+                    aria-label={t("settings.deleteHat")}
+                    onClick={() => {
+                      const { id, name } = h()
+                      ask(t("settings.confirmDeleteHat", { name }), async () => {
+                        await saving
+                        await deleteHat(id)
+                        setDraft((current) => (current?.id === id ? null : current))
+                        forgetPreviewHat(id)
+                      })
+                    }}
+                  >
+                    <Trash />
+                  </button>
+                </header>
+                <div class="detail-scroll scroller hat-scroll">
+                  <Show when={failure()?.id === h().id}>
+                    <p class="warn" role="alert">
+                      {failure()?.message}
+                    </p>
+                  </Show>
+                  <For each={conflicts()}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
+                  <div class="hat-deliver-bar">
                     <h3>{t("settings.hatDeliver")}</h3>
-                    <div class="right">
-                      <Menu
-                        small
-                        label={t("settings.hatDeliver")}
-                        value={h().deliver ?? "text"}
-                        options={[
-                          { value: "text", label: t("settings.hatDeliverText") },
-                          { value: "tool", label: t("settings.hatDeliverTool") },
-                        ]}
-                        onPick={(v) => setDeliver(v)}
-                      />
+                    <Segment
+                      label={t("settings.hatDeliver")}
+                      value={h().deliver ?? "text"}
+                      options={[
+                        { value: "text", label: t("settings.hatDeliverText") },
+                        { value: "tool", label: t("settings.hatDeliverTool") },
+                      ]}
+                      onPick={(v) => setDeliver(v)}
+                    />
+                  </div>
+                  <div class="hat-stack">
+                    <SlotEditor
+                      label={t("settings.slotHead")}
+                      said={slotOf(h(), "head")}
+                      onOpenModal={(i) => openModal("head", i)}
+                      onStage={(f) => editSlot("head", f, false)}
+                      onEdit={(f) => editSlot("head", f)}
+                    />
+                    <div class="hat-seam">
+                      <button type="button" class="btn sm hat-seam-btn" onClick={() => void previewHat()}>
+                        <Stack aria-hidden="true" />
+                        <span>{t("promptTree.preview")}</span>
+                        <Jump aria-hidden="true" />
+                      </button>
                     </div>
+                    <SlotEditor
+                      label={t("settings.slotTail")}
+                      said={slotOf(h(), "tail")}
+                      muted={h().deliver === "tool" && slotOf(h(), "tail").length === 0}
+                      conflictIndex={tailConflictIdx()}
+                      onOpenModal={(i) => openModal("tail", i)}
+                      onStage={(f) => editSlot("tail", f, false)}
+                      onEdit={(f) => editSlot("tail", f)}
+                    />
+                    <SlotEditor
+                      label={t("settings.slotReview")}
+                      said={slotOf(h(), "review")}
+                      onOpenModal={(i) => openModal("review", i)}
+                      onStage={(f) => editSlot("review", f, false)}
+                      onEdit={(f) => editSlot("review", f)}
+                    />
                   </div>
                 </div>
-                <For each={SLOTS} keyed={(s) => s[0]}>
-                  {(s) => (
-                    <SlotEditor
-                      label={t(s()[1])}
-                      said={slotOf(h(), s()[0])}
-                      tail={s()[0] === "tail"}
-                      onStage={(f) => editSlot(s()[0], f, false)}
-                      onEdit={(f) => editSlot(s()[0], f)}
-                    />
-                  )}
-                </For>
-              </div>
-            </>
-          )}
+              </>
+            )
+          }}
         </Show>
+        <Modal
+          title={t(SLOT_KEYS[editingMsg()?.slot ?? modalSlot])}
+          controller={msgDlg}
+          onClose={() => setEditingMsg(null)}
+        >
+          <Show when={editingMsg()}>
+            {(d) => (
+              <>
+                <div class="hat-modal-bar">
+                  <Segment
+                    label={t("settings.role")}
+                    value={d().role}
+                    options={ROLES}
+                    onPick={(role) => setEditingMsg({ ...d(), role })}
+                  />
+                </div>
+                <textarea
+                  class="well-full hat-modal-text"
+                  rows="7"
+                  aria-label={t("settings.messageLabel")}
+                  value={d().text}
+                  ref={(el) => requestAnimationFrame(() => el.focus())}
+                  onInput={(e) => setEditingMsg({ ...d(), text: e.currentTarget.value })}
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !e.isComposing && d().text.trim()) {
+                      e.preventDefault()
+                      commitModal()
+                    }
+                  }}
+                />
+                <div class="modal-foot">
+                  <Show when={d().index !== null}>
+                    <button type="button" class="btn sm ghost danger" onClick={removeFromModal}>
+                      {t("common.delete")}
+                    </button>
+                    <span class="spacer" />
+                  </Show>
+                  <button type="button" class="btn sm ghost" onClick={() => msgDlg.close()}>
+                    {t("common.cancel")}
+                  </button>
+                  <button type="button" class="btn sm primary" disabled={!d().text.trim()} onClick={commitModal}>
+                    {t("common.done")}
+                  </button>
+                </div>
+              </>
+            )}
+          </Show>
+        </Modal>
       </section>
     </>
   )
 }
 
-/** One slot of a template: its messages, each a role, a text and a remove; 添加消息 appends one. */
+/** One slot of a template: compact empty bar when unconfigured; unified inline capsules when populated, with `+ 添加`
+ *  and `<Expand />` opening the focused message modal. */
 const SlotEditor = (props: {
   label: string
   said: readonly Said[]
-  tail: boolean
+  muted?: boolean
+  conflictIndex?: number
+  onOpenModal: (index: number | null) => void
   onStage: (f: (said: Said[]) => Said[]) => void
   onEdit: (f: (said: Said[]) => Said[]) => void
 }) => (
-  <div class="block">
-    <div class="block-title">
-      <h3>{props.label}</h3>
-      <div class="right">
-        <button
-          type="button"
-          class="btn sm"
-          onClick={() => {
-            const role: Role = props.tail ? "assistant" : "user"
-            props.onEdit((l) => [...l, { role, text: "" }])
-          }}
-        >
-          <Plus /> <span>{t("settings.addMessage")}</span>
-        </button>
-      </div>
-    </div>
-    <Show when={props.said.length} fallback={<div class="setting-card none">{t("settings.noMessages")}</div>}>
-      <div class="msgs">
-        <For each={props.said} keyed={false}>
-          {(m, i) => (
-            <div class="msg-card">
-              <Menu
-                small
-                label={t("settings.role")}
-                value={m().role}
-                options={ROLES}
-                onPick={(role) => props.onEdit((l) => l.map((x, j) => (j === i ? { ...x, role } : x)))}
-              />
-              <textarea
-                ref={autosize(() => m().text)}
-                class="field"
-                rows="2"
-                aria-label={t("settings.messageLabel")}
-                value={m().text}
-                onInput={(e) => {
-                  const text = e.currentTarget.value
-                  props.onStage((l) => l.map((x, j) => (j === i ? { ...x, text } : x)))
-                }}
-                onChange={(e) => {
-                  const text = e.currentTarget.value
-                  props.onEdit((l) => l.map((x, j) => (j === i ? { ...x, text } : x)))
-                }}
-              />
-              <button
-                type="button"
-                class="icon sm"
-                aria-label={t("settings.removeMessage")}
-                onClick={() => props.onEdit((l) => l.filter((_, j) => j !== i))}
-              >
-                <Close />
-              </button>
-            </div>
-          )}
-        </For>
+  <section class="hat-slot" aria-label={props.label}>
+    <Show
+      when={props.said.length > 0}
+      fallback={
+        <div class={{ "hat-slot-empty": true, muted: !!props.muted }}>
+          <h3>{props.label}</h3>
+          <button
+            type="button"
+            class="btn sm ghost"
+            aria-label={t("settings.addMessage")}
+            onClick={() => props.onOpenModal(null)}
+          >
+            <Plus aria-hidden="true" /> <span>{t("common.add")}</span>
+          </button>
+        </div>
+      }
+    >
+      <div class="block">
+        <div class="block-title">
+          <h3>{props.label}</h3>
+          <span class="tag mono">{props.said.length}</span>
+          <div class="right">
+            <button
+              type="button"
+              class="btn sm"
+              aria-label={t("settings.addMessage")}
+              onClick={() => props.onOpenModal(null)}
+            >
+              <Plus aria-hidden="true" /> <span>{t("common.add")}</span>
+            </button>
+          </div>
+        </div>
+        <div class="msgs">
+          <For each={props.said} keyed={false}>
+            {(m, i) => (
+              <div class={{ "msg-capsule": true, conflict: props.conflictIndex === i }}>
+                <div class="msg-bar">
+                  <Segment
+                    small
+                    label={t("settings.role")}
+                    value={m().role}
+                    options={ROLES}
+                    onPick={(role) => props.onEdit((l) => l.map((x, j) => (j === i ? { ...x, role } : x)))}
+                  />
+                  <span class="spacer" />
+                  <Show when={props.said.length > 1}>
+                    <button
+                      type="button"
+                      class="icon sm"
+                      disabled={i === 0}
+                      aria-label={t("settings.moveUp")}
+                      onClick={() =>
+                        props.onEdit((l) => {
+                          const next = [...l]
+                          const prev = next[i - 1]
+                          const cur = next[i]
+                          if (prev && cur) {
+                            next[i - 1] = cur
+                            next[i] = prev
+                          }
+                          return next
+                        })
+                      }
+                    >
+                      <Send aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      class="icon sm"
+                      disabled={i === props.said.length - 1}
+                      aria-label={t("settings.moveDown")}
+                      onClick={() =>
+                        props.onEdit((l) => {
+                          const next = [...l]
+                          const cur = next[i]
+                          const after = next[i + 1]
+                          if (cur && after) {
+                            next[i] = after
+                            next[i + 1] = cur
+                          }
+                          return next
+                        })
+                      }
+                    >
+                      <Down aria-hidden="true" />
+                    </button>
+                  </Show>
+                  <button
+                    type="button"
+                    class="icon sm"
+                    aria-label={t("common.expand")}
+                    onClick={() => props.onOpenModal(i)}
+                  >
+                    <Expand aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    class="icon sm"
+                    aria-label={t("settings.removeMessage")}
+                    onClick={() => props.onEdit((l) => l.filter((_, j) => j !== i))}
+                  >
+                    <Close aria-hidden="true" />
+                  </button>
+                </div>
+                <textarea
+                  ref={autosize(() => m().text)}
+                  class="msg-text"
+                  rows="2"
+                  aria-label={t("settings.messageLabel")}
+                  value={m().text}
+                  onKeyDown={leaveArea}
+                  onInput={(e) => {
+                    const text = e.currentTarget.value
+                    props.onStage((l) => l.map((x, j) => (j === i ? { ...x, text } : x)))
+                  }}
+                  onChange={(e) => {
+                    const text = e.currentTarget.value
+                    props.onEdit((l) => l.map((x, j) => (j === i ? { ...x, text } : x)))
+                  }}
+                />
+              </div>
+            )}
+          </For>
+        </div>
       </div>
     </Show>
-  </div>
+  </section>
 )
 
 // ───────── 玩家人设 ─────────

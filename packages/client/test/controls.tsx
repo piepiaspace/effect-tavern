@@ -12,7 +12,19 @@ import { CardPage } from "../src/card.tsx"
 import { ModelDialog } from "../src/models.tsx"
 import { Sidebar } from "../src/side.tsx"
 import { cards, composition, locals, personas, providers, stories, tabs } from "../src/store.ts"
-import { ask, Confirm, Drawer, dialogHandle, Menu, Modal, Prompt, Stepper, Switch, Tick } from "../src/controls.tsx"
+import {
+  ask,
+  Confirm,
+  Drawer,
+  dialogHandle,
+  Menu,
+  Modal,
+  Prompt,
+  Segment,
+  Stepper,
+  Switch,
+  Tick,
+} from "../src/controls.tsx"
 import { openPicker, StoryDialogs } from "../src/dialogs.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
@@ -94,12 +106,14 @@ registry.set(card, {
 let approve = false
 const agent = createAgent({ allow: (step) => !step.confirm || approve })
 const [format, setFormat] = createSignal<"openai" | "anthropic" | "gemini">("openai")
+const [deliver, setDeliver] = createSignal<"text" | "tool">("text")
 const [stream, setStream] = createSignal(false)
 const [warmth, setWarmth] = createSignal(15)
 let stepped = 15
 let deleted = 0
 // what reached the app, read by the checks outside any tracked scope
 let picked = "openai"
+let delivered = "text"
 let flipped = false
 let ticked = false
 const sheet = dialogHandle()
@@ -153,6 +167,15 @@ render(
           { value: "gemini", label: "Gemini" },
         ]}
         onPick={(v) => (setFormat(v), (picked = v))}
+      />
+      <Segment
+        label="正文交付"
+        value={deliver()}
+        options={[
+          { value: "text", label: "纯文本" },
+          { value: "tool", label: "工具调用" },
+        ]}
+        onPick={(v) => (setDeliver(v), (delivered = v))}
       />
       <Switch label="流式输出" on={stream()} onFlip={() => (setStream((v) => !v), (flipped = !flipped))} />
       <Tick on={ticked} onFlip={() => (ticked = !ticked)}>
@@ -223,17 +246,28 @@ const run = async () => {
   const entries = agent.snapshot().filter((e) => !e.offPage)
   for (const e of entries) check(e.label, `${e.component} ${e.ref} has no name`)
   const labels = entries.map((e) => e.label)
-  for (const l of ["接口格式", "流式输出", "模拟模型读取", "好感度", "第 1 轮的小剧场", "第 2 轮的小剧场", "侧栏宽度"])
+  for (const l of [
+    "接口格式",
+    "正文交付",
+    "流式输出",
+    "模拟模型读取",
+    "好感度",
+    "第 1 轮的小剧场",
+    "第 2 轮的小剧场",
+    "侧栏宽度",
+  ])
     check(labels.includes(l), `${l} is missing from the snapshot: ${labels.join(" | ")}`)
 
   const set = await agent.act({
     steps: [
       { ref: "接口格式", action: "setValue", args: ["Gemini"] },
+      { ref: "正文交付", action: "setValue", args: ["工具调用"] },
       { ref: "流式输出", action: "setChecked", args: [true] },
     ],
   })
-  check(set.ok, `select and switch: ${set.error?.message}`)
+  check(set.ok, `select, segment and switch: ${set.error?.message}`)
   check(picked === "gemini", `the select's pick reached the app: ${picked}`)
+  check(delivered === "tool", `the segment's pick reached the app: ${delivered}`)
   check(flipped, "the switch's flip reached the app")
   const tick = await agent.act({ steps: [{ ref: "模拟模型读取", action: "setChecked", args: [true] }] })
   check(tick.ok && ticked, `checkbox: ${tick.error?.message} ${ticked}`)

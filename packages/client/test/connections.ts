@@ -10,11 +10,17 @@ import {
   formatOf,
   hasCompatOverrides,
   hatConflicts,
+  hatMounts,
+  hatTemplateConflicts,
   pairKey,
   pairOf,
+  parseHatFile,
   requestOf,
+  serializeHat,
   staleModels,
   stalePair,
+  toggleMainHat,
+  toggleStageHat,
   withCapability,
   withDeliver,
   without,
@@ -147,6 +153,42 @@ assert.deepEqual(
   ["deliver_prefill"],
 )
 assert.deepEqual(hatConflicts([conflictProv], [blankAssistantTail], { provider: "p", model: "ok" }, "h-blank-asst"), [])
+
+// Lightweight Hat mounting, live template conflicts, and JSON import/export round-trip
+let routeState = toggleMainHat({}, "h-tail")
+assert.deepEqual(routeState, { hat: "h-tail" })
+assert.deepEqual(hatMounts(routeState, "h-tail"), { main: true, stages: [] })
+routeState = toggleStageHat(routeState, "narrate", "h-tail")
+assert.deepEqual(hatMounts(routeState, "h-tail"), { main: true, stages: ["narrate"] })
+routeState = toggleStageHat(routeState, "narrate", "h-tail")
+assert.deepEqual(hatMounts(routeState, "h-tail"), { main: true, stages: [] })
+assert.equal("stageHats" in routeState, false)
+routeState = toggleMainHat(routeState, "h-tail")
+assert.equal("hat" in routeState, false)
+
+// Intrinsic tool+prefill conflict shows even when unmounted; prefill model conflict shows once mounted on narrate
+assert.deepEqual(hatTemplateConflicts([conflictProv], allHats, {}, toolTailHat), ["deliver_prefill"])
+assert.deepEqual(hatTemplateConflicts([conflictProv], allHats, {}, tailHat), [])
+assert.deepEqual(
+  hatTemplateConflicts(
+    [conflictProv],
+    allHats,
+    { default: { provider: "p", model: "no-prefill" }, hat: "h-tail" },
+    tailHat,
+  ),
+  ["prefill"],
+)
+
+const exported = serializeHat(toolHat)
+assert.equal(exported.includes('"id"'), false)
+assert.deepEqual(parseHatFile(exported, "Fallback"), {
+  name: "Base",
+  deliver: "tool",
+  narrate: { head: [{ role: "system", text: "Go" }] },
+})
+assert.equal(parseHatFile("{bad", "Fallback"), null)
+assert.equal(parseHatFile('{"deliver":"invalid"}', "Fallback"), null)
+assert.equal(parseHatFile('{"narrate":{"head":[{"role":"tool","text":"x"}]}}', "Fallback"), null)
 
 // The request round trip: a bare provider reads as the defaults and goes back unchanged
 const bare = requestOf(p)

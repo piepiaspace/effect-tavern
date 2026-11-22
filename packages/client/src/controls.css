@@ -191,6 +191,65 @@
   scrollbar-gutter: auto;
 }
 
+.seg-pill {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-half);
+  padding: var(--space-half);
+  border-radius: var(--radius-pill);
+  background: var(--alpha-1);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.seg-pill-ind {
+  position: absolute;
+  z-index: -1;
+  top: var(--segmented-control-indicator-top);
+  left: var(--segmented-control-indicator-left);
+  width: var(--segmented-control-indicator-width);
+  height: var(--segmented-control-indicator-height);
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  box-shadow: var(--shadow-1);
+  transition:
+    top var(--dur-2) var(--ease),
+    left var(--dur-2) var(--ease),
+    width var(--dur-2) var(--ease),
+    height var(--dur-2) var(--ease);
+}
+.seg-pill-ind[data-activation-direction="none"] {
+  transition: none;
+}
+.seg-pill-item {
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  color: var(--ink-2);
+  font-size: var(--text-footnote);
+  font-weight: 550;
+  white-space: nowrap;
+  transition: color var(--dur-1) var(--ease);
+}
+.seg-pill.sm .seg-pill-item {
+  height: 22px;
+  padding: 0 var(--space-2);
+  font-size: var(--text-caption);
+}
+@media (hover: hover) and (pointer: fine) {
+  .seg-pill-item:hover:not(:disabled) {
+    color: var(--ink);
+  }
+}
+.seg-pill-item:active:not(:disabled) {
+  color: var(--ink);
+}
+.seg-pill-item[data-checked] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 /* the family glyph before a model id: mono at the secondary ink, in the letter circle's slot */
 .family {
   flex: none;

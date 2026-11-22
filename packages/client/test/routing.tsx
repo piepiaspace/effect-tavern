@@ -202,13 +202,24 @@ const run = async () => {
   await quiet()
   check(document.querySelector(".settings")?.getAttribute("data-pane") === "detail", "a template link opens its detail")
 
-  // Hat prose delivery selector (`text` omitted vs `tool` saved)
-  check(triggerOf("正文交付")?.querySelector(".label")?.textContent === "纯文本", "hat deliver starts on 纯文本")
+  // Hat prose delivery segmented control (`text` omitted vs `tool` saved), modal message add, and lightweight mounting
+  const segItem = (groupLabel: string, itemText: string) =>
+    [
+      ...(document
+        .querySelector(`[data-slot="segmented-control"][aria-label="${groupLabel}"]`)
+        ?.querySelectorAll<HTMLButtonElement>('[data-slot="segmented-control-item"]') ?? []),
+    ].find((el) => el.textContent?.trim() === itemText)
+  check(segItem("正文交付", "纯文本")?.hasAttribute("data-checked"), "hat deliver starts on 纯文本")
   hatResponse = Promise.resolve(
     Response.json(registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, deliver: "tool" } : h))),
   )
-  await pick("正文交付", "工具调用 (narrative)")
+  segItem("正文交付", "工具调用")?.click()
+  await quiet()
   check(hatWrites.at(-1)?.deliver === "tool", `expected deliver=tool written, got ${JSON.stringify(hatWrites.at(-1))}`)
+  check(
+    document.querySelector('[aria-label="尾部预填"] .hat-slot-empty')?.classList.contains("muted"),
+    "empty tail slot dims while deliver=tool",
+  )
   hatResponse = Promise.resolve(
     Response.json(
       registry.get(hats).map((h) => {
@@ -218,16 +229,115 @@ const run = async () => {
       }),
     ),
   )
-  await pick("正文交付", "纯文本")
+  segItem("正文交付", "纯文本")?.click()
+  await quiet()
   check(
     hatWrites.at(-1) !== undefined && !("deliver" in hatWrites.at(-1)!),
     `expected deliver omitted when switched back to text, got ${JSON.stringify(hatWrites.at(-1))}`,
   )
+
+  // Adding a message opens the focused modal (`+ 添加` -> Modal -> `完成`), never inserting a blank inline card
+  const addTailBtn = document.querySelector<HTMLButtonElement>('[aria-label="尾部预填"] button[aria-label="添加消息"]')
+  check(addTailBtn, "missing + 添加 button on 尾部预填")
+  addTailBtn?.click()
+  await quiet()
+  const modalBox = document.querySelector<HTMLTextAreaElement>(".modal .hat-modal-text")
+  check(modalBox, "clicking + 添加 opens the message modal")
+  check(
+    document.querySelector('.modal [data-slot="segmented-control-item"][data-checked]')?.textContent?.trim() ===
+      "Assistant",
+    "trailing slot defaults modal role to Assistant",
+  )
+  if (modalBox) {
+    modalBox.value = "〈续〉"
+    modalBox.dispatchEvent(new InputEvent("input", { bubbles: true }))
+  }
+  await quiet()
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry
+        .get(hats)
+        .map((h) =>
+          h.id === "hat-gemini"
+            ? { ...h, narrate: { ...h.narrate, tail: [{ role: "assistant" as const, text: "〈续〉" }] } }
+            : h,
+        ),
+    ),
+  )
+  ;[...document.querySelectorAll<HTMLButtonElement>(".modal .modal-foot .btn.primary")][0]?.click()
+  await quiet()
+  check(
+    hatWrites.at(-1)?.narrate?.tail?.[0]?.text === "〈续〉" && !document.querySelector(".modal"),
+    `modal commit saves new trailing message and closes: ${JSON.stringify(hatWrites.at(-1))}`,
+  )
+
+  // Lightweight mount popover in template header: left-aligned snug checkboxes + 2x2 stage grid, mounts onto main model
+  document.querySelector<HTMLButtonElement>(".hat-mount-btn")?.click()
+  await quiet()
+  const mountItems = [...document.querySelectorAll<HTMLElement>(".hat-mount-pop .hat-mount-item")]
+  const mountMainTick = mountItems.find((el) => el.textContent?.includes("默认提示词模板"))
+  check(mountMainTick && mountItems.length === 5, `mount popover lists 5 targets, got ${mountItems.length}`)
+  if (mountItems.length === 5) {
+    const popBox = document.querySelector<HTMLElement>(".hat-mount-pop")!.getBoundingClientRect()
+    const leftBoxes = [mountItems[0], mountItems[1], mountItems[3]].map((el) => ({
+      cb: el.querySelector<HTMLElement>(".checkbox")!.getBoundingClientRect(),
+      txt: el.querySelector<HTMLElement>("span")!.getBoundingClientRect(),
+    }))
+    const rightBoxes = [mountItems[2], mountItems[4]].map((el) => ({
+      cb: el.querySelector<HTMLElement>(".checkbox")!.getBoundingClientRect(),
+      txt: el.querySelector<HTMLElement>("span")!.getBoundingClientRect(),
+    }))
+    check(
+      Math.abs(leftBoxes[0].cb.left - leftBoxes[1].cb.left) < 1 &&
+        Math.abs(leftBoxes[0].txt.left - leftBoxes[1].txt.left) < 1 &&
+        Math.abs(leftBoxes[1].txt.left - leftBoxes[2].txt.left) < 1,
+      "main row and left-column stages align both checkboxes and labels on the same x axis",
+    )
+    check(
+      Math.abs(rightBoxes[0].cb.left - rightBoxes[1].cb.left) < 1 &&
+        Math.abs(rightBoxes[0].txt.left - rightBoxes[1].txt.left) < 1,
+      "right-column stages align both checkboxes and labels on the same x axis",
+    )
+    check(
+      leftBoxes[1].txt.left - leftBoxes[1].cb.right <= 12 && popBox.width < 200,
+      `mount popover stays compact without space-between gap (gap=${leftBoxes[1].txt.left - leftBoxes[1].cb.right}, width=${popBox.width})`,
+    )
+  }
+  mountMainTick?.querySelector<HTMLElement>('[data-slot="checkbox"]')?.click()
+  await quiet()
+  check(writes.at(-1)?.hat === "hat-gemini", `mount popover writes routing.hat: ${JSON.stringify(writes.at(-1))}`)
+  registry.set(routing, writes.at(-1)!)
+  await quiet()
+  check(
+    [...document.querySelectorAll<HTMLElement>(".hat-scroll > .warn")].some((w) =>
+      w.textContent?.includes("已关闭预填"),
+    ),
+    "mounting an assistant-tail template onto prefill=false main model shows inline warning right on the template",
+  )
+  document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))
+  await quiet()
+  // Clean up tail message so remaining hat-gemini assertions start with 1 head capsule
+  hatResponse = Promise.resolve(
+    Response.json(
+      registry
+        .get(hats)
+        .map((h) =>
+          h.id === "hat-gemini"
+            ? { id: "hat-gemini", name: "Gemini 引导", narrate: { head: [{ role: "system", text: "继续" }] } }
+            : h,
+        ),
+    ),
+  )
+  document.querySelector<HTMLButtonElement>('[aria-label="尾部预填"] button[aria-label="移除消息"]')?.click()
+  await quiet()
+
   hatWrites.length = 0
-  const field = document.querySelector<HTMLTextAreaElement>(".msg-card textarea.field")!
-  const preview = [...document.querySelectorAll<HTMLButtonElement>(".detail-header .btn")].find((b) =>
-    b.textContent?.includes("请求预览"),
-  )!
+  const field = document.querySelector<HTMLTextAreaElement>(".msg-capsule textarea.msg-text")!
+  check(
+    ![...document.querySelectorAll(".detail-header button")].some((b) => b.textContent?.includes("请求预览")),
+    "header omits duplicate Prompt Tree entry",
+  )
+  const preview = document.querySelector<HTMLButtonElement>(".hat-seam button")!
   const response = Promise.withResolvers<Response>()
   hatResponse = response.promise
   field.value = "留在编辑器里的新文字"

@@ -12,8 +12,15 @@ for (const f of readdirSync(src)) {
   if (f === "tokens.css" || !/\.(css|tsx?)$/.test(f)) continue
   for (const m of readFileSync(join(src, f), "utf8").matchAll(/var\((--[a-z0-9-]+)/g)) used.set(m[1], f)
 }
-// set at runtime on a popup by @ui-sdk (its styling contract), not design constants
-const runtime = new Set(["--anchor-width", "--available-height"])
+// set at runtime on a popup or segmented control by @ui-sdk (its styling contract), not design constants
+const runtime = new Set([
+  "--anchor-width",
+  "--available-height",
+  "--segmented-control-indicator-top",
+  "--segmented-control-indicator-left",
+  "--segmented-control-indicator-width",
+  "--segmented-control-indicator-height",
+])
 const missing = [...used].filter(([t]) => !defined.has(t) && !runtime.has(t))
 assert.deepEqual(missing, [], `undefined tokens: ${missing.map(([t, f]) => `${t} (${f})`).join(", ")}`)
 // Radius and spacing come off the rulers: no px or rem literal in a border-radius, padding, margin or gap outside tokens.css.

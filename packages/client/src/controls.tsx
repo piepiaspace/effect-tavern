@@ -16,6 +16,7 @@ import {
 } from "@ui-sdk/solid/alert-dialog"
 import { createDialogController, Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@ui-sdk/solid/select"
+import { SegmentedControl, SegmentedControlIndicator, SegmentedControlItem } from "@ui-sdk/solid/segmented-control"
 import { Checkbox, CheckboxIndicator } from "@ui-sdk/solid/checkbox"
 import { Switch as Toggle, SwitchThumb } from "@ui-sdk/solid/switch"
 import {
@@ -132,6 +133,29 @@ export const Menu = <T extends string>(props: {
     </Select>
   )
 }
+export const Segment = <T extends string>(props: {
+  value: T
+  options: readonly Option<T>[]
+  onPick: (v: T) => void
+  label: string
+  small?: boolean
+}) => (
+  <SegmentedControl
+    class={{ "seg-pill": true, sm: !!props.small }}
+    aria-label={props.label}
+    value={props.value}
+    onValueChange={(v) => v !== null && props.onPick(v)}
+  >
+    <SegmentedControlIndicator class="seg-pill-ind" />
+    <For each={props.options} keyed={(o) => o.value}>
+      {(o) => (
+        <SegmentedControlItem value={o().value} class="seg-pill-item">
+          {o().label}
+        </SegmentedControlItem>
+      )}
+    </For>
+  </SegmentedControl>
+)
 export const Switch = (props: { on: boolean; label: string; onFlip: () => void; disabled?: boolean }) => (
   <Toggle
     class="switch"
