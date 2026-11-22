@@ -9,6 +9,7 @@ import type { Snippet } from "@effect-tavern/runtime/src/fragment.ts"
 import { CommandItem, CommandSeparator } from "@ui-sdk/solid/command"
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { createSignal, flush, onSettled, For, Show } from "solid-js"
+import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
 import { Check, Close, Edit, Insert, Send, Snippets, Stop } from "./icons.tsx"
 import { imeController } from "./ime.ts"
@@ -205,7 +206,7 @@ export const Composer = () => {
           <div class={{ attach: true, note: true, closed: !toNarratorOn() }} inert={!toNarratorOn()}>
             <span class="tag">{t("composer.noteTag")}</span>
             <textarea
-              ref={(el) => (noteBox = el)}
+              ref={[(el) => (noteBox = el), autosize(noteText)]}
               class="note"
               value={noteText()}
               enterkeyhint="enter"
@@ -318,7 +319,7 @@ export const Composer = () => {
               )}
             </For>
             <textarea
-              ref={(el) => (box = el)}
+              ref={[(el) => (box = el), autosize(text)]}
               value={text()}
               placeholder={selected().length ? "" : prompt()}
               aria-label={prompt()}

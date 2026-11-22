@@ -10,6 +10,7 @@
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Dynamic, type JSX } from "@solidjs/web"
 import { createMemo, createSignal, For, onSettled, Show, untrack } from "solid-js"
+import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
 import { ask, Avatar, Confirm, Menu, Name, newId, Switch, ToList, type Pane } from "./controls.tsx"
 import {
@@ -555,6 +556,7 @@ const SlotEditor = (props: {
                 onPick={(role) => props.onEdit((l) => l.map((x, j) => (j === i ? { ...x, role } : x)))}
               />
               <textarea
+                ref={autosize(() => m().text)}
                 class="field"
                 rows="2"
                 aria-label={t("settings.messageLabel")}

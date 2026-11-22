@@ -8,6 +8,7 @@ import type { Writing } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Layer, Local, Resolved } from "@effect-tavern/runtime/src/layer.ts"
 import { unfilled } from "@effect-tavern/runtime/src/names.ts"
 import { createSignal, For, Show } from "solid-js"
+import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
 import { Modal, newId, Switch, dialogHandle } from "./controls.tsx"
 import { Back, Next, Prev, Stack, Snippets as Plus, User } from "./icons.tsx"
@@ -372,6 +373,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     writeSwitches((x) => ({ ...x, ...(key === "pov" && { povText: undefined }), [key]: pressing(key, x, value) }))
   }
   const isCustomPov = () => (localSw()?.pov ?? effSw()?.pov) === "custom"
+  const pov = () => povDraft() ?? localSw()?.povText ?? effSw()?.povText ?? ""
   const toggleCustomPov = () => {
     setPovDraft(null)
     const next = !isCustomPov() ? "custom" : localSw()?.pov === "custom" ? undefined : "second"
@@ -601,12 +603,13 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                     fallback={<p class="sw-sentence">{activeSentence(s().key)}</p>}
                   >
                     <textarea
+                      ref={autosize(pov)}
                       class="sw-custom-input"
                       rows={2}
                       aria-label={t("switches.povCustom")}
                       placeholder={t("switches.povCustomPlaceholder")}
                       disabled={disabled()}
-                      value={povDraft() ?? localSw()?.povText ?? effSw()?.povText ?? ""}
+                      value={pov()}
                       onInput={(e) => setPovDraft(e.currentTarget.value)}
                       onChange={(e) => commitPovText(e.currentTarget.value)}
                       onKeyDown={leaveArea}

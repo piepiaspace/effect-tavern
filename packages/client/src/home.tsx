@@ -4,6 +4,7 @@
 // has at least one character card (excluding the built-in free-chat container). Drafts are stored per home tab so
 // opening "+" starts blank and switching back preserves unfinished words.
 import { createEffect, createSignal, onSettled, Show } from "solid-js"
+import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
 import { FIGURE_COUNT, FIGURE_ENTRIES, loadFigure, loadFigureIndex, peekFigure, saveFigureId } from "./figures/index.ts"
 import type { HomeFigure } from "./home-figure.tsx"
@@ -232,7 +233,7 @@ export const Home = () => {
         >
           <div class="home-row">
             <textarea
-              ref={(el) => (box = el)}
+              ref={[(el) => (box = el), autosize(text)]}
               value={text()}
               placeholder={t("home.placeholder")}
               aria-label={t("home.placeholder")}
