@@ -6,7 +6,8 @@
 // `openSettings` over its dialog's handle; before the component mounts it does nothing.
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { dialogHandle, Prompt, roam } from "./controls.tsx"
+import { Listbox, ListboxItem } from "@ui-sdk/solid/listbox"
+import { dialogHandle, Prompt } from "./controls.tsx"
 import { Check, Close, Clue, Jump } from "./icons.tsx"
 import { Manager } from "./manager.tsx"
 import { dropTag, renameTag, tagCounts, tagsOfLocals, withTags } from "./query.ts"
@@ -25,6 +26,12 @@ import {
   refreshActiveCard,
 } from "./wire.ts"
 import { t } from "./i18n.ts"
+
+// the picker's values: a persona's id, or one of two words no id takes (newId ids hold no `:`)
+const FOLLOW = ":follow"
+const NONE = ":none"
+const choiceOf = (id: string | null | undefined) => (id === undefined ? FOLLOW : id === null ? NONE : id)
+const pickOf = (v: string) => (v === FOLLOW ? undefined : v === NONE ? null : v)
 
 const manager = dialogHandle()
 const picker = dialogHandle()
@@ -341,56 +348,51 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
               onInput={(e) => setQ(e.currentTarget.value)}
             />
           </div>
-          <div class="list scroller" role="menu" onKeyDown={roam}>
-            <Show when={showFollow()}>
-              <button
-                type="button"
-                role="menuitemradio"
-                class="tile item"
-                aria-checked={picked() === undefined ? "true" : "false"}
-                onClick={() => (picker.close(), pick(undefined))}
-              >
-                <span class="name">{t("side.followDefault")}</span>
-                <Check class="check" aria-hidden="true" />
-                <Show when={fallback()}>{(p) => <span class="bio">{p().name}</span>}</Show>
-              </button>
-            </Show>
-            <Show when={showNone()}>
-              <button
-                type="button"
-                role="menuitemradio"
-                class="tile item"
-                aria-checked={picked() === null ? "true" : "false"}
-                onClick={() => (picker.close(), pick(null))}
-              >
-                <span class="name">{t("side.noPersona")}</span>
-                <Check class="check" aria-hidden="true" />
-              </button>
-            </Show>
-            <For each={hits()} keyed={(p) => p.id}>
-              {(p) => {
-                const bio = () => p().text.split("\n")[0]?.trim() ?? ""
-                return (
-                  <button
-                    type="button"
-                    role="menuitemradio"
-                    class="tile item"
-                    aria-checked={p().id === picked() ? "true" : "false"}
-                    onClick={() => (picker.close(), pick(p().id))}
-                  >
-                    <span class="name">{p().name}</span>
-                    <Check class="check" aria-hidden="true" />
-                    <Show when={bio()}>{(b) => <span class="bio">{b()}</span>}</Show>
-                  </button>
-                )
-              }}
-            </For>
-            <Show when={q().trim() && !hits().length && !showFollow() && !showNone()}>
+          <Show
+            when={showFollow() || showNone() || hits().length}
+            fallback={
               <div class="empty">
                 <span>{t("side.noPersonaMatch", { q: q().trim() })}</span>
               </div>
-            </Show>
-          </div>
+            }
+          >
+            {/* pressing the pick in force unselects it: that only closes the sheet */}
+            <Listbox
+              class="list scroller"
+              aria-label={t("side.pickPersona")}
+              activation="manual"
+              loop
+              deselectable
+              value={choiceOf(picked())}
+              onValueChange={(v) => (picker.close(), v !== null && pick(pickOf(v)))}
+            >
+              <Show when={showFollow()}>
+                <ListboxItem value={FOLLOW} class="tile item">
+                  <span class="name">{t("side.followDefault")}</span>
+                  <Check class="check" aria-hidden="true" />
+                  <Show when={fallback()}>{(p) => <span class="bio">{p().name}</span>}</Show>
+                </ListboxItem>
+              </Show>
+              <Show when={showNone()}>
+                <ListboxItem value={NONE} class="tile item">
+                  <span class="name">{t("side.noPersona")}</span>
+                  <Check class="check" aria-hidden="true" />
+                </ListboxItem>
+              </Show>
+              <For each={hits()} keyed={(p) => p.id}>
+                {(p) => {
+                  const bio = () => p().text.split("\n")[0]?.trim() ?? ""
+                  return (
+                    <ListboxItem value={p().id} class="tile item">
+                      <span class="name">{p().name}</span>
+                      <Check class="check" aria-hidden="true" />
+                      <Show when={bio()}>{(b) => <span class="bio">{b()}</span>}</Show>
+                    </ListboxItem>
+                  )
+                }}
+              </For>
+            </Listbox>
+          </Show>
         </div>
       </Sheet>
     </>

@@ -9,8 +9,9 @@ import { cardView } from "@effect-tavern/runtime/src/session.ts"
 import { Composer } from "../src/composer.tsx"
 import { CardPage } from "../src/card.tsx"
 import { Sidebar } from "../src/side.tsx"
-import { cards, composition, locals, stories, tabs } from "../src/store.ts"
-import { ask, Confirm, Drawer, dialogHandle, Menu, Modal, Prompt, Stepper, Switch } from "../src/controls.tsx"
+import { cards, composition, locals, personas, stories, tabs } from "../src/store.ts"
+import { ask, Confirm, Drawer, dialogHandle, Menu, Modal, Prompt, Stepper, Switch, Tick } from "../src/controls.tsx"
+import { openPicker, StoryDialogs } from "../src/dialogs.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
 import { mountBack } from "../src/back.ts"
@@ -82,6 +83,7 @@ let deleted = 0
 // what reached the app, read by the checks outside any tracked scope
 let picked = "openai"
 let flipped = false
+let ticked = false
 const sheet = dialogHandle()
 const prompt = dialogHandle()
 const modal = dialogHandle()
@@ -134,6 +136,9 @@ render(
         onPick={(v) => (setFormat(v), (picked = v))}
       />
       <Switch label="流式输出" on={stream()} onFlip={() => (setStream((v) => !v), (flipped = !flipped))} />
+      <Tick on={ticked} onFlip={() => (ticked = !ticked)}>
+        模拟模型读取
+      </Tick>
       <Stepper label="好感度" value={warmth()} min={-100} max={100} onChange={(n) => (setWarmth(n), (stepped = n))} />
       <footer class="actions">
         <Demand node={timelineNode(1, null, "正文")} n={1} />
@@ -143,6 +148,7 @@ render(
       <div style={{ height: "200vh" }} />
       <Composer />
       <Confirm />
+      <StoryDialogs />
       <button id="drawer-trigger" onClick={() => setDrawerOpen(true)}>
         设置抽屉
       </button>
@@ -197,7 +203,7 @@ const run = async () => {
   const entries = agent.snapshot().filter((e) => !e.offPage)
   for (const e of entries) check(e.label, `${e.component} ${e.ref} has no name`)
   const labels = entries.map((e) => e.label)
-  for (const l of ["接口格式", "流式输出", "好感度", "第 1 轮的小剧场", "第 2 轮的小剧场", "侧栏宽度"])
+  for (const l of ["接口格式", "流式输出", "模拟模型读取", "好感度", "第 1 轮的小剧场", "第 2 轮的小剧场", "侧栏宽度"])
     check(labels.includes(l), `${l} is missing from the snapshot: ${labels.join(" | ")}`)
 
   const set = await agent.act({
@@ -209,6 +215,22 @@ const run = async () => {
   check(set.ok, `select and switch: ${set.error?.message}`)
   check(picked === "gemini", `the select's pick reached the app: ${picked}`)
   check(flipped, "the switch's flip reached the app")
+  const tick = await agent.act({ steps: [{ ref: "模拟模型读取", action: "setChecked", args: [true] }] })
+  check(tick.ok && ticked, `checkbox: ${tick.error?.message} ${ticked}`)
+
+  // the persona picker: a listbox named by its sheet's question; an agent's pick closes the sheet
+  registry.set(personas, [{ id: "persona-a", name: "阿青", text: "" }] as never)
+  openPicker()
+  await quiet()
+  const option = document.querySelector<HTMLElement>('.picker [data-slot="listbox-item"]')!
+  option.focus()
+  option.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }))
+  await quiet()
+  check(!!document.querySelector(".picker"), "an arrow in the persona picker moves without picking")
+  const pickPersona = await agent.act({ steps: [{ ref: "选择人设", action: "setValue", args: ["阿青"] }] })
+  await quiet()
+  check(pickPersona.ok, `persona picker: ${pickPersona.error?.message}`)
+  check(!document.querySelector(".picker"), "a pick closes the persona picker")
   const step = await agent.act({ steps: [{ ref: "好感度", action: "setValue", args: [16] }] })
   check(step.ok && stepped === 16, `stepper: ${step.error?.message} ${stepped}`)
 

@@ -7,7 +7,7 @@ import { hook } from "@effect-tavern/runtime/src/lore.ts"
 import type { Entry } from "@effect-tavern/runtime/src/polish.ts"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { ask, Menu, Modal, Name, newId, Switch, ToList, type Pane, dialogHandle, Well } from "./controls.tsx"
+import { ask, Menu, Modal, Name, newId, Switch, Tick, ToList, type Pane, dialogHandle, Well } from "./controls.tsx"
 import { Clue, Close, Export, Import, Snippets as Plus, Trash } from "./icons.tsx"
 import { caretOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf, type InsertDraft } from "./inserts.ts"
 import { cleanLex, FILE, mergeLexicon, parseLexicon, serializeLexicon } from "./lexicon.ts"
@@ -392,30 +392,28 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
                     onChange={(e) => updateEntry(x().i, { id: e.currentTarget.value })}
                     onKeyDown={leaveInput}
                   />
-                  <label class="tag">
-                    <input
-                      type="checkbox"
-                      checked={x().e.access?.model ?? true}
-                      onChange={(e) =>
-                        updateEntry(x().i, {
-                          access: { model: e.currentTarget.checked, player: x().e.access?.player ?? true },
-                        })
-                      }
-                    />
+                  <Tick
+                    class="tag"
+                    on={x().e.access?.model ?? true}
+                    onFlip={() =>
+                      updateEntry(x().i, {
+                        access: { model: !(x().e.access?.model ?? true), player: x().e.access?.player ?? true },
+                      })
+                    }
+                  >
                     {t("invoke.auto")}
-                  </label>
-                  <label class="tag">
-                    <input
-                      type="checkbox"
-                      checked={x().e.access?.player ?? true}
-                      onChange={(e) =>
-                        updateEntry(x().i, {
-                          access: { player: e.currentTarget.checked, model: x().e.access?.model ?? true },
-                        })
-                      }
-                    />
+                  </Tick>
+                  <Tick
+                    class="tag"
+                    on={x().e.access?.player ?? true}
+                    onFlip={() =>
+                      updateEntry(x().i, {
+                        access: { player: !(x().e.access?.player ?? true), model: x().e.access?.model ?? true },
+                      })
+                    }
+                  >
                     {t("invoke.manual")}
-                  </label>
+                  </Tick>
                   <Menu
                     small
                     label={t("invoke.mode")}

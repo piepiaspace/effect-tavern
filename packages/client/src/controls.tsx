@@ -16,6 +16,7 @@ import {
 } from "@ui-sdk/solid/alert-dialog"
 import { createDialogController, Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@ui-sdk/solid/select"
+import { Checkbox, CheckboxIndicator } from "@ui-sdk/solid/checkbox"
 import { Switch as Toggle, SwitchThumb } from "@ui-sdk/solid/switch"
 import {
   NumberInput,
@@ -25,19 +26,9 @@ import {
   NumberInputIncrement,
 } from "@ui-sdk/solid/number-input"
 import { Family } from "./family.tsx"
-import { Back, Caret, Close, Expand, Minus, Plus } from "./icons.tsx"
+import { Back, Caret, Check, Close, Expand, Minus, Plus } from "./icons.tsx"
 import { names } from "./store.ts"
 import { type Key, t } from "./i18n.ts"
-
-/** The menu's keyboard: arrows move focus among the items and wrap, Home/End jump; Escape and outside clicks are the popover's. */
-export const roam = (e: KeyboardEvent & { currentTarget: HTMLElement }) => {
-  const items = [...e.currentTarget.querySelectorAll<HTMLElement>("[role^=menuitem]")]
-  const i = Math.max(0, items.indexOf(document.activeElement as HTMLElement))
-  const d = { ArrowDown: 1, ArrowUp: -1, Home: -i, End: items.length - 1 - i }[e.key]
-  if (d === undefined) return
-  e.preventDefault()
-  items.at((i + d) % items.length)?.focus()
-}
 
 export const FORMAT: Record<Format, string> = {
   "openai-compatible": "OpenAI",
@@ -151,6 +142,17 @@ export const Switch = (props: { on: boolean; label: string; onFlip: () => void; 
   >
     <SwitchThumb class="thumb" />
   </Toggle>
+)
+/** A box ticked beside its words, which name it: one of a set taken or left (a Switch turns a setting on or off). */
+export const Tick = (props: { on: boolean; onFlip: () => void; class?: string; children: JSX.Element }) => (
+  <label class={props.class}>
+    <Checkbox class="checkbox" checked={props.on} onCheckedChange={() => props.onFlip()}>
+      <CheckboxIndicator class="mark">
+        <Check aria-hidden="true" />
+      </CheckboxIndicator>
+    </Checkbox>
+    {props.children}
+  </label>
 )
 /** A number with − and + on either side; the field shows no native spinner. Empty input is not a value. */
 export const Stepper = (props: {

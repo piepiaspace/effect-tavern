@@ -8,7 +8,7 @@ import type { OmittedReason, SourceRef } from "@effect-tavern/runtime/src/trace.
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { Menu, Stepper, Switch } from "./controls.tsx"
+import { Menu, Stepper, Switch, Tick } from "./controls.tsx"
 import { Family } from "./family.tsx"
 import { Back, EyeOff, Fold, Next, Plugs, Swipe, Warning } from "./icons.tsx"
 import { t } from "./i18n.ts"
@@ -738,24 +738,22 @@ export const PromptTreePage = () => {
                               </div>
                               <div class="pt-res-actions">
                                 <Show when={res().modelSelectable || mem().assumedReads.includes(res().resourceId)}>
-                                  <label class="pt-check">
-                                    <input
-                                      type="checkbox"
-                                      checked={mem().assumedReads.includes(res().resourceId)}
-                                      onChange={() => toggleAssumedRead(res().resourceId)}
-                                    />
+                                  <Tick
+                                    class="pt-check"
+                                    on={mem().assumedReads.includes(res().resourceId)}
+                                    onFlip={() => toggleAssumedRead(res().resourceId)}
+                                  >
                                     <span>{t("promptTree.simulateModelRead")}</span>
-                                  </label>
+                                  </Tick>
                                 </Show>
                                 <Show when={res().playerSelectable || mem().inputInvoke.includes(res().resourceId)}>
-                                  <label class="pt-check">
-                                    <input
-                                      type="checkbox"
-                                      checked={mem().inputInvoke.includes(res().resourceId)}
-                                      onChange={() => toggleInvoke(res().resourceId)}
-                                    />
+                                  <Tick
+                                    class="pt-check"
+                                    on={mem().inputInvoke.includes(res().resourceId)}
+                                    onFlip={() => toggleInvoke(res().resourceId)}
+                                  >
                                     <span>{t("promptTree.simulatePlayerInvoke")}</span>
-                                  </label>
+                                  </Tick>
                                 </Show>
                               </div>
                               <Show when={res().sections.length > 0}>
@@ -763,17 +761,16 @@ export const PromptTreePage = () => {
                                   <For each={res().sections} keyed={(s) => s.resourceId}>
                                     {(sec) => (
                                       <Show when={sec().inCatalog || mem().assumedReads.includes(sec().resourceId)}>
-                                        <label class="pt-check sm">
-                                          <input
-                                            type="checkbox"
-                                            checked={mem().assumedReads.includes(sec().resourceId)}
-                                            onChange={() => toggleAssumedRead(sec().resourceId)}
-                                          />
+                                        <Tick
+                                          class="pt-check sm"
+                                          on={mem().assumedReads.includes(sec().resourceId)}
+                                          onFlip={() => toggleAssumedRead(sec().resourceId)}
+                                        >
                                           <span>{sec().title}</span>
                                           <Show when={sec().resident}>
                                             <span class="pill mono">{t("promptTree.resWindow")}</span>
                                           </Show>
-                                        </label>
+                                        </Tick>
                                       </Show>
                                     )}
                                   </For>
@@ -800,22 +797,16 @@ export const PromptTreePage = () => {
                     <div class="pt-fold-body pt-events">
                       <For each={r().sandbox.eventOptions} keyed={false}>
                         {(ev) => (
-                          <label class="pt-check sm">
-                            <input
-                              type="checkbox"
-                              checked={mem().events.includes(ev())}
-                              onChange={() => toggleEvent(ev())}
-                            />
+                          <Tick class="pt-check sm" on={mem().events.includes(ev())} onFlip={() => toggleEvent(ev())}>
                             <span class="mono">{ev()}</span>
-                          </label>
+                          </Tick>
                         )}
                       </For>
                       <For each={mem().events.filter((ev) => !r().sandbox.eventOptions.includes(ev))} keyed={false}>
                         {(ev) => (
-                          <label class="pt-check sm">
-                            <input type="checkbox" checked onChange={() => toggleEvent(ev())} />
+                          <Tick class="pt-check sm" on onFlip={() => toggleEvent(ev())}>
                             <span class="mono">{ev()}</span>
-                          </label>
+                          </Tick>
                         )}
                       </For>
                       <input
