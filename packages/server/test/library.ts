@@ -502,6 +502,7 @@ const over = (data: Data, m: () => Model = model) =>
 {
   const VALUE = "sk-test-0123456789abcdef"
   const seen: string[] = []
+  const bodies: Record<string, unknown>[] = []
   const chunk = (delta: object, finish: string | null) =>
     `data: ${JSON.stringify({ id: "c", object: "chat.completion.chunk", created: 0, model: "m", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`
   const upstream = createServer((req, res) => {
@@ -512,6 +513,7 @@ const over = (data: Data, m: () => Model = model) =>
     let s = ""
     req.on("data", (c) => (s += c))
     req.on("end", () => {
+      bodies.push(JSON.parse(s))
       if (JSON.parse(s).stream) {
         res.writeHead(200, { "content-type": "text/event-stream" })
         res.end(chunk({ role: "assistant", content: "ROUTED" }, null) + chunk({}, "stop") + "data: [DONE]\n\n")
@@ -556,7 +558,11 @@ const over = (data: Data, m: () => Model = model) =>
       [listed.length, listed[0].formats, listed[0].url, listed[0].status, listed[0].ok, typeof listed[0].ms],
       [1, ["openai-compatible"], `${up}/v1/models`, 200, true, "number"],
     )
+    const thinking = { id: "m", effort: "high" as const }
+    put({ models: [thinking] })
     const asked = await lib.providers.test("relay", "m")
+    // the probe switches thinking off over the entry's effort and names no ceiling of its own
+    assert.deepEqual([bodies.at(-1)!.max_tokens, bodies.at(-1)!.reasoning_effort], [undefined, undefined])
     assert.deepEqual(
       [asked.length, asked[0].formats, asked[0].url, asked[0].method, asked[0].status, asked[0].ok],
       [1, ["openai-compatible"], `${up}/v1/chat/completions`, "POST", 200, true],

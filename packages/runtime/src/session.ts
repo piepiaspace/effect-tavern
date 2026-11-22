@@ -443,19 +443,19 @@ export const makeSession = ({
     phase: Phase,
     schema: S,
     msgs: Message[],
-    maxOutputTokens = 1024,
     product?: string,
   ) =>
     Effect.gen(function* () {
       yield* emit({ kind: "stage", phase })
       const t0 = Date.now()
       const M = modelFor(phase, emit.observe(phase))
-      // effort is the bound model entry's own: the harness names none (an unset one sends nothing)
+      // effort and the output ceiling are the bound model entry's own: the harness names neither (an unset one sends
+      // nothing), since a thinking model's reasoning counts against any ceiling the harness would pick
       const model = nameOf(M.model)
       const r = yield* object(M, schema, msgs, {
         name: phase,
         effort: M.effort,
-        maxOutputTokens,
+        maxOutputTokens: M.maxOutputTokens,
       }).pipe(Effect.tapError((e) => emit({ ...failedCall(phase, msgs, model, t0, e), ...(product && { product }) })))
       yield* emit({
         kind: "call",
@@ -745,7 +745,7 @@ export const makeSession = ({
       if (!p) return {}
       const msgs = sceneRequest([p], context, view, scene, false, undefined, mode === "interval")
       const schema = Schema.Struct({ [p.id]: shapeSchema(p.shape) as Schema.Codec<unknown> })
-      const out = yield* obj(emit, "record", schema, msgs, modelFor("record").maxOutputTokens ?? 16384, p.id)
+      const out = yield* obj(emit, "record", schema, msgs, p.id)
       return { [p.id]: cap(p.shape, out[p.id]) }
     }).pipe(
       Effect.catchDefect((cause) => {
@@ -1239,7 +1239,6 @@ export const makeSession = ({
             hints: targets.flatMap((t) => (t.hints.length ? [`${t.id}: ${t.hints.join("; ")}`] : [])),
             prose: marked(text, targets),
           }),
-          4096,
         )
         const polished = splice(text, targets, out)
         let first = true // the prose is the text parts joined: it goes back as the first, the others drop

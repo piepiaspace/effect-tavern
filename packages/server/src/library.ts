@@ -96,9 +96,6 @@ import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
 export type PublicError = Failure & { kind: "error"; code: Code; phase: Phase }
 export type PublicEvent = TimelineEvent | PublicError
 
-/** The model test asks for this many output tokens: the least a gateway accepts (CommandCode refuses `max_tokens` under
- *  16), still a fraction of a cent on any model. */
-const PROBE_TOKENS = 16
 /** No pair for the stage and no environment model. Its `code` rides the stream's `error` event (serve.ts), so the client
  *  offers its way into Settings → 默认模型 without reading the message; a pair with no connection (providers.ts
  *  `ConnectionError`) rides it the same way, into Settings → 服务商, and every other failure by its fault code. */
@@ -657,8 +654,9 @@ export const library = ({
         })
       },
       /** Minimal requests, each a Probe (a completed probe is one whatever it found; what throws here is the provider's
-       *  configuration: no key, no endpoint, a bad URL). With a model, one request for a few tokens' answer under the
-       *  model's format. Without, the listing from every endpoint the provider has: one request per distinct listing
+       *  configuration: no key, no endpoint, a bad URL). With a model, one request for a short answer under the
+       *  model's format, thinking off where the format can switch it off and no ceiling but the entry's own (a thinking
+       *  model's reasoning counts as output: a few tokens' ceiling truncated it into an empty answer). Without, the listing from every endpoint the provider has: one request per distinct listing
        *  URL (two formats on one address share a probe, sent under the default format's auth), the default's first. */
       test: async (id: string, model?: string): Promise<Probe[]> => {
         const p = providerOf(id)
@@ -667,7 +665,7 @@ export const library = ({
           return [
             await probed([c.format], plan(c.format, c.endpoint, c.model).generate, async (onTrace) => {
               const failed = await Effect.runPromise(
-                text(bind(c, { onTrace }), [{ role: "user", content: "Hi" }], { maxOutputTokens: PROBE_TOKENS }).pipe(
+                text(bind(c, { onTrace }), [{ role: "user", content: "Hi" }], { effort: "off" }).pipe(
                   Effect.match({ onFailure: (e) => e, onSuccess: () => undefined }),
                 ),
               )
