@@ -1051,10 +1051,6 @@
 }
 
 /* modal over .wpage (surface & .modal.full shared with controls.css) */
-.wpage .modal-body {
-  overflow-y: auto;
-  overscroll-behavior: contain;
-}
 .wpage .modal-body > .wtabs {
   flex: none;
   order: 0;
