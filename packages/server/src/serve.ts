@@ -115,6 +115,9 @@
 //                 card: what is saved is the card, in force from the next request.
 //                 GET /cards/<id>/local is that row alone, PUT /cards/<id>/local writes it whole (decoded as `Local`,
 //                 its card the URL's; in force from the next request; 404 when there is no such card, a bad body a 400).
+//   GET  /locals  every card on the shelf with the player's row on it, {<card id>: Local}, each row what GET
+//                 /cards/<id>/local answers (a card with no row yet has the default one): what a client reads once
+//                 when it opens, in place of a request a card.
 //   GET  /depots  the card libraries the install knows (depot.ts), {id, name, location}[]; none until one is added.
 //                 POST /depots {location} adds one, an https URL (its index is read once: 502 {code:
 //                 "depot-unreadable"} when it is not a library, 400 {code: "depot-is-card"} when the address is one
@@ -404,6 +407,7 @@ export const handle = (
     if (method === "PUT" && url === "/routing")
       return reply(async () => (lib.routing.write(await read(RoutingBody)), lib.routing.read()))
     if (method === "GET" && url === "/cards") return json(200, lib.cards.list())
+    if (method === "GET" && url === "/locals") return json(200, lib.locals.all())
     const installing = method === "POST" && /^\/cards(\?replace=1)?$/.exec(url)
     if (installing)
       return reply(async () => ({

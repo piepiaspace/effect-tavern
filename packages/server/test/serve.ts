@@ -104,6 +104,9 @@ const sse = (text: string) =>
     const local = (v?: unknown, card = chat.id) =>
       fetch(`${base}/cards/${card}/local`, v === undefined ? {} : { method: "PUT", body: JSON.stringify(v) })
     assert.deepEqual(await (await local()).json(), { id: "local", name: chat.id, card: chat.id })
+    // every card's row in one answer, keyed by card: what the per-card read answers, a card with no row on its default
+    const locals = async () => (await (await fetch(`${base}/locals`)).json()) as Record<string, unknown>
+    assert.deepEqual(await locals(), { [chat.id]: { id: "local", name: chat.id, card: chat.id } })
     const put = await local({ card: "elsewhere", snippets: [{ name: "Q", text: "q" }], switches: { pov: "third" } })
     assert.deepEqual(await put.json(), {
       id: "local",
@@ -117,6 +120,12 @@ const sse = (text: string) =>
         .name,
       "Q",
     )
+    const shelved = ((await (await fetch(`${base}/cards`)).json()) as { id: string }[]).map((c) => c.id)
+    const batch = await locals()
+    assert.deepEqual(Object.keys(batch), shelved)
+    for (const id of shelved) assert.deepEqual(batch[id], await (await local(undefined, id)).json())
+    assert.deepEqual((batch[chat.id] as { snippets: unknown }).snippets, [{ name: "Q", text: "q" }])
+    assert.equal((await fetch(`${base}/locals`, { method: "PUT", body: "{}" })).status, 404) // read-only: rows are written a card at a time
     assert.equal((await local({ snippets: "no" })).status, 400)
     assert.equal((await local(undefined, "none")).status, 404)
     assert.equal((await local({}, "none")).status, 404)
@@ -770,7 +779,16 @@ const sse = (text: string) =>
       page: false,
       pid: process.pid,
     })
+    // /locals with several cards on the shelf: one row a card, a card without a row on its default, and a card
+    // removed gone from the answer with it
+    const rowsOf = async () => (await (await direct(new Request("http://tavern/locals"))).json()) as object
+    lib.locals.write({ id: "local", name: "big", card: "big", tags: ["kept"] })
+    assert.deepEqual(await rowsOf(), {
+      big: { id: "local", name: "big", card: "big", tags: ["kept"] },
+      [chat.id]: lib.locals.read(chat.id),
+    })
     lib.cards.remove("big")
+    assert.deepEqual(Object.keys(await rowsOf()), [chat.id])
   } finally {
     server.close()
   }
