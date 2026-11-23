@@ -37,15 +37,21 @@ const fixtures: [file: string, passed: (snapshot: unknown[]) => string, flags?: 
     (s) => `the system's back steps out of layers, pages, a settings detail and an edit, in ${s.length} pushed entries`,
   ],
   ["test/swipe.tsx", () => "a swipe steps back, opens the drawer and leaves a workspace, and yields where it should"],
-  // the composer takes the focus on entry only where a mouse is (home.tsx `finePointer`), which headless Chrome has only when told
+  // the composer takes the focus on entry only where a mouse is (home.tsx `finePointer`), which headless Chrome has
+  // only when told
   ["test/home.tsx", (s) => `home free-chat flow and visibility rules pass, in ${s.length} requests`, [FINE]],
   ["test/workshop.tsx", (s) => `a card is made, written and saved through the workshop, in ${s.length} requests`],
   [
     "test/touch.tsx",
-    () => "on a touch screen the chrome selects no text, the reading does, and a sheet opens raising no keyboard",
+    () =>
+      "on a touch screen the chrome selects no text, the reading does, a sheet opens raising no keyboard, and a 20px key takes a finger off its face",
     [COARSE],
   ],
-  ["test/touch.tsx", () => "on a mouse the text selects as it always has, and a sheet opens on its search", [FINE]],
+  [
+    "test/touch.tsx",
+    () => "on a mouse the text selects as it always has, a sheet opens on its search, and a key is hit on its face",
+    [FINE],
+  ],
 ]
 const only = process.argv.slice(2)
 const unknown = only.filter((name) => !fixtures.some(([file]) => file === name))

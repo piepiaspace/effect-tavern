@@ -6,6 +6,8 @@
 //   to itself.
 // - focus: the persona picker and the story manager, opened by a call (as the drawer's rows open them), put the focus
 //   in their search where a mouse is; under a finger the sheet takes it, and no keyboard rises.
+// - reach: the home mechanism's two 20px toggles take a finger up to 12px off their face, each keeping all of its own
+//   face, and are drawn and laid out the same; a mouse hits them on their face alone.
 // What a headless run cannot show: a real long press (the selection handles, the link preview a long press on a link
 // opens in an iOS web view), a finger's sideways scroll handed on or not, and a soft keyboard; only the computed styles
 // and the focus that decide them.
@@ -124,6 +126,8 @@ const selects = (el: Element | null | undefined) => (el ? getComputedStyle(el).u
 /** Selectable: there, and not `none`. */
 const selectable = (el: Element | null | undefined) => !!el && selects(el) !== "none"
 /** What a long press does to the text there: on a touch screen nothing, or a selection. */
+const named = (el: Element | null) =>
+  el ? `${el.tagName.toLowerCase()}${el.className ? "." + String(el.className).replaceAll(" ", ".") : ""}` : "nothing"
 const shown = (sel: string, el: Element | null | undefined) => `${sel}: ${selects(el)}`
 
 const run = async () => {
@@ -161,9 +165,30 @@ const run = async () => {
   await until(() => at() === '"reader"')
   await quiet()
 
+  // reach: the home mechanism's toggles
+  openPage("home")
+  check(await until(() => document.querySelector(".home-mech-toggle")), `home opens: ${at()}`)
+  await quiet()
+  const [sound, motion] = document.querySelectorAll<HTMLElement>(".home-mech-toggle")
+  const hit = (x: number, y: number) => document.elementFromPoint(x, y)?.closest(".home-mech-toggle") ?? null
+  if (sound && motion) {
+    const a = sound.getBoundingClientRect()
+    const b = motion.getBoundingClientRect()
+    check(a.width === 20 && a.height === 20 && b.width === 20, `the toggles are drawn at 20px: ${a.width}x${a.height}`)
+    const bar = sound.parentElement!.getBoundingClientRect()
+    check(bar.height < 26, `the bar around them is as tall as before: ${bar.height}`)
+    const reach = coarse ? sound : null
+    check(hit(a.left + 10, a.top - 10) === reach, `10px above the sound toggle: ${named(hit(a.left + 10, a.top - 10))}`)
+    check(hit(a.left + 10, a.bottom + 10) === reach, "10px under the sound toggle")
+    check(hit(b.right + 10, b.top + 10) === (coarse ? motion : null), "10px right of the motion toggle")
+    check(hit(a.right - 1, a.top + 10) === sound, "the sound toggle's face is its own to its right edge")
+    check(hit(b.left + 1, b.top + 10) === motion, "and the motion toggle's to its left")
+  } else check(false, "the home mechanism has its two toggles")
+  closePage()
+  await until(() => at() === '"reader"')
+  await quiet()
+
   // focus: a sheet that opens on its search
-  const named = (el: Element | null) =>
-    el ? `${el.tagName.toLowerCase()}${el.className ? "." + String(el.className).replaceAll(" ", ".") : ""}` : "nothing"
   for (const [name, show] of [
     ["the persona picker", openPicker],
     ["the story manager", openManager],

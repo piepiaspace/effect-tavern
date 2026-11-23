@@ -573,3 +573,22 @@
   height: var(--control-lg);
   padding-block: 0;
 }
+/* A key drawn at about 20px (the home mechanism's sound and motion toggles, 20px; a tag's ×, 16px in the
+   workspace and 20px in the tag manager) reaches further under a finger (#226): an invisible ring around it takes the
+   touch out to 44px, and nothing it is drawn with or beside moves. The ring lies under every box of its row (z-index
+   -1 in the row, which is made its own stacking context), so a key next to it keeps all of its own face; between two
+   rings the later one takes the gap. A scrolling row (the workspace's tags) still clips it at its edge. */
+@media (pointer: coarse) {
+  :is(.home-mech-bar, .chip:has(> .del)) {
+    isolation: isolate;
+  }
+  :is(.home-mech-toggle, .chip > .del) {
+    position: relative;
+  }
+  :is(.home-mech-toggle, .chip > .del)::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: min(0px, 50% - 22px);
+  }
+}
