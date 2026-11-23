@@ -13,7 +13,7 @@ import { experimental_decide, type Experimental_DecisionModel, type Experimental
 import { Experimental_DecisionMockModelV4 } from "ai/test"
 import { Effect } from "effect"
 import { modelError, observedError, type ModelError, type Usage } from "./call.ts"
-import { fetchFor, traced, type CompileOptions } from "./connection.ts"
+import { providerFetch, type CompileOptions } from "./connection.ts"
 import type { DecisionConfig } from "./decision.ts"
 import { causes, readFault } from "./fault.ts"
 import { observe } from "./exchange.ts"
@@ -29,8 +29,7 @@ const FACTORY = { google: createGoogleGenerativeAI, openai: createOpenAI, typesa
 export const compileDecision = (c: DecisionConfig, s: Secret | undefined, o: CompileOptions = {}): DecisionModel => {
   if (!s) throw new ConnectionError("provider-no-key", "decision model: no key")
   if (!c.model.trim()) throw new ConnectionError("provider-no-model", "decision model: no model")
-  const inner = o.fetch ?? fetchFor(c)
-  const fetch = o.onTrace ? traced(o.onTrace, o.traceBody ?? false, inner) : inner
+  const fetch = providerFetch(c, o)
   const exchange = o.onExchange && observe(o.onExchange, c.model, s.value, c.headers)
   const model = FACTORY[c.driver]({
     apiKey: s.value,

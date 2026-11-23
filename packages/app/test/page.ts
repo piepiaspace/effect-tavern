@@ -134,6 +134,7 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   const load = () => {
     const page = {
       location: { href: `${schemeOrigin}/`, origin: locationOrigin },
+      navigator: { userAgent: "Mozilla/5.0 AppleWebKit/605.1.15" },
       XMLHttpRequest,
       mygo: makeMyGo(outbound),
       fetch: (input: RequestInfo | URL) => {
@@ -277,6 +278,31 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
     const listing = await api("/providers/relay/models")
     assert.equal(listing.status, 200, await listing.text())
     assert.equal(new Headers(outbound.at(-1)!.headers).get("x-tavern-fetch-proxy"), expected)
+  }
+
+  // #224: the catalog and the SDK's Anthropic POST must carry the same UA across the native bridge.
+  for (const userAgent of [undefined, "TavernPlayer/1.0"]) {
+    const saved = await api("/providers/relay", {
+      method: "PUT",
+      body: JSON.stringify({
+        ...provider,
+        defaultFormat: "anthropic",
+        endpoints: { anthropic: { url: "https://relay.example" } },
+        headers: userAgent && { "User-Agent": userAgent },
+      }),
+    })
+    assert.equal(saved.status, 200, await saved.text())
+    const start = outbound.length
+    await api("/providers/relay/models")
+    await api("/providers/relay/test", { method: "POST", body: JSON.stringify({ model: "claude-test" }) })
+    const expected = userAgent ?? "effect-tavern"
+    assert.deepEqual(
+      outbound.slice(start).map((r) => [r.method, r.url, new Headers(r.headers).get("user-agent")]),
+      [
+        ["GET", "https://relay.example/v1/models", expected],
+        ["POST", "https://relay.example/v1/messages", expected],
+      ],
+    )
   }
 
   const made = (await (

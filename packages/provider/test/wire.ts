@@ -159,11 +159,16 @@ assert.equal(signal?.aborted, true)
         model:
           format === "anthropic" ? "claude-sonnet-4-5" : format === "gemini" ? "gemini-2.5-flash" : "deepseek-chat",
         capabilities: { prefill: true },
+        ...(format === "anthropic" && { headers: { "uSeR-aGeNt": "Custom/1.0" } }),
       },
       {
         onTrace: (t) => traces.push(t),
         traceBody: true,
-        fetch: async () => {
+        fetch: async (_input, init) => {
+          assert.equal(
+            new Headers(init?.headers).get("user-agent"),
+            format === "anthropic" ? "Custom/1.0" : "effect-tavern",
+          )
           if (format === "anthropic") {
             return Response.json({
               id: "msg_1",
