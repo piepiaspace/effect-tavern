@@ -11,6 +11,7 @@
 // share one listing) and picks up a turn in flight there. One Escape rule for every page, mounted once by the App. The
 // reader stays mounted under all of it, so a turn in flight keeps streaming; another story only stops reading it.
 import { closable } from "./back.ts"
+import { host } from "./host.ts"
 import { emptyDraft } from "./composition.ts"
 import { latestOf } from "./stories.ts"
 import { reading } from "./reading.ts"
@@ -267,8 +268,11 @@ export const startFreeChat = async (
 }
 
 /** This load is the browser's reload of the page (⌘R, Vite's full reload), not a fresh open of it (a new window or
- *  tab, the address typed): the navigation entry says which. */
+ *  tab, the address typed): the navigation entry says which. In the app, a load that replaced a page whose process
+ *  the system ended is one too (host.ts `recovered`): the app loads its address afresh then, which the entry reads
+ *  as a plain navigation, and the player is to find themselves where they were. */
 const reloaded = (): boolean => {
+  if (host()?.recovered) return true
   try {
     const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined
     return nav?.type === "reload"

@@ -1,12 +1,13 @@
 import type { Listing } from "@effect-tavern/runtime/src/library.ts"
 export type { Listing } from "@effect-tavern/runtime/src/library.ts"
+import { host } from "./host.ts"
 import { responseError, responseValue } from "./response.ts"
 import type { ListedModel as Listed } from "@effect-tavern/provider/src/providers.ts"
 import { readCache } from "./read-cache.ts"
 import type { TimelineNode as Node, ActiveContextView, TurnDetail } from "@effect-tavern/runtime/src/projection.ts"
 type Change = L.Change<Node>
 // The seam to packages/server: `GET /card`, `GET /nodes` (nodes and head) and the library (`/stories`, `/personas`,
-// `/cards/<id>/local`) are the snapshot, `POST /` is one action whose events come back as SSE. A story call (open, new, delete)
+// `/locals`, `/cards/<id>/local`) are the snapshot, `POST /` is one action whose events come back as SSE. A story call (open, new, delete)
 // answers the listing with the story to be on (`current`, none on an empty library): the client names it on every
 // request after, and pages.ts lands on it (timeline cleared, the unified draft restored; a delete that leaves the open
 // story open only replaces the listing). A new story is of a card (`POST /stories {card}`); a card's page is readable
@@ -171,11 +172,11 @@ export const fetchLocal = async (cardId: string): Promise<Local> => {
   registry.update(locals, (m) => ({ ...m, [cardId]: l }))
   return l
 }
-export const fetchLocals = async (): Promise<void> => {
-  const cs = registry.get(cards)
-  if (!Array.isArray(cs)) return
-  await Promise.all(cs.map((c) => fetchLocal(c.id)))
-}
+/** The player's row on every card on the shelf, in one answer (`GET /locals`): in the app each request ends in
+ *  synchronous calls to the host's SQLite on the page's own thread, and a request a card is what a cold start cannot
+ *  afford (#226). The answer is the whole map: a card gone from the shelf is gone from it. */
+export const fetchLocals = async (): Promise<void> =>
+  registry.set(locals, await got<Record<string, Local>>(call(`${base}/locals`)))
 
 const listing = (res: Promise<Response>) => got<Listing>(res)
 // The story calls answer the listing with the story to be on; what the client does with it is pages.ts's (`land`).
@@ -286,22 +287,14 @@ export const removeCard = async (id: string): Promise<void> => {
 /** Where a card downloads from as a file: a plain link, the browser's own download. */
 export const cardFile = (id: string): string => `${base}/cards/${enc(id)}/export.yaml`
 
-/** The app's host (packages/app), when the page runs in one: a web view has nowhere to download to, so a file goes
- *  to the host, which has the player pick where it is saved. */
-type Host = { save(file: Blob, name: string): Promise<void> }
-const host = (): Host | undefined => (globalThis as { tavernHost?: Host }).tavernHost
-/** A file the page made (a pack, the lexicon), saved: downloaded, or handed to the app's host. */
-export const saveFile = async (file: Blob, name: string): Promise<void> => {
-  const h = host()
-  if (h) return h.save(file, name)
-  const url = URL.createObjectURL(file)
-  Object.assign(document.createElement("a"), { href: url, download: name }).click()
-  URL.revokeObjectURL(url)
-}
+// A file the page made (a pack, the lexicon), saved: the host seam's (host.ts), where the browser downloads it and
+// the app's host has the player pick the place.
+export { saveFile } from "./host.ts"
 /** A download link's click (`cardFile`, `exportUrl`): the browser's own download (returns `undefined`), or in the app
  *  the file fetched, checked (`!r.ok` throws `responseError` before touching the save dialog) and handed to its host
- *  under the name the server's content-disposition gives it. */
-export const onDownload = (e: MouseEvent & { currentTarget: HTMLAnchorElement }): Promise<void> | undefined => {
+ *  under the name the server's content-disposition gives it. There the answer is whether it was saved: false when
+ *  the player cancelled the picker, so whatever offered the export stays as it was. */
+export const onDownload = (e: MouseEvent & { currentTarget: HTMLAnchorElement }): Promise<boolean> | undefined => {
   const h = host()
   if (!h) return undefined
   e.preventDefault()
@@ -309,7 +302,7 @@ export const onDownload = (e: MouseEvent & { currentTarget: HTMLAnchorElement })
   return fetch(href).then(async (r) => {
     if (!r.ok) throw await responseError(r)
     const named = r.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
-    await h.save(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
+    return h.save(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
   })
 }
 export const fetchDepots = async (): Promise<void> => registry.set(depots, await got(call(`${base}/depots`)))

@@ -351,11 +351,13 @@ const run = async () => {
   )
 
   // in the standalone app (`tavernHost`), a failed export surfaces in place without opening the save dialog, and a
-  // live card hands its bytes and filename to the host
+  // live card hands its bytes and filename to the host, whose answer is whether the player saved it or backed out
   const saved: { name: string; text: string }[] = []
+  let kept = true
   ;(globalThis as { tavernHost?: unknown }).tavernHost = {
     save: async (file: Blob, name: string) => {
       saved.push({ name, text: await file.text() })
+      return kept
     },
   }
   const missing = shelf.find((c) => c.id === "alpha")!
@@ -373,6 +375,12 @@ const run = async () => {
       saved[0].text === "id: alpha\n" &&
       !document.querySelector(".refusal"),
     `a valid export hands bytes and filename to the host: ${JSON.stringify(saved)}`,
+  )
+  kept = false
+  await press("导出卡片", row("甲二"))
+  check(
+    saved.length === 2 && !document.querySelector(".refusal") && rows().some((r) => r.startsWith("甲二")),
+    `backing out of the picker is no failure: nothing is reported and the card stays: ${text(".refusal").join(" | ")}`,
   )
   delete (globalThis as { tavernHost?: unknown }).tavernHost
 

@@ -151,12 +151,14 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
     for (const c of Object.keys(cur))
       if (cur[c]?.includes(word)) void putLocal(c, (l) => withTags(l, () => next?.[c] ?? []))
   }
+  // in the app the player picks where the file goes, and may back out of the picker: the dialog then stays, on the
+  // story it was opened for, to pick the other format or try again
   const saveExport = (e: MouseEvent & { currentTarget: HTMLAnchorElement }) => {
     const saving = onDownload(e)
     if (!saving) return exportDialog.close()
     setExportError(null)
     void saving.then(
-      () => exportDialog.close(),
+      (saved) => saved && exportDialog.close(),
       (err: unknown) => setExportError(err instanceof Error ? err.message : String(err)),
     )
   }

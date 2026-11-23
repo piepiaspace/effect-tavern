@@ -27,6 +27,7 @@ import {
   NumberInputIncrement,
 } from "@ui-sdk/solid/number-input"
 import { Family } from "./family.tsx"
+import { copyText } from "./host.ts"
 import { Back, Caret, Check, Close, Expand, Minus, Plus } from "./icons.tsx"
 import { names } from "./store.ts"
 import { type Key, t } from "./i18n.ts"
@@ -73,12 +74,12 @@ export const preview = (format: Format, url: string, exact: boolean | undefined,
     return { ok: false, text: t(REFUSED[e.code]) }
   }
 }
-/** A value (a key, an error) onto the clipboard, then `flash` for a moment. A plain-http page off localhost (a phone
- *  on the LAN) has no clipboard: the button then does nothing. */
+/** A key onto the clipboard (host.ts `copyText`, marked as a secret for clipboard managers), then `flash` for a
+ *  moment, and only when it got there: a page with no clipboard to write to (plain http off localhost, a phone on
+ *  the LAN) or one refused it never says "copied". */
 export const copyKey = async (value: string | Promise<string>, flash: (on: boolean) => void) => {
   const v = await value
-  if (!v || !navigator.clipboard) return
-  await navigator.clipboard.writeText(v)
+  if (!v || !(await copyText(v, { concealed: true }))) return
   flash(true)
   setTimeout(() => flash(false), 1200)
 }

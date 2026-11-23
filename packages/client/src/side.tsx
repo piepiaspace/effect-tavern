@@ -13,19 +13,21 @@
 // space; under 72rem the same component is the phone's drawer. A row only switches the story: the rename, star,
 // export and delete live in the manager (manager.tsx, dialogs.tsx).
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
+import { createMemo, createSignal, For, Match, onSettled, Show, Switch } from "solid-js"
 import { read } from "./bridge.ts"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
 import {
   Archive,
   Clue,
   Close,
+  Moon,
   Next,
   Prev,
   Settings,
   Shade,
   Snippets,
   Stack,
+  Sun,
   Tag,
   Translate,
   User,
@@ -74,12 +76,14 @@ import {
   type StoryRow,
 } from "./store.ts"
 import { writingLine } from "./switches.ts"
-import { flip, theme } from "./theme.ts"
+import { cycle, pick } from "./theme.ts"
 import { fetchStories, putLocal, searchStories } from "./wire.ts"
 import { flip as flipLocale, t } from "./i18n.ts"
 
-/** The install's keys: settings, the theme (a flip, pressed while the dark side holds) and the interface's language
- *  (a flip, pressed while English holds). `onLeave` is the drawer's, closed before settings opens. */
+/** What the theme key is called on each pick: its name says the state it is in, as the language key's does. */
+const THEME_NAME = { system: "side.themeSystem", light: "side.themeLight", dark: "side.themeDark" } as const
+/** The install's keys: settings, the theme (one key round three picks, the system's side, light, dark: theme.ts) and
+ *  the interface's language (a flip). `onLeave` is the drawer's, closed before settings opens. */
 export const InstallKeys = (props: { onLeave?: () => void }) => {
   const pg = read(page)
   const inSettings = () => pg() === "settings"
@@ -94,14 +98,15 @@ export const InstallKeys = (props: { onLeave?: () => void }) => {
       >
         <Settings />
       </button>
-      <button
-        type="button"
-        class="icon sm flip"
-        aria-label={t("side.darkTheme")}
-        aria-pressed={theme() === "dark" ? "true" : "false"}
-        onClick={flip}
-      >
-        <Shade />
+      <button type="button" class="icon sm" aria-label={t(THEME_NAME[pick()])} onClick={cycle}>
+        <Switch fallback={<Shade />}>
+          <Match when={pick() === "light"}>
+            <Sun />
+          </Match>
+          <Match when={pick() === "dark"}>
+            <Moon />
+          </Match>
+        </Switch>
       </button>
       <button type="button" class="icon sm" aria-label={t("side.language")} onClick={flipLocale}>
         <Translate />
