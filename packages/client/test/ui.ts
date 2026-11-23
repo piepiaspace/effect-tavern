@@ -42,6 +42,10 @@ const fixtures: [file: string, passed: (snapshot: unknown[]) => string, flags?: 
   ["test/home.tsx", (s) => `home free-chat flow and visibility rules pass, in ${s.length} requests`, [FINE]],
   ["test/workshop.tsx", (s) => `a card is made, written and saved through the workshop, in ${s.length} requests`],
   [
+    "test/home-mechanism.tsx",
+    (s) => `home's mechanism stops its frames and sound while covered or inactive, in ${s.length} sound calls`,
+  ],
+  [
     "test/touch.tsx",
     () =>
       "on a touch screen the chrome selects no text, the reading does, a sheet opens raising no keyboard, and a 20px key takes a finger off its face",

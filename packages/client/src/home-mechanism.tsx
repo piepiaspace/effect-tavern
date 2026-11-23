@@ -1,9 +1,10 @@
 // Reusable interactive mechanical stage for Home: hosts any HomeFigure inside the shared HairlineFrame, driving
 // spring-damped kinematics, adaptive 24fps/60fps rAF scheduling, pointer parallax, Web Audio clockwork soundscape,
 // telemetry readout, and WCAG 2.2.2 motion/sound controls. Zero figure-specific geometry lives here.
-import { createEffect, createSignal, onSettled, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, onSettled, Show } from "solid-js"
 import { HairlineFrame, type DirtyCheck, type FigureRig, type HomeFigure, type StageState } from "./home-figure.tsx"
 import { DEFAULT_SOUND_PROFILE, type MechanicalSound } from "./home-sound.ts"
+import { active } from "./host.ts"
 import { Pause, Play, SoundOff, SoundOn } from "./icons.tsx"
 import { t } from "./i18n.ts"
 
@@ -42,6 +43,12 @@ export const HomeMechanism = (props: {
 }) => {
   const [paused, setPaused] = createSignal(reducedMotion())
   const [soundOn, setSoundOn] = createSignal(false)
+  // Covered: a modal layer is open over the page (a sheet, a dialog, the phone's drawer), which @ui-sdk shows by making
+  // everything outside it inert. A page over home unmounts it instead (App.tsx), which stops it the same way.
+  const [covered, setCovered] = createSignal(false)
+  // Watched: the window is the active one and shown (host.ts `active`), and nothing covers the mechanism. While it is
+  // not, no frame is drawn and the sound is suspended; both start again when it is.
+  const watched = createMemo(() => active() && !covered())
 
   let rootEl: HTMLDivElement | undefined
   let stageEl: HTMLDivElement | undefined
@@ -68,6 +75,7 @@ export const HomeMechanism = (props: {
     lastMove: number
     paused: boolean
     lastDetent: number
+    watched: boolean
   } = {
     theta: 0,
     vel: 0,
@@ -84,12 +92,14 @@ export const HomeMechanism = (props: {
     lastMove: -Infinity,
     paused: reducedMotion(),
     lastDetent: 0,
+    watched: true,
   }
 
   let wake: (() => void) | undefined
+  let halt: (() => void) | undefined
   let bindFigure: ((fig: HomeFigure | null) => void) | undefined
 
-  const shouldRun = () => !phys.paused && !document.hidden
+  const shouldRun = () => !phys.paused && phys.watched && !document.hidden
   const syncAudio = () => {
     if (shouldRun()) props.sound.resume()
     else props.sound.suspend()
@@ -139,6 +149,13 @@ export const HomeMechanism = (props: {
       if (!p) wake?.()
     },
   )
+
+  createEffect(watched, (w) => {
+    phys.watched = w
+    syncAudio()
+    if (w) wake?.()
+    else halt?.()
+  })
 
   onSettled(() => {
     let raf = 0
@@ -192,6 +209,7 @@ export const HomeMechanism = (props: {
     }
 
     wake = startLoop
+    halt = stopLoop
 
     const step = (now: number) => {
       raf = 0
@@ -277,17 +295,15 @@ export const HomeMechanism = (props: {
       props.sound.setWarmth(0)
       page?.style.setProperty("--home-spot", "0")
     }
-    const onVisibility = () => {
-      syncAudio()
-      if (shouldRun()) startLoop()
-      else stopLoop()
-    }
-
     if (page && fine) {
       page.addEventListener("pointermove", onMove, { passive: true })
       page.addEventListener("pointerleave", onLeave, { passive: true })
     }
-    document.addEventListener("visibilitychange", onVisibility)
+    // a modal layer opening or closing anywhere marks or clears `inert` on the page around it
+    const inert = () => setCovered(!!rootEl?.closest("[inert]"))
+    const layers = new MutationObserver(inert)
+    layers.observe(document.body, { attributes: true, attributeFilter: ["inert"], subtree: true })
+    inert()
 
     if (activeFigure) bindFigure(activeFigure)
     startLoop()
@@ -299,9 +315,10 @@ export const HomeMechanism = (props: {
     return () => {
       stopLoop()
       wake = undefined
+      halt = undefined
       bindFigure = undefined
       activeRig = null
-      document.removeEventListener("visibilitychange", onVisibility)
+      layers.disconnect()
       mq?.removeEventListener?.("change", onMq)
       if (page && fine) {
         page.removeEventListener("pointermove", onMove)
