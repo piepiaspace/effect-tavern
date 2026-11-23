@@ -132,12 +132,24 @@ void (async () => {
 
     // (c) A lost stream whose reading failed too (#226): the draft stays as it was, not greyed, under the plain
     // "connection lost" line and its retry; the retry reads again (this stand-in server answers no story, so it fails
-    // again) and the line comes back, the draft still held.
+    // again) and the line comes back, the draft still held. Waiting on the retry is still: no status animating before
+    // any prose, no caret after it; reading again animates as writing does.
+    clear()
+    registry.set(draft, { parent: null, input: { text: "断线" }, text: "" })
+    registry.set(lost, true)
+    flush()
+    const status = () => root.querySelector('.draft [role="status"].turn-status')
+    check(status() === null, "lost before any prose: no status animating above the connection-lost line")
+    registry.set(lost, false)
+    flush()
+    check(status() !== null, "not lost: the status before the first character is back")
     clear()
     registry.set(draft, { parent: null, input: { text: "断线" }, text: "写到一半" })
     registry.set(lost, true)
     flush()
     const alert = () => root.querySelector<HTMLElement>('.draft [role="alert"]')
+    const caret = () => root.querySelector(".draft .cursor")
+    check(caret() === null, "lost: no caret at the prose's edge")
     check(alert()?.textContent?.includes(t("app.connectionLost")) === true, "lost: the connection-lost line is drawn")
     check(!root.querySelector(".draft")?.classList.contains("dead"), "lost: the draft is not the failed turn's ghost")
     const retry = alert()?.querySelector<HTMLButtonElement>("button")
@@ -145,10 +157,12 @@ void (async () => {
     retry?.click()
     flush()
     check(registry.get(lost) === false, "retry: the line goes while the story is read again")
+    check(caret() !== null, "retry: the caret is back while the story is read again")
     for (let i = 0; i < 100 && !registry.get(lost); i++) await nextFrame()
     flush()
     check(registry.get(lost) && alert() !== null, "retry failing again: the line is back")
     check(registry.get(draft)?.text === "写到一半", "retry failing again: the draft is held as it was")
+    check(caret() === null, "retry failing again: the caret is still again")
 
     clear()
     flush()

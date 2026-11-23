@@ -82,10 +82,11 @@ const readNodes = async () => {
   if (down) throw new TypeError("Load failed")
   registry.set(log, server)
 }
+let stopWith: () => Promise<"withdrawn" | "halted" | null> = async () => null
 const turn = createTurn({
   send: open,
   attach: (ends) => open(undefined, ends),
-  stop: async () => null,
+  stop: () => stopWith(),
   nodes: readNodes,
   whenActive: (go) => {
     if (active) {
@@ -429,6 +430,28 @@ await actReal("left")
 real.abandon()
 await until(() => false)
 assert.deepEqual([reads, attaches(), registry.get(error), registry.get(draft)], [0, 0, null, null])
+reset()
+
+// (k) a stop that cannot be delivered (offline, or refused) never rejects at the stop key, and never shows the turn
+// stopped: not lost, the story is read again (here offline too: the "connection lost" line, the draft held); lost
+// already, it stays lost and nothing more is asked; reachable, the turn is found running and streams on
+stopWith = () => Promise.reject(new TypeError("Load failed"))
+act("unstoppable")
+down = true
+await turn.stop()
+await settled()
+assert.deepEqual([reads, registry.get(lost), registry.get(error)], [1, true, null])
+assert.deepEqual([registry.get(draft)?.text, registry.get(composition).text], ["so far", ""])
+await turn.stop()
+await settled()
+assert.deepEqual([reads, attaches(), registry.get(lost), registry.get(draft)?.text], [1, 0, true, "so far"])
+reset()
+act("refused")
+await turn.stop()
+await settled()
+assert.deepEqual([reads, attaches(), registry.get(lost), registry.get(error)], [1, 1, false, null])
+assert.equal(sends(), 1)
+stopWith = async () => null
 reset()
 
 console.log("reconnect ok")

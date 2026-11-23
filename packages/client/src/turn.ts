@@ -259,15 +259,21 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
       if (!registry.get(working)) return
       const mine = streams
       const asking = (stopping = {})
-      let how
+      let how: Awaited<ReturnType<typeof stop>> | "undelivered"
       try {
         how = await stop()
+      } catch {
+        how = "undelivered" // no answer (offline), or refused: the turn runs on, on the server
       } finally {
         if (stopping === asking) stopping = undefined
       }
       if (streams !== mine) return // abandon left this story while its stop was in flight
       const late = missed
       missed = false
+      // Not stopped, so not shown stopped. Lost already: it stays so, the line and its retry. Otherwise the story is
+      // read again as for a lost stream: the turn found running streams on (the stop key live again), and a reading
+      // that fails too is the "connection lost" line.
+      if (how === "undelivered") return registry.get(lost) ? undefined : reconnect()
       if (how === "withdrawn") {
         quiet()
         for (const close of streams) close() // the turn is gone: nothing late on its stream lands after the clear

@@ -315,7 +315,7 @@ const Latest = () => {
 export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failure | null; lost?: boolean }) => {
   onSettled(anchor)
   const done = () => settling(props.phase)
-  const writing = () => !done() && !props.error
+  const writing = () => !done() && !props.error && !props.lost // waiting on a retry is still
   const hasProse = () => props.d.text.length > 0
   const rewriting = () => writing() && hasProse() && Boolean(props.d.prev)
   return (
