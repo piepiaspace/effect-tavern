@@ -409,9 +409,17 @@ export const fetchSettings = (): Promise<unknown> =>
     fetchNames(),
   ])
 
+/** What a stream's caller hears besides its events. `lost`: the transport failed (the request got no answer, or the
+ *  stream broke after it opened: the phone went to the background, the network dropped), told whether any event had
+ *  come down it; without `lost` that failure is an `error` like any other. `idle`: a 204, no turn in flight. A refusal
+ *  the server answered and an `error` event it sent are never `lost`. */
+export interface Ends {
+  lost?: (heard: boolean) => void
+  idle?: () => void
+}
 /** Sends one action; returns what closes its stream (the turn goes on on the server). */
-export const send = (action: Action): (() => void) =>
-  listen((signal) => call(base, { method: "POST", body: JSON.stringify(action), signal }))
+export const send = (action: Action, ends?: Ends): (() => void) =>
+  listen((signal) => call(base, { method: "POST", body: JSON.stringify(action), signal }), apply, ends)
 /** Starts an action on a specific story id without touching the active tab's slots (used when a home send finishes
  *  after the player switched tabs: once the server accepts the request, the turn runs to completion on the server). */
 export const sendTo = async (storyId: number, action: Action): Promise<void> => {
@@ -424,17 +432,36 @@ export const sendTo = async (storyId: number, action: Action): Promise<void> => 
   void res.body?.cancel().catch(() => {})
 }
 /** The turn in flight on this story, if any (`GET /turn`): its `attach` then its events; returns what closes it. */
-export const attach = (): (() => void) => listen((signal) => call(`${base}/turn`, { signal }))
+export const attach = (ends?: Ends): (() => void) => listen((signal) => call(`${base}/turn`, { signal }), apply, ends)
 /** The player's stop (`POST /stop`): "withdrawn" before the first character, "halted" after it, null when idle. */
 export const stop = async (): Promise<"withdrawn" | "halted" | null> =>
   (await got<{ stopped: "withdrawn" | "halted" | null }>(call(`${base}/stop`, { method: "POST" }))).stopped
+/** `body` as it comes, with `broke()` called when a read of it fails: the transport's failure, told apart from the
+ *  decoder's over the bytes it did deliver. */
+const watched = (body: ReadableStream<Uint8Array>, broke: () => void): ReadableStream<Uint8Array> => {
+  const reader = body.getReader()
+  return new ReadableStream<Uint8Array>({
+    async pull(c) {
+      const chunk = await reader.read().catch((e: unknown) => {
+        broke()
+        throw e
+      })
+      if (chunk.done) c.close()
+      else c.enqueue(chunk.value)
+    },
+    cancel: (why) => reader.cancel(why),
+  })
+}
 /** Reads an SSE response into `emit` until it ends or is closed; a 204 is nothing to read. */
 export const listen = (
   open: (signal: AbortSignal) => Promise<Response>,
   emit: (e: Wire) => void = apply,
+  ends: Ends = {},
 ): (() => void) => {
   const ac = new AbortController()
   let opened = false
+  let broken = false // the transport failed: the request, or a read of the open stream
+  let heard = false
   const closed = () => {
     if (!opened) return
     opened = false
@@ -444,8 +471,14 @@ export const listen = (
   ac.signal.addEventListener("abort", closed, { once: true })
   void (async () => {
     try {
-      const res = await open(ac.signal)
-      if (res.status === 204) return
+      const res = await open(ac.signal).catch((e: unknown) => {
+        broken = true
+        throw e
+      })
+      if (res.status === 204) {
+        if (!ac.signal.aborted) ends.idle?.()
+        return
+      }
       if (!res.ok) throw await responseError(res)
       if (!res.body) throw new Error("missing event stream")
       if (ac.signal.aborted) {
@@ -454,10 +487,22 @@ export const listen = (
       }
       opened = true
       registry.update(openStreams, (count) => count + 1)
-      await readTurnEvents<Wire>(res.body, emit, ac.signal)
+      // only a caller that hears a lost stream has its reads watched: the bare stream otherwise, as it always was
+      if (ends.lost)
+        await readTurnEvents<Wire>(
+          watched(res.body, () => (broken = true)),
+          (e) => {
+            heard = true
+            emit(e)
+          },
+          ac.signal,
+        )
+      else await readTurnEvents<Wire>(res.body, emit, ac.signal)
       if (!ac.signal.aborted) void fetchStories() // the open story's row: its size, its last line, its time
     } catch (e) {
-      if (!ac.signal.aborted)
+      if (ac.signal.aborted) return
+      if (broken && ends.lost) ends.lost(heard)
+      else
         emit({
           kind: "error",
           message: e instanceof Error ? e.message : String(e),

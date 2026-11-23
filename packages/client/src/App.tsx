@@ -39,6 +39,7 @@ import {
   editing,
   error,
   log,
+  lost,
   page,
   path,
   prose,
@@ -311,7 +312,7 @@ const Latest = () => {
  *  flash dust without explanation. Once the prose is done (check, polish, record) the cursor goes and the footer names
  *  the settling stage. A failed turn stays as a grey ghost with the error under it; its line is back in the box. No
  *  model to run it on: the error opens Settings on 默认模型. */
-export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failure | null }) => {
+export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failure | null; lost?: boolean }) => {
   onSettled(anchor)
   const done = () => settling(props.phase)
   const writing = () => !done() && !props.error
@@ -372,6 +373,17 @@ export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failur
             </button>
           </div>
         )}
+      </Show>
+      <Show when={props.lost}>
+        <div class="error" role="alert">
+          <Warning aria-hidden="true" />
+          <div class="body">
+            <span>{t("app.connectionLost")}</span>
+          </div>
+          <button type="button" class="btn sm" onClick={() => void turn.reconnect()}>
+            {t("common.retry")}
+          </button>
+        </div>
       </Show>
     </section>
   )
@@ -585,6 +597,7 @@ const Reader = () => {
   const d = read(draft)
   const phase = read(stage)
   const err = read(error)
+  const gone = read(lost)
   const busy = read(working)
   // the draft hangs under its parent: a sibling of a past turn cuts the line there while it is written
   // equal by its nodes: the draft changes every frame while prose streams, and a fresh but same slice must not
@@ -600,7 +613,7 @@ const Reader = () => {
           <For each={shown()} keyed={(n) => n.id}>
             {(n, i) => <Section node={n()} n={i() + 1} last={!busy() && i() === shown().length - 1} />}
           </For>
-          <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} />}</Show>
+          <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>
         </main>
       </div>
       <Composer />

@@ -53,8 +53,27 @@ const focused = () => host()?.active.now() ?? (typeof document === "undefined" |
 const [active, setActive] = createSignal(shown() && focused())
 /** This window, this page, is the active one: what plays or animates only while watched reads it. */
 export { active }
+const waiting = new Set<() => void>()
+/** `go` once the page is the active one: at once when it is now, else when it next becomes so. Returns what calls it
+ *  off. Read from the page itself, not the signal: a write to it lands a microtask later. */
+export const whenActive = (go: () => void): (() => void) => {
+  if (shown() && focused()) {
+    go()
+    return () => {}
+  }
+  waiting.add(go)
+  return () => void waiting.delete(go)
+}
 if (typeof document !== "undefined") {
-  const sync = () => setActive(shown() && focused())
+  const sync = () => {
+    const now = shown() && focused()
+    setActive(now)
+    if (now)
+      for (const go of waiting) {
+        waiting.delete(go)
+        go()
+      }
+  }
   document.addEventListener("visibilitychange", sync)
   const h = host()
   if (h) h.active.on(sync)

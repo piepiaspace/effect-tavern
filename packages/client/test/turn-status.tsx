@@ -4,7 +4,7 @@ import { createSignal, flush, Show } from "solid-js"
 import { Draft } from "../src/App.tsx"
 import { read } from "../src/bridge.ts"
 import { flip, locale, t } from "../src/i18n.ts"
-import { apply, clear, draft, error, registry, stage } from "../src/store.ts"
+import { apply, clear, draft, error, lost, registry, stage } from "../src/store.ts"
 import { leadKind, settleKind, TurnStatus, type TurnStatusKind } from "../src/turn-status.tsx"
 import "../src/app.css"
 
@@ -83,11 +83,12 @@ void (async () => {
       const d = read(draft)
       const phase = read(stage)
       const err = read(error)
+      const gone = read(lost)
       return (
         <div class="panel">
           <div class="scroll">
             <main>
-              <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} />}</Show>
+              <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>
             </main>
           </div>
         </div>
@@ -129,7 +130,29 @@ void (async () => {
       `expected rewriting status during queued rewrite, got "${rewriteStatus?.textContent}"`,
     )
 
+    // (c) A lost stream whose reading failed too (#226): the draft stays as it was, not greyed, under the plain
+    // "connection lost" line and its retry; the retry reads again (this stand-in server answers no story, so it fails
+    // again) and the line comes back, the draft still held.
     clear()
+    registry.set(draft, { parent: null, input: { text: "断线" }, text: "写到一半" })
+    registry.set(lost, true)
+    flush()
+    const alert = () => root.querySelector<HTMLElement>('.draft [role="alert"]')
+    check(alert()?.textContent?.includes(t("app.connectionLost")) === true, "lost: the connection-lost line is drawn")
+    check(!root.querySelector(".draft")?.classList.contains("dead"), "lost: the draft is not the failed turn's ghost")
+    const retry = alert()?.querySelector<HTMLButtonElement>("button")
+    check(retry?.textContent === t("common.retry"), "lost: the line carries a retry key")
+    retry?.click()
+    flush()
+    check(registry.get(lost) === false, "retry: the line goes while the story is read again")
+    for (let i = 0; i < 100 && !registry.get(lost); i++) await nextFrame()
+    flush()
+    check(registry.get(lost) && alert() !== null, "retry failing again: the line is back")
+    check(registry.get(draft)?.text === "写到一半", "retry failing again: the draft is held as it was")
+
+    clear()
+    flush()
+    check(alert() === null, "cleared: no connection-lost line")
     disposeDraft()
 
     const report = bridge.end()
