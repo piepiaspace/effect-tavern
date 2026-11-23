@@ -45,7 +45,13 @@ const Go = (props: { to: Section }) => (
   </button>
 )
 export const Failed = (props: { error: Failure }) => (
-  <Switch fallback={<span class="failure-raw">{failureText(props.error)}</span>}>
+  <Switch
+    fallback={
+      <span class="failure-raw" data-selectable>
+        {failureText(props.error)}
+      </span>
+    }
+  >
     <Match when={props.error.code === "no-model"}>
       <Go to="routing" />
     </Match>

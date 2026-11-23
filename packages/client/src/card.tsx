@@ -147,7 +147,7 @@ export const CardPage = () => {
               </div>
               <Show when={c().summary}>
                 {(s) => (
-                  <div class="intro wscroll">
+                  <div class="intro wscroll" data-selectable>
                     <p>{s()}</p>
                   </div>
                 )}

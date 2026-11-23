@@ -1,8 +1,8 @@
 // The reader on a touch screen and on a mouse (#226), in a real browser (test/ui.ts runs this file twice: Chrome told
 // its pointer is coarse, then fine, through `--blink-settings`), over the whole App on a stand-in server. The checks
 // read `matchMedia("(pointer: coarse)")` and expect what that pointer gets:
-// - text: on a touch screen the chrome selects nothing, and the prose, the player's line, the fields and the inspect
-//   panes select again, their keys excepted; a mouse selects what it always has. A fence keeps its sideways scroll
+// - text: on a touch screen the chrome selects nothing, and the prose, the player's line, the fields, the inspect
+//   panes, the card's introduction and a failure's raw text select again, their keys excepted; a mouse selects what it always has. A fence keeps its sideways scroll
 //   to itself.
 // - focus: the persona picker and the story manager, opened by a call (as the drawer's rows open them), put the focus
 //   in their search where a mouse is; under a finger the sheet takes it, and no keyboard rises.
@@ -25,6 +25,7 @@ import { App } from "../src/App.tsx"
 import { openManager, openPicker } from "../src/dialogs.tsx"
 import { flip, locale } from "../src/i18n.ts"
 import { Close, Snippets } from "../src/icons.tsx"
+import { Failed } from "../src/readings.tsx"
 import { close as closePage, open as openPage } from "../src/pages.ts"
 import { openSettings } from "../src/settings-navigation.ts"
 import { card, cards, log, page, providers, registry, routing, stories, tabs, type StoryRow } from "../src/store.ts"
@@ -61,6 +62,7 @@ const { meta, ...view } = cardView(
   {
     id: CARD,
     title: "测试卡",
+    summary: "卡片的简介，长按可以复制。",
     frame: [],
     fiction: [],
     greetings: [],
@@ -171,6 +173,24 @@ const run = async () => {
   closePage()
   await until(() => at() === '"reader"')
   await quiet()
+
+  // the card's introduction, on its page
+  openPage("card")
+  check(await until(() => document.querySelector(".intro")), `the card's page opens with its introduction: ${at()}`)
+  await quiet()
+  const intro = document.querySelector(".intro p")
+  check(selectable(intro), shown("the card's introduction", intro))
+  closePage()
+  await until(() => at() === '"reader"')
+  await quiet()
+  // a failure's raw text, as a failed turn shows it
+  const failure = document.createElement("div")
+  document.body.append(failure)
+  const unfail = render(() => <Failed error={{ message: "HTTP 502 · 上游没有回应" }} />, failure)
+  const raw = failure.querySelector(".failure-raw")
+  check(selectable(raw), shown("a failure's raw text", raw))
+  unfail()
+  failure.remove()
 
   // reach: the home mechanism's toggles
   openPage("home")
