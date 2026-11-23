@@ -271,6 +271,14 @@ const run = async () => {
   const box = area!.getBoundingClientRect()
   await stroke(area!, line(box.left + 30, box.top + box.height / 2, 16, 0, 10))
   check(!drawer(), "a stroke that starts on a field does nothing")
+  // something that takes sideways strokes for itself (home's mechanism) says so, and the stroke is its own
+  const first = document.querySelector<HTMLElement>(".md p")!
+  first.dataset["swipe"] = "own"
+  const own = first.getBoundingClientRect()
+  await stroke(first, line(own.left + 20, own.top + own.height / 2, 16, 0, 10))
+  await quiet()
+  check(!drawer(), "a stroke that starts on something marked as taking its own does nothing")
+  delete first.dataset["swipe"]
   const pre = document.querySelector<HTMLElement>(".md pre")
   check(pre && pre.scrollWidth > pre.clientWidth, "the reader shows a code block wider than the phone")
   pre!.scrollIntoView({ block: "center" })
@@ -319,14 +327,8 @@ const run = async () => {
   check(panning(para!) === "pan-y pinch-zoom", `the prose pans only vertically: ${panning(para!)}`)
   check(panning(pre!) === "manipulation", `a code block pans both ways: ${panning(pre!)}`)
 
-  // The whole App is on the page, with the advisories test/back.tsx names; anything else fails.
-  const owned = (d: { ownerPath?: readonly string[] }, ...tail: string[]) =>
-    tail.every((name, i) => d.ownerPath?.at(i - tail.length) === name)
-  const known = (d: { code: string; ownerPath?: readonly string[] }) =>
-    (d.code === "UNSTABLE_MEMO_OUTPUT" &&
-      (owned(d, "<StoryDialogs>", "allTags") || owned(d, "<StoryDialogs>", "counts"))) ||
-    (d.code === "FALLBACK_FLASH" && owned(d, "<LazyPage>", "<Errored>", "children", "<Loading>", "boundary"))
-  const diagnostics = bridge.end().diagnostics.filter((d) => !known(d))
+  // The whole App is on the page: not one advisory of its own comes with it
+  const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 

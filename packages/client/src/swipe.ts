@@ -15,7 +15,9 @@
 //
 // When it yields, doing nothing: a mouse (the desktop's drags select text; pen and touch only), the canvas's layout
 // (no surface there), a press on a field or a control that drags (input, textarea, select, contenteditable, a slider,
-// a separator), a press inside something that scrolls sideways and still has room toward its start (the stroke is
+// a separator), a press on something that takes sideways strokes for itself and says so with `data-swipe="own"`
+// (home's mechanism, whose stroke turns its figures: without this one stroke there turned the figure and opened the
+// drawer), a press inside something that scrolls sideways and still has room toward its start (the stroke is
 // that scroller's), a text selection that is not collapsed (at the press or at the release), the browser taking the
 // pointer (`pointercancel`, which bindDrag reports as cancelled), and in a plain browser a press within 24px of the
 // screen's left edge, where the browser's own back gesture lives (the app's host has none there: `host()`).
@@ -49,7 +51,7 @@ export const SWIPE = {
 } as const
 
 const FIELD =
-  "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='slider'], [role='separator'], [role='textbox'], [role='spinbutton']"
+  "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='slider'], [role='separator'], [role='textbox'], [role='spinbutton'], [data-swipe='own']"
 
 /** Something between `from` and `root` scrolls sideways and has room toward its start, where a stroke to the right
  *  would take it. */

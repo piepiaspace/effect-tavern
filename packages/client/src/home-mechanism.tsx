@@ -410,6 +410,7 @@ export const HomeMechanism = (props: {
             ref={(el) => (stageEl = el)}
             class="home-mech-stage"
             data-dir={props.dir}
+            data-swipe="own" // a sideways stroke here turns the figure: the page's swipe (swipe.ts) leaves it alone
             onPointerDown={onStagePointerDown}
             onPointerMove={onStagePointerMove}
             onPointerUp={onStagePointerEnd}
