@@ -16,8 +16,7 @@
     "adaptiveIcon": {
       "foreground": "icon/foreground.png",
       "background": "#fcfcfb"
-    },
-    "splash": "#fcfcfb"
+    }
   },
   "macos": {
     "minimumSystemVersion": "14.5",

@@ -1,8 +1,9 @@
 // bun web/build.ts (mygo.json buildCommand): the client's build into dist/, and the server for the page beside it
-// (dist/server.js, bundle.ts), loaded ahead of the client's script so /api answers from the first request.
+// (dist/server.js, bundle.ts), loaded ahead of the client's script so /api answers from the first request, with the
+// watch for a start that fails inlined ahead of both (failure.ts).
 import { fileURLToPath } from "node:url"
 import { $, file, write } from "bun"
-import { bundleServer } from "./bundle.ts"
+import { bundleGuard, bundleServer, withServer } from "./bundle.ts"
 
 const at = (p: string) => fileURLToPath(new URL(p, import.meta.url))
 const dist = at("../dist")
@@ -16,5 +17,5 @@ const out = await bundleServer({ outdir: dist, version })
 if (!out.success) throw new AggregateError(out.logs, "server bundle failed")
 const index = `${dist}/index.html`
 const html = await file(index).text()
-await write(index, html.replace("<script", '<script type="module" src="/server.js"></script><script'))
+await write(index, withServer(html, await bundleGuard()))
 for (const o of out.outputs) console.log(o.path, `${(o.size / 1024).toFixed(0)} kB`)

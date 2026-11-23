@@ -1,0 +1,58 @@
+---
+title: 桌面与手机应用
+description: 安装版应用、安装包、数据存放位置，以及构建与测试方式。
+sidebar:
+  order: 6
+---
+
+应用（`packages/app`）是不需要终端的酒馆。它在系统 WebView 上打开一个窗口，Web 客户端和整套服务端都在这个页面里运行，页面做不到的事交给一层基于 [MyGo](https://github.com/egoist/mygo) 的 Go 薄宿主。它与 [CLI 与无头宿主](/zh/cli/) 里的 `tavern` 命令是两回事：后者在一个端口上提供同一套客户端。
+
+## 安装包
+
+每次发布都会在 `tavern` 二进制旁边附上应用的安装包，见 [最新发布](https://github.com/piepiaspace/effect-tavern/releases/latest) 页面。
+
+| 系统 | 安装包 |
+| --- | --- |
+| macOS 14.5 及以上（通用） | `.dmg`，ad hoc 签名 |
+| Windows x64 与 arm64 | `-setup-*.exe`，未签名 |
+| Linux amd64 与 arm64 | `.deb`，或 `.tar.gz` 压缩包 |
+| Android arm64 | `.apk` |
+
+iOS 已在 `mygo.json` 里配置（iOS 17.5 及以上），但发布流程里没有构建它的任务，也不提供安装包。
+
+## 数据在哪里
+
+应用有自己的数据，与命令行的 `~/.tavern` 互不相干。它是一个文件 `tavern.db`，放在以应用名命名的文件夹里：
+
+| 系统 | 文件夹所在位置 |
+| --- | --- |
+| macOS | `~/Library/Application Support` |
+| Windows | `%AppData%` |
+| Linux | `$XDG_CONFIG_HOME`，未设置时为 `~/.config` |
+| Android | 应用的 files 目录 |
+| iOS | 应用容器内的 `Library/Application Support` |
+
+玩家选择的外观保存在同一文件夹的 `preferences.json` 里。在 Android 12 以前的系统上，页面会跟随所选外观，但系统栏和软键盘仍保持系统自己的明暗。
+
+## Go 宿主做什么
+
+| 宿主负责 | 页面为什么做不到 |
+| --- | --- |
+| 用一条连接持有数据库 SQLite，页面通过同步请求访问 | 服务端的存储层是同步的，WebView 自己没有 SQLite |
+| 导出时弹出系统的保存选择器 | WebView 没有可以下载到的地方 |
+| 写入剪贴板 | WebView 可能拒绝在一次异步请求之后才发起的写入；只有原生写入才能把密钥标记为机密 |
+| 保存外观（跟随系统、浅色、深色）并在第一个窗口出现前应用 | 窗口背景、状态栏和软键盘在任何页面运行之前就要定下明暗 |
+| 系统结束页面进程后重新加载页面 | 手机会在后台回收 WebView 的进程；页面回来时停在玩家原来的位置 |
+| 替页面访问其他来源 | 没有 CORS 限制，并支持流式响应 |
+
+Web 客户端只通过一个模块 `packages/client/src/host.ts` 请求以上能力；在浏览器里，同一个模块退回到浏览器自己的下载和剪贴板。
+
+## 构建与测试
+
+```sh
+cd packages/app
+bun run verify                             # go test -count=1 ./... && bun test/page.ts
+go tool mygo build -platform linux/amd64   # 先运行 bun web/build.ts，再打包到 build/
+```
+
+`bun test/page.ts` 按应用的方式运行服务端打包：只有浏览器的全局对象，没有 Bun 或 Node 的，Go 宿主由替身充当。`.github/workflows/release.yml` 在打版本标签时构建上面的全部安装包；手动触发时只构建，不发布。

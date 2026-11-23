@@ -1,14 +1,16 @@
 // The server as the app runs it: the page bundle (web/bundle.ts) executed with a browser's globals and nothing of
 // Bun or Node beyond what web/host.ts itself supplies, its library behind the same /__db protocol as db.go (here on
 // bun:sqlite in memory). A Bun or Node API reaching a path the page takes (card install and export, revisions, a
-// story, its opening) fails here before it fails on a phone; so does the library's protocol, and its reopening.
+// story, its opening) fails here before it fails on a phone; so does the library's protocol, and its reopening. With
+// it, what the page asks of the host (web/host.ts `tavernHost`: a save's outcome, the clipboard, the appearance, the
+// window, a recovered load) and what the player is shown when the start fails (web/failure.ts).
 import assert from "node:assert/strict"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Database } from "bun:sqlite"
 import { runInNewContext } from "node:vm"
-import { bundleServer } from "../web/bundle.ts"
+import { bundleGuard, bundleServer, withServer } from "../web/bundle.ts"
 
 // Include a space in outdir so percent-encoded URL pathnames fail here rather than in a spaced checkout.
 const outdir = mkdtempSync(join(tmpdir(), "tavern app "))
@@ -27,6 +29,18 @@ const cardBytes = new TextEncoder().encode(card)
 const toBase64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64")
 
 type OutboundCall = { url: string; method: string; headers: [string, string][] }
+/** What the page asked of Go's bound Host (host.go), by method. */
+type HostCall = [method: string, ...args: unknown[]]
+/** `tavernHost` as the client's src/host.ts declares it, as far as this test calls it. */
+type PageHost = {
+  save(file: Blob, name: string): Promise<boolean>
+  copy(text: string, options?: { concealed?: boolean }): Promise<void>
+  appearance: { get(): Promise<string>; set(a: string): Promise<void> }
+  active: { now(): boolean; on(listener: (active: boolean) => void): () => void }
+  recovered: boolean
+}
+/** An element of the stand-in document: what failure.ts builds its notice from. */
+type Shown = { id: string; role?: string; text: string }
 
 /** WebKit 17.5 / macOS 14.5 `Request`: rejects `ReadableStream` bodies and strips forbidden headers on construction. */
 class WebKitRequest extends Request {
@@ -38,8 +52,21 @@ class WebKitRequest extends Request {
   }
 }
 
-/** MyGo's fetch plugin (`plugin:fetch.Fetch`) in-memory: streams chunks through `Channel` as Go's `net/http` does. */
-const makeMyGo = (outbound: OutboundCall[]) => ({
+/** MyGo's runtime in the page: its fetch plugin (`plugin:fetch.Fetch`) in-memory, streaming chunks through `Channel`
+ *  as Go's `net/http` does; Go's bound `Host` methods, recorded; and the window's active state with its event. */
+const makeMyGo = (
+  outbound: OutboundCall[],
+  asked: HostCall[],
+  window: { active: boolean; told: Set<(a: boolean) => void> },
+) => ({
+  get windowActive() {
+    return window.active
+  },
+  on(event: string, listener: (active: boolean) => void) {
+    assert.equal(event, "mygo:window-active")
+    window.told.add(listener)
+    return () => void window.told.delete(listener)
+  },
   channel() {
     const items: unknown[] = []
     const waiters: Array<(r: IteratorResult<unknown>) => void> = []
@@ -70,7 +97,14 @@ const makeMyGo = (outbound: OutboundCall[]) => ({
       },
     }
   },
-  async call(method: string, req: OutboundCall, parts: { push(v: unknown): void; end(): void }) {
+  async call(method: string, req: OutboundCall, parts: { push(v: unknown): void; end(): void }, ...rest: unknown[]) {
+    if (method.startsWith("Host.")) {
+      asked.push([method, ...[req, parts, ...rest].filter((a) => a !== undefined)])
+      if (method === "Host.Appearance") return "dark"
+      if (method === "Host.SetAppearance" && (req as unknown) === "sepia")
+        throw new Error('the appearance is system, light or dark, not "sepia"')
+      return undefined
+    }
     assert.equal(method, "plugin:fetch.Fetch")
     outbound.push(req)
     if (req.url === "https://models.dev/models.json") {
@@ -130,16 +164,45 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   }
 
   const outbound: OutboundCall[] = []
-  /** A page load: a fresh realm over the same library, as a relaunch or a reload is. */
-  const load = () => {
+  const asked: HostCall[] = []
+  const window = { active: true, told: new Set<(a: boolean) => void>() }
+  /** What Go's /__save answers the next export with (save.go), and what the page posted to it. */
+  let saveAnswer: () => Response = () => Response.json({ saved: true })
+  const posted: { name: string; body: unknown }[] = []
+  /** A page load: a fresh realm over the same library, as a relaunch or a reload is. `search` is the address Go loads
+   *  it at; `xhr` stands in for the library's protocol when the library is to fail. */
+  const load = (o: { search?: string; xhr?: unknown; languages?: string[] } = {}) => {
+    const shown: Shown[] = []
+    const element = (): Shown & Record<string, unknown> => {
+      const el = {
+        id: "",
+        text: "",
+        style: { cssText: "" },
+        setAttribute: (k: string, v: string) => void (k === "role" && (el.role = v)),
+        set textContent(t: string) {
+          el.text = t
+        },
+        append: (child: Shown) => void (el.text += (el.text ? "\n" : "") + child.text),
+      } as Shown & Record<string, unknown>
+      return el
+    }
     const page = {
-      location: { href: `${schemeOrigin}/`, origin: locationOrigin },
-      navigator: { userAgent: "Mozilla/5.0 AppleWebKit/605.1.15" },
-      XMLHttpRequest,
-      mygo: makeMyGo(outbound),
-      fetch: (input: RequestInfo | URL) => {
+      location: { href: `${schemeOrigin}/${o.search ?? ""}`, origin: locationOrigin },
+      navigator: { userAgent: "Mozilla/5.0 AppleWebKit/605.1.15", languages: o.languages },
+      XMLHttpRequest: o.xhr ?? XMLHttpRequest,
+      mygo: makeMyGo(outbound, asked, window),
+      document: {
+        getElementById: (id: string) => shown.find((s) => s.id === id) ?? null,
+        createElement: element,
+        body: { append: (el: Shown) => void shown.push(el) },
+      },
+      fetch: (input: RequestInfo | URL, init?: RequestInit) => {
         const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
         if (raw.startsWith("data:text/plain,")) return Promise.resolve(new Response(raw.slice(16)))
+        if (raw.startsWith("/__save?name=")) {
+          posted.push({ name: decodeURIComponent(raw.slice(13)), body: init?.body })
+          return Promise.resolve(saveAnswer())
+        }
         return Promise.reject(new Error(`the page's own fetch is not for /api or external http(s): ${raw}`))
       },
       console: { ...console, debug() {} },
@@ -190,6 +253,9 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
     )
     const fetch = page["fetch"] as typeof globalThis.fetch
     return {
+      host: page["tavernHost"] as PageHost,
+      started: () => page["tavernStarted"] === true,
+      shown,
       fetch,
       api: (path: string, init?: RequestInit) => fetch(`/api${path}`, init),
       fullApi: (path: string, init?: RequestInit) => fetch(`${schemeOrigin}/api${path}`, init),
@@ -199,8 +265,9 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   const json = { "content-type": "application/json" }
 
   const first = load()
-  const { fetch: pageFetch, fullApi } = first
+  const { fetch: pageFetch, fullApi, host: tavernHost } = first
   let { api } = first
+  assert.deepEqual([first.started(), first.shown], [true, []]) // the server is up, and the page says nothing of it
   const host = (await (await api("/host")).json()) as { version: string; page: boolean; scripted: boolean }
   assert.deepEqual([host.version, host.page, host.scripted], ["test", true, false])
   assert.equal((await fullApi("")).status, 404) // `/api` bare rewrites to `/` (POST-only)
@@ -315,6 +382,74 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   })
   assert.match(await told.text(), /^event: change$/m)
 
+  // every card's local row in one answer, as the client's cold start asks (wire.ts `fetchLocals`)
+  assert.deepEqual(await (await api("/locals")).json(), { wuxia: { id: "local", name: "wuxia", card: "wuxia" } })
+
+  // tavernHost.save: bytes to Go (a Blob gets no body through WebKit's custom scheme), and the outcome from the body
+  // of an answer that began before the picker opened: saved, cancelled, or why not. A failure before the picker has
+  // its own status; an answer cut short is said in plain words, not as a parse error.
+  const file = new Blob(["id: wuxia\n"])
+  assert.equal(await tavernHost.save(file, "古风/武侠.yaml"), true)
+  assert.equal(posted[0].name, "古风/武侠.yaml")
+  assert.ok(posted[0].body instanceof ArrayBuffer && new TextDecoder().decode(posted[0].body) === "id: wuxia\n")
+  saveAnswer = () => Response.json({ saved: false })
+  assert.equal(await tavernHost.save(file, "a.yaml"), false)
+  saveAnswer = () => Response.json({ saved: false, error: "The file could not be saved: disk full" })
+  await assert.rejects(tavernHost.save(file, "a.yaml"), /^Error: The file could not be saved: disk full$/)
+  saveAnswer = () => new Response("The export arrived empty, so nothing was saved.\n", { status: 400 })
+  await assert.rejects(tavernHost.save(file, "a.yaml"), /^Error: The export arrived empty, so nothing was saved\.$/)
+  saveAnswer = () => new Response('{"sav')
+  await assert.rejects(tavernHost.save(file, "a.yaml"), /The save ended before the app answered/)
+
+  // the clipboard and the appearance are Go's bound methods, by name; a refusal there rejects here
+  await tavernHost.copy("sk-live", { concealed: true })
+  await tavernHost.copy("plain")
+  assert.equal(await tavernHost.appearance.get(), "dark")
+  await tavernHost.appearance.set("light")
+  await assert.rejects(tavernHost.appearance.set("sepia"), /system, light or dark/)
+  assert.deepEqual(asked.splice(0), [
+    ["Host.Copy", "sk-live", true],
+    ["Host.Copy", "plain", false],
+    ["Host.Appearance"],
+    ["Host.SetAppearance", "light"],
+    ["Host.SetAppearance", "sepia"],
+  ])
+
+  // the window: active as MyGo tells it, each change heard until the listener is taken off
+  const heard: boolean[] = []
+  const off = tavernHost.active.on((a) => heard.push(a))
+  assert.equal(tavernHost.active.now(), true)
+  window.active = false
+  for (const tell of window.told) tell(false)
+  assert.deepEqual([tavernHost.active.now(), heard], [false, [false]])
+  off()
+  window.active = true
+  for (const tell of window.told) tell(true)
+  assert.deepEqual([tavernHost.active.now(), heard], [true, [false]])
+
+  // a plain load is no recovery; the load Go makes after the page's process ended is marked in its address
+  assert.equal(tavernHost.recovered, false)
+  assert.equal(load({ search: "?recovered=1" }).host.recovered, true)
+
+  // A library that cannot be opened: the player is told in the page, in the interface's language, with the error as
+  // it came, and every /api request fails with it. Nothing of this shows on a load that started.
+  class Broken extends XMLHttpRequest {
+    override send() {
+      this.status = 500
+      this.responseText = JSON.stringify({ error: "file is not a database" })
+    }
+  }
+  for (const [languages, words] of [
+    [undefined, /^The app could not start: its data could not be opened\.\nClose the app and open it again\./],
+    [["zh-Hans-CN", "en"], /^应用没能启动：数据打不开。\n请关闭应用后重新打开。/],
+  ] as const) {
+    const broken = load({ xhr: Broken, languages: languages && [...languages] })
+    assert.deepEqual([broken.shown.length, broken.shown[0]?.id, broken.shown[0]?.role], [1, "start-failure", "alert"])
+    assert.match(broken.shown[0].text, words)
+    assert.match(broken.shown[0].text, /\nfile is not a database$/)
+    await assert.rejects(broken.api("/host"), /file is not a database/)
+  }
+
   // A page that went away inside a write (reloaded, its process killed) leaves Go's one connection in a transaction:
   // the next page rolls it back on open and writes as before; what was committed is still there.
   db.exec("begin")
@@ -335,6 +470,94 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   })
   assert.match(await reopened.text(), /^event: change$/m) // the opening's write is a transaction of its own
   db.close()
+}
+
+// The page as the app serves it (bundle.ts `withServer`): the watch inline, then the server, ahead of the client's own
+// scripts whatever they are. The watch (failure.ts) says a start failed when the server's script throws or cannot be
+// read, once, and says nothing of an error in an app that started.
+{
+  const guard = await bundleGuard()
+  assert.ok(!guard.includes("</script"), "the watch can be inlined in a script element")
+  const html = withServer(
+    '<head><meta charset="utf-8"><script>theme()</script></head><body><script type="module" src="/a.js"></script>',
+    guard,
+  )
+  const order = [
+    "<meta",
+    `<script>${guard}</script>`,
+    '<script type="module" src="/server.js">',
+    "<script>theme()",
+    "/a.js",
+  ]
+  assert.deepEqual(
+    order.map((part) => html.indexOf(part)).toSorted((a, b) => a - b),
+    order.map((part) => html.indexOf(part)),
+  )
+  assert.ok(order.every((part) => html.includes(part)))
+  assert.throws(() => withServer("<p>no script</p>", guard), /no script/)
+
+  class ErrorEvent {
+    constructor(
+      public error: unknown,
+      public message = "",
+      public target: unknown = null,
+    ) {}
+  }
+  class HTMLScriptElement {
+    constructor(public src: string) {}
+  }
+  const start = () => {
+    const shown: string[] = []
+    const listeners = new Set<(e: unknown) => void>()
+    const page: Record<string, unknown> = {
+      ErrorEvent,
+      HTMLScriptElement,
+      Error,
+      navigator: { languages: ["en"] },
+      addEventListener: (type: string, fn: (e: unknown) => void, capture: boolean) => {
+        assert.deepEqual([type, capture], ["error", true]) // capture: a script that fails to load does not bubble
+        listeners.add(fn)
+      },
+      removeEventListener: (_type: string, fn: (e: unknown) => void) => void listeners.delete(fn),
+      document: {
+        getElementById: () => (shown.length ? {} : null),
+        createElement: () => {
+          const el = {
+            text: "",
+            style: {},
+            setAttribute() {},
+            set textContent(t: string) {
+              el.text = t
+            },
+            append: (child: { text: string }) => void (el.text += (el.text ? "\n" : "") + child.text),
+          }
+          return el
+        },
+        body: { append: (el: { text: string }) => void shown.push(el.text) },
+      },
+    }
+    page["globalThis"] = page
+    runInNewContext(guard, page)
+    return { shown, page, fire: (e: unknown) => [...listeners].forEach((fn) => fn(e)), listening: () => listeners.size }
+  }
+  const threw = start()
+  threw.fire(new ErrorEvent(new Error("Can't find variable: structuredClone")))
+  threw.fire(new ErrorEvent(new Error("a second error, of the first")))
+  assert.deepEqual(threw.shown, [
+    "The app could not start: its program failed to load.\n" +
+      "Close the app and open it again. If this keeps happening, update to the latest version.\n" +
+      "Can't find variable: structuredClone",
+  ])
+  const unread = start()
+  unread.fire({ target: new HTMLScriptElement("mygo://localhost/server.js") })
+  assert.match(unread.shown[0], /failed to load\.\n.*\nmygo:\/\/localhost\/server\.js$/)
+  const other = start()
+  other.fire({ target: { src: "/favicon.svg" } }) // a picture that failed to load is no failed start
+  assert.deepEqual(other.shown, [])
+  const running = start()
+  running.page["tavernStarted"] = true // entry.ts `started`
+  running.fire(new ErrorEvent(new Error("ResizeObserver loop completed with undelivered notifications")))
+  assert.deepEqual([running.shown, running.listening()], [[], 0], "an app that started is left alone, and unwatched")
 }
 
 await verifyOrigin("https://mygo.localhost")

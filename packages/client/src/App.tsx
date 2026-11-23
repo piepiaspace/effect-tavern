@@ -20,6 +20,7 @@ import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, on
 import { read } from "./bridge.ts"
 import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
+import { copyText } from "./host.ts"
 import { Home } from "./home.tsx"
 import { imeController } from "./ime.ts"
 import { Back, Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
@@ -402,8 +403,10 @@ export const Said = (props: {
   const busy = read(working)
   const [copied, setCopied] = createSignal(false)
   const copy = () =>
-    // a plain-http page off localhost (a phone on the LAN) has no clipboard: the key then does nothing
-    void navigator.clipboard?.writeText(props.input[field()] ?? "").then(() => {
+    // through the app's host where there is one; a plain-http page off localhost (a phone on the LAN) has no
+    // clipboard, and a refused write copies nothing: the key then shows nothing
+    void copyText(props.input[field()] ?? "").then((ok) => {
+      if (!ok) return
       setCopied(true)
       setTimeout(() => setCopied(false), 1200)
     })

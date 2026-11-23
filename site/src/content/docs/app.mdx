@@ -1,0 +1,58 @@
+---
+title: Desktop & Phone App
+description: The installed app, its installers, where it keeps the library, and how it is built and tested.
+sidebar:
+  order: 6
+---
+
+The app (`packages/app`) is the tavern without a terminal. It opens one window on the system's web view; the web client and the whole server run inside that page, and a thin Go host built on [MyGo](https://github.com/egoist/mygo) does what a page cannot. It is separate from the `tavern` command described in [CLI & Headless Host](/cli/), which serves the same client from a port.
+
+## Installers
+
+Every release carries the app's installers beside the `tavern` binaries, on the [latest release](https://github.com/piepiaspace/effect-tavern/releases/latest) page.
+
+| System | Installer |
+| --- | --- |
+| macOS 14.5 or later (universal) | `.dmg`, ad hoc signed |
+| Windows x64 and arm64 | `-setup-*.exe`, unsigned |
+| Linux amd64 and arm64 | `.deb`, or the `.tar.gz` archive |
+| Android arm64 | `.apk` |
+
+iOS is configured in `mygo.json` (iOS 17.5 or later), but no release job builds it and no installer is published.
+
+## Where the library lives
+
+The app keeps its own library, apart from the command's `~/.tavern`. It is one file, `tavern.db`, in a folder named after the app:
+
+| System | The folder is under |
+| --- | --- |
+| macOS | `~/Library/Application Support` |
+| Windows | `%AppData%` |
+| Linux | `$XDG_CONFIG_HOME`, or `~/.config` when that is unset |
+| Android | the app's files directory |
+| iOS | `Library/Application Support` inside the app's container |
+
+The appearance the player picked is kept beside it, in `preferences.json`. On Android before 12 the page follows the pick, but the system bars and keyboard keep the system's appearance.
+
+## What the Go host does
+
+| The host | Why a page cannot |
+| --- | --- |
+| Holds the library's SQLite on one connection; the page reaches it through synchronous requests | The server's storage layer is synchronous, and a web view has no SQLite of its own |
+| Shows the system's save picker for an export | A web view has nowhere to download to |
+| Writes the clipboard | A web view can refuse a write made after an awaited request, and only a native write can mark a secret as one |
+| Keeps the appearance (system, light or dark) and applies it before the first window | The window's background, the status bar and the keyboard take their side before any page runs |
+| Loads the page again when the system ends its process | Phones end a web view's process in the background; the page comes back where the player was |
+| Reaches other origins for the page | No CORS, and streamed responses |
+
+The web client asks for all of it through one module, `packages/client/src/host.ts`; in a browser the same module falls back to the browser's own download and clipboard.
+
+## Build and test
+
+```sh
+cd packages/app
+bun run verify                             # go test -count=1 ./... && bun test/page.ts
+go tool mygo build -platform linux/amd64   # runs bun web/build.ts, then packages into build/
+```
+
+`bun test/page.ts` runs the server bundle the way the app does, with a browser's globals and none of Bun's or Node's, against a stand-in for the Go host. `.github/workflows/release.yml` builds every installer above on a version tag; started by hand it builds them all and publishes nothing.

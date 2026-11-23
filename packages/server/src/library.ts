@@ -465,6 +465,14 @@ export const library = ({
     /** The player on a card, whole; written whole, in force from the next request. Never a missing row to the wire. */
     locals: {
       read: localOf,
+      /** Every card on the shelf with its row, each as `read` answers it: two statements whatever the shelf holds
+       *  (the app's library is a synchronous request a statement, #226). A row whose card is gone is left out. */
+      all: (): Record<string, Local> => {
+        const rows = new Map(data.locals.list().map((l) => [l.card, l]))
+        return Object.fromEntries(
+          cards.list().map((c) => [c.id, rows.get(c.id) ?? { id: "local", name: c.id, card: c.id }]),
+        )
+      },
       write: (value: unknown) => {
         const l = decodeLocal(value)
         cards.get(l.card)

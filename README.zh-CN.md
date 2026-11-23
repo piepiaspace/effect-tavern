@@ -54,6 +54,7 @@ packages/
   provider/   语言模型与决策模型连接、AI SDK 编译（Anthropic / OpenAI 兼容 / Gemini）、缓存断点与流式原语
   server/     SQLite 文档库、卡片书架与可选的卡库、HTTP + SSE 服务端、制卡工坊接口（compile / sort / review）与 `tavern` CLI
   client/     Solid 2.0 + @ui-sdk Web 客户端：空间画布壳层、阅读器、卡片详情、读数与小剧场、检查器、时间轴与设置
+  app/        桌面与手机应用：界面与整套服务端同在一个系统 WebView 里运行，外加一层很薄的 Go 宿主（MyGo）
 skills/
   card-author/  渐进式披露（Progressive Disclosure）制卡与旧卡重制 Agent Skill
 samples/        完整重制样卡（如演示多日循环 `passages` 与 `digest` 边界的 `life-of-pi`）
@@ -76,6 +77,27 @@ curl -fsSL https://github.com/piepiaspace/effect-tavern/releases/latest/download
 用旧启动器安装过的手机也可以重新运行上面的安装命令。输入 `tavern` 查看帮助，`tavern start` 启动并打开网页，`tavern update` 更新。程序装在 `$PREFIX/bin/tavern` 或 `~/.local/bin/tavern`，数据在 `~/.tavern`。运行 `rm "$(command -v tavern)"` 可卸载命令。
 
 程序本身不带任何卡片，新安装的书架是空的：在 **设置 → 卡片** 里导入单张卡片（拖入或选择 `.yaml` / `.json` 文件，或粘贴这张卡自己的 `https` 链接），或填入卡库的 `https` 地址后从中安装。
+
+### 桌面与手机应用
+
+应用（`packages/app`）是不需要终端的同一座酒馆：一个系统 WebView 窗口，服务端直接跑在页面里，外面是一层很薄的 Go 宿主（[MyGo](https://github.com/egoist/mygo)），负责数据库 SQLite、保存文件时的系统选择器、剪贴板和外观。每次发布都会在 `tavern` 二进制旁边附上安装包：[最新发布](https://github.com/piepiaspace/effect-tavern/releases/latest)。
+
+| 系统                      | 安装包                      |
+| ------------------------- | --------------------------- |
+| macOS 14.5 及以上（通用） | `.dmg`，ad hoc 签名         |
+| Windows x64 与 arm64      | `-setup-*.exe`，未签名      |
+| Linux amd64 与 arm64      | `.deb`，或 `.tar.gz` 压缩包 |
+| Android arm64             | `.apk`                      |
+
+iOS 已在 `packages/app/mygo.json` 里配置（iOS 17.5 及以上），但发布流程里没有构建它的任务，也不提供安装包。
+
+应用有自己的数据，与 `tavern` 命令的 `~/.tavern` 互不相干：`tavern.db` 放在以应用名命名的文件夹里，macOS 在 `~/Library/Application Support` 下，Windows 在 `%AppData%` 下，Linux 在 `$XDG_CONFIG_HOME`（或 `~/.config`）下，Android 与 iOS 在应用自己的存储空间里。
+
+```sh
+cd packages/app
+bun run verify                             # go test -count=1 ./... && bun test/page.ts（把服务端打包当作页面运行）
+go tool mygo build -platform linux/amd64   # 先运行 bun web/build.ts，再打包到 build/
+```
 
 ### 环境要求
 

@@ -797,8 +797,8 @@
   align-items: center;
   gap: var(--space-half);
 }
-/* a pressed key is where you are (the settings); the theme key's state is the whole screen, so it keeps no fill */
-:is(.shell-top, .side-foot) .icon[aria-pressed="true"]:not(.flip) {
+/* a pressed key is where you are (the settings); the theme key's state is the whole screen and its own glyph */
+:is(.shell-top, .side-foot) .icon[aria-pressed="true"] {
   background: var(--alpha-1);
   color: var(--ink);
 }

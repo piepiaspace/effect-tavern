@@ -10,11 +10,12 @@ import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers
 import { Composer } from "../src/composer.tsx"
 import { CardPage } from "../src/card.tsx"
 import { ModelDialog } from "../src/models.tsx"
-import { Sidebar } from "../src/side.tsx"
+import { InstallKeys, Sidebar } from "../src/side.tsx"
 import { cards, composition, locals, personas, providers, stories, tabs } from "../src/store.ts"
 import {
   ask,
   Confirm,
+  copyKey,
   Drawer,
   dialogHandle,
   Menu,
@@ -25,13 +26,13 @@ import {
   Switch,
   Tick,
 } from "../src/controls.tsx"
-import { openPicker, StoryDialogs } from "../src/dialogs.tsx"
+import { openExport, openPicker, StoryDialogs } from "../src/dialogs.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
 import { mountBack } from "../src/back.ts"
 import { onKey, open as openPage } from "../src/pages.ts"
 import { Demand, Sheet } from "../src/readings.tsx"
-import { card, page, registry, type CardView } from "../src/store.ts"
+import { card, page, registry, type CardView, type StoryRow } from "../src/store.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { timelineNode } from "./fixtures.ts"
 import { quiet, touch, tracked, until } from "./settle.ts"
@@ -61,6 +62,11 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
     return Response.json([next])
   }
   if (url.endsWith("/routing")) return Response.json({})
+  // a story's export, named by the server as the real one is
+  if (url.includes("/export."))
+    return new Response("# 雨夜\n", {
+      headers: { "content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent("雨夜.md")}` },
+    })
   // the composer's menu reads the player's catalog: one entry filed under a pack, one of the card's
   if (url.includes("/context?"))
     return Response.json({
@@ -203,6 +209,10 @@ render(
       <Composer />
       <Confirm />
       <StoryDialogs />
+      {/* the install's keys, as the canvas's top strip and the drawer's foot hold them */}
+      <span id="install-keys">
+        <InstallKeys />
+      </span>
       <button id="drawer-trigger" onClick={() => setDrawerOpen(true)}>
         设置抽屉
       </button>
@@ -572,6 +582,83 @@ const run = async () => {
   escape()
   await quiet()
   check(!document.querySelector(".side-drawer") && document.activeElement === trigger, "drawer restores its opener")
+
+  // the theme key (theme.ts): one key round three picks, its name saying the one it is on. In a browser a side pins
+  // :root and is kept on the device; the system's is no pin and nothing kept, so the page follows the system again.
+  const themeKey = () => document.querySelectorAll<HTMLButtonElement>("#install-keys button")[1]
+  const themeAt = () =>
+    JSON.stringify([
+      themeKey().getAttribute("aria-label"),
+      document.documentElement.dataset["theme"] ?? null,
+      localStorage.getItem("theme"),
+    ])
+  const round = [themeAt()]
+  for (let i = 0; i < 3; i++) {
+    themeKey().click()
+    await quiet()
+    round.push(themeAt())
+  }
+  check(
+    round.join(" ") ===
+      '["主题：跟随系统",null,null] ["主题：浅色","light","light"] ["主题：深色","dark","dark"] ["主题：跟随系统",null,null]',
+    `the theme key goes round its three picks: ${round.join(" ")}`,
+  )
+
+  // the app's host (host.ts), stood in for: a key is copied through it, marked as a secret, and "copied" flashes only
+  // when it was; an export it saved closes the dialog, one the player backed out of leaves it open, a failed one says
+  // why in it
+  const copies: unknown[] = []
+  const flashes: boolean[] = []
+  const saves: string[] = []
+  let outcome: boolean | Error = false
+  let refuse = false
+  ;(globalThis as { tavernHost?: unknown }).tavernHost = {
+    copy: async (text: string, options: unknown) => {
+      if (refuse) throw new Error("refused")
+      copies.push([text, options])
+    },
+    save: async (file: Blob, name: string) => {
+      saves.push(`${name}: ${await file.text()}`)
+      if (outcome instanceof Error) throw outcome
+      return outcome
+    },
+  }
+  await copyKey(Promise.resolve("sk-fixture"), (on) => flashes.push(on))
+  check(
+    JSON.stringify(copies) === '[["sk-fixture",{"concealed":true}]]' && flashes.join() === "true",
+    `a key goes to the host's clipboard as a secret, then flashes: ${JSON.stringify(copies)} ${flashes.join()}`,
+  )
+  refuse = true
+  await copyKey("sk-fixture", (on) => flashes.push(on))
+  check(flashes.join() === "true", `a copy that was refused flashes nothing: ${flashes.join()}`)
+
+  openExport({ id: 7, title: "雨夜" } as StoryRow)
+  await quiet()
+  const exportOpen = () => !!document.querySelector(".confirm")?.textContent?.includes("导出「雨夜」")
+  const exportAs = async (words: string) => {
+    ;[...document.querySelectorAll<HTMLAnchorElement>(".confirm a.chip")]
+      .find((a) => a.innerText.trim() === words)!
+      .click()
+    await quiet()
+  }
+  check(exportOpen(), "the export dialog opens on its story")
+  await exportAs("阅读稿 .md")
+  check(
+    saves.join() === "雨夜.md: # 雨夜\n" && exportOpen() && !document.querySelector(".confirm [role=alert]"),
+    `backing out of the picker leaves the export dialog open, with nothing to report: ${saves.join()}`,
+  )
+  outcome = new Error("The file could not be saved: disk full")
+  await exportAs("阅读稿 .md")
+  check(
+    exportOpen() &&
+      document.querySelector<HTMLElement>(".confirm [role=alert]")?.innerText ===
+        "The file could not be saved: disk full",
+    "a save that failed says why in the dialog, which stays",
+  )
+  outcome = true
+  await exportAs("完整树 .json")
+  check(saves.length === 3 && !document.querySelector(".confirm"), "a saved export closes the dialog")
+  delete (globalThis as { tavernHost?: unknown }).tavernHost
 
   // system back (back.ts): after a touch a layer's first entry is pushed; reload unwinds stale entries, and steps
   // taken after that go forward onto them rather than push; `.facet-pop` takes no entry; native `popover="auto"`

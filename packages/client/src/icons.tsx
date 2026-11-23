@@ -33,7 +33,9 @@ export { default as Close } from "~icons/ph/x"
 export { default as Settings } from "~icons/ph/gear-six"
 export { default as Sidebar } from "~icons/ph/sidebar-simple" // the sidebar's fold key (shell.tsx)
 export { default as List } from "~icons/ph/list" // the phone's drawer key
-export { default as Shade } from "~icons/ph/circle-half"
+export { default as Shade } from "~icons/ph/circle-half" // the theme key on the system's side (theme.ts)
+export { default as Sun } from "~icons/ph/sun" // the theme key pinned light
+export { default as Moon } from "~icons/ph/moon" // the theme key pinned dark
 export { default as Translate } from "~icons/ph/translate" // the locale flip (i18n.ts)
 export { default as Plugs } from "~icons/ph/plugs"
 export { default as Sliders } from "~icons/ph/sliders-horizontal"
