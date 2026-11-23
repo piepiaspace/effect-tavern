@@ -107,10 +107,21 @@ export interface CompileOptions {
   fetch?: Fetch
 }
 
+/** Set the provider's identity after the SDK has appended its runtime UA, including in a WebView. */
+export const providerFetch = (c: Pick<Connection, "proxy" | "headers">, o: CompileOptions): Fetch => {
+  const userAgent = new Headers(c.headers).get("user-agent") ?? "effect-tavern"
+  const inner = o.fetch ?? fetchFor(c)
+  const send: Fetch = (input, init) => {
+    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined))
+    headers.set("user-agent", userAgent)
+    return inner(input, { ...init, headers })
+  }
+  return o.onTrace ? traced(o.onTrace, o.traceBody ?? false, send) : send
+}
+
 export const compile = (c: Connection, o: CompileOptions = {}): LanguageModel => {
   const { base } = plan(c.format, c.endpoint, c.model)
-  const inner = o.fetch ?? fetchFor(c)
-  const fetch = o.onTrace ? traced(o.onTrace, o.traceBody ?? false, inner) : inner
+  const fetch = providerFetch(c, o)
   // ai-sdk types `fetch` as `typeof fetch`, which under Bun types also requires `preconnect`; the SDK only calls it
   const common = { baseURL: base, headers: c.headers, fetch: fetch as typeof globalThis.fetch }
   const cred = c.credential
@@ -168,8 +179,7 @@ export interface Listed {
  *  endpoint does not list, not that it is down, and a 2xx that is not JSON (a reverse proxy's index page) fails as
  *  "not a listing". `onTrace` sees the one fetch, as on `compile`. */
 export const listModels = async (c: Connection, o: CompileOptions = {}): Promise<Listed[]> => {
-  const inner = o.fetch ?? fetchFor(c)
-  const fetch = o.onTrace ? traced(o.onTrace, false, inner) : inner
+  const fetch = providerFetch(c, o)
   const res = await fetch(plan(c.format, c.endpoint).models, { headers: { ...c.headers, ...authHeaders(c) } })
   if (!res.ok) throw new Error(`model listing failed: HTTP ${res.status}`)
   let body: { data?: Array<{ id?: string; supported_endpoints?: unknown }>; models?: Array<{ name?: string }> }
