@@ -34,7 +34,7 @@ import {
   type Tabs,
 } from "../src/store.ts"
 import { timelineNode } from "./fixtures.ts"
-import { quiet, tracked, until } from "./settle.ts"
+import { quiet, touch, tracked, until } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -313,8 +313,10 @@ const run = async () => {
     `the persona row names the pick: ${document.querySelector(".play-row .val")?.textContent}`,
   )
 
-  // a system back with the picker over the sheet closes the picker alone (back.ts), then the sheet
+  // a system back with the picker over the sheet closes the picker alone (back.ts), then the sheet; the sheet was
+  // opened by a touch, which a headless page never has (no entry is pushed before one)
   const unmountBack = mountBack()
+  touch()
   await quiet()
   personaRow()?.click()
   check(await until(() => picker()), "the picker opens again")

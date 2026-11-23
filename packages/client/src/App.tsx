@@ -638,7 +638,7 @@ const LazyPage = (props: { settings?: boolean; children: JSX.Element }) => (
 
 export const App = () => {
   const pg = read(page)
-  // one Escape rule for every page over the reader, and the system's back as Escape (back.ts)
+  // one Escape rule for every page over the reader, and the system's back one step out of what is on top (back.ts)
   onSettled(() => {
     addEventListener("keydown", onKey)
     const unmountBack = mountBack()

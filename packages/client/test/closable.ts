@@ -1,0 +1,137 @@
+// The system-back registry (src/back.ts) with no browser, so no history: `stepBack` goes straight to what is on top.
+// A later registration is nearer the top and a closer with no steps is passed over; the page stack counts as many
+// steps as closes reach its bottom and respects a page's close guard; a page over the reader is stepped out of before
+// the edit under it is cancelled; on a phone the settings return from a record's detail to the list before closing,
+// except on 路由 and under another page. The history side is the browser's (test/back.tsx).
+import assert from "node:assert/strict"
+import { flush } from "solid-js"
+import type { StoryRow, Tab } from "../src/store.ts"
+
+// a phone to viewport.ts, which asks once as it loads: under 72rem
+Object.assign(globalThis, { window: { matchMedia: () => ({ matches: false, addEventListener: () => {} }) } })
+const rows = [{ id: 1, card: "c1", busy: null } as StoryRow]
+globalThis.fetch = (async (url: string) => {
+  const path = String(url)
+  if (path === "/api/turn") return new Response(null, { status: 204 })
+  if (path === "/api/card" || path.startsWith("/api/cards/")) return Response.json({ id: "c1" })
+  if (path === "/api/nodes") return Response.json({ nodes: [{ id: 1, parent: null, turn: {} }], head: 1 })
+  if (path.startsWith("/api/stories")) return Response.json({ current: 1, stories: rows })
+  return Response.json([])
+}) as typeof fetch
+
+const { closable, stepBack } = await import("../src/back.ts")
+const { close, guardClose, open, openStory, stepsOf } = await import("../src/pages.ts")
+const { pane, section, setPane } = await import("../src/settings-navigation.ts")
+const { activeOf, editing, page, registry, stories, tabs } = await import("../src/store.ts")
+const { wide } = await import("../src/viewport.ts")
+
+const rest = () => new Promise((r) => setTimeout(r)) // a close's reads (the story back in the slots) answered
+const at = () => activeOf(registry.get(tabs))
+const put = (t: Omit<Tab, "id">) => registry.set(tabs, { list: [{ id: 1, ...t }], active: 1 })
+registry.set(stories, { current: null, stories: rows })
+await openStory(1)
+assert.equal(registry.get(page), "reader")
+
+// the page stack: `stepsOf` is the number of closes that reach the bottom
+const prompt = { page: "prompt-tree", story: 1, card: "c1" } as const
+const stacks: [steps: number, tab: Omit<Tab, "id">][] = [
+  [0, { story: 1, card: "c1", page: "reader", under: [] }],
+  [0, { story: null, card: null, page: "home", under: [] }],
+  [1, { story: 1, card: "c1", page: "settings", under: [] }],
+  [3, { story: 1, card: "c1", page: "prompt-tree", under: ["card", "settings"] }],
+  [2, { story: 1, card: "c1", page: "manuscript", under: [prompt] }],
+  [1, { story: null, card: "c1", page: "card", under: ["home"] }],
+  [2, { story: null, card: "c1", page: "settings", under: ["home", "card"] }],
+  [0, { story: null, card: "c1", page: "card", under: [] }], // a card's tab with nothing under: no Back is drawn
+]
+for (const [steps, tab] of stacks) {
+  put(tab)
+  assert.equal(stepsOf(at()), steps, JSON.stringify(tab))
+  for (let left = steps; left > 0; left--) {
+    assert.equal(stepsOf(at()), left, `${JSON.stringify(tab)}, ${left} to go`)
+    close()
+    await rest()
+  }
+  assert.equal(stepsOf(at()), 0, `${JSON.stringify(tab)} at its bottom`)
+  const bottom = registry.get(page)
+  close()
+  await rest()
+  assert.deepEqual(registry.get(page), bottom, `${JSON.stringify(tab)}: a close at the bottom moves nothing`)
+}
+put({ story: 1, card: "c1", page: "reader", under: [] })
+await openStory(1) // the story in the slots again (the home stacks let it go), so a close reads nothing anew
+assert.equal(registry.get(page), "reader")
+
+// the registry alone: the last one registered that has steps left takes the step
+const order: string[] = []
+const fake = (name: string, steps: number) => {
+  let left = steps
+  return { steps: () => left, close: () => void (left--, order.push(name)) }
+}
+const offA = closable(fake("a", 2))
+const offB = closable(fake("b", 1))
+const offC = closable(fake("c", 0))
+for (let i = 0; i < 4; i++) stepBack()
+assert.deepEqual(order, ["b", "a", "a"], "the later registration first, then the earlier down to nothing")
+offA()
+offB()
+offC()
+const off = closable(fake("gone", 1))
+off()
+stepBack()
+assert.deepEqual(order, ["b", "a", "a"], "an unregistered closer is never called")
+
+// with nothing open a step does nothing
+stepBack()
+assert.deepEqual([registry.get(page), registry.get(editing)], ["reader", null])
+
+// a page over the reader is stepped out of first; the edit under it is cancelled by the next step
+registry.set(editing, 1)
+open("settings")
+stepBack()
+await rest()
+assert.deepEqual([registry.get(page), registry.get(editing)], ["reader", 1], "the page first, the edit kept")
+stepBack()
+assert.deepEqual([registry.get(page), registry.get(editing)], ["reader", null], "then the edit is cancelled")
+
+// a phone's settings: a record's detail returns to the list, then the page closes
+assert.equal(wide(), false)
+open("settings")
+registry.set(section, "providers")
+setPane("detail")
+stepBack()
+flush()
+assert.deepEqual([registry.get(page), pane()], ["settings", "list"], "detail to list, the settings still open")
+stepBack()
+await rest()
+assert.equal(registry.get(page), "reader", "then the settings close")
+// 路由 is one pane: nothing to return to
+open("settings")
+registry.set(section, "routing")
+setPane("detail")
+stepBack()
+await rest()
+assert.equal(registry.get(page), "reader", "路由 closes in one step")
+// under another page the detail is not on top: the page over it, the detail, the settings
+registry.set(section, "providers")
+open("settings")
+setPane("detail")
+open("prompt-tree")
+stepBack()
+flush()
+assert.deepEqual([registry.get(page), pane()], ["settings", "detail"], "the page over the settings first")
+stepBack()
+flush()
+assert.deepEqual([registry.get(page), pane()], ["settings", "list"])
+
+// a page's close guard takes the step in place of close (the workshop saves first)
+let guarded = 0
+const unguard = guardClose("settings", () => void guarded++)
+stepBack()
+assert.deepEqual([guarded, registry.get(page)], [1, "settings"], "the guard ran, and closing is its to do")
+unguard()
+stepBack()
+await rest()
+assert.equal(registry.get(page), "reader")
+
+console.log("closable ok")

@@ -39,6 +39,7 @@ import type {
 } from "@effect-tavern/runtime/src/projection.ts"
 import * as Atom from "./atom.ts"
 import { registry } from "./atom.ts"
+import { closable } from "./back.ts"
 import { type Key, t } from "./i18n.ts"
 
 export const stageNames: Record<Phase, Key> = {
@@ -141,6 +142,9 @@ export const stage = Atom.make<Phase | null>(null)
 /** The prose is done and the turn settles (check, polish, record): the queue plays out, nothing halts it any more. */
 export const settling = (phase: Phase | null): boolean => phase === "check" || phase === "polish" || phase === "record"
 export const editing = Atom.make<Id | null>(null) // the node whose prose is a textarea in place (Edit), until sent or cancelled
+// The system's back cancels the edit, as Escape does (back.ts). Registered here, ahead of the page stack (pages.ts
+// imports this module), so a page opened over the reader is stepped out of first and the edit under it still counts.
+closable({ steps: () => (editing() === null ? 0 : 1), close: () => registry.set(editing, null) })
 /** The player's own line back in the composer (Revise): which node and field, and the draft it displaced, restored on cancel. */
 export const revising = Atom.make<{
   node: Id
