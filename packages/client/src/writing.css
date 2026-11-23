@@ -1084,60 +1084,63 @@
   color: var(--danger);
 }
 
-/* full-stage two-column layout on stages >= 52rem (matching card.css) */
-@container stage (width >= 52rem) {
-  .wpage {
-    overflow: hidden;
-  }
-  .wsheet {
-    flex: 1;
-    height: 100%;
-    min-height: 0;
-    grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr);
-    gap: var(--space-5);
-    column-gap: var(--space-6);
-    padding: calc(var(--space-6) + var(--safe-top)) max(var(--space-6), var(--safe-right))
-      calc(var(--space-6) + var(--safe-bottom)) max(var(--space-6), var(--safe-left));
-  }
-  .wcol {
-    height: 100%;
-    gap: var(--space-4);
-    overflow: hidden;
-  }
-  .wcard .name-chip {
-    flex: 0 0 auto;
-  }
-  .wcard .name-chip input {
-    flex: none;
-    width: 6.5rem;
-  }
-  .wcard .name-chip .persona-name {
-    flex: none;
-    max-width: 6.5rem;
-  }
-  .sw-card .sw-pills {
-    display: flex;
-    flex-wrap: wrap;
-  }
-  .sw-card .sw-pills button {
-    height: 28px;
-    padding: 0 var(--space-3);
-  }
-  .sw-card .sw-sentence {
-    min-height: 2lh; /* keep the two-column grid rows aligned across picks */
-  }
-  .wcard.grow .field-well {
-    flex: 1;
-    height: auto;
-    min-height: 0;
-  }
-  .sw-grid,
-  .prod-grid,
-  .theater-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .theater-grid[data-paged="true"] {
-    grid-template-rows: repeat(2, minmax(52px, auto));
+/* full-stage two-column layout on stages >= 52rem (matching card.css), where the screen has the height for columns
+   that share it out: a phone on its side keeps the stacked page that scrolls (card.css has the measure) */
+@media (width >= 72rem), (height > 40rem) {
+  @container stage (width >= 52rem) {
+    .wpage {
+      overflow: hidden;
+    }
+    .wsheet {
+      flex: 1;
+      height: 100%;
+      min-height: 0;
+      grid-template-columns: minmax(18rem, 24rem) minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr);
+      gap: var(--space-5);
+      column-gap: var(--space-6);
+      padding: calc(var(--space-6) + var(--safe-top)) max(var(--space-6), var(--safe-right))
+        calc(var(--space-6) + var(--safe-bottom)) max(var(--space-6), var(--safe-left));
+    }
+    .wcol {
+      height: 100%;
+      gap: var(--space-4);
+      overflow: hidden;
+    }
+    .wcard .name-chip {
+      flex: 0 0 auto;
+    }
+    .wcard .name-chip input {
+      flex: none;
+      width: 6.5rem;
+    }
+    .wcard .name-chip .persona-name {
+      flex: none;
+      max-width: 6.5rem;
+    }
+    .sw-card .sw-pills {
+      display: flex;
+      flex-wrap: wrap;
+    }
+    .sw-card .sw-pills button {
+      height: 28px;
+      padding: 0 var(--space-3);
+    }
+    .sw-card .sw-sentence {
+      min-height: 2lh; /* keep the two-column grid rows aligned across picks */
+    }
+    .wcard.grow .field-well {
+      flex: 1;
+      height: auto;
+      min-height: 0;
+    }
+    .sw-grid,
+    .prod-grid,
+    .theater-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .theater-grid[data-paged="true"] {
+      grid-template-rows: repeat(2, minmax(52px, auto));
+    }
   }
 }
