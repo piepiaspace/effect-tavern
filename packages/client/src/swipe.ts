@@ -13,9 +13,13 @@
 // lift as 0, so a stroke that stopped is judged by its distance alone); and in either case it ended no steeper than
 // one down for two across.
 //
-// When it yields, doing nothing: a mouse (the desktop's drags select text; pen and touch only), the canvas's layout
-// (no surface there), a press on a field or a control that drags (input, textarea, select, contenteditable, a slider,
-// a separator), a press on something that takes sideways strokes for itself and says so with `data-swipe="own"`
+// When it yields, doing nothing and taking no pointer (it captures none and swallows no click): a mouse (the desktop's
+// drags select text; pen and touch only), a finger that is not the first one down, the canvas's layout (no surface
+// there), a layer open other than the drawer on a card's workspace with the press in it (a dialog, the play sheet, a
+// menu, the drawer on its shelf, the scrim beside it: a slider or a held key inside keeps its pointer), a press that
+// something under it has already taken (`preventDefault`, as @ui-sdk's slider control does: the SDK hands a part no
+// event that is already prevented, so the surface never hears it), a press on a field or a
+// control that drags (input, textarea, select, contenteditable, a slider, a separator), a press on something that takes sideways strokes for itself and says so with `data-swipe="own"`
 // (home's mechanism, whose stroke turns its figures: without this one stroke there turned the figure and opened the
 // drawer), a press inside something that scrolls sideways and still has room toward its start (the stroke is
 // that scroller's), a text selection that is not collapsed (at the press or at the release), the browser taking the
@@ -51,7 +55,7 @@ export const SWIPE = {
 } as const
 
 const FIELD =
-  "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='slider'], [role='separator'], [role='textbox'], [role='spinbutton'], [data-swipe='own']"
+  "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='slider'], [data-slot='slider'], [role='separator'], [role='textbox'], [role='spinbutton'], [data-swipe='own']"
 
 /** Something between `from` and `root` scrolls sideways and has room toward its start, where a stroke to the right
  *  would take it. */
@@ -70,18 +74,22 @@ const selecting = (): boolean => {
   return !!s && !s.isCollapsed
 }
 
-/** What a stroke to the right does, started on `from` (an agent's has none): the drawer's step to the shelf, or the
- *  page's back, or the drawer opened. A stroke over any other layer does nothing. */
-const swipeRight = (from: Element | null): void => {
+/** Whether a stroke to the right, started on `from` (an agent's has none), may do anything: with no layer open, yes;
+ *  with one, only when it is the drawer's, the stroke is in the drawer, and the drawer shows a card's workspace. */
+const swipeable = (from: Element | null): boolean => {
   const layers = openLayers()
-  if (layers.length) {
-    // the drawer's layer is its viewport, which holds the scrim as well as the drawer
-    const drawer = layers.map((el) => el.closest(".drawer") ?? el.querySelector(".drawer")).find(Boolean)
-    const inDrawer = from ? !!drawer?.contains(from) : layers.length === 1 && !!drawer
-    if (inDrawer && registry.get(layer) === "workspace") void toHome()
-    return
-  }
-  if (closerOpen()) stepBack()
+  if (!layers.length) return true
+  if (layers.length > 1) return false
+  // the drawer's layer is its viewport, which holds the scrim as well as the drawer
+  const drawer = layers[0].closest(".drawer") ?? layers[0].querySelector(".drawer")
+  return !!drawer && (!from || drawer.contains(from)) && registry.get(layer) === "workspace"
+}
+
+/** What a stroke to the right does: the drawer's step to the shelf, or the page's back, or the drawer opened. */
+const swipeRight = (from: Element | null): void => {
+  if (!swipeable(from)) return
+  if (openLayers().length) void toHome()
+  else if (closerOpen()) stepBack()
   else openDrawer()
 }
 
@@ -105,8 +113,9 @@ const swipe = definePrimitive({
       },
       pointerdown(event: PointerEvent, el: HTMLElement) {
         if (!context.store.get().enabled || event.button !== 0 || event.pointerType === "mouse") return
+        if (!event.isPrimary) return
         const from = event.target instanceof Element ? event.target : null
-        if (!from || from.closest(FIELD) || scrollsRight(from, el) || selecting()) return
+        if (!from || from.closest(FIELD) || scrollsRight(from, el) || selecting() || !swipeable(from)) return
         if (!host() && event.clientX < SWIPE.edge) return
         stop?.()
         const x0 = event.clientX

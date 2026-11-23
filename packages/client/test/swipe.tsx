@@ -3,9 +3,11 @@
 // for) and by a hand, strokes of pointer events dispatched on the page, where the recognizer itself is under test:
 // over a page on the reader a stroke to the right is one back; on the reader, with nothing to step out of, it opens
 // the drawer; in the drawer on a card's workspace it goes to the shelf, and on the shelf it does nothing. Then each
-// way a stroke yields: too short and slow, leftward, mostly down, a mouse, a press on a field, a press in a code block
-// scrolled away from its start, a text selection, a cancelled pointer, and the left edge in a plain browser (and not
-// in the app's host). The canvas's layout, where the surface is off, is test/controls.tsx's.
+// way a stroke yields: too short and slow, leftward, mostly down, a mouse, a press already taken, a second finger (and
+// the first finger's stroke going on through it), a real @ui-sdk slider (whose own drag still moves it) and a disabled
+// one, a sheet open over the page (the surface asks for no pointer and the click after the stroke lands), a press on a
+// field, a press in a code block scrolled away from its start, a text selection, a cancelled pointer, and the left
+// edge in a plain browser (and not in the app's host). The canvas's layout, where the surface is off, is test/controls.tsx's.
 // What a headless run cannot show: a real finger (touch-action, the browser's own pans and its pointercancel, the
 // system's edge gestures); the coarse-pointer stylesheet is only read here, never felt.
 import { render } from "@solidjs/web"
@@ -14,13 +16,16 @@ import { createAgent } from "@ui-sdk/solid/agent"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import { cardView } from "@effect-tavern/runtime/src/session.ts"
+import { For } from "solid-js"
+import { Slider, SliderControl, SliderThumb, SliderTrack } from "@ui-sdk/solid/slider"
 import { App } from "../src/App.tsx"
+import { openManager } from "../src/dialogs.tsx"
 import { openLayers, stepBack } from "../src/back.ts"
 import { flip, locale, t } from "../src/i18n.ts"
 import { open as openPage, openStory } from "../src/pages.ts"
 import { cards, card, layer, log, page, providers, registry, routing, stories, tabs } from "../src/store.ts"
 import type { StoryRow } from "../src/store.ts"
-import { SWIPE } from "../src/swipe.ts"
+import { SWIPE, Swipe } from "../src/swipe.ts"
 import { timelineNode } from "./fixtures.ts"
 import { quiet, touch, tracked, until } from "./settle.ts"
 import "../src/app.css"
@@ -107,35 +112,57 @@ const drawer = () =>
     .map((el) => el.querySelector<HTMLElement>(".drawer"))
     .find(Boolean)
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+// The elements asked for a pointer. A dispatched pointer is no live one, so the browser refuses to capture it (and
+// `hasPointerCapture` is false whatever the swipe does): what is watched is the asking, which on a phone would take the
+// pointer stream from whatever was pressed.
+const captures: Element[] = []
+const capture = Object.getOwnPropertyDescriptor(Element.prototype, "setPointerCapture")!
+Object.defineProperty(Element.prototype, "setPointerCapture", {
+  ...capture,
+  value(this: Element, id: number) {
+    captures.push(this)
+    return Reflect.apply(capture.value as (id: number) => void, this, [id])
+  },
+})
+const surfaceCaptured = () => captures.some((el) => el.matches('[data-slot="swipe"]'))
 
-type Hand = { pointerType?: string; gap?: number; cancel?: boolean; hold?: number; during?: () => void }
+type Hand = {
+  pointerType?: string
+  gap?: number
+  cancel?: boolean
+  hold?: number
+  during?: () => void
+  /** a finger other than the first down: its own id, and not primary */
+  second?: boolean
+}
+/** One pointer event as the browser sends it. */
+const send = (el: EventTarget, type: string, [x, y]: [number, number], pointerType = "touch", second = false) =>
+  el.dispatchEvent(
+    new PointerEvent(type, {
+      clientX: x,
+      clientY: y,
+      button: type === "pointermove" ? -1 : 0,
+      buttons: type === "pointerup" || type === "pointercancel" ? 0 : 1,
+      pointerId: second ? 8 : 7,
+      pointerType,
+      isPrimary: !second,
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+    }),
+  )
 /** A stroke of one pointer, as the browser sends it: down on `from` at its first point, a move every `gap` ms through
  *  the others, and the lift (or the browser taking it) at the last. */
 const stroke = async (from: Element, points: [number, number][], hand: Hand = {}) => {
-  const { pointerType = "touch", gap = 16, cancel = false, hold = 0, during } = hand
-  const send = (el: EventTarget, type: string, [x, y]: [number, number]) =>
-    el.dispatchEvent(
-      new PointerEvent(type, {
-        clientX: x,
-        clientY: y,
-        button: type === "pointermove" ? -1 : 0,
-        buttons: type === "pointerup" || type === "pointercancel" ? 0 : 1,
-        pointerId: 7,
-        pointerType,
-        isPrimary: true,
-        bubbles: true,
-        cancelable: true,
-        composed: true,
-      }),
-    )
-  send(from, "pointerdown", points[0])
+  const { pointerType = "touch", gap = 16, cancel = false, hold = 0, during, second = false } = hand
+  send(from, "pointerdown", points[0], pointerType, second)
   for (const [i, p] of points.slice(1).entries()) {
     await wait(gap)
-    send(from, "pointermove", p)
+    send(from, "pointermove", p, pointerType, second)
     if (i === 2) during?.()
   }
   await wait(gap + hold)
-  send(from, cancel ? "pointercancel" : "pointerup", points.at(-1)!)
+  send(from, cancel ? "pointercancel" : "pointerup", points.at(-1)!, pointerType, second)
   // the click a lift sends, in the same task
   if (!cancel) from.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }))
   await quiet()
@@ -248,6 +275,86 @@ const run = async () => {
   await stays("a stroke that turns steep", () => stroke(surface(), [...line(100, 300, 16, 0, 5), [200, 400]]))
   await stays("a mouse", () => right(surface(), 100, { pointerType: "mouse" }))
   await stays("a cancelled pointer", () => right(surface(), 100, { cancel: true }))
+  // a press something under it has already taken (as @ui-sdk's slider control takes its own) is no stroke: the SDK
+  // never hands the surface's part a prevented event
+  captures.length = 0
+  const taken = surface()
+  taken.addEventListener("pointerdown", (e) => e.preventDefault(), { once: true })
+  await stays("a press already taken", () => right(taken))
+  check(!surfaceCaptured(), "a press already taken: the surface asks for no pointer")
+  // a finger that is not the first down does not end the first one's stroke, and makes none of its own
+  const held = surface()
+  await stroke(held, line(100, 300, 16, 0, 10), { during: () => send(held, "pointerdown", [300, 420], "touch", true) })
+  check(await until(() => at() === '"reader"'), `a second finger down during a stroke does not end it: ${at()}`)
+  check(await onCard(), "the card's page again")
+  await stays("a second finger's stroke", () => right(surface(), 100, { second: true }))
+
+  // a stroke on a real @ui-sdk slider is the slider's (its own drag still moves it), and on a disabled one nothing's,
+  // under a surface of its own beside the app's
+  const sliders = document.createElement("div")
+  sliders.style.cssText =
+    "position: fixed; left: 60px; top: 160px; width: 240px; z-index: 10; background: var(--surface)"
+  document.body.append(sliders)
+  const moved: number[] = []
+  const unmount = render(
+    () => (
+      <Swipe enabled aria-label="sliders">
+        <For each={[false, true]}>
+          {(disabled) => (
+            <Slider
+              min={0}
+              max={4}
+              step={1}
+              disabled={disabled}
+              onValueChange={(v) => moved.push(typeof v === "number" ? v : (v[0] ?? 0))}
+            >
+              <SliderControl style={{ display: "block", height: "32px", width: "200px" }}>
+                <SliderTrack style={{ display: "block", height: "32px" }}>
+                  <SliderThumb aria-label={disabled ? "off" : "on"} />
+                </SliderTrack>
+              </SliderControl>
+            </Slider>
+          )}
+        </For>
+      </Swipe>
+    ),
+    sliders,
+  )
+  await quiet()
+  const [on, off] = sliders.querySelectorAll<HTMLElement>('[data-slot="slider-control"]')
+  check(on && off, "the sliders are on the page")
+  for (const [what, control] of [
+    ["a stroke on a slider", on],
+    ["a stroke on a disabled slider", off],
+  ] as const) {
+    const box = control.getBoundingClientRect()
+    moved.length = 0
+    await stays(what, () => stroke(control, line(box.left + 10, box.top + box.height / 2, 18, 0, 10)))
+    check(control === on ? moved.at(-1) === 4 : !moved.length, `${what} moves it as its own drag: ${moved.join()}`)
+  }
+  unmount()
+  sliders.remove()
+
+  // over a layer that is not the drawer (the story manager's sheet) a stroke takes nothing: it asks for no pointer, and
+  // the click after it lands
+  openManager()
+  check(await until(() => openLayers().length === 1), "the story manager opens over the page")
+  await quiet()
+  const sheet = openLayers()[0]
+  check(document.querySelector('[data-slot="swipe"]')!.contains(sheet), "the sheet lies under the swipe surface")
+  const head = sheet.querySelector("h1, h2") ?? sheet
+  const h = head.getBoundingClientRect()
+  captures.length = 0
+  clicks = 0
+  document.addEventListener("click", counted)
+  await stroke(head, line(h.left + 4, h.top + h.height / 2, 16, 0, 10))
+  document.removeEventListener("click", counted)
+  check(!surfaceCaptured(), "a stroke on a sheet: the surface asks for no pointer")
+  check(clicks === 1, `a stroke on a sheet: the click after it lands (${clicks})`)
+  check(openLayers().length === 1 && at() === '"card"', `a stroke on a sheet: it stays, and the page (${at()})`)
+  stepBack()
+  check(await until(() => !openLayers().length), "the sheet closes")
+  await quiet()
   check(!("tavernHost" in globalThis), "a plain browser, with no app host")
   await stays("a press at the left edge of a plain browser", () => right(surface(), SWIPE.edge - 4))
   // a short quick flick counts where the same distance slowly does not
