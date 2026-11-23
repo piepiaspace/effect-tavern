@@ -101,6 +101,14 @@
   overflow: hidden;
   background: var(--surface-1);
 }
+/* a phone on its side: the one card on the screen keeps its head, its scroller and its foot clear of the notch and
+   the rounded corners, as the bar above it does */
+@media (width < 72rem) {
+  .settings .master-card,
+  .settings .detail-card {
+    padding-inline: var(--safe-left) var(--safe-right);
+  }
+}
 .settings[data-pane="list"] .detail-card,
 .settings[data-pane="detail"] .master-card {
   display: none;
@@ -1482,17 +1490,6 @@
   .msg-tool-row,
   .hat-tool-grid {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-@media (width < 72rem) {
-  .settings .modal:has(.hat-modal-text) {
-    width: 100%;
-    max-height: calc(100dvh - var(--space-6));
-    margin: auto 0 0;
-    border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
-  }
-  .settings .modal:has(.hat-modal-text) .modal-foot {
-    padding-bottom: calc(var(--space-3) + var(--safe-bottom));
   }
 }
 .persona-text {

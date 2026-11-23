@@ -29,6 +29,7 @@ import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPa
 import { apart, lineOf, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
 import { shrinkwrap } from "./shrinkwrap.ts"
+import { gutter } from "./viewport.ts"
 import {
   updateComposition,
   dismiss,
@@ -532,6 +533,7 @@ const Section = (props: { node: Node; n: number; last: boolean }) => {
                 side="top"
                 align="center"
                 sideOffset={8}
+                collisionPadding={gutter()}
               >
                 <For each={siblings()} keyed={(s) => s.id}>
                   {(s, i) => (

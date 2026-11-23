@@ -837,9 +837,6 @@
 
 /* desktop: the canvas, two cards, the title and the sums in the bar, no switch */
 @media (min-width: 64rem) {
-  .inspect {
-    background: var(--surface-0);
-  }
   .inspect .top {
     padding-inline: var(--space-4) var(--space-5);
   }
@@ -870,5 +867,20 @@
   }
   .inspect .metrics {
     grid-column: auto;
+  }
+}
+/* the canvas's colour waits for the shell's canvas (72rem). A tablet between the two widths keeps the page's surface
+   for its ground, the one colour an app's host paints behind the system bars (#226), and a hairline closes each card
+   where the ground no longer sets it off */
+@media (min-width: 72rem) {
+  .inspect {
+    background: var(--surface-0);
+  }
+}
+@media (min-width: 64rem) and (width < 72rem) {
+  .inspect .pane {
+    box-shadow:
+      var(--shadow-1),
+      inset 0 0 0 var(--hairline) var(--line);
   }
 }
