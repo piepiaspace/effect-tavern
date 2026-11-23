@@ -317,6 +317,7 @@ const run = async () => {
           button: 0,
           pointerId: 3,
           pointerType: "touch",
+          isPrimary: true, // the first finger down (a dispatched event is not primary unless it says so)
           bubbles: true,
         }),
       )
