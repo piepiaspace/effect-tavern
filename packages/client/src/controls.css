@@ -512,10 +512,12 @@
   :is(.settings, .workshop-page, .wpage) .modal.narrow {
     width: min(24rem, 100%);
   }
-  /* only a sheet that reaches the screen's sides has their insets to clear: on a phone on its side it stands
-     between them */
+  /* a phone held upright: every sheet is the screen's whole width, the narrow one too (at its own 24rem it left a
+     sliver of scrim down each side of a 390px screen). Only a sheet that reaches the screen's sides has their insets
+     to clear: on a phone on its side it stands between them */
   @media (width <= 29rem) {
     :is(.settings, .workshop-page, .wpage) .modal:not(.full) {
+      width: 100%;
       padding-inline: var(--safe-left) var(--safe-right);
     }
   }
