@@ -268,7 +268,14 @@
   height: 88%;
   display: grid;
   place-items: center;
-  will-change: transform;
+}
+/* its own layer only where the parallax moves it (a mouse, home-mechanism.tsx `applyStage`): the emblem blends with
+   the page (multiply, screen in the dark), and on iOS a blend inside a layer of its own was dropped from the screen a
+   moment after a sheet over home closed, leaving the hairline frame alone */
+@media (hover: hover) and (pointer: fine) {
+  .home-emblem-wrap {
+    will-change: transform;
+  }
 }
 .home-mech[data-shape="square"] .home-emblem-wrap {
   height: 76%;
