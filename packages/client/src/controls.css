@@ -391,11 +391,10 @@
   box-shadow: var(--shadow-pop);
   outline: none;
 }
-/* a phone: the drawer is the whole screen, so it has no corner for the scrim to show through, and its left edge is
-   the screen's too (in landscape, the side a notch may be on) */
-@media (width < 72rem) {
+/* a screen no wider than the drawer: the drawer is the whole screen, so it has no corner for the scrim to show
+   through, and its left edge is the screen's too. On anything wider it stays the panel it is */
+@media (width <= 29rem) {
   .side-drawer {
-    width: 100%;
     padding-left: var(--safe-left);
     border-radius: 0;
   }
@@ -498,16 +497,27 @@
   height: calc(100dvh - 2 * var(--space-4));
 }
 @media (width < 72rem) {
-  /* a phone: a dialog stands on the screen's bottom edge, the sheet's shape (chrome.css .sheet): flush with the bottom
-     and both sides, only its top corners round, its top kept under the status bar. Its own padding clears the home
-     indicator and a landscape notch, so a dialog with no foot is clear of them as well. The confirm (chrome.css) is
-     not one of these: it stays the small centred card a system alert is */
+  /* under the canvas's width a dialog stands on the screen's bottom edge, the sheet's shape (chrome.css .sheet): its
+     own width at most, centred, only its top corners round, its top kept under the status bar. On a phone held
+     upright that is the screen's whole width. Its own padding clears the home indicator, so a dialog with no foot is
+     clear of it as well. The confirm (chrome.css) is not one of these: it stays the small centred card a system
+     alert is */
   :is(.settings, .workshop-page, .wpage) .modal:not(.full) {
-    width: 100%;
+    width: min(29rem, 100%);
     max-height: calc(100dvh - var(--safe-top) - var(--space-6));
-    margin: auto 0 0;
-    padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+    margin: auto auto 0;
+    padding-bottom: var(--safe-bottom);
     border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
+  }
+  :is(.settings, .workshop-page, .wpage) .modal.narrow {
+    width: min(24rem, 100%);
+  }
+  /* only a sheet that reaches the screen's sides has their insets to clear: on a phone on its side it stands
+     between them */
+  @media (width <= 29rem) {
+    :is(.settings, .workshop-page, .wpage) .modal:not(.full) {
+      padding-inline: var(--safe-left) var(--safe-right);
+    }
   }
   :is(.settings, .workshop-page, .wpage) .modal.full {
     width: 100%;
