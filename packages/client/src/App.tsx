@@ -53,6 +53,7 @@ import {
   type Draft as DraftState,
   type Failure,
   type Id,
+  type Page,
   working,
 } from "./store.ts"
 import { turn } from "./turn.ts"
@@ -70,6 +71,40 @@ const ManuscriptPage = lazy(() => import("./workshop.tsx"), { export: "Manuscrip
 const Workshop = lazy(() => import("./workshop.tsx"), { export: "Workshop" })
 const Timeline = lazy(() => import("./timeline.tsx"), { export: "Timeline" })
 const WritingPage = lazy(() => import("./writing.tsx"), { export: "WritingPage" })
+/** Each lazily loaded page's code, by the page's kind. */
+const chunks: Partial<Record<string, { preload: () => Promise<unknown> }>> = {
+  card: CardPage,
+  inspect: Inspect,
+  "prompt-tree": PromptTreePage,
+  settings: Settings,
+  manuscript: ManuscriptPage,
+  workshop: Workshop,
+  timeline: Timeline,
+  writing: WritingPage,
+}
+const landed = new Set<string>()
+/** The page the stage draws: the one asked for, once its code is here (#226). The first entry to a lazily loaded page
+ *  loads its chunk before the page changes, so what was on screen (home, or the page under it) stays until the new one
+ *  can be drawn whole, instead of an empty stage under the fallback for a frame. A chunk that fails is the page's own
+ *  error to show (`LazyPage`, with its retry), so the page is drawn then too. A cold start has nothing on screen to
+ *  keep: its page is drawn at once, under its fallback. */
+const drawnPage = (asked: () => Page) => {
+  let first = true
+  return createMemo((): Page | Promise<Page> => {
+    const p = asked()
+    const start = first
+    first = false
+    const kind = typeof p === "object" ? "inspect" : p
+    const chunk = chunks[kind]
+    if (!chunk || landed.has(kind)) return p
+    const load = chunk.preload().then(() => void landed.add(kind))
+    if (start) return p
+    return load.then(
+      () => p,
+      () => p,
+    )
+  })
+}
 
 const paragraphs = blocks // the reader's own cut, so the editor opens on the paragraphs the reader drew
 
@@ -640,7 +675,7 @@ const LazyPage = (props: { settings?: boolean; children: JSX.Element }) => (
 )
 
 export const App = () => {
-  const pg = read(page)
+  const pg = drawnPage(read(page))
   // one Escape rule for every page over the reader, and the system's back one step out of what is on top (back.ts)
   onSettled(() => {
     addEventListener("keydown", onKey)

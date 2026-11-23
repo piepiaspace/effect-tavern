@@ -8,6 +8,8 @@
 //   in their search where a mouse is; under a finger the sheet takes it, and no keyboard rises.
 // - reach: the home mechanism's two 20px toggles take a finger up to 12px off their face, each keeping all of its own
 //   face, and are drawn and laid out the same; a mouse hits them on their face alone.
+// - a lazy page entered from home for the first time (the settings) loads its code before home leaves: at no moment in
+//   between is the stage empty.
 // What a headless run cannot show: a real long press (the selection handles, the link preview a long press on a link
 // opens in an iOS web view), a finger's sideways scroll handed on or not, and a soft keyboard; only the computed styles
 // and the focus that decide them.
@@ -20,6 +22,7 @@ import { App } from "../src/App.tsx"
 import { openManager, openPicker } from "../src/dialogs.tsx"
 import { flip, locale } from "../src/i18n.ts"
 import { close as closePage, open as openPage } from "../src/pages.ts"
+import { openSettings } from "../src/settings-navigation.ts"
 import { card, cards, log, page, providers, registry, routing, stories, tabs, type StoryRow } from "../src/store.ts"
 import { timelineNode } from "./fixtures.ts"
 import { quiet, tracked, until } from "./settle.ts"
@@ -184,6 +187,20 @@ const run = async () => {
     check(hit(a.right - 1, a.top + 10) === sound, "the sound toggle's face is its own to its right edge")
     check(hit(b.left + 1, b.top + 10) === motion, "and the motion toggle's to its left")
   } else check(false, "the home mechanism has its two toggles")
+
+  // a lazy page's first entry: home stays until the page is there (each change the DOM goes through is looked at)
+  const empty: string[] = []
+  const watch = new MutationObserver(() => {
+    if (!document.querySelector(".home-page, .settings")) empty.push(at())
+  })
+  watch.observe(document.getElementById("root")!, { childList: true, subtree: true })
+  openSettings("personas")
+  check(await until(() => document.querySelector(".settings")), `the settings open: ${at()}`)
+  watch.disconnect()
+  check(empty.length === 0, `the stage was left empty on the way: ${JSON.stringify(empty)}`)
+  await quiet()
+  closePage()
+  await until(() => at() === '"home"')
   closePage()
   await until(() => at() === '"reader"')
   await quiet()
