@@ -1,7 +1,7 @@
 // Reusable interactive mechanical stage for Home: hosts any HomeFigure inside the shared HairlineFrame, driving
 // spring-damped kinematics, adaptive 24fps/60fps rAF scheduling, pointer parallax, Web Audio clockwork soundscape,
 // telemetry readout, and WCAG 2.2.2 motion/sound controls. Zero figure-specific geometry lives here.
-import { createEffect, createMemo, createSignal, onSettled, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, onSettled, Show, untrack } from "solid-js"
 import { HairlineFrame, type DirtyCheck, type FigureRig, type HomeFigure, type StageState } from "./home-figure.tsx"
 import { DEFAULT_SOUND_PROFILE, type MechanicalSound } from "./home-sound.ts"
 import { active } from "./host.ts"
@@ -92,7 +92,7 @@ export const HomeMechanism = (props: {
     lastMove: -Infinity,
     paused: reducedMotion(),
     lastDetent: 0,
-    watched: true,
+    watched: untrack(() => watched()), // as of now; the effect on `watched` below follows it
   }
 
   let wake: (() => void) | undefined

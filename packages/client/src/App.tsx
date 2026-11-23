@@ -97,12 +97,12 @@ const drawnPage = (asked: () => Page) => {
     const kind = typeof p === "object" ? "inspect" : p
     const chunk = chunks[kind]
     if (!chunk || landed.has(kind)) return p
-    const load = chunk.preload().then(() => void landed.add(kind))
-    if (start) return p
-    return load.then(
-      () => p,
-      () => p,
+    // a chunk that fails is LazyPage's to show; here it only ends the wait (and is never an unhandled rejection)
+    const load = chunk.preload().then(
+      () => void landed.add(kind),
+      () => {},
     )
+    return start ? p : load.then(() => p)
   })
 }
 
