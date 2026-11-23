@@ -8,3 +8,5 @@ CHANGELOG.md
 upload.jks
 .mygo/
 icon/.*
+# the typed client `mygo build` and `mygo dev` write for the bound Host service; web/host.ts calls it by name instead
+/mygo.ts

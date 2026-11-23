@@ -40,6 +40,26 @@ func TestCleanName(t *testing.T) {
 		".":                   "",
 		"..":                  "",
 		" / ":                 "_",
+		// names Windows takes for devices, whatever their case or what follows the first dot
+		"NUL":           "_NUL",
+		"nul.md":        "_nul.md",
+		"Con.pack.json": "_Con.pack.json",
+		"PRN.yaml":      "_PRN.yaml",
+		"aux":           "_aux",
+		"COM1.md":       "_COM1.md",
+		"com9":          "_com9",
+		"LPT1.json":     "_LPT1.json",
+		"lpt9.tar.gz":   "_lpt9.tar.gz",
+		"NUL .md":       "_NUL .md",
+		"COM².md":       "_COM².md",
+		// and names that only look like them
+		"NULL.md":    "NULL.md",
+		"CONSOLE.md": "CONSOLE.md",
+		"COM.md":     "COM.md",
+		"COM10.md":   "COM10.md",
+		"LPT.md":     "LPT.md",
+		"my.NUL":     "my.NUL",
+		"auxiliary":  "auxiliary",
 	} {
 		if got := cleanName(raw); got != want {
 			t.Errorf("cleanName(%q) = %q, want %q", raw, got, want)
