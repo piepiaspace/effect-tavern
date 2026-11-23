@@ -40,8 +40,12 @@ const fixtures: [file: string, passed: (snapshot: unknown[]) => string, flags?: 
   // the composer takes the focus on entry only where a mouse is (home.tsx `finePointer`), which headless Chrome has only when told
   ["test/home.tsx", (s) => `home free-chat flow and visibility rules pass, in ${s.length} requests`, [FINE]],
   ["test/workshop.tsx", (s) => `a card is made, written and saved through the workshop, in ${s.length} requests`],
-  ["test/touch.tsx", () => "on a touch screen the chrome selects no text and the reading does", [COARSE]],
-  ["test/touch.tsx", () => "on a mouse the text selects as it always has", [FINE]],
+  [
+    "test/touch.tsx",
+    () => "on a touch screen the chrome selects no text, the reading does, and a sheet opens raising no keyboard",
+    [COARSE],
+  ],
+  ["test/touch.tsx", () => "on a mouse the text selects as it always has, and a sheet opens on its search", [FINE]],
 ]
 const only = process.argv.slice(2)
 const unknown = only.filter((name) => !fixtures.some(([file]) => file === name))

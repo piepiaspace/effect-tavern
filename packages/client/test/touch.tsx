@@ -4,14 +4,18 @@
 // - text: on a touch screen the chrome selects nothing, and the prose, the player's line, the fields and the inspect
 //   panes select again, their keys excepted; a mouse selects what it always has. A fence keeps its sideways scroll
 //   to itself.
+// - focus: the persona picker and the story manager, opened by a call (as the drawer's rows open them), put the focus
+//   in their search where a mouse is; under a finger the sheet takes it, and no keyboard rises.
 // What a headless run cannot show: a real long press (the selection handles, the link preview a long press on a link
-// opens in an iOS web view), and a finger's sideways scroll handed on or not; only the computed styles that decide them.
+// opens in an iOS web view), a finger's sideways scroll handed on or not, and a soft keyboard; only the computed styles
+// and the focus that decide them.
 import { render } from "@solidjs/web"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import { cardView } from "@effect-tavern/runtime/src/session.ts"
 import { App } from "../src/App.tsx"
+import { openManager, openPicker } from "../src/dialogs.tsx"
 import { flip, locale } from "../src/i18n.ts"
 import { close as closePage, open as openPage } from "../src/pages.ts"
 import { card, cards, log, page, providers, registry, routing, stories, tabs, type StoryRow } from "../src/store.ts"
@@ -156,6 +160,27 @@ const run = async () => {
   closePage()
   await until(() => at() === '"reader"')
   await quiet()
+
+  // focus: a sheet that opens on its search
+  const named = (el: Element | null) =>
+    el ? `${el.tagName.toLowerCase()}${el.className ? "." + String(el.className).replaceAll(" ", ".") : ""}` : "nothing"
+  for (const [name, show] of [
+    ["the persona picker", openPicker],
+    ["the story manager", openManager],
+  ] as const) {
+    show()
+    const search = () => document.querySelector<HTMLInputElement>(".sheet input[type=search]")
+    check(await until(() => search()?.checkVisibility()), `${name} opens`)
+    await quiet()
+    const on = document.activeElement
+    check(
+      coarse ? on !== search() && !!search()?.closest(".sheet")?.contains(on) : on === search(),
+      `${name} opens with the focus on ${named(on)}`,
+    )
+    on?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }))
+    check(await until(() => !search()), `${name} closes`)
+    await quiet()
+  }
 
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)

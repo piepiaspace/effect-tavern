@@ -6,7 +6,7 @@ import type { Shape } from "@effect-tavern/runtime/src/product.ts"
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import { type JSX } from "@solidjs/web"
 import { type ComponentProps, createMemo, For, Match, Show, Switch } from "solid-js"
-import { wide } from "./viewport.ts"
+import { coarse, openingFocus, wide } from "./viewport.ts"
 import { read } from "./bridge.ts"
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/solid/menu"
@@ -425,12 +425,13 @@ export const Sheet = (props: {
   tools?: JSX.Element
   children: JSX.Element
   footer?: JSX.Element
+  /** A field the sheet opens on (a CSS selector): not on a touch screen (viewport.ts `openingFocus`). */
   focus?: string
   onOpenChange?: ComponentProps<typeof Dialog>["onOpenChange"]
 }) => {
   return (
     <Dialog controller={props.controller} presentation={wide() ? "dialog" : "sheet"} onOpenChange={props.onOpenChange}>
-      <DialogContent class={{ sheet: true, fit: !!props.fit }} initialFocus={props.focus}>
+      <DialogContent class={{ sheet: true, fit: !!props.fit }} initialFocus={openingFocus(props.focus, coarse())}>
         <header>
           <DialogTitle>{props.heading}</DialogTitle>
           {props.tools}
