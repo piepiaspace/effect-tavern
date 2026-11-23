@@ -54,6 +54,7 @@ packages/
   provider/   Language & decision model connections, AI SDK compilation (Anthropic / OpenAI / Gemini), cache & stream primitives
   server/     SQLite library, the card shelf & optional card libraries, HTTP + SSE host, Workshop endpoints (compile / sort / review), and `tavern` CLI
   client/     Solid 2.0 + @ui-sdk web client: spatial Shell, Reader, Card Page, Readings, Inspector, Timeline, Packs & Settings
+  app/        The installed app for desktops and phones: the web UI and the whole server in one system web view, over a thin Go host (MyGo)
 skills/
   card-author/  Progressive-disclosure agent skill for authoring, testing, and remastering cards
 samples/        Full remastered exemplar cards (e.g. `life-of-pi` with multi-day `passages` and `digest` boundaries)
@@ -84,6 +85,27 @@ docker run -d -p 127.0.0.1:7777:7777 -v tavern:/data ghcr.io/piepiaspace/effect-
 Then `tavern start`. Updating, locations and uninstalling: [CLI docs](https://piepiaspace.github.io/effect-tavern/cli/).
 
 The program ships with no cards. A new install's shelf is empty: open **Settings → Cards** to import one card (drop or pick a `.yaml` / `.json` file, or paste the card's own `https` link), or to add a card library by its `https` address and install cards from it.
+
+### Desktop & Phone App
+
+The app (`packages/app`) is the same tavern without a terminal: one window on the system's web view, the server running inside the page, and a thin Go host ([MyGo](https://github.com/egoist/mygo)) that holds the library's SQLite, the save picker, the clipboard and the appearance. Every release carries its installers beside the `tavern` binaries: [latest release](https://github.com/piepiaspace/effect-tavern/releases/latest).
+
+| System                          | Installer                        |
+| ------------------------------- | -------------------------------- |
+| macOS 14.5 or later (universal) | `.dmg`, ad hoc signed            |
+| Windows x64 and arm64           | `-setup-*.exe`, unsigned         |
+| Linux amd64 and arm64           | `.deb`, or the `.tar.gz` archive |
+| Android arm64                   | `.apk`                           |
+
+iOS is configured in `packages/app/mygo.json` (iOS 17.5 or later), but no release job builds it and no installer is published.
+
+The app keeps its own library, apart from the `tavern` command's `~/.tavern`: `tavern.db` in a folder named after the app, under `~/Library/Application Support` on macOS, `%AppData%` on Windows, `$XDG_CONFIG_HOME` (or `~/.config`) on Linux, and inside the app's own storage on Android and iOS.
+
+```sh
+cd packages/app
+bun run verify                             # go test -count=1 ./... && bun test/page.ts (the server bundle run as a page)
+go tool mygo build -platform linux/amd64   # runs bun web/build.ts, then packages into build/
+```
 
 ### Prerequisites
 
