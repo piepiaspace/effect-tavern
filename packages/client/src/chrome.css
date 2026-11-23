@@ -1159,8 +1159,6 @@ button.record-pill:active {
   padding-top: var(--space-1);
   line-height: var(--leading-tight);
   overflow-wrap: anywhere;
-  user-select: text;
-  -webkit-user-select: text;
 }
 .play-names .c,
 .play-names .s.unnamed {
