@@ -125,17 +125,19 @@ export const Menu = <T extends string>(props: {
         </Show>
         <Caret class="caret" />
       </SelectTrigger>
-      <SelectContent class={{ "popup-list": true, scroller: true, fit: !!props.fit }} sideOffset={4} align="start">
-        <For each={props.options} keyed={(o) => o.value}>
-          {(o) => (
-            <SelectItem value={o().value} class="item">
-              <span class="name">
-                <Show when={o().glyph}>{(g) => <Family id={g()} />}</Show>
-                <span class="text">{o().label}</span>
-              </span>
-            </SelectItem>
-          )}
-        </For>
+      <SelectContent class={{ "popup-list": true, framed: true, fit: !!props.fit }} sideOffset={4} align="start">
+        <div class="rows scroller">
+          <For each={props.options} keyed={(o) => o.value}>
+            {(o) => (
+              <SelectItem value={o().value} class="item">
+                <span class="name">
+                  <Show when={o().glyph}>{(g) => <Family id={g()} />}</Show>
+                  <span class="text">{o().label}</span>
+                </span>
+              </SelectItem>
+            )}
+          </For>
+        </div>
       </SelectContent>
     </Select>
   )

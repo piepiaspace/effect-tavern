@@ -188,6 +188,8 @@
 .popup-list.fit:not([data-presentation="sheet"]) {
   width: var(--anchor-width);
   max-width: var(--anchor-width);
+}
+.popup-list.fit:not([data-presentation="sheet"]) > .rows {
   scrollbar-gutter: auto;
 }
 

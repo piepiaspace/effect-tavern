@@ -670,6 +670,21 @@ button.record-pill:active {
   width: 14px;
   height: 14px;
 }
+/* a select's list is a frame round a scroller of rows, never a scroller itself: on a phone the frame is the sheet
+   @ui-sdk slides in, whose driver holds an inner scroller still until the sheet is at full height and then hands it
+   the finger (sheet-scroll-snap.ts). A sheet that scrolls itself is a scroll layer moved on the compositor, and iOS
+   paints its rows blank until a finger scrolls it */
+.popup-list.framed {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.popup-list.framed > .rows {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .popup-list[data-presentation="sheet"] {
   width: 100%;
   max-width: none;
