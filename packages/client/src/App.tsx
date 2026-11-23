@@ -33,6 +33,7 @@ import {
   updateComposition,
   dismiss,
   draft,
+  drawn,
   editing,
   error,
   log,
@@ -583,13 +584,9 @@ const Reader = () => {
   // the draft hangs under its parent: a sibling of a past turn cuts the line there while it is written
   // equal by its nodes: the draft changes every frame while prose streams, and a fresh but same slice must not
   // re-run every section ([UNSTABLE_MEMO_OUTPUT] under the diagnostics)
-  const shown = createMemo(
-    () => {
-      const dr = d()
-      return dr ? line().slice(0, line().findIndex((n) => n.id === dr.parent) + 1) : line() // a root's draft: nothing above
-    },
-    { equals: (a, b) => a.length === b.length && a.every((n, i) => n === b[i]) },
-  )
+  const shown = createMemo(() => drawn(line(), d()), {
+    equals: (a, b) => a.length === b.length && a.every((n, i) => n === b[i]),
+  })
   return (
     <div class="panel">
       <div class="scroll">
@@ -638,7 +635,7 @@ const LazyPage = (props: { settings?: boolean; children: JSX.Element }) => (
 
 export const App = () => {
   const pg = read(page)
-  // one Escape rule for every page over the reader, and the system's back as Escape (back.ts)
+  // one Escape rule for every page over the reader, and the system's back one step out of what is on top (back.ts)
   onSettled(() => {
     addEventListener("keydown", onKey)
     const unmountBack = mountBack()

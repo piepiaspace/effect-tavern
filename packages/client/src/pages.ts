@@ -10,6 +10,7 @@
 // back from any page, which also puts the open story's card back in the view. Landing reads the story's card (stories of every card
 // share one listing) and picks up a turn in flight there. One Escape rule for every page, mounted once by the App. The
 // reader stays mounted under all of it, so a turn in flight keeps streaming; another story only stops reading it.
+import { closable } from "./back.ts"
 import { emptyDraft } from "./composition.ts"
 import { latestOf } from "./stories.ts"
 import { reading } from "./reading.ts"
@@ -91,6 +92,15 @@ export const backOf = (t: Tab): "story" | "home" | "workshop" | null => {
   if (to === "home") return "home"
   if (to === "workshop" || to === "manuscript") return "workshop"
   return t.under.length || t.story !== null ? "story" : null
+}
+/** How many `close`s take this tab to the bottom of its stack (the reader, or home): what the system's back holds
+ *  history entries for (back.ts). Every page under counts, down to the first home; with none under, one more close
+ *  reaches the story's reader, and a tab with no story is at its bottom already (`backOf` is null: no Back is drawn). */
+export const stepsOf = (t: Pick<Tab, "page" | "under" | "story">): number => {
+  if (t.page === "reader" || t.page === "home") return 0
+  const home = t.under.lastIndexOf("home")
+  if (home !== -1) return t.under.length - home
+  return t.under.length + (t.story === null ? 0 : 1)
 }
 /** The open story's row, when the listing names one. */
 const current = () => {
@@ -385,6 +395,16 @@ export const onKey = (e: KeyboardEvent): void => {
   if (what === "blur") (e.target as HTMLElement).blur()
   else if (what === "close") {
     e.preventDefault()
-    ;(closeGuard?.page === kindOf(at) ? closeGuard.run : close)()
+    leave()
   }
 }
+/** One step out of the page on top, for Escape and the system's back alike: the mounted page's guard when it has one
+ *  (the workshop saves first), else `close`. */
+const leave = (): void => {
+  const at = registry.get(page)
+  if (at === "reader" || at === "home") return
+  ;(closeGuard?.page === kindOf(at) ? closeGuard.run : close)()
+}
+// The page stack answers the system's back for itself (back.ts): as many steps as closes reach the bottom.
+const offPages = closable({ steps: () => stepsOf(activeOf(tabs())), close: leave })
+import.meta.hot?.dispose(offPages) // a hot reload registers the new module's own

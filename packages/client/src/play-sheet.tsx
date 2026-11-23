@@ -82,7 +82,10 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
   const shelf = read(cards)
   const pg = read(page)
   const pairs = createMemo(() => modelOptions(list()))
-  const hatChoices = createMemo(() => hatOptions(hatList()))
+  // the template list is read again each time the settings open, mostly to the same rows: equal options are one value
+  const hatChoices = createMemo(() => hatOptions(hatList()), {
+    equals: (a, b) => a.length === b.length && a.every((o, i) => o.value === b[i]?.value && o.label === b[i]?.label),
+  })
   const byStage = () => !!route().stages
   const freeChat = () => isFreeChat(shelf().find((c) => c.id === at()) ?? at(), shelf())
   // what following the main model or template resolves to, named in the follow row and so on its trigger

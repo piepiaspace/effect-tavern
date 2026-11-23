@@ -34,3 +34,9 @@ export const quiet = async () => {
     return still >= 3
   })
 }
+/** The first touch, stood in for: headless Chrome is never pressed, so `navigator.userActivation` stays false and the
+ *  system back (src/back.ts) would hold its history entries back, as it does on a cold start. */
+export const touch = () => {
+  Object.defineProperty(navigator, "userActivation", { configurable: true, value: { hasBeenActive: true } })
+  document.body.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }))
+}

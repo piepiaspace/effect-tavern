@@ -1,7 +1,9 @@
 // `vp run verify:ui`: the browser fixtures in headless Chrome, each posting its result back here: the shared controls
 // through the agent bridge (test/controls.tsx), then the settings page's 卡片 section over a stand-in server
 // (test/cards.tsx), then the workshop's two pages the same way (test/workshop.tsx); the reader's phone play sheet
-// (test/play-sheet.tsx) among the others. Not in `verify`: it needs a browser. CHROME names the binary when it is not the macOS default.
+// (test/play-sheet.tsx) and the system's back over the whole app (test/back.tsx) among the others. Not in `verify`: it
+// needs a browser. CHROME names the binary when it is not the macOS default. Fixtures named as arguments run alone:
+// `bun test/ui.ts test/back.tsx`.
 import assert from "node:assert/strict"
 import { existsSync, rmSync } from "node:fs"
 import { dirname } from "node:path"
@@ -25,10 +27,18 @@ const fixtures: [file: string, passed: (snapshot: unknown[]) => string][] = [
     "test/play-sheet.tsx",
     (s) => `the reader's play sheet routes, holds while running and stacks the picker, in ${s.length} writes`,
   ],
+  [
+    "test/back.tsx",
+    (s) => `the system's back steps out of layers, pages, a settings detail and an edit, in ${s.length} pushed entries`,
+  ],
   ["test/home.tsx", (s) => `home free-chat flow and visibility rules pass, in ${s.length} requests`],
   ["test/workshop.tsx", (s) => `a card is made, written and saved through the workshop, in ${s.length} requests`],
 ]
+const only = process.argv.slice(2)
+const unknown = only.filter((name) => !fixtures.some(([file]) => file === name))
+assert.deepEqual(unknown, [], "no such fixture")
 for (const [fixture, passed] of fixtures) {
+  if (only.length && !only.includes(fixture)) continue
   const page = (await $`bun test/build-browser.ts ${fixture}`.text()).trim()
   const result = Promise.withResolvers<{ failures: string[]; snapshot: unknown[] }>()
   const server = Bun.serve({

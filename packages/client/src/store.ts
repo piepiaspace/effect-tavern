@@ -39,6 +39,7 @@ import type {
 } from "@effect-tavern/runtime/src/projection.ts"
 import * as Atom from "./atom.ts"
 import { registry } from "./atom.ts"
+import { closable } from "./back.ts"
 import { type Key, t } from "./i18n.ts"
 
 export const stageNames: Record<Phase, Key> = {
@@ -216,6 +217,23 @@ export const path = Atom.make((get) => {
   const l = get(log)
   return l.head === null ? emptyPath : L.path(l)
 })
+/** What the reader draws of the reading line: all of it, or down to a draft's parent while the draft is written (a
+ *  sibling of a past turn cuts the line there; a root's draft leaves nothing above). */
+export const drawn = (line: Node[], d: Pick<Draft, "parent"> | null): Node[] =>
+  d ? line.slice(0, line.findIndex((n) => n.id === d.parent) + 1) : line
+// The system's back cancels the edit, as Escape does (back.ts). It is a step only while the editor is on the page:
+// `editing` outlives its node's place on the line (another version checked out above it, a draft written above it),
+// and a step with no editor to close would be a back that does nothing. Registered here, ahead of the page stack
+// (pages.ts imports this module), so a page opened over the reader is stepped out of first and the edit under it still
+// counts. The line and the draft are read only while an edit is open: a streaming draft moves nothing otherwise.
+const offEditing = closable({
+  steps: () => {
+    const id = editing()
+    return id !== null && drawn(path(), draft()).some((n) => n.id === id) ? 1 : 0
+  },
+  close: () => registry.set(editing, null),
+})
+import.meta.hot?.dispose(offEditing) // a hot reload registers the new module's own
 
 /** The last node on the reading line and the one before it (its parent): what the header's dot, the Status table and
  *  the desktop's inline Record read. */
