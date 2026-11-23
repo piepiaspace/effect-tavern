@@ -8,6 +8,7 @@ import { emptyDraft, type DraftModel } from "./composition.ts"
 // story the client lands on (its draft, then its events). Abandon is the story switch's: the client stops reading and
 // drops the draft; the turn runs on, on the server, and is there to attach to when the player comes back.
 import * as L from "@effect-tavern/runtime/src/log.ts"
+import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
 import { whenActive as watched } from "./host.ts"
 import { fillKnown } from "./pack.ts"
@@ -46,13 +47,17 @@ export interface Transport {
 // connection, not a failed turn: the draft and the line stay as they are, and once the page is active again (at once
 // when it is) the story is read again the way landing on it reads it, its timeline and then the turn in flight
 // (`reconnect`). That finds the turn running (its stream resumes), landed (its node shows), failed while nobody heard
-// (its error, as any), or none of these (the turn did not finish: the failed turn's ghost, its line back). One try:
+// (its error, as any), or none of these (the turn did not finish: the failed turn's ghost, its line back). Landed is a
+// node under the draft's parent that the timeline did not hold when the turn began: that timeline is taken once, when
+// the action is sent or the turn first attached, and never again by a reconnect (one that read the landed node and
+// then failed to attach must not make it the turn's "before"). One try:
 // when reading fails, or the re-attached stream breaks before its first event, the draft says the connection is lost,
 // with a retry (`lost`). Nothing here sends the action again.
 export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenActive = watched }: Transport) => {
   let streams: (() => void)[] = [] // every response this story opened: what a story switch closes
   let era = 0 // a story left, or a new action sent: a reconnect begun before it lands nothing
   let waiting: (() => void) | undefined // a reconnect waiting for the page to be active
+  let before: L.Log<Node> | null = null // the timeline as it stood when the turn in flight began or was first attached
   const quiet = () => {
     era++
     waiting?.()
@@ -76,7 +81,7 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
     // story's)
     for (const close of streams.splice(0)) close()
     const mine = era
-    const before = new Set(registry.get(log).nodes.keys())
+    before ??= registry.get(log) // none taken (a retry with no turn begun here): the timeline as it stands
     const failed = () => {
       if (mine === era) registry.set(lost, true)
     }
@@ -93,14 +98,18 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
       } catch {
         return failed()
       }
-      if (mine !== era || !registry.get(draft)) return
-      if ([...registry.get(log).nodes.keys()].some((id) => !before.has(id))) settle()
+      const d = registry.get(draft)
+      if (mine !== era || !d) return
+      const was = before!
+      before = null // the turn is over either way
+      if ([...registry.get(log).nodes.values()].some((n) => n.parent === d.parent && !was.nodes.has(n.id))) settle()
       else apply({ kind: "error", code: "unfinished", message: "" }) // the ghost and its line back, as a failed turn
     }
     streams.push(attach({ lost: (heard) => (heard ? cut() : failed()), idle: () => void over() }))
   }
   const go = (action: Action) => {
     quiet() // this stream is the story's now: a reconnect for an older one would attach to it a second time
+    before = registry.get(log)
     streams.push(send(action, ends))
   }
   /** A draft under `parent`, then the action. `text`: an edit's draft is the player's prose, shown while check and
@@ -226,12 +235,16 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
       if (how === "halted" && registry.get(draft)) registry.set(stage, "record")
     },
     /** Landing on a story: the turn already in flight there, if any, drawn as it stands and read to its end. */
-    attach: (): void => void streams.push(attach(ends)),
+    attach: (): void => {
+      before = registry.get(log)
+      streams.push(attach(ends))
+    },
     /** The "connection lost" line's retry: the story read again, as when the page came back. */
     reconnect,
     /** Another story: this client stops reading the old one's streams and drops its draft, nothing withdrawn. */
     abandon: (): void => {
       quiet()
+      before = null
       for (const close of streams) close()
       streams = []
       settle() // the revision and the error were the old story's too

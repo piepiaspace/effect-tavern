@@ -240,4 +240,32 @@ await settled()
 assert.equal(attaches(), 0)
 reset()
 
+// (h) the first reconnect reads the landed node, then its attach fails (the line and its retry); the retry reads the
+// same timeline again and gets a 204: the node is still this turn's, shown, nothing withdrawn, nothing sent again
+registry.set(log, server)
+const fresh = () => Math.max(...server.nodes.keys()) + 1
+act("landed meanwhile")
+const under = registry.get(draft)!.parent
+active = false
+last().cut()
+const landed = fresh()
+server = L.apply(server, { node: node(landed, under, "it landed", "landed meanwhile"), head: landed })
+activate()
+await settled()
+assert.equal(registry.get(log).nodes.has(landed), true) // read, still behind the draft
+last().cut() // the attach breaks before any event
+await settled()
+assert.equal(registry.get(lost), true)
+void turn.reconnect()
+await settled()
+last().ends.idle?.()
+await settled()
+assert.deepEqual(
+  [registry.get(draft), registry.get(error), registry.get(lost), registry.get(log).head],
+  [null, null, false, landed],
+)
+assert.equal(registry.get(composition).text, "")
+assert.equal(sends(), 1)
+reset()
+
 console.log("reconnect ok")
