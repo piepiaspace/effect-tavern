@@ -459,7 +459,7 @@ const RecordBody = (props: { node: Node }) => {
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   )
   return (
-    <div class="record">
+    <div class="record" data-selectable>
       {/* by index: the memo yields fresh, equal elements whenever the log changes; rows update in place */}
       <For each={els()} keyed={false}>
         {(el) => <Reading el={el()} />}
@@ -662,7 +662,7 @@ export const StatusTable = () => {
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   )
   return (
-    <div class="record">
+    <div class="record" data-selectable>
       <For each={groups()} keyed={(g) => g.group ?? ""}>
         {(g) => (
           <div class="group">

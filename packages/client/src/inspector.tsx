@@ -617,7 +617,7 @@ const InspectBody = (props: { id: Id }) => {
       <Show when={node()} fallback={<p class="dim">{t("inspector.noSuchNode")}</p>}>
         {(x) => (
           <div class="cols">
-            <section class="pane pipeline" aria-label={t("inspector.pipeline")}>
+            <section class="pane pipeline" aria-label={t("inspector.pipeline")} data-selectable>
               <div class="sechead">
                 <span class="lbl">{t("inspector.pipeline")}</span>
                 <Show when={dev()}>
@@ -672,7 +672,7 @@ const InspectBody = (props: { id: Id }) => {
                 </div>
               </Show>
             </section>
-            <aside class="pane node" aria-label={t("common.node")}>
+            <aside class="pane node" aria-label={t("common.node")} data-selectable>
               <div class="sechead">
                 <span class="lbl">{t("inspector.input")}</span>
                 <span class="meta">{CHANNEL[channelOf(x())]}</span>

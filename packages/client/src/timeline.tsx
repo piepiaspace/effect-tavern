@@ -304,7 +304,7 @@ export const Timeline = () => {
             </For>
           </div>
         </section>
-        <section class="pane node" aria-label={t("common.node")}>
+        <section class="pane node" aria-label={t("common.node")} data-selectable>
           <Show when={sel()} fallback={<p class="dim">{t("timeline.noneSelected")}</p>}>
             {(n) => (
               <>

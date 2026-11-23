@@ -170,9 +170,10 @@ export const Prose = (props: { text: string; open?: boolean; tail?: JSX.Element 
     return bs.length || !("tail" in props) ? bs : [""]
   })
   const last = createMemo(() => bs().length - 1)
-  // `.md` scopes reader.css's block styles; display: contents, so the blocks stay the host's own flex children
+  // `.md` scopes reader.css's block styles; display: contents, so the blocks stay the host's own flex children.
+  // Selectable on a touch screen too, where the chrome around it is not (reader.css)
   return (
-    <div class="md">
+    <div class="md" data-selectable>
       <For each={bs()} keyed={false}>
         {(b, i) => {
           const isLast = createMemo(() => i === last())

@@ -390,7 +390,7 @@ export const Said = (props: {
   // revise puts the turn's input back in the composer (Cherry Studio's edit), line and note together, copy copies the
   // line. The draft has the same row with the keys disabled, so nothing moves when the node lands.
   const Bubble = (p: { field: "text" | "note"; text: string }) => (
-    <div class={{ said: true, note: p.field === "note", revising: props.revising === p.field }}>
+    <div class={{ said: true, note: p.field === "note", revising: props.revising === p.field }} data-selectable>
       <Show when={p.field === field()}>
         <For each={props.node?.invocations ?? props.invocations ?? []}>
           {(item) => <span class="chip invocation">{item.title}</span>}
