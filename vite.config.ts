@@ -37,8 +37,12 @@ export default defineConfig({
       {
         files: ["packages/*/test/**"],
         rules: {
-          // a test awaits what it waits for; the edge's pulls pace their moves, the time between them being the input
-          "tavern/no-fixed-sleep": ["error", { allow: { "packages/client/test/controls.tsx": 4 } }],
+          // a test awaits what it waits for; the edge's pulls and the swipe's strokes pace their moves, the time
+          // between them being the input
+          "tavern/no-fixed-sleep": [
+            "error",
+            { allow: { "packages/client/test/controls.tsx": 4, "packages/client/test/swipe.tsx": 2 } },
+          ],
         },
       },
       {

@@ -31,6 +31,7 @@ const fixtures: [file: string, passed: (snapshot: unknown[]) => string][] = [
     "test/back.tsx",
     (s) => `the system's back steps out of layers, pages, a settings detail and an edit, in ${s.length} pushed entries`,
   ],
+  ["test/swipe.tsx", () => "a swipe steps back, opens the drawer and leaves a workspace, and yields where it should"],
   ["test/home.tsx", (s) => `home free-chat flow and visibility rules pass, in ${s.length} requests`],
   ["test/workshop.tsx", (s) => `a card is made, written and saved through the workshop, in ${s.length} requests`],
 ]
