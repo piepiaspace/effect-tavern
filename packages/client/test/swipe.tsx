@@ -433,6 +433,15 @@ const run = async () => {
   check(panning(key) === "pan-y pinch-zoom", `a key pans only vertically: ${panning(key)}`)
   check(panning(para!) === "pan-y pinch-zoom", `the prose pans only vertically: ${panning(para!)}`)
   check(panning(pre!) === "manipulation", `a code block pans both ways: ${panning(pre!)}`)
+  // a field pans both ways too: a finger moves along a one-line input's long text (the swipe yields to it anyway)
+  const input = document.createElement("input")
+  document.querySelector(".composer")!.append(input)
+  for (const [what, el] of [
+    ["a one-line input", input],
+    ["the composer's box", area!],
+  ] as const)
+    check(panning(el) === "manipulation", `${what} pans both ways: ${panning(el)}`)
+  input.remove()
 
   // The whole App is on the page: not one advisory of its own comes with it
   const diagnostics = bridge.end().diagnostics

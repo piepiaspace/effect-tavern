@@ -29,7 +29,8 @@
 // The surface wraps the whole app, laid out as #root is (shell.css `[data-slot="swipe"]`), and on a coarse pointer it
 // gives every element under it `touch-action: pan-y pinch-zoom`: vertical scrolling stays the browser's, and a
 // sideways stroke reaches the page as pointer events instead of a `pointercancel`. Sideways scrollers (a code block,
-// the Inspector's tab bar, the Timeline's graph) keep their pans, so a stroke that starts on one stays theirs.
+// the Inspector's tab bar, the Timeline's graph) and fields keep their pans, so a stroke that starts on one stays
+// theirs (a finger pans a one-line input's long text).
 import { bindDrag, definePrimitive } from "@ui-sdk/core"
 import { createVelocityTracker } from "@ui-sdk/core/gesture"
 import { createParts } from "@ui-sdk/solid/primitive"
