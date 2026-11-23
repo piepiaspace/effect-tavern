@@ -281,7 +281,8 @@ const reloaded = (): boolean => {
   }
 }
 /** First load: the listing first (it names the story every request after is on), then the player's layer; the
- *  routing is the card page's Model row. A reload comes back where it was: the remembered tabs, on the one that was
+ *  routing with the providers and templates it names (the play sheet's menus, the prompt tree's hat), read before
+ *  any page has opened the settings. A reload comes back where it was: the remembered tabs, on the one that was
  *  active, its story read and a turn in flight on it picked up (turn.ts `attach`). A fresh start lands on home: the
  *  remembered tabs stay on the strip, a home tab is active, no story is in the slots and the sidebar is on the shelf
  *  (tabs.ts `home`). */
@@ -292,6 +293,8 @@ export const boot = async (): Promise<void> => {
     wire.fetchPersonas(),
     wire.fetchPacks(),
     wire.fetchRouting(),
+    wire.fetchProviders(),
+    wire.fetchHats(),
   ])
   const kept = remembered() // the tabs the device holds, on stories and cards still there (tabs.ts)
   const resumed = kept && reloaded() ? kept : null
