@@ -20,6 +20,8 @@ import {
   type Wire,
   apply,
 } from "../src/store.ts"
+import { failureText } from "../src/failure.ts"
+import { t } from "../src/i18n.ts"
 import { createTurn } from "../src/turn.ts"
 import type { Ends } from "../src/wire.ts"
 import { timelineNode as node } from "./fixtures.ts"
@@ -265,6 +267,87 @@ assert.deepEqual(
   [null, null, false, landed],
 )
 assert.equal(registry.get(composition).text, "")
+assert.equal(sends(), 1)
+reset()
+
+// (i) actions with no draft (a demand, a record retried): never `lost`, which only a draft draws. Offline at the POST:
+// the reading fails too, and the action ends in words where its errors are drawn; cut mid-stream, then a 204: what the
+// server did meanwhile shows, and when it did nothing the action did not finish, said so; nothing is held after.
+const asideOn = registry.get(log).head!
+const recordOn = fresh()
+server = L.apply(server, {
+  node: { ...node(recordOn, asideOn, "unsettled"), settlementStatus: "failed" },
+  head: recordOn,
+})
+registry.set(log, server)
+const drawless = (start: () => void, kind: Action["kind"]) => {
+  // offline at the POST: no event, then the reading fails
+  start()
+  down = true
+  last().cut()
+  return settled().then(() => {
+    assert.equal(last().action?.kind, kind)
+    assert.deepEqual(
+      [registry.get(error)?.code, registry.get(lost), registry.get(working)],
+      ["connectionLost", false, false],
+    )
+    assert.equal(failureText(registry.get(error)!), t("app.connectionLost"))
+    down = false
+  })
+}
+await drawless(() => turn.demand(asideOn, "aside"), "demand")
+reset()
+await drawless(() => turn.retryRecord(recordOn), "retryRecord")
+reset()
+// cut mid-stream, the server did nothing meanwhile (204, the timeline as it was): unfinished, in words
+turn.demand(asideOn, "aside")
+last().emit({ kind: "stage", phase: "record" })
+last().cut()
+await settled()
+last().ends.idle?.()
+await settled()
+assert.deepEqual([registry.get(error)?.code, registry.get(lost), registry.get(working)], ["unfinished", false, false])
+assert.equal(failureText(registry.get(error)!), t("app.turnUnfinished"))
+reset()
+turn.retryRecord(recordOn)
+last().emit({
+  kind: "change",
+  node: { ...node(recordOn, asideOn, "unsettled"), settlementStatus: "pending" },
+  head: recordOn,
+})
+last().cut()
+await settled()
+last().ends.idle?.()
+await settled()
+assert.deepEqual([registry.get(error)?.code, registry.get(lost), registry.get(working)], ["unfinished", false, false])
+reset()
+// cut mid-stream, and the server finished meanwhile: the result shows, no error
+turn.demand(asideOn, "aside")
+last().emit({ kind: "stage", phase: "record" })
+last().cut()
+server = L.apply(server, {
+  node: { ...node(asideOn, server.nodes.get(asideOn)!.parent, "x"), theater: { aside: "a word" } },
+  head: recordOn,
+})
+await settled()
+last().ends.idle?.()
+await settled()
+assert.deepEqual([registry.get(error), registry.get(lost), registry.get(working)], [null, false, false])
+assert.deepEqual(registry.get(log).nodes.get(asideOn)?.theater, { aside: "a word" })
+reset()
+turn.retryRecord(recordOn)
+last().emit({
+  kind: "change",
+  node: { ...node(recordOn, asideOn, "unsettled"), settlementStatus: "pending" },
+  head: recordOn,
+})
+last().cut()
+server = L.apply(server, { node: node(recordOn, asideOn, "unsettled"), head: recordOn })
+await settled()
+last().ends.idle?.()
+await settled()
+assert.deepEqual([registry.get(error), registry.get(lost), registry.get(working)], [null, false, false])
+assert.equal(registry.get(log).nodes.get(recordOn)?.settlementStatus, "committed")
 assert.equal(sends(), 1)
 reset()
 

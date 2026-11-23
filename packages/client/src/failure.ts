@@ -7,6 +7,7 @@ import { t } from "./i18n.ts"
 export const failureText = (f: Failure): string => {
   // the client's own: a stream lost, and the story read again shows the turn neither landed nor running (turn.ts)
   if (f.code === "unfinished") return t("app.turnUnfinished")
+  if (f.code === "connectionLost") return t("app.connectionLost")
   if (f.code === "internal" && f.at !== undefined && f.story !== undefined)
     return t("app.internalFailure", { story: f.story, time: new Date(f.at).toLocaleString() })
   if (f.code === "upstream") {
