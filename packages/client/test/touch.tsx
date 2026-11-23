@@ -7,13 +7,16 @@
 // - focus: the persona picker and the story manager, opened by a call (as the drawer's rows open them), put the focus
 //   in their search where a mouse is; under a finger the sheet takes it, and no keyboard rises.
 // - reach: the home mechanism's two 20px toggles take a finger up to 12px off their face, each keeping all of its own
-//   face, and are drawn and laid out the same; a mouse hits them on their face alone.
+//   face, and are drawn and laid out the same; a mouse hits them on their face alone. A tag's × (the workspace's row
+//   and the tag manager's, wrapped onto two lines) takes its own chip's padding, and never a point of the + key or of
+//   another tag, nor adds to its row's scroll.
 // - a lazy page entered from home for the first time (the settings) loads its code before home leaves: at no moment in
 //   between is the stage empty.
 // What a headless run cannot show: a real long press (the selection handles, the link preview a long press on a link
 // opens in an iOS web view), a finger's sideways scroll handed on or not, and a soft keyboard; only the computed styles
 // and the focus that decide them.
 import { render } from "@solidjs/web"
+import { For } from "solid-js"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
@@ -21,6 +24,7 @@ import { cardView } from "@effect-tavern/runtime/src/session.ts"
 import { App } from "../src/App.tsx"
 import { openManager, openPicker } from "../src/dialogs.tsx"
 import { flip, locale } from "../src/i18n.ts"
+import { Close, Snippets } from "../src/icons.tsx"
 import { close as closePage, open as openPage } from "../src/pages.ts"
 import { openSettings } from "../src/settings-navigation.ts"
 import { card, cards, log, page, providers, registry, routing, stories, tabs, type StoryRow } from "../src/store.ts"
@@ -187,6 +191,132 @@ const run = async () => {
     check(hit(a.right - 1, a.top + 10) === sound, "the sound toggle's face is its own to its right edge")
     check(hit(b.left + 1, b.top + 10) === motion, "and the motion toggle's to its left")
   } else check(false, "the home mechanism has its two toggles")
+
+  // reach: a tag's ×, in the rows that draw it (the workspace's as side.tsx draws it, the tag manager's as dialogs.tsx
+  // does), mounted on their own over the app: two narrow rows that wrap onto a second line, the workspace's ending in
+  // its + key, and each again on one line
+  const tagRows = document.createElement("div")
+  tagRows.style.cssText = "position: fixed; inset: 0; z-index: 10; background: var(--surface); padding: 20px"
+  document.body.append(tagRows)
+  const long = "第一个很长的标签"
+  const workspace = (words: string[], width: number) => (
+    <div class="workspace-tags" style={{ width: `${width}px` }}>
+      <For each={words}>
+        {(w) => (
+          <span class="chip">
+            <button type="button" class="word">
+              {w}
+            </button>
+            <button type="button" class="del" aria-label={w}>
+              <Close aria-hidden="true" />
+            </button>
+          </span>
+        )}
+      </For>
+      <button type="button" class="chip add" aria-label="+">
+        <Snippets aria-hidden="true" />
+      </button>
+    </div>
+  )
+  const manager = (words: string[], width: number) => (
+    <div class="manager tagman" style={{ width: `${width}px`, "margin-top": "20px" }}>
+      <div class="tagman-chips scroller" role="list">
+        <For each={words}>
+          {(w) => (
+            <span class="chip" role="listitem">
+              <button type="button" class="word">
+                {w}
+              </button>
+              <span class="count">3</span>
+              <button type="button" class="del" aria-label={w}>
+                <Close aria-hidden="true" />
+              </button>
+            </span>
+          )}
+        </For>
+      </div>
+    </div>
+  )
+  const unmount = render(
+    () => (
+      <>
+        {workspace([long, "短"], 160)}
+        {workspace(["短"], 300)}
+        {manager([long, "短", "二"], 200)}
+        {manager(["短"], 300)}
+      </>
+    ),
+    tagRows,
+  )
+  await quiet()
+  const owner = (x: number, y: number) => document.elementFromPoint(x, y)?.closest(".word, .del, .add") ?? null
+  const [wrapped, single, wrappedMan, singleMan] = tagRows.querySelectorAll<HTMLElement>(
+    ".workspace-tags, .tagman-chips",
+  )
+  for (const [name, row] of [
+    ["the workspace's tags", wrapped],
+    ["the tag manager's chips", wrappedMan],
+  ] as const) {
+    const chips = [...row.querySelectorAll<HTMLElement>(".chip:has(> .del)")]
+    const top = chips[0].getBoundingClientRect().top
+    const firstRow = chips.filter((c) => c.getBoundingClientRect().top === top)
+    const lower = chips.filter((c) => c.getBoundingClientRect().top > top)
+    check(firstRow.length && lower.length, `${name} wrap onto a second row`)
+    // a first-row tag's word keeps all of its face, its bottom edge included, from the × under it (between its rounded
+    // corners, which are not its face)
+    for (const c of firstRow) {
+      const word = c.querySelector(".word")!
+      const w = word.getBoundingClientRect()
+      const corner = parseFloat(getComputedStyle(word).borderBottomLeftRadius) || 0
+      for (let x = Math.ceil(w.left + corner); x < w.right - corner; x += 2)
+        if (owner(x, w.bottom - 1) !== word) {
+          check(false, `${name}: the bottom of "${word.textContent}" at ${x} is ${named(owner(x, w.bottom - 1))}`)
+          break
+        }
+    }
+    // nor does a × take the left edge of the chip after it
+    for (const [i, c] of chips.entries()) {
+      const r = c.getBoundingClientRect()
+      const there = owner(r.left + 1, (r.top + r.bottom) / 2)
+      check(!there || c.contains(there), `${name}: the left edge of chip ${i} is ${named(there)}`)
+    }
+    // each × answers a point beside its drawn face, inside its own chip (to its right, above, below), where no
+    // neighbour is; a mouse hits the face alone
+    for (const c of chips) {
+      const del = c.querySelector(".del")!
+      const d = del.getBoundingClientRect()
+      const r = c.getBoundingClientRect()
+      const mid = (d.top + d.bottom) / 2
+      for (const [where, x, y] of [
+        ["right of", (d.right + r.right) / 2, mid],
+        ["above", d.left + d.width / 2, (d.top + r.top) / 2],
+        ["below", d.left + d.width / 2, (d.bottom + r.bottom) / 2],
+      ] as const)
+        check(
+          (owner(x, y) === del) === coarse,
+          `${name}: ${where} the × of "${del.getAttribute("aria-label")}": ${named(owner(x, y))}`,
+        )
+    }
+  }
+  // the + key after the last tag keeps its own face, its left edge included (along its middle: it is a pill)
+  const add = wrapped.querySelector(".add")!
+  const plus = add.getBoundingClientRect()
+  for (let x = Math.ceil(plus.left) + 1; x < plus.left + 10; x++)
+    check(
+      owner(x, (plus.top + plus.bottom) / 2) === add,
+      `+ at ${x - plus.left}px from its left edge: ${named(owner(x, (plus.top + plus.bottom) / 2))}`,
+    )
+  // a ring adds nothing to scroll: a row on one line is as tall as its chips
+  for (const [name, row] of [
+    ["the workspace's tags", single],
+    ["the tag manager's chips", singleMan],
+  ] as const)
+    check(
+      row.scrollHeight === row.clientHeight,
+      `${name} on one line scroll: ${row.scrollHeight} of ${row.clientHeight}`,
+    )
+  unmount()
+  tagRows.remove()
 
   // a lazy page's first entry: home stays until the page is there (each change the DOM goes through is looked at)
   const empty: string[] = []

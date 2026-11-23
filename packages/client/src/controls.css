@@ -575,12 +575,22 @@
 }
 /* A key drawn at about 20px (the home mechanism's sound and motion toggles, 20px; a tag's ×, 16px in the
    workspace and 20px in the tag manager) reaches further under a finger (#226): an invisible ring around it takes the
-   touch out to 44px, and nothing it is drawn with or beside moves. The ring lies under every box of its row (z-index
-   -1 in the row, which is made its own stacking context), so a key next to it keeps all of its own face; between two
-   rings the later one takes the gap. A scrolling row (the workspace's tags) still clips it at its edge. */
+   touch, and nothing it is drawn with or beside moves. Each row is one stacking context and the ring lies under every
+   box in it (z-index -1), so it only takes points no box of the row claims: a key or a word next to it keeps all of
+   its own face, and between two rings the later one takes the gap. A chip with a × hands its own box to its parts
+   (`pointer-events`), so its padding around the × is the ×'s ring and not a dead edge. The two tag rows scroll, and a
+   ring reaching below the last line would make them scroll further: the toggles' ring is 44px; the tag manager's is
+   44px across and stops 4px past its chip up and down (half its rows' gap, and its padding); the workspace's (24px
+   rows 4px apart) stays inside its chip: the chip's end, and its whole height from the word on. */
 @media (pointer: coarse) {
-  :is(.home-mech-bar, .chip:has(> .del)) {
+  :is(.home-mech-bar, .workspace-tags, .tagman-chips) {
     isolation: isolate;
+  }
+  .chip:has(> .del) {
+    pointer-events: none;
+  }
+  .chip:has(> .del) > * {
+    pointer-events: auto;
   }
   :is(.home-mech-toggle, .chip > .del) {
     position: relative;
@@ -590,5 +600,11 @@
     position: absolute;
     z-index: -1;
     inset: min(0px, 50% - 22px);
+  }
+  .tagman-chips > .chip > .del::after {
+    inset-block: calc(50% - 15px - var(--space-1));
+  }
+  .workspace-tags > .chip > .del::after {
+    inset: calc(50% - 12px) calc(-1 * var(--space-1)) calc(50% - 12px) calc(-1 * var(--space-half));
   }
 }
