@@ -88,6 +88,10 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
   let waiting: (() => void) | undefined // a reconnect waiting for the page to be active
   let before: L.Log<Node> | null = null // the timeline as it stood when the turn in flight began or was first attached
   let asked: Action | undefined // the action that began it, when this client sent it (none for one attached on landing)
+  // A stop on its way: a stream that ends meanwhile may be its withdrawal (the server ends the stream empty), so it is
+  // read again only once the stop is answered and did not withdraw the turn.
+  let stopping: object | undefined
+  let missed = false
   const quiet = () => {
     era++
     waiting?.()
@@ -95,6 +99,7 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
   }
   /** A stream broke: once the page is active, the story read again (one reconnect waits at a time). */
   const cut = () => {
+    if (stopping) return void (missed = true)
     if (waiting) return
     const mine = era
     waiting = whenActive(() => {
@@ -253,8 +258,16 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
     stop: async (): Promise<void> => {
       if (!registry.get(working)) return
       const mine = streams
-      const how = await stop()
+      const asking = (stopping = {})
+      let how
+      try {
+        how = await stop()
+      } finally {
+        if (stopping === asking) stopping = undefined
+      }
       if (streams !== mine) return // abandon left this story while its stop was in flight
+      const late = missed
+      missed = false
       if (how === "withdrawn") {
         quiet()
         for (const close of streams) close() // the turn is gone: nothing late on its stream lands after the clear
@@ -265,6 +278,7 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
       }
       // the stream was lost: the stop got through, so the story is read again for what it did
       if (registry.get(lost)) return reconnect()
+      if (late) cut() // it ended while the stop was on its way, and the turn was not withdrawn
       // halted: what the server is doing with the cut prose; the node (or record's error) comes down the stream
       if (how === "halted" && registry.get(draft)) registry.set(stage, "record")
     },
@@ -279,7 +293,7 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
     /** Another story: this client stops reading the old one's streams and drops its draft, nothing withdrawn. */
     abandon: (): void => {
       quiet()
-      ;[before, asked] = [null, undefined]
+      ;[before, asked, stopping, missed] = [null, undefined, undefined, false]
       for (const close of streams) close()
       streams = []
       settle() // the revision and the error were the old story's too

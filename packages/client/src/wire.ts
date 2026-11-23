@@ -26,7 +26,7 @@ import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
-import { readTurnEvents } from "@effect-tavern/runtime/src/sse.ts"
+import { IncompleteStream, readTurnEvents } from "@effect-tavern/runtime/src/sse.ts"
 import type { Call } from "./inspect.ts"
 import type { Hit } from "./stories.ts"
 import {
@@ -410,9 +410,13 @@ export const fetchSettings = (): Promise<unknown> =>
   ])
 
 /** What a stream's caller hears besides its events. `lost`: the transport failed (the request got no answer, or the
- *  stream broke after it opened: the phone went to the background, the network dropped), told whether any event had
- *  come down it; without `lost` that failure is an `error` like any other. `idle`: a 204, no turn in flight. A refusal
- *  the server answered and an `error` event it sent are never `lost`. */
+ *  stream broke after it opened: the phone went to the background, the network dropped, the bytes stopped mid-frame),
+ *  or the stream ended while its turn was still open, told whether any event had come down it; without `lost` that
+ *  failure is an `error` like any other, and an early end only ends the stream. The server ends a turn's stream after
+ *  an `error`, or a `change` that leaves no node pending (the record still to run is the same turn): ended before one,
+ *  a web view suspended or a proxy's timeout closed it, and the turn may be running yet. `idle`: a 204, no turn in
+ *  flight. A refusal the server answered, an `error` event it sent, bytes the decoder cannot read and a stream this
+ *  client closed are never `lost`. */
 export interface Ends {
   lost?: (heard: boolean) => void
   idle?: () => void
@@ -462,6 +466,7 @@ export const listen = (
   let opened = false
   let broken = false // the transport failed: the request, or a read of the open stream
   let heard = false
+  let running = true // the turn on this stream: no `error` and no `change` that leaves nothing pending heard on it yet
   const closed = () => {
     if (!opened) return
     opened = false
@@ -493,14 +498,19 @@ export const listen = (
           watched(res.body, () => (broken = true)),
           (e) => {
             heard = true
+            if (e.kind === "error") running = false
+            else if (e.kind === "change") running = e.node?.settlementStatus === "pending"
             emit(e)
           },
           ac.signal,
         )
       else await readTurnEvents<Wire>(res.body, emit, ac.signal)
-      if (!ac.signal.aborted) void fetchStories() // the open story's row: its size, its last line, its time
+      if (ac.signal.aborted) return
+      if (running && ends.lost) return ends.lost(heard) // ended mid-turn: read again by the caller, as a break is
+      void fetchStories() // the open story's row: its size, its last line, its time
     } catch (e) {
       if (ac.signal.aborted) return
+      if (e instanceof IncompleteStream) broken = true // the bytes stopped mid-frame: the transport's, not the decoder's
       if (broken && ends.lost) ends.lost(heard)
       else
         emit({

@@ -12,6 +12,7 @@ import {
   draft,
   error,
   log,
+  stage,
   lost,
   registry,
   updateComposition,
@@ -23,7 +24,7 @@ import {
 import { failureText } from "../src/failure.ts"
 import { t } from "../src/i18n.ts"
 import { createTurn } from "../src/turn.ts"
-import type { Ends } from "../src/wire.ts"
+import { listen, type Ends } from "../src/wire.ts"
 import { timelineNode as node } from "./fixtures.ts"
 
 let frames: (() => void)[] = []
@@ -76,15 +77,16 @@ let reads = 0
 let down = false // the server cannot be reached
 let active = true
 let waiting: (() => void)[] = []
+const readNodes = async () => {
+  reads++
+  if (down) throw new TypeError("Load failed")
+  registry.set(log, server)
+}
 const turn = createTurn({
   send: open,
   attach: (ends) => open(undefined, ends),
   stop: async () => null,
-  nodes: async () => {
-    reads++
-    if (down) throw new TypeError("Load failed")
-    registry.set(log, server)
-  },
+  nodes: readNodes,
   whenActive: (go) => {
     if (active) {
       go()
@@ -349,6 +351,84 @@ await settled()
 assert.deepEqual([registry.get(error), registry.get(lost), registry.get(working)], [null, false, false])
 assert.equal(registry.get(log).nodes.get(recordOn)?.settlementStatus, "committed")
 assert.equal(sends(), 1)
+reset()
+
+// (j) the real reader (wire.ts `listen`) under the turn: a stream the server's side ended before the turn's end, cleanly
+// at a frame's boundary or with the bytes stopping mid-frame, is lost and read again; a 204 then is the turn that did
+// not finish, in words, its line back. Ended after the node it is the turn's end, and closed by this client it is
+// nothing: neither reads anything again.
+globalThis.fetch = (async () => Response.json({ current: null, stories: [] })) as unknown as typeof fetch
+const bytes = (text: string) => new TextEncoder().encode(text)
+const frame = (e: object) => bytes(`data: ${JSON.stringify(e)}\n\n`)
+let feed: ReadableStreamDefaultController<Uint8Array> | undefined
+let posts = 0
+let stopAnswer: () => Promise<"withdrawn" | "halted" | null> = async () => null
+const real = createTurn({
+  send: (_action, ends) => {
+    posts++
+    feed = undefined
+    const body = new ReadableStream<Uint8Array>({ start: (c) => void (feed = c) })
+    return listen(async () => new Response(body), apply, ends)
+  },
+  attach: (ends) => open(undefined, ends),
+  stop: () => stopAnswer(),
+  nodes: readNodes,
+  whenActive: (go) => (go(), () => {}),
+})
+const until = async (ok: () => boolean) => {
+  for (let i = 0; i < 200 && !ok(); i++) await new Promise((r) => setTimeout(r, 0))
+}
+const actReal = async (text: string) => {
+  registry.set(log, server)
+  updateComposition({ text })
+  real.act()
+  await until(() => feed !== undefined)
+  feed!.enqueue(frame({ kind: "stage", phase: "narrate" }))
+  await until(() => registry.get(stage) === "narrate")
+}
+for (const end of [() => feed!.close(), () => (feed!.enqueue(bytes('data: {"kind":"de')), feed!.close())]) {
+  posts = 0
+  await actReal("cut short")
+  end()
+  await until(() => attaches() === 1)
+  assert.deepEqual([reads, attaches(), registry.get(error), registry.get(lost)], [1, 1, null, false])
+  assert.deepEqual([registry.get(draft)?.input.text, registry.get(composition).text], ["cut short", ""])
+  last().ends.idle?.()
+  await settled()
+  assert.equal(registry.get(error)?.code, "unfinished")
+  assert.equal(failureText(registry.get(error)!), t("app.turnUnfinished"))
+  assert.deepEqual([registry.get(composition).text, registry.get(lost), posts], ["cut short", false, 1])
+  real.abandon()
+  reset()
+}
+await actReal("whole")
+const whole = fresh()
+feed!.enqueue(frame({ kind: "change", node: node(whole, registry.get(draft)!.parent, "done", "whole"), head: whole }))
+feed!.close()
+await until(() => registry.get(draft) === null)
+await until(() => false) // time for a wrongful re-read to show
+assert.deepEqual([reads, attaches(), registry.get(error), registry.get(log).head], [0, 0, null, whole])
+real.abandon()
+reset()
+// a stop that withdraws the turn: the server ends its stream empty, here before the stop's answer comes back; that end
+// is the withdrawal, not a lost stream: the line back, nothing read again, no error
+await actReal("withdrawn")
+let answer!: (how: "withdrawn") => void
+stopAnswer = () => new Promise((r) => (answer = r))
+const stopped = real.stop()
+feed!.close()
+await until(() => false)
+answer("withdrawn")
+await stopped
+await until(() => false)
+assert.deepEqual([reads, attaches(), registry.get(error), registry.get(draft)], [0, 0, null, null])
+assert.equal(registry.get(composition).text, "withdrawn")
+real.abandon()
+reset()
+await actReal("left")
+real.abandon()
+await until(() => false)
+assert.deepEqual([reads, attaches(), registry.get(error), registry.get(draft)], [0, 0, null, null])
 reset()
 
 console.log("reconnect ok")
