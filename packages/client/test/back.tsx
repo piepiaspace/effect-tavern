@@ -9,7 +9,9 @@
 // the history comes back in step without a push, in the back's own task, and the next back closes the dialog; a dialog
 // that closes with its field focused is not taken for one that stayed. An edit whose turn left the reading line gives
 // its entry back. A close that takes a moment is waited for; a layer unmounted while open and an unwind the browser
-// dropped are both caught up with.
+// dropped are both caught up with. Last, past the count of pushes: `stepBack` called again before its back lands, or
+// inside a traversal of the page's own, is still one step; and an unwind lost four times over is given up, leaving the
+// entry the page is on without its mark, so the next page's back still closes it.
 // Every `pushState`, `history.go` and `history.back` the page makes is recorded, and the checks read those records
 // rather than sample the history in passing.
 // What a headless run cannot show: that Chromium's own back skips an entry pushed without a gesture (a script's
@@ -138,11 +140,15 @@ addEventListener("popstate", () => {
 const went: { n: number; popping: boolean }[] = []
 const forwards = () => went.filter((g) => g.n > 0)
 let drop = 0 // the next traversals the browser is made to lose
+let amid: (() => void) | undefined // run once, inside the next traversal the page asks for
 const go = history.go.bind(history)
 history.go = (n = 0) => {
   went.push({ n, popping })
   if (drop > 0) drop--
   else go(n)
+  const then = amid
+  amid = undefined
+  then?.()
 }
 let backs = 0
 const back = history.back.bind(history)
@@ -421,6 +427,81 @@ const run = async () => {
   check(pushed.length === before, `nothing was pushed since the settings: ${JSON.stringify(pushed)}`)
   check(pushed.length === 2, `two pushes in all, every other step a traversal: ${JSON.stringify(pushed)}`)
   check(history.length === length + 2, `two entries of ours at the deepest: ${history.length - length}`)
+
+  // stepBack is one step however often it is called before its back lands: two calls in one task, two entries held,
+  // ask the history for one back, and the settings are on their list, not closed
+  openSettings("providers", "p")
+  check(await until(() => pane() === "detail" && held() === 2), `a record's detail, two entries: ${held()}`)
+  await quiet()
+  let asked = backs
+  stepBack()
+  stepBack()
+  check(backs === asked + 1, `two calls in one task ask for one back: ${backs - asked}`)
+  check(
+    await until(() => pane() === "list" && held() === 1),
+    `and it is one step, detail to list: ${pane()}, ${held()}`,
+  )
+  await quiet()
+  check(at() === '"settings"' && held() === 1, `the settings are still open: ${at()}, ${held()}`)
+  // landed, the next call is a step again
+  asked = backs
+  stepBack()
+  check(backs === asked + 1, "once the back has landed the next call asks for another")
+  check(await until(() => at() === '"reader"' && held() === 0), `which closes the settings: ${at()}`)
+  await quiet()
+  // a call made inside a traversal of our own (the unwind after a page closed from inside the app) is dropped: it
+  // asks for no back, and what is under the page stays
+  edit()?.click()
+  check(await until(() => editor() && held() === 1), "an edit, one entry")
+  openPage("card")
+  check(await until(() => at() === '"card"' && held() === 2), "a page over it, two")
+  await quiet()
+  asked = backs
+  went.length = 0
+  let amidst = false
+  amid = () => {
+    amidst = true
+    stepBack()
+  }
+  closePage()
+  check(await until(() => amidst && at() === '"reader"' && held() === 1), `the page's entry is unwound: ${held()}`)
+  await quiet()
+  check(backs === asked, `a stepBack inside the unwind asks for no back: ${backs - asked}`)
+  check(went.length === 1 && went[0]?.n === -1, `one traversal, the unwind: ${JSON.stringify(went)}`)
+  check(editor() && registry.get(editing) === 1 && held() === 1, "and the edit under the page is kept")
+  stepBack()
+  check(await until(() => !editor() && held() === 0), "the next call cancels it")
+  await quiet()
+
+  // an unwind that never arrives is given up after a few tries, and the entry the page is left on stops saying it
+  // stands for a step: the next page pushes over a clean entry, and its back closes it
+  openPage("card")
+  check(await until(() => at() === '"card"' && held() === 1), "a page takes an entry")
+  await quiet()
+  went.length = 0
+  drop = 4
+  closePage()
+  check(await until(() => at() === '"reader"'), "the page is closed from inside the app")
+  check(await until(() => drop === 0 && held() === 0), `after four unwinds lost the entry's mark is gone: ${held()}`)
+  check(history.state === null, `nothing is left in its state: ${JSON.stringify(history.state)}`)
+  // watched for two arrivals' worth: a fifth try would have been asked for by then
+  const fifth = performance.now() + 600
+  await until(() => went.length > 4 || performance.now() > fifth)
+  check(
+    went.length === 4 && went.every((g) => g.n === -1),
+    `the first and three more, no fifth: ${JSON.stringify(went)}`,
+  )
+  before = pushed.length
+  went.length = 0
+  openPage("card")
+  check(await until(() => at() === '"card"' && held() === 1), "the next page takes one entry")
+  await quiet()
+  check(pushed.length === before + 1, `by one push: ${JSON.stringify(pushed.slice(before))}`)
+  history.back()
+  check(await until(() => at() === '"reader"'), `and a back closes it: ${at()}`)
+  await quiet()
+  check(held() === 0 && history.state === null, `on the base, which carries no mark: ${JSON.stringify(history.state)}`)
+  check(went.length === 0, `with no traversal of ours: ${JSON.stringify(went)}`)
 
   // The whole App is on the page, and three advisories of its own come with it. They were there before this fixture
   // and are tracked outside it (#226's review); each is named here by its code and where it is owned, and anything

@@ -28,14 +28,17 @@
 //   unwind after it, never a close.
 //
 // `stepBack` is the same step for a caller inside the app (a swipe): through `history.back()` when entries are held,
-// so it takes the system back's own path, and straight to the thing on top when none is.
+// so it takes the system back's own path, and straight to the thing on top when none is. One call is one step: while
+// its back has not landed, or a traversal of our own is on its way, another call does nothing.
 //
 // Limits we accept:
 // - Inside the MyGo app Android's hardware back reaches the page only when the web view has history (`canGoBack`), so
 //   a hardware back before the first touch after a cold start still leaves the app. `stepBack` has no such limit.
 // - A traversal of our own (`go(-n)` unwinding, `go(+n)` going forward) takes a moment to arrive (about a millisecond
 //   in headless Chrome; not measured on a phone), and a real press landing inside it is taken for it: it closes
-//   nothing, and the history is brought back in step after.
+//   nothing, and the history is brought back in step after. A `stepBack` inside it is dropped the same way.
+// - An unwind that never arrives, DROPS times over, has nothing behind it to go to: the entry the page is on is taken
+//   for the one that stands for what is open, and its mark is rewritten to say so.
 // - After a back that a field took, the history is one entry short until the forward lands: that same moment, in
 //   which a second back leaves the app. For a layer that stays open for another reason it is VERDICT ms longer.
 import { createEffect, createMemo, createRoot, flush, getOwner, runWithOwner, untrack } from "solid-js"
@@ -72,7 +75,13 @@ const caughtUp = (): void => {
 }
 
 /** The mounted back, to the registry and to `stepBack`: its count of history entries is its own. */
-let mounted: { held: () => number; watch: (c: Closable) => void; unwatch: (c: Closable) => void } | null = null
+let mounted: {
+  /** One back through the history, when entries are held. False when none is, and the caller closes what is on top
+   *  itself; true when the step was taken or dropped (one already on its way, or a traversal of our own). */
+  step: () => boolean
+  watch: (c: Closable) => void
+  unwatch: (c: Closable) => void
+} | null = null
 
 /** Registers something the back can step out of; the returned function takes it off again. Later registrations sit
  *  nearer the top: a back goes to the last one registered that has steps left. */
@@ -121,10 +130,14 @@ const closeTop = (): boolean => {
 
 /** One back step, for a caller inside the app. With history entries held it is the system's back itself (the same
  *  popstate path); with none (a cold start before the first touch) it goes straight to what is on top, so the app is
- *  never navigated away from. */
+ *  never navigated away from.
+ *
+ *  A back through the history lands a moment later, and until it has the count of entries still includes the one it
+ *  is leaving: a second call in that moment would ask for a back past the app's first entry. So a call made while one
+ *  is on its way, or while a traversal of our own is, does nothing: it is not queued. With no entry held the step is
+ *  taken at once, and each call is a step. */
 export const stepBack = (): void => {
-  if (mounted && mounted.held() > 0) history.back()
-  else closeTop()
+  if (!mounted?.step()) closeTop()
 }
 
 const stateBack = (): number => {
@@ -146,6 +159,7 @@ export const mountBack = (): (() => void) => {
   // next steps go forward onto them, and only a push (which cuts them away) or a forward that finds nothing empties it.
   let ahead = 0
   let moving = 0 // our own history.go(n), whose popstate is no press
+  let stepping: ReturnType<typeof setTimeout> | undefined // a `stepBack` whose history.back() has not landed
   let dropped = 0 // such traversals in a row that never arrived
   let presses = 0
   let judged = true // false from a back until what it left open counts as not closed by it
@@ -161,15 +175,22 @@ export const mountBack = (): (() => void) => {
       if (!live || !moving || trip !== trips) return
       // No popstate came. The counts were moved for a traversal that did not happen, so they start again from what
       // the history says: a dropped unwind is tried again, and a forward onto nothing becomes a push. After a few in
-      // a row the entries are not there to leave, and the count below stands as it is.
+      // a row the entries are not there to leave: the count stands as it is, and the entry the page is on is made to
+      // say the same. Left with its old mark, it would sit under the next push as an entry of the same depth, and a
+      // back onto it would be taken for the browser's Forward: closing nothing, every time.
       moving = 0
       ahead = 0
       if (++dropped <= DROPS) held = stateBack()
+      else {
+        dropped = 0
+        if (stateBack() !== held) history.replaceState(held ? { back: held } : null, "")
+      }
       sync()
     }, ARRIVAL)
   }
   const sync = () => {
-    if (!live || moving) return
+    // A `stepBack` on its way is a press that has not landed: a traversal of ours begun now would take its popstate.
+    if (!live || moving || stepping) return
     const d = depth()
     if (d < held) {
       const n = held - d
@@ -200,6 +221,8 @@ export const mountBack = (): (() => void) => {
   const onPop = () => {
     const at = stateBack()
     dropped = 0
+    clearTimeout(stepping)
+    stepping = undefined
     if (moving || at >= held) {
       // Our own go(), or the browser's Forward onto a popped `{ back: k }` entry (or a non-back pop at the root):
       // no press to answer. `sync` unwinds an entry nothing stands for.
@@ -252,7 +275,17 @@ export const mountBack = (): (() => void) => {
   // that reads something busy (the reader's line while prose streams) from asking for a look on every frame.
   const watching = new Map<Closable, () => void>()
   const mine: NonNullable<typeof mounted> = {
-    held: () => held,
+    step: () => {
+      if (moving || stepping) return true
+      if (!held) return false
+      stepping = setTimeout(() => {
+        // No popstate came: the back was dropped. The next call may try again.
+        stepping = undefined
+        later()
+      }, ARRIVAL)
+      history.back()
+      return true
+    },
     watch: (c) => {
       watching.set(
         c,
@@ -279,6 +312,7 @@ export const mountBack = (): (() => void) => {
     live = false
     if (mounted === mine) mounted = null
     disarm()
+    clearTimeout(stepping)
     removeEventListener("popstate", onPop)
     clearInterval(watch)
     document.removeEventListener("toggle", later, true)
