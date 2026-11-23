@@ -13,6 +13,13 @@
   overscroll-behavior: contain;
   mask-image: none;
 }
+/* under 64rem the pane is the screen, not a card on it: the graph still runs edge to edge but for the screen's own
+   insets, a landscape notch at either side and the home indicator under the last turn */
+@media (width < 64rem) {
+  .timeline .pane.graph {
+    padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+  }
+}
 .timeline .plot {
   position: relative;
   flex: none;

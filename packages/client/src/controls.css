@@ -391,6 +391,15 @@
   box-shadow: var(--shadow-pop);
   outline: none;
 }
+/* a phone: the drawer is the whole screen, so it has no corner for the scrim to show through, and its left edge is
+   the screen's too (in landscape, the side a notch may be on) */
+@media (width < 72rem) {
+  .side-drawer {
+    width: 100%;
+    padding-left: var(--safe-left);
+    border-radius: 0;
+  }
+}
 .drawer-head,
 .modal-head {
   flex: none;
@@ -489,10 +498,22 @@
   height: calc(100dvh - 2 * var(--space-4));
 }
 @media (width < 72rem) {
+  /* a phone: a dialog stands on the screen's bottom edge, the sheet's shape (chrome.css .sheet): flush with the bottom
+     and both sides, only its top corners round, its top kept under the status bar. Its own padding clears the home
+     indicator and a landscape notch, so a dialog with no foot is clear of them as well. The confirm (chrome.css) is
+     not one of these: it stays the small centred card a system alert is */
+  :is(.settings, .workshop-page, .wpage) .modal:not(.full) {
+    width: 100%;
+    max-height: calc(100dvh - var(--safe-top) - var(--space-6));
+    margin: auto 0 0;
+    padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+    border-radius: var(--radius-dialog) var(--radius-dialog) 0 0;
+  }
   :is(.settings, .workshop-page, .wpage) .modal.full {
     width: 100%;
     height: 100dvh;
     max-height: 100dvh;
+    padding-inline: var(--safe-left) var(--safe-right);
     border-radius: 0;
   }
   :is(.settings, .workshop-page, .wpage) .modal.full .modal-head {

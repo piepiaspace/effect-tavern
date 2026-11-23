@@ -10,6 +10,13 @@
   -webkit-text-size-adjust: 100%;
   overscroll-behavior: none;
 }
+/* under 72rem there is no canvas: the ground is the page's own surface, the one colour an app's host paints behind
+   the system bars (#226), so nothing beside those strips is a shade off, the frame before the app mounts included */
+@media (width < 72rem) {
+  :root {
+    background: var(--surface-1);
+  }
+}
 body {
   margin: 0;
   overscroll-behavior: none;

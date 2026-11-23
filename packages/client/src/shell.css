@@ -18,7 +18,7 @@
   min-height: 0;
   position: relative;
   display: flex;
-  background: var(--surface-0);
+  background: var(--surface-1); /* a phone's ground is the page's surface; the canvas's own colour comes at 72rem */
 }
 .canvas[data-resizing] {
   user-select: none;
@@ -1124,6 +1124,7 @@
   .canvas {
     --safe-top: 0px;
     padding: 0 var(--space-2) var(--space-2) 0;
+    background: var(--surface-0);
   }
   /* the screen's left edge, live only while the sidebar is folded and not yet floating */
   .edge {

@@ -688,7 +688,9 @@ button.record-pill:active {
   position: fixed;
   inset: 0;
   height: fit-content;
-  width: min(22rem, calc(100% - 2 * var(--space-4)));
+  /* the width is the content's, so the screen's two margins are counted with the box's own padding: on a phone the
+     card keeps a margin each side where it once ran edge to edge */
+  width: min(22rem, calc(100% - 4 * var(--space-4)));
   margin: auto;
   padding: var(--space-4);
   border: 0;

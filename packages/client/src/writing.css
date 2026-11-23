@@ -4,7 +4,8 @@
    pinned to its right, the proper-noun defaults, and the per-card extra requirement filling the rest of the column);
    right (the four narration switches with their compiled sentence and the per-turn record products scrolling inside
    their share). On a narrower stage the columns stack and the page scrolls. Also holds the shared styles for the
-   6-tab pack editor in settings (packs.tsx). */
+   6-tab pack editor in settings (packs.tsx). The strip that keeps the status bar clear over the scrolling page is
+   card.css's (`.manifest::before, .wpage::before`). */
 .wpage {
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -31,7 +32,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
-  padding: calc(var(--space-4) + var(--safe-top)) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
+  padding: calc(var(--space-4) + var(--safe-top)) max(var(--space-4), var(--safe-right))
+    calc(var(--space-4) + var(--safe-bottom)) max(var(--space-4), var(--safe-left));
 }
 .wsheet > * {
   min-height: 0;
@@ -1095,7 +1097,8 @@
     grid-template-rows: minmax(0, 1fr);
     gap: var(--space-5);
     column-gap: var(--space-6);
-    padding: calc(var(--space-6) + var(--safe-top)) var(--space-6) var(--space-6);
+    padding: calc(var(--space-6) + var(--safe-top)) max(var(--space-6), var(--safe-right))
+      calc(var(--space-6) + var(--safe-bottom)) max(var(--space-6), var(--safe-left));
   }
   .wcol {
     height: 100%;

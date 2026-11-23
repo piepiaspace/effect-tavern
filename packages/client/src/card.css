@@ -10,13 +10,29 @@
   overscroll-behavior: contain;
   font-size: var(--text-body);
 }
+/* no bar holds the top of this page or of the Writing page (writing.css), so where the page lies under the status bar
+   (an iPhone) its text would scroll up behind the clock: a strip of the page's surface, as tall as the safe area,
+   stays there. It takes no room (the sheet's top padding counts the safe area already), and it has no height where
+   the host keeps the page clear of the system bars (Android) or the canvas does (shell.css, from 72rem) */
+.manifest::before,
+.wpage::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  flex: none;
+  height: var(--safe-top);
+  margin-bottom: calc(-1 * var(--safe-top));
+  background: var(--surface-1);
+}
 .cardsheet {
   box-sizing: border-box;
   flex: none;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-5);
-  padding: calc(var(--space-4) + var(--safe-top)) var(--space-4) calc(var(--space-4) + var(--safe-bottom));
+  padding: calc(var(--space-4) + var(--safe-top)) max(var(--space-4), var(--safe-right))
+    calc(var(--space-4) + var(--safe-bottom)) max(var(--space-4), var(--safe-left));
 }
 .cardsheet > * {
   min-height: 0;
@@ -48,7 +64,8 @@
     grid-template-rows: auto minmax(0, 1fr);
     column-gap: var(--space-6);
     row-gap: var(--space-5);
-    padding: calc(var(--space-6) + var(--safe-top)) var(--space-6) var(--space-6);
+    padding: calc(var(--space-6) + var(--safe-top)) max(var(--space-6), var(--safe-right))
+      calc(var(--space-6) + var(--safe-bottom)) max(var(--space-6), var(--safe-left));
   }
   .manifest .about {
     grid-area: 1 / 1 / -1 / 2;

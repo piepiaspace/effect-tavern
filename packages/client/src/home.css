@@ -42,7 +42,8 @@
   overscroll-behavior: contain;
   display: grid;
   place-items: center;
-  padding: var(--space-6) var(--space-5) var(--space-4);
+  /* The side gutters give way to a landscape phone's notch; the composer below takes the bottom safe area */
+  padding: var(--space-6) max(var(--space-5), var(--safe-right)) var(--space-4) max(var(--space-5), var(--safe-left));
 }
 .home-mark {
   width: 100%;
@@ -184,7 +185,7 @@
 /* Compact layout for short / landscape phone viewports so the emblem, title, and primary action cards stay reachable */
 @media (max-height: 36rem) {
   .home-stage {
-    padding: var(--space-3) var(--space-4) var(--space-2);
+    padding: var(--space-3) max(var(--space-4), var(--safe-right)) var(--space-2) max(var(--space-4), var(--safe-left));
   }
   .home-mark {
     gap: var(--space-3);
