@@ -561,7 +561,7 @@ export const PromptTreePage = () => {
       </header>
 
       <div class="cols">
-        <section class="pane pipeline pt-main" aria-label={t("promptTree.paneOutline")}>
+        <section class="pane pipeline pt-main" aria-label={t("promptTree.paneOutline")} data-selectable>
           <Show when={loading() && !shown() && !errMsg()}>
             <span class="pt-meta-item muted" role="status">
               {t("promptTree.updating")}

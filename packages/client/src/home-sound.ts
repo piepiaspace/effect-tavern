@@ -68,9 +68,9 @@ export interface MechanicalSound {
   iris(opening: boolean): void
   /** Delicate pitched tactile accent on card hover or button click. */
   detent(kind: "hover" | "click" | "engage"): void
-  /** Suspend audio when page is hidden or paused. */
+  /** Suspend audio when page is hidden, paused or covered; a gesture does not bring it back until `resume`. */
   suspend(): void
-  /** Resume audio if user has sound enabled. */
+  /** Resume audio if user has sound enabled; one the system stopped meanwhile comes back on the next gesture. */
   resume(): void
   /** Dispose AudioContext on unmount. */
   dispose(): void
@@ -84,6 +84,24 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
   let feedbackNode: GainNode | null = null
   let wetNode: GainNode | null = null
   let on = false
+  // The sound is wanted now: the player turned it on and nothing of ours holds it (paused, covered, hidden). The
+  // system can still stop the context on its own (iOS: the lock screen, a call, another app taking the audio session),
+  // leaving it `suspended` or WebKit's `interrupted`; a resume outside a gesture is refused there, so the next touch
+  // or key anywhere on the page asks again, until it runs.
+  let wanted = false
+  const heal = () => {
+    if (wanted && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
+      void ctx.resume().catch(() => {})
+  }
+  const GESTURES = ["pointerup", "touchend", "click", "keydown"] as const
+  let listening = false
+  const listen = (yes: boolean) => {
+    if (yes === listening || typeof window === "undefined") return
+    listening = yes
+    for (const type of GESTURES)
+      if (yes) window.addEventListener(type, heal, { capture: true, passive: true })
+      else window.removeEventListener(type, heal, { capture: true })
+  }
 
   let profile: SoundProfile = initial
   let warmthX = 0
@@ -225,6 +243,8 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
     state: () => ctx?.state ?? "uninitialized",
     setEnabled: (next: boolean) => {
       on = next
+      wanted = next
+      listen(next)
       if (next) {
         const c = ensureContext()
         if (!c) return
@@ -303,15 +323,19 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       }
     },
     suspend: () => {
+      wanted = false
       if (ctx && ctx.state === "running") void ctx.suspend().catch(() => {})
     },
     resume: () => {
+      wanted = on
       // WebKit can also interrupt the context while another app has the audio session.
       if (on && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
         void ctx.resume().catch(() => {})
     },
     dispose: () => {
       on = false
+      wanted = false
+      listen(false)
       if (ctx) {
         const c = ctx
         ctx = null

@@ -6,7 +6,7 @@ import type { Shape } from "@effect-tavern/runtime/src/product.ts"
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import { type JSX } from "@solidjs/web"
 import { type ComponentProps, createMemo, For, Match, Show, Switch } from "solid-js"
-import { wide } from "./viewport.ts"
+import { coarse, openingFocus, wide } from "./viewport.ts"
 import { read } from "./bridge.ts"
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/solid/menu"
@@ -45,7 +45,13 @@ const Go = (props: { to: Section }) => (
   </button>
 )
 export const Failed = (props: { error: Failure }) => (
-  <Switch fallback={<span class="failure-raw">{failureText(props.error)}</span>}>
+  <Switch
+    fallback={
+      <span class="failure-raw" data-selectable>
+        {failureText(props.error)}
+      </span>
+    }
+  >
     <Match when={props.error.code === "no-model"}>
       <Go to="routing" />
     </Match>
@@ -425,12 +431,13 @@ export const Sheet = (props: {
   tools?: JSX.Element
   children: JSX.Element
   footer?: JSX.Element
+  /** A field the sheet opens on (a CSS selector): not on a touch screen (viewport.ts `openingFocus`). */
   focus?: string
   onOpenChange?: ComponentProps<typeof Dialog>["onOpenChange"]
 }) => {
   return (
     <Dialog controller={props.controller} presentation={wide() ? "dialog" : "sheet"} onOpenChange={props.onOpenChange}>
-      <DialogContent class={{ sheet: true, fit: !!props.fit }} initialFocus={props.focus}>
+      <DialogContent class={{ sheet: true, fit: !!props.fit }} initialFocus={openingFocus(props.focus, coarse())}>
         <header>
           <DialogTitle>{props.heading}</DialogTitle>
           {props.tools}
@@ -459,7 +466,7 @@ const RecordBody = (props: { node: Node }) => {
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   )
   return (
-    <div class="record">
+    <div class="record" data-selectable>
       {/* by index: the memo yields fresh, equal elements whenever the log changes; rows update in place */}
       <For each={els()} keyed={false}>
         {(el) => <Reading el={el()} />}
@@ -662,7 +669,7 @@ export const StatusTable = () => {
     { equals: (a, b) => JSON.stringify(a) === JSON.stringify(b) },
   )
   return (
-    <div class="record">
+    <div class="record" data-selectable>
       <For each={groups()} keyed={(g) => g.group ?? ""}>
         {(g) => (
           <div class="group">

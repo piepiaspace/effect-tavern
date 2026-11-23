@@ -92,7 +92,7 @@ export const Manager = (props: {
   let startX = 0
   let startY = 0
   const clearHold = () => clearTimeout(holdTimer)
-  /** Shown: the search and selection start over (the field is drawn anew and takes the focus). */
+  /** Shown: the search and selection start over (the field is drawn anew and takes the focus, but on a touch screen). */
   const reset = () => {
     ask("")
     setFilter("all")

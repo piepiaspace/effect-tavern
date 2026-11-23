@@ -155,6 +155,11 @@ void (async () => {
         "clicking prev figure switches back to projector-rosette-04",
       )
     }
+    // the stage turns its figures on a sideways stroke, and says so: the page's swipe (swipe.ts) leaves it alone
+    check(
+      document.querySelector<HTMLElement>(".home-mech-stage")?.dataset["swipe"] === "own",
+      "the mechanism's stage keeps sideways strokes for itself",
+    )
     const soundToggle = document.querySelector<HTMLButtonElement>(".home-mech-sound")
     check(soundToggle !== null, "mechanical sound toggle should render")
     const toggle = document.querySelector<HTMLButtonElement>(".home-mech-toggle:not(.home-mech-sound)")

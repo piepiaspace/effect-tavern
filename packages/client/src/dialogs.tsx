@@ -32,6 +32,18 @@ const FOLLOW = ":follow"
 const NONE = ":none"
 const choiceOf = (id: string | null | undefined) => (id === undefined ? FOLLOW : id === null ? NONE : id)
 const pickOf = (v: string) => (v === FOLLOW ? undefined : v === NONE ? null : v)
+/** Two maps of card to words with the same cards, each with the same words in the same order. */
+const sameTags = (a: Readonly<Record<string, readonly string[]>>, b: Readonly<Record<string, readonly string[]>>) => {
+  const keys = Object.keys(a)
+  return (
+    keys.length === Object.keys(b).length &&
+    keys.every((k) => {
+      const x = a[k]
+      const y = b[k]
+      return !!x && !!y && x.length === y.length && x.every((w, i) => w === y[i])
+    })
+  )
+}
 
 const manager = dialogHandle()
 const picker = dialogHandle()
@@ -136,8 +148,12 @@ export const StoryDialogs = (props: { onLeave?: () => void }) => {
   }
   // the tag manager: one fixed order (most cards, then the word); a click on a word edits it in place, Enter renames it
   // on every card, Escape or a blur keeps it; × drops it from every card (no confirm: one PUT, the word can be retyped)
-  const allTags = createMemo(() => tagsOfLocals(allLocals()))
-  const counts = createMemo(() => tagCounts(allTags()))
+  // both are rebuilt whenever any card's row changes (a persona pick, a mount): equal by content, so the chips are
+  // redrawn only when a word or a count did change
+  const allTags = createMemo(() => tagsOfLocals(allLocals()), { equals: sameTags })
+  const counts = createMemo(() => tagCounts(allTags()), {
+    equals: (a, b) => a.length === b.length && a.every(([w, n], i) => w === b[i]?.[0] && n === b[i]?.[1]),
+  })
   const [editing, setEditing] = createSignal<string | null>(null)
   const applyRenameTag = (from: string, to: string) => {
     const cur = allTags()

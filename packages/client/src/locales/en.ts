@@ -457,6 +457,7 @@ const en: Dict = {
     stage: "Stage",
     storyBusy: "Running",
     storyName: "Story name",
+    swipe: "Swipe navigation",
     workspace: "Card workspace",
     freeChatWriting: "Free chat writing",
     writing: "Writing",

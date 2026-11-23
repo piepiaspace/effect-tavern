@@ -29,7 +29,8 @@ import {
 import { openExport, openPicker, StoryDialogs } from "../src/dialogs.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
-import { mountBack } from "../src/back.ts"
+import { closable, mountBack } from "../src/back.ts"
+import { Swipe } from "../src/swipe.ts"
 import { onKey, open as openPage } from "../src/pages.ts"
 import { Demand, Sheet } from "../src/readings.tsx"
 import { card, page, registry, type CardView, type StoryRow } from "../src/store.ts"
@@ -234,6 +235,21 @@ render(
           onDock={(w) => (setSideFolded(false), setSideWidth(w), (side.folded = false), (side.width = w))}
         />
       </div>
+      {/* the phone's swipe, on (the phone's layout) and off (the canvas's), each over a box of its own */}
+      <Swipe
+        enabled
+        aria-label="页面横滑"
+        style={{ position: "fixed", inset: "100px auto auto 100px", width: "300px" }}
+      >
+        <div id="swipe-on" style={{ height: "60px" }} />
+      </Swipe>
+      <Swipe
+        enabled={false}
+        aria-label="桌面横滑"
+        style={{ position: "fixed", inset: "200px auto auto 100px", width: "300px" }}
+      >
+        <div id="swipe-off" style={{ height: "60px" }} />
+      </Swipe>
       <Sheet
         controller={sheet}
         heading="全部故事"
@@ -279,6 +295,43 @@ const run = async () => {
     "侧栏宽度",
   ])
     check(labels.includes(l), `${l} is missing from the snapshot: ${labels.join(" | ")}`)
+
+  // the phone's swipe: an agent's swipe over a page is one step back (a closer of the fixture's own stands for the
+  // page); off, on the canvas's layout, the agent does not see it and a hand's stroke does nothing
+  check(entries.find((e) => e.label === "页面横滑")?.actions.includes("swipe"), "the swipe offers its action")
+  check(!labels.includes("桌面横滑"), "a swipe that is off is out of the agent's sight")
+  let closes = 0
+  const [pageSteps, setPageSteps] = createSignal(1)
+  const offPage = closable({ steps: pageSteps, close: () => (closes++, setPageSteps(0)) })
+  const swiped = await agent.act({ steps: [{ ref: "页面横滑", action: "swipe" }] })
+  check(swiped.ok && closes === 1, `an agent's swipe steps back: ${swiped.error?.message} (${closes})`)
+  setPageSteps(1)
+  const stroke = async (id: string) => {
+    const el = document.getElementById(id)!
+    const y = el.getBoundingClientRect().top + 30
+    const send = (type: string, x: number) =>
+      el.dispatchEvent(
+        new PointerEvent(type, {
+          clientX: x,
+          clientY: y,
+          button: 0,
+          pointerId: 3,
+          pointerType: "touch",
+          isPrimary: true, // the first finger down (a dispatched event is not primary unless it says so)
+          bubbles: true,
+        }),
+      )
+    // 160px to the right counts by its distance alone, however fast: no pace is needed
+    send("pointerdown", 120)
+    for (let x = 136; x <= 280; x += 16) send("pointermove", x)
+    send("pointerup", 280)
+    await quiet()
+  }
+  await stroke("swipe-off")
+  check(closes === 1, `a stroke on a swipe that is off does nothing (${closes})`)
+  await stroke("swipe-on")
+  check(closes === 2, `the same stroke on one that is on steps back (${closes})`)
+  offPage()
 
   const set = await agent.act({
     steps: [
