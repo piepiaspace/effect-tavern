@@ -18,7 +18,8 @@ const media = (query: string) => ({
     if (query.includes("72rem")) widen = heard
   },
 })
-Object.assign(globalThis, { window: { matchMedia: media } })
+// a window that hears nothing else: viewport.ts may listen for more than the one query (a resize)
+Object.assign(globalThis, { window: { matchMedia: media, addEventListener: () => {} } })
 const rows = [{ id: 1, card: "c1", busy: null } as StoryRow]
 globalThis.fetch = (async (url: string) => {
   const path = String(url)
