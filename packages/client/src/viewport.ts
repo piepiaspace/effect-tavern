@@ -6,6 +6,17 @@ const [wide, setWide] = createSignal(media?.matches ?? true)
 media?.addEventListener("change", (event) => setWide(event.matches))
 export { wide }
 
+// A finger is the pointer (a phone, a tablet; #226): a field focused without a tap raises the soft keyboard.
+const touch = typeof window === "undefined" ? undefined : window.matchMedia("(pointer: coarse)")
+const [coarse, setCoarse] = createSignal(touch?.matches ?? false)
+touch?.addEventListener("change", (event) => setCoarse(event.matches))
+export { coarse }
+/** Where a dialog that opens on a field (a search) puts the focus: the field, except under a finger, where the
+ *  keyboard it raises would cover what just opened before the player asked to type; there the dialog itself takes the
+ *  focus, so keys and a screen reader still start inside it, and a tap on the field opens the keyboard. */
+export const openingFocus = (field: string | undefined, coarse: boolean): string | undefined =>
+  field && coarse ? "content" : field
+
 // How far a popover @ui-sdk places stays from the screen's edges (its `collisionPadding`). The library keeps one
 // distance for every edge, 8 by default, and writes the place inline, where no stylesheet reaches; so where the
 // screen has side insets (a phone on its side: the notch) the distance grows by the wider of the two, and a popover

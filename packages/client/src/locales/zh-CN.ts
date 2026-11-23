@@ -453,6 +453,7 @@ const zh = {
     stage: "主舞台",
     storyBusy: "进行中",
     storyName: "故事名",
+    swipe: "横滑导航",
     workspace: "单卡工作区",
     freeChatWriting: "自由对话写作",
     writing: "写作",

@@ -105,6 +105,8 @@ async function run() {
     const dispose = render(() => <PromptTreePage />, root)
     if (!(await until(() => root.querySelector(".pt-events")))) throw Error("Missing sandbox events")
     const outline = root.querySelector<HTMLElement>(".pane.pipeline")!
+    // its messages, excerpts and errors are read and copied as the Inspector's are (on a touch screen, test/touch.tsx)
+    if (!outline.hasAttribute("data-selectable")) throw Error("The outline pane should be marked data-selectable")
     const controls = root.querySelector<HTMLElement>(".pane.node")!
     const paneSwitch = root.querySelector<HTMLElement>(".pt-header-end > .seg:last-child")!
     if (window.matchMedia("(min-width: 64rem)").matches) {

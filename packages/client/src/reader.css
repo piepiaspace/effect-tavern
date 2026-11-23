@@ -21,6 +21,24 @@ body {
   margin: 0;
   overscroll-behavior: none;
 }
+/* Text on a touch screen (#226): a long press on a key, a title or a row selects nothing, so no blue block lands on
+   the chrome. What is read selects again: the prose, the player's lines, the inspect and detail panes (each marked
+   `data-selectable`), and every field; the keys inside a marked surface stay keys. A fine pointer selects anything,
+   as it always has: copying an id or a label off the desktop is part of the work. */
+@media (pointer: coarse) {
+  :root {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  :is([data-selectable], input, textarea, [contenteditable]:not([contenteditable="false"])) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  [data-selectable] :is(button, summary, [role="button"], [role="tab"], [role="option"], [role="switch"]) {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
 /* the frame holds still: the strip, the column and the composer fill the stage card (shell.css), and only the
    column scrolls */
 .panel {
@@ -314,6 +332,7 @@ p {
   border-radius: var(--radius);
   background: var(--alpha-1);
   overflow-x: auto;
+  overscroll-behavior-x: contain; /* a finger at the fence's end stops there: the sideways scroll is not handed on to the page */
   font-size: var(--text-body);
   line-height: 1.5;
 }
@@ -340,6 +359,8 @@ p {
   border-bottom-color: var(--line-strong);
 }
 .md a {
+  /* no link preview on a long press: in an iOS web view the preview, once dismissed, left every later tap dead */
+  -webkit-touch-callout: none;
   color: inherit;
   text-decoration: underline;
   text-decoration-color: var(--line-strong);
