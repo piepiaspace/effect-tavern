@@ -503,14 +503,8 @@ const run = async () => {
   check(held() === 0 && history.state === null, `on the base, which carries no mark: ${JSON.stringify(history.state)}`)
   check(went.length === 0, `with no traversal of ours: ${JSON.stringify(went)}`)
 
-  // The whole App is on the page, and two advisories of its own come with it. They were there before this fixture
-  // and are tracked outside it (#226's review); each is named here by its code and where it is owned, and anything
-  // else still fails: the listing's two memos recomputed to an equal value (dialogs.tsx `allTags`, `counts`).
-  const owned = (d: { ownerPath?: readonly string[] }, ...tail: string[]) =>
-    tail.every((name, i) => d.ownerPath?.at(i - tail.length) === name)
-  const known = (d: { code: string; ownerPath?: readonly string[] }) =>
-    d.code === "UNSTABLE_MEMO_OUTPUT" && (owned(d, "<StoryDialogs>", "allTags") || owned(d, "<StoryDialogs>", "counts"))
-  const diagnostics = bridge.end().diagnostics.filter((d) => !known(d))
+  // The whole App is on the page: not one advisory of its own comes with it
+  const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 
