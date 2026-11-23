@@ -26,7 +26,7 @@ import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
-import { readTurnEvents } from "@effect-tavern/runtime/src/sse.ts"
+import { IncompleteStream, readTurnEvents } from "@effect-tavern/runtime/src/sse.ts"
 import type { Call } from "./inspect.ts"
 import type { Hit } from "./stories.ts"
 import {
@@ -409,9 +409,21 @@ export const fetchSettings = (): Promise<unknown> =>
     fetchNames(),
   ])
 
+/** What a stream's caller hears besides its events. `lost`: the transport failed (the request got no answer, or the
+ *  stream broke after it opened: the phone went to the background, the network dropped, the bytes stopped mid-frame),
+ *  or the stream ended while its turn was still open, told whether any event had come down it; without `lost` that
+ *  failure is an `error` like any other, and an early end only ends the stream. The server ends a turn's stream after
+ *  an `error`, or a `change` that leaves no node pending (the record still to run is the same turn): ended before one,
+ *  a web view suspended or a proxy's timeout closed it, and the turn may be running yet. `idle`: a 204, no turn in
+ *  flight. A refusal the server answered, an `error` event it sent, bytes the decoder cannot read and a stream this
+ *  client closed are never `lost`. */
+export interface Ends {
+  lost?: (heard: boolean) => void
+  idle?: () => void
+}
 /** Sends one action; returns what closes its stream (the turn goes on on the server). */
-export const send = (action: Action): (() => void) =>
-  listen((signal) => call(base, { method: "POST", body: JSON.stringify(action), signal }))
+export const send = (action: Action, ends?: Ends): (() => void) =>
+  listen((signal) => call(base, { method: "POST", body: JSON.stringify(action), signal }), apply, ends)
 /** Starts an action on a specific story id without touching the active tab's slots (used when a home send finishes
  *  after the player switched tabs: once the server accepts the request, the turn runs to completion on the server). */
 export const sendTo = async (storyId: number, action: Action): Promise<void> => {
@@ -424,17 +436,37 @@ export const sendTo = async (storyId: number, action: Action): Promise<void> => 
   void res.body?.cancel().catch(() => {})
 }
 /** The turn in flight on this story, if any (`GET /turn`): its `attach` then its events; returns what closes it. */
-export const attach = (): (() => void) => listen((signal) => call(`${base}/turn`, { signal }))
+export const attach = (ends?: Ends): (() => void) => listen((signal) => call(`${base}/turn`, { signal }), apply, ends)
 /** The player's stop (`POST /stop`): "withdrawn" before the first character, "halted" after it, null when idle. */
 export const stop = async (): Promise<"withdrawn" | "halted" | null> =>
   (await got<{ stopped: "withdrawn" | "halted" | null }>(call(`${base}/stop`, { method: "POST" }))).stopped
+/** `body` as it comes, with `broke()` called when a read of it fails: the transport's failure, told apart from the
+ *  decoder's over the bytes it did deliver. */
+const watched = (body: ReadableStream<Uint8Array>, broke: () => void): ReadableStream<Uint8Array> => {
+  const reader = body.getReader()
+  return new ReadableStream<Uint8Array>({
+    async pull(c) {
+      const chunk = await reader.read().catch((e: unknown) => {
+        broke()
+        throw e
+      })
+      if (chunk.done) c.close()
+      else c.enqueue(chunk.value)
+    },
+    cancel: (why) => reader.cancel(why),
+  })
+}
 /** Reads an SSE response into `emit` until it ends or is closed; a 204 is nothing to read. */
 export const listen = (
   open: (signal: AbortSignal) => Promise<Response>,
   emit: (e: Wire) => void = apply,
+  ends: Ends = {},
 ): (() => void) => {
   const ac = new AbortController()
   let opened = false
+  let broken = false // the transport failed: the request, or a read of the open stream
+  let heard = false
+  let running = true // the turn on this stream: no `error` and no `change` that leaves nothing pending heard on it yet
   const closed = () => {
     if (!opened) return
     opened = false
@@ -444,8 +476,14 @@ export const listen = (
   ac.signal.addEventListener("abort", closed, { once: true })
   void (async () => {
     try {
-      const res = await open(ac.signal)
-      if (res.status === 204) return
+      const res = await open(ac.signal).catch((e: unknown) => {
+        broken = true
+        throw e
+      })
+      if (res.status === 204) {
+        if (!ac.signal.aborted) ends.idle?.()
+        return
+      }
       if (!res.ok) throw await responseError(res)
       if (!res.body) throw new Error("missing event stream")
       if (ac.signal.aborted) {
@@ -454,10 +492,27 @@ export const listen = (
       }
       opened = true
       registry.update(openStreams, (count) => count + 1)
-      await readTurnEvents<Wire>(res.body, emit, ac.signal)
-      if (!ac.signal.aborted) void fetchStories() // the open story's row: its size, its last line, its time
+      // only a caller that hears a lost stream has its reads watched: the bare stream otherwise, as it always was
+      if (ends.lost)
+        await readTurnEvents<Wire>(
+          watched(res.body, () => (broken = true)),
+          (e) => {
+            heard = true
+            if (e.kind === "error") running = false
+            else if (e.kind === "change") running = e.node?.settlementStatus === "pending"
+            emit(e)
+          },
+          ac.signal,
+        )
+      else await readTurnEvents<Wire>(res.body, emit, ac.signal)
+      if (ac.signal.aborted) return
+      if (running && ends.lost) return ends.lost(heard) // ended mid-turn: read again by the caller, as a break is
+      void fetchStories() // the open story's row: its size, its last line, its time
     } catch (e) {
-      if (!ac.signal.aborted)
+      if (ac.signal.aborted) return
+      if (e instanceof IncompleteStream) broken = true // the bytes stopped mid-frame: the transport's, not the decoder's
+      if (broken && ends.lost) ends.lost(heard)
+      else
         emit({
           kind: "error",
           message: e instanceof Error ? e.message : String(e),

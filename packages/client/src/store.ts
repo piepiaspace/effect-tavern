@@ -149,6 +149,9 @@ export const revising = Atom.make<{
   previous: DraftModel
 } | null>(null)
 export const error = Atom.make<Failure | null>(null)
+/** The turn's stream broke (the phone went to the background, the network dropped) and reading the story again failed
+ *  too (turn.ts `reconnect`): the draft stays as it was, held, under a "connection lost" line with a retry. */
+export const lost = Atom.make(false)
 /** The node whose 小剧场 was last asked for (`turn.demand`): a demand has no draft to carry its failure, so `error`
  *  shows in that node's row (readings.tsx `Demand`). A turn's action (`start`) clears it with the error. */
 export const demanded = Atom.make<Id | null>(null)
@@ -390,7 +393,9 @@ const applyNow = (e: Wire): void => {
     case "attach":
       // the turn as it stands: its prose so far drawn at once, the live deltas playing on from there (the switch here
       // reset the playout, so the loop is told the prose is still coming). `fresh` is the server's: an act's line that
-      // fails from here goes back in the box, a swipe's or an edit's is already on its node.
+      // fails from here goes back in the box, a swipe's or an edit's is already on its node. Re-attached after a lost
+      // stream (turn.ts), the playout of the stream before starts over here too.
+      resetPlay()
       registry.set(draft, e.draft)
       registry.set(stage, e.phase)
       running(e.phase)
@@ -476,6 +481,7 @@ export const clear = (): void => {
   resetPlay()
   registry.set(draft, null)
   registry.set(stage, null)
+  registry.set(lost, false)
 }
 /** A node landed: the draft, the revision it came from and the error it displaced are over. */
 export const settle = (revision = true): void => {

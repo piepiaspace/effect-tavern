@@ -5,6 +5,8 @@ const en: Dict = {
   app: {
     internalFailure: "See the terminal log for story {story} at {time}.",
     noResponse: "No response received",
+    connectionLost: "The connection dropped. The turn may still be running.",
+    turnUnfinished: "The connection dropped and this turn did not finish. You can send it again.",
     editProse: "Edit the prose",
     goDefaultModel: "Set default model",
     jumpToLatest: "Jump to latest",

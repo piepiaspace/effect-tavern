@@ -261,4 +261,100 @@ const sample =
   assert.equal(storyFetches, fetchesBefore)
 }
 
+// A caller that hears a lost stream (`Ends`, #226): the transport failing is `lost`, told whether any event came; it
+// is never an `error`. What the server sent or answered, and what the decoder made of its bytes, stay `error`s.
+{
+  type Heard = { got: Wire[]; lost: boolean[]; idle: number }
+  const run = async (open: () => Promise<Response>): Promise<Heard> => {
+    const h: Heard = { got: [], lost: [], idle: 0 }
+    let done!: () => void
+    const over = new Promise<void>((resolve) => (done = resolve))
+    listen(
+      open,
+      (event) => {
+        h.got.push(event)
+        if (event.kind === "streamEnd" || event.kind === "error") done()
+      },
+      { lost: (heard) => (h.lost.push(heard), done()), idle: () => (h.idle++, done()) },
+    )
+    await over
+    for (let i = 0; i < 5; i++) await Promise.resolve()
+    return h
+  }
+  const breaking = (first?: string) =>
+    new Response(
+      new ReadableStream<Uint8Array>({
+        start(c) {
+          if (first) c.enqueue(encoder.encode(first))
+        },
+        pull(c) {
+          return Promise.resolve().then(() => c.error(new TypeError("network connection was lost")))
+        },
+      }),
+    )
+  // the stream breaks after an event: lost, heard; the stream's end still told, no error
+  let h = await run(async () => breaking('event: stage\ndata: {"kind":"stage","phase":"narrate"}\n\n'))
+  assert.deepEqual(h.lost, [true])
+  assert.deepEqual(
+    h.got.map((e) => e.kind),
+    ["stage", "streamEnd"],
+  )
+  // it breaks before any: lost, not heard
+  h = await run(async () => breaking())
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[false], ["streamEnd"]])
+  // the request gets no answer at all: lost, not heard, nothing emitted
+  h = await run(() => Promise.reject(new TypeError("Load failed")))
+  assert.deepEqual([h.lost, h.got], [[false], []])
+  // the server's own error event, and a refusal it answered: errors as ever
+  h = await run(async () => new Response(encoder.encode('event: error\ndata: {"message":"model said no"}\n\n')))
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[], ["error", "streamEnd"]])
+  h = await run(async () => Response.json({ error: "busy", code: "busy" }, { status: 409 }))
+  assert.deepEqual(h.lost, [])
+  assert.equal(h.got[0]?.kind === "error" && h.got[0].code, "busy")
+  // bytes the decoder cannot read: an error, not a lost connection
+  h = await run(async () => new Response(encoder.encode("data: {bad-json\n\n")))
+  assert.deepEqual([h.lost, h.got[0]?.kind], [[], "error"])
+  // a 204: idle
+  h = await run(async () => new Response(null, { status: 204 }))
+  assert.deepEqual([h.idle, h.lost, h.got], [1, [], []])
+  // the bytes stop mid-frame: the transport's failure, lost, not the decoder's "incomplete event stream"
+  h = await run(
+    async () => new Response(encoder.encode('event: stage\ndata: {"kind":"stage","phase":"narrate"}\n\ndata: {"ki')),
+  )
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[true], ["stage", "streamEnd"]])
+  // a clean end while the turn is open (a suspended web view, a proxy's timeout): lost, whether or not it had begun
+  const sse = (...es: object[]) =>
+    new Response(encoder.encode(es.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("")))
+  h = await run(async () => sse({ kind: "stage", phase: "narrate" }))
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[true], ["stage", "streamEnd"]])
+  h = await run(async () => sse())
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[false], ["streamEnd"]])
+  // a node that lands with its record still to run is the same turn: an end there is lost too
+  const pending = { id: 1, parent: 0, settlementStatus: "pending" }
+  h = await run(async () => sse({ kind: "change", node: pending, head: 1 }))
+  assert.deepEqual(h.lost, [true])
+  // ended after what closes a turn (a change that leaves nothing pending, an error): the turn's end, nothing lost
+  h = await run(async () => sse({ kind: "change", node: pending, head: 1 }, { kind: "change", head: 1 }))
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[], ["change", "change", "streamEnd"]])
+  h = await run(async () => sse({ kind: "stage", phase: "record" }, { kind: "error", message: "no" }))
+  assert.deepEqual(h.lost, [])
+  assert.equal(registry.get(openStreams), 0)
+  // closed by this client mid-turn: neither lost nor an error, nothing emitted after
+  const got: Wire[] = []
+  const lostHeard: boolean[] = []
+  let controller!: ReadableStreamDefaultController<Uint8Array>
+  const close = listen(
+    async () => new Response(new ReadableStream<Uint8Array>({ start: (c) => void (controller = c) })),
+    (e) => got.push(e),
+    { lost: (heard) => lostHeard.push(heard) },
+  )
+  while (!controller) await Promise.resolve()
+  controller.enqueue(encoder.encode('data: {"kind":"stage","phase":"narrate"}\n\n'))
+  while (!got.length) await Promise.resolve()
+  close() // the stream cancelled under the reader, as a story switch does
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+  assert.deepEqual([lostHeard, got.map((e) => e.kind)], [[], ["stage"]])
+  assert.equal(registry.get(openStreams), 0)
+}
+
 console.log("wire ok")

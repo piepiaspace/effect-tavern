@@ -4,6 +4,8 @@ const zh = {
   app: {
     internalFailure: "请查看故事 {story} 在 {time} 的终端日志。",
     noResponse: "未收到响应",
+    connectionLost: "连接断开了，这一回合可能还在进行。",
+    turnUnfinished: "连接断开期间这一回合没有完成，可以重新发送。",
     editProse: "编辑正文",
     goDefaultModel: "设置默认模型",
     jumpToLatest: "跳到最新",
