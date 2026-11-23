@@ -1267,3 +1267,26 @@
     translate: 0 0;
   }
 }
+/* the phone's swipe (swipe.ts): the surface wraps the app, laid out as #root is. On a coarse pointer every element
+   under it pans only vertically, so a sideways stroke reaches the page as pointer events rather than the browser's
+   pan; an element's own touch-action (a slider's none) still wins. The keys' `manipulation` (reader.css) would let
+   the browser take the stroke, so they pan vertically too, and sideways scrollers keep both pans for themselves. */
+[data-slot="swipe"] {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+@media (pointer: coarse) {
+  :where([data-slot="swipe"][data-enabled], [data-slot="swipe"][data-enabled] *) {
+    touch-action: pan-y pinch-zoom;
+  }
+  [data-slot="swipe"][data-enabled] :is(button, a, [role="button"], summary) {
+    touch-action: pan-y pinch-zoom;
+  }
+  [data-slot="swipe"][data-enabled] :is(.md pre, .inspect .wbar, .timeline .pane.graph),
+  [data-slot="swipe"][data-enabled] :is(.md pre, .inspect .wbar, .timeline .pane.graph) * {
+    touch-action: manipulation;
+  }
+}

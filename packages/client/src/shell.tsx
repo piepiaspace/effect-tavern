@@ -63,6 +63,9 @@ const store = (key: string, value: string) => {
     // a browser without storage keeps the state for the page's life
   }
 }
+let phoneDrawer: { open: () => unknown } | undefined
+/** Opens the phone's drawer, for a way to it from outside the strip (a swipe, swipe.ts); nothing on the canvas. */
+export const openDrawer = (): void => void (wide() ? undefined : phoneDrawer?.open())
 export const Shell = (props: { children: JSX.Element }) => {
   const pg = read(page)
   const view = read(card)
@@ -151,6 +154,7 @@ export const Shell = (props: { children: JSX.Element }) => {
   }
   // ── the phone's drawer ──
   const drawer = createDrawerController()
+  phoneDrawer = drawer
   const leaveDrawer = () => void drawer.close()
   /** `card › story` as the strip draws it: the card in ink-2, the story in ink (shell.css `.strip .c`, `.s`). */
   const Names = () => (

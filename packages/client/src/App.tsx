@@ -30,7 +30,8 @@ import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPa
 import { apart, lineOf, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
 import { shrinkwrap } from "./shrinkwrap.ts"
-import { gutter } from "./viewport.ts"
+import { Swipe } from "./swipe.ts"
+import { gutter, wide } from "./viewport.ts"
 import {
   updateComposition,
   dismiss,
@@ -650,7 +651,7 @@ export const App = () => {
     }
   })
   return (
-    <>
+    <Swipe enabled={!wide()} aria-label={t("side.swipe")}>
       <Shell>
         <Reader />
         {/* the pages fill the stage card over the reader (shell.css), each with its own head and Back; home has none */}
@@ -696,6 +697,6 @@ export const App = () => {
           automation
         </div>
       </Show>
-    </>
+    </Swipe>
   )
 }

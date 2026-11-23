@@ -56,7 +56,7 @@ const LAYER =
   ":popover-open:not([role=tooltip], [data-slot$=backdrop], .facet-pop, [data-ending-style]), dialog[open]:not(:popover-open, [data-ending-style])"
 /** The open layers, one element each: a backdrop is its layer's, `.facet-pop` follows the search box's `#` term rather
  *  than a press, and a layer on its way out (the SDK's `data-ending-style`) is already closed. */
-const openLayers = (): HTMLElement[] =>
+export const openLayers = (): HTMLElement[] =>
   typeof document === "undefined" ? [] : [...document.querySelectorAll<HTMLElement>(LAYER)]
 const isField = (el: HTMLElement): boolean =>
   el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable
@@ -97,6 +97,12 @@ export const closable = (c: Closable): (() => void) => {
 
 /** How many backs it takes to reach the bottom: the layers, then every closer's steps. */
 const depth = (): number => closers.reduce((n, c) => n + left(c), openLayers().length)
+/** Whether something registered (a page, a settings detail, an edit) is open under the layers: false at the bottom,
+ *  where a back has nothing of the app's own to step out of. */
+export const closerOpen = (): boolean => {
+  caughtUp()
+  return closers.some((c) => left(c) > 0)
+}
 
 /** One step out of what is on top: the top layer its Escape, else the top closer its close. True when a field inside
  *  a layer was focused and the Escape came back cancelled: either the SDK took it (it cancels the one it closes on),
