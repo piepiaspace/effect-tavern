@@ -52,22 +52,35 @@ import {
   User,
 } from "./icons.tsx"
 import {
+  conflictText,
+  flipByStage,
+  HAT_NONE,
+  HAT_STAGE_KEYS,
   HAT_STAGES,
-  hatConflicts,
   hatMounts,
+  hatOptions,
   hatTemplateConflicts,
+  isHatStage,
+  mainConflicts,
+  modelOptions,
   pairKey,
   pairOf,
   parseHatFile,
-  routedHatId,
+  ROUTE_STAGES,
   serializeHat,
-  stalePair,
+  stageConflicts,
+  stageHatValue,
+  staleHatOption,
+  staleModelOption,
   toggleMainHat,
   toggleStageHat,
   uniqueHatName,
   validToolInput,
+  withDefaultPair,
   withDeliver,
-  type HatConflict,
+  withMainHat,
+  withStageHat,
+  withStagePair,
   type HatStage,
 } from "./connections.ts"
 import { Cards } from "./cards.tsx"
@@ -90,7 +103,6 @@ import {
   routing,
   tabs,
   type Pair,
-  type Routing as RoutingConfig,
 } from "./store.ts"
 import { type Key, t } from "./i18n.ts"
 import {
@@ -194,40 +206,6 @@ export const Settings = () => {
 }
 
 // ───────── 默认模型 ─────────
-type Stage = keyof NonNullable<RoutingConfig["stages"]>
-const HAT_NONE = "__none__"
-const isHatStage = (s: Stage): s is HatStage => s === "narrate" || s === "check" || s === "polish" || s === "record"
-const HAT_STAGE_KEYS: Record<HatStage, Key> = {
-  narrate: "settings.stageNarrate",
-  record: "settings.stageRecord",
-  check: "settings.stageCheck",
-  polish: "settings.stagePolish",
-}
-const STAGES: [Stage, Key][] = [
-  ["narrate", "settings.stageNarrate"],
-  ["record", "settings.stageRecord"],
-  ["decide", "settings.stageDecide"],
-  ["direct", "settings.stageDirect"],
-  ["lookup", "settings.stageLookup"],
-  ["check", "settings.stageCheck"],
-  ["polish", "settings.stagePolish"],
-  ["author", "settings.stageAuthor"],
-]
-const conflictText = (c: HatConflict): string => {
-  switch (c) {
-    case "prefill":
-      return t("settings.hatNeedsPrefill")
-    case "deliver_prefill":
-      return t("settings.hatDeliverNoPrefill")
-    case "deliver_tools":
-      return t("settings.hatDeliverNeedsTools")
-    case "handshake_tools":
-      return t("settings.hatHandshakeNeedsTools")
-    case "reasoning_unsigned":
-      return t("settings.hatReasoningUnsigned")
-  }
-}
-
 /** 预检: whether lookup and check ask the decision model first (DecisionConfig.enabled). The arrow opens the Decision row on 模型服务;
  *  with no config saved the switch is off. A key is not required (a keyless service is legal), so it is not the test. */
 const PreCheck = (props: { onDecision: () => void }) => {
@@ -256,67 +234,10 @@ const Routing = (props: { onDecision: () => void }) => {
   const list = read(providers)
   const route = read(routing)
   const hatList = read(hats)
-  const pairs = createMemo(() =>
-    list()
-      .filter((p) => p.enabled)
-      .flatMap((p) =>
-        p.models.map((m) => ({
-          value: pairKey({ provider: p.id, model: m.id }),
-          label: `${p.name} · ${m.id}`,
-          glyph: m.id,
-        })),
-      ),
-  )
-  const hatOptions = createMemo(() => hatList().map((h) => ({ value: h.id, label: h.name })))
-  /** A pair the menus cannot offer (its provider off, or it or its model gone) still shows what the row holds, marked;
-   *  the next turn on it fails naming the provider, so the trigger must not look unset. */
-  const stale = (pair: Pair | undefined) => {
-    const s = stalePair(list(), pair)
-    return (
-      s && {
-        value: pairKey(pair!),
-        label: `${s.name} · ${s.model}`,
-        reason: s.reason,
-        glyph: s.model,
-      }
-    )
-  }
-  const staleHat = (id: string | null | undefined) =>
-    id && !hatList().some((h) => h.id === id) ? { value: id, label: id, reason: "removed" as const } : undefined
-  const setStage = (s: Stage, k: string) =>
-    void putRouting((r) => {
-      const { [s]: _, ...rest } = r.stages ?? {}
-      return { ...r, stages: k ? { ...rest, [s]: pairOf(k) } : rest }
-    })
-  const setMainHat = (id: string | undefined) =>
-    void putRouting((r) => {
-      const { hat: _, ...rest } = r
-      return id ? { ...rest, hat: id } : rest
-    })
-  const setStageHat = (s: HatStage, v: string) =>
-    void putRouting(({ stageHats, ...base }) => {
-      const { [s]: _, ...rest } = stageHats ?? {}
-      const next = v === "" ? rest : { ...rest, [s]: v === HAT_NONE ? null : v }
-      return Object.keys(next).length ? { ...base, stageHats: next } : base
-    })
-  const flipStages = () =>
-    void putRouting((r) => {
-      const { stages, stageHats: _, ...rest } = r
-      return stages ? rest : { ...rest, stages: {} }
-    })
-  const stageHatValue = (s: HatStage): string => {
-    const v = route().stageHats?.[s]
-    return v === null ? HAT_NONE : (v ?? "")
-  }
-  const defaultConflicts = () => {
-    const r = route()
-    const h = hatList().find((item) => item.id === r.hat)
-    return !r.stages && h ? hatTemplateConflicts(list(), r, h) : []
-  }
-  const stageConflicts = (s: Stage) => {
-    const r = route()
-    return isHatStage(s) ? hatConflicts(list(), hatList(), r.stages?.[s] ?? r.default, routedHatId(r, s), s) : []
-  }
+  const pairs = createMemo(() => modelOptions(list()))
+  const hatChoices = createMemo(() => hatOptions(hatList()))
+  const stale = (pair: Pair | undefined) => staleModelOption(list(), pair)
+  const staleHat = (id: string | null | undefined) => staleHatOption(hatList(), id)
   return (
     <section class="detail-card" aria-label={t("settings.routing")}>
       <header class="detail-header">
@@ -339,7 +260,7 @@ const Routing = (props: { onDecision: () => void }) => {
                 value={route().default && pairKey(route().default!)}
                 options={pairs()}
                 stale={stale(route().default)}
-                onPick={(k) => void putRouting((r) => ({ ...r, default: pairOf(k) }))}
+                onPick={(k) => void putRouting(withDefaultPair(pairOf(k)))}
               />
             </div>
             <div class="stage-hat" data-active={route().hat ? "" : undefined}>
@@ -348,24 +269,26 @@ const Routing = (props: { onDecision: () => void }) => {
                 small
                 label={t("settings.mainHat")}
                 value={route().hat ?? ""}
-                options={[{ value: "", label: t("settings.noHat") }, ...hatOptions()]}
+                options={[{ value: "", label: t("settings.noHat") }, ...hatChoices()]}
                 stale={staleHat(route().hat)}
-                onPick={(v) => setMainHat(v || undefined)}
+                onPick={(v) => void putRouting(withMainHat(v || undefined))}
               />
             </div>
-            <For each={defaultConflicts()}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
+            <For each={mainConflicts(list(), hatList(), route())}>
+              {(c) => <div class="warn">{conflictText(c)}</div>}
+            </For>
           </div>
         </div>
         <div class="block">
           <div class="block-title">
             <h3>{t("settings.byStage")}</h3>
             <div class="right">
-              <Switch on={!!route().stages} label={t("settings.byStage")} onFlip={flipStages} />
+              <Switch on={!!route().stages} label={t("settings.byStage")} onFlip={() => void putRouting(flipByStage)} />
             </div>
           </div>
           <Show when={route().stages}>
             <div class="cards-grid routing-grid">
-              <For each={STAGES} keyed={(s) => s[0]}>
+              <For each={ROUTE_STAGES} keyed={(s) => s[0]}>
                 {(s) => {
                   const stage = () => s()[0]
                   const label = () => t(s()[1])
@@ -381,7 +304,7 @@ const Routing = (props: { onDecision: () => void }) => {
                           placeholder={t("settings.followMain")}
                           options={[{ value: "", label: t("settings.followMain") }, ...pairs()]}
                           stale={stale(route().stages?.[stage()])}
-                          onPick={(k) => setStage(stage(), k)}
+                          onPick={(k) => void putRouting(withStagePair(stage(), k ? pairOf(k) : undefined))}
                         />
                       </div>
                       <Show when={isHatStage(stage())}>
@@ -393,18 +316,20 @@ const Routing = (props: { onDecision: () => void }) => {
                           <Menu
                             small
                             label={t("settings.stageHat", { stage: label() })}
-                            value={stageHatValue(stage() as HatStage)}
+                            value={stageHatValue(route(), stage() as HatStage)}
                             options={[
                               { value: "", label: t("settings.followMainHat") },
                               { value: HAT_NONE, label: t("settings.noHat") },
-                              ...hatOptions(),
+                              ...hatChoices(),
                             ]}
                             stale={staleHat(route().stageHats?.[stage() as HatStage])}
-                            onPick={(v) => setStageHat(stage() as HatStage, v)}
+                            onPick={(v) => void putRouting(withStageHat(stage() as HatStage, v))}
                           />
                         </div>
                       </Show>
-                      <For each={stageConflicts(stage())}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
+                      <For each={stageConflicts(list(), hatList(), route(), stage())}>
+                        {(c) => <div class="warn">{conflictText(c)}</div>}
+                      </For>
                     </div>
                   )
                 }}

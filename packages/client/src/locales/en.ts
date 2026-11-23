@@ -230,6 +230,13 @@ const en: Dict = {
     structuredTool: "Tool calling",
     thinkingHistory: "Send back past thinking",
   },
+  play: {
+    allSettings: "All settings",
+    followMainHat: "Follow main template ({hat})",
+    followMainModel: "Follow main ({model})",
+    narrateModel: "Narrate model",
+    open: "Model, template and persona: {card} › {story}",
+  },
   providers: {
     addAll: "Add all",
     addCustom: "Add a custom provider",

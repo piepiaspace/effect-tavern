@@ -51,6 +51,24 @@ export const personaOn = (
   if (s) return s.persona ?? undefined
   return (view?.id === card && view.persona) || undefined
 }
+/** The workspace's persona row in words: the name of the persona in force (`personaOn`); with none, the card's own
+ *  character when the card writes a `persona` slot (its view's frame), else nobody. */
+export const personaLine = (
+  people: readonly { id: string; name: string }[],
+  lib: { current: number | null; stories: readonly StoryRow[] } | null,
+  view:
+    | { id: string; persona: string | null; layer: { frame: readonly { id: string; from: string }[] } }
+    | null
+    | undefined,
+  card: string | null,
+  page: Page,
+): string =>
+  people.find((p) => p.id === personaOn(lib, view, card, page))?.name ??
+  t(
+    view?.id === card && view.layer.frame.some((f) => f.id === "persona" && f.from === "card")
+      ? "switches.followCard"
+      : "side.noPersona",
+  )
 export const busyOn = (rows: readonly StoryRow[], card: string): boolean =>
   rows.some((s) => s.card === card && s.busy !== null)
 export const busyElsewhere = (rows: readonly StoryRow[], card: string): boolean =>

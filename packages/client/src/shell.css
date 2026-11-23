@@ -1,6 +1,6 @@
 /* ───────── The shell (shell.tsx, side.tsx; #117, docs/sidebar-brief-1.md) ─────────
-   Phone first: the stage card is the screen, its strip the reader's head (☰, card › story ▾, 读数), the sidebar a
-   drawer. From 72rem the canvas appears: a thin strip on top (the fold key, the card › story tab, the install's
+   Phone first: the stage card is the screen, its strip the reader's head (☰, card › story ▾ opening the play
+   sheet, Timeline and 读数), the sidebar a drawer. From 72rem the canvas appears: a thin strip on top (the fold key, the card › story tab, the install's
    keys), the sidebar standing in the left space (ground), the stage card raised on the rest (figure), the reader's
    keys in its corner. The sidebar folds to nothing and, folded, floats over the stage when the pointer touches the
    screen's left edge; the stage's left edge drags its width. Every page (.inspect, .settings, .status-page) fills
@@ -69,8 +69,8 @@
   user-select: none;
   -webkit-user-select: none;
 }
-/* the crumb, a name and not a key: the card in ink-2, the story in ink, the story alone truncating; the keys keep
-   their size */
+/* the crumb: the card in ink-2, the story in ink, the story alone truncating; the keys keep their size. In the reader
+   it is the play sheet's key (play-sheet.tsx), one line with a light caret and a ghost press; elsewhere a name */
 .strip .crumb {
   display: flex;
   align-items: center;
@@ -79,6 +79,25 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
+}
+.strip button.crumb {
+  box-sizing: border-box;
+  height: var(--control);
+  padding: 0 var(--space-1) 0 var(--space-2);
+}
+@media (hover: hover) and (pointer: fine) {
+  .strip button.crumb:hover {
+    background: var(--ghost-hover);
+  }
+}
+.strip button.crumb:active {
+  background: var(--ghost-active);
+}
+.strip .crumb .caret {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  color: var(--ink-3);
 }
 .strip .icon {
   flex: none;
@@ -99,6 +118,13 @@
   max-width: 40%;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* the strip's middle column is only as wide as its names, so a share of it would cut a card name that fits beside a
+   short story title: there the cap is a share of the stage card (the screen), a name under it stands whole, and the
+   story alone gives way */
+.strip .c {
+  flex: none;
+  max-width: 26cqi;
 }
 .strip .sep,
 .shell-tab .sep {
@@ -754,8 +780,7 @@
   width: 14px;
   height: 14px;
 }
-/* the foot: this card's manager at the right (the workspace alone); in the phone's drawer the install's keys at the
-   left */
+/* the foot: the phone's drawer alone, the install's keys at the left under both layers */
 .side-foot {
   box-sizing: border-box;
   height: calc(40px + var(--safe-bottom));
@@ -881,11 +906,11 @@
 .drawer .sidebar {
   padding-right: var(--safe-right);
 }
-/* a card's stories in the drawer: one screen, the list as tall as it gets, 新建故事 at the thumb's foot (no install
-   keys under it: the shelf's foot holds them) */
+/* a card's stories in the drawer: one screen, the list as tall as it gets, 新建故事 at the thumb's foot right over the
+   install's keys (the foot takes the safe area) */
 .drawer .workspace {
   gap: var(--space-3);
-  padding-bottom: calc(var(--space-3) + var(--safe-bottom));
+  padding-bottom: var(--space-2);
 }
 .drawer .story-list {
   max-height: none;

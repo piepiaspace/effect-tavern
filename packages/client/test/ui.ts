@@ -1,6 +1,7 @@
 // `vp run verify:ui`: the browser fixtures in headless Chrome, each posting its result back here: the shared controls
 // through the agent bridge (test/controls.tsx), then the settings page's 卡片 section over a stand-in server
-// (test/cards.tsx), then the workshop's two pages the same way (test/workshop.tsx). Not in `verify`: it needs a browser. CHROME names the binary when it is not the macOS default.
+// (test/cards.tsx), then the workshop's two pages the same way (test/workshop.tsx); the reader's phone play sheet
+// (test/play-sheet.tsx) among the others. Not in `verify`: it needs a browser. CHROME names the binary when it is not the macOS default.
 import assert from "node:assert/strict"
 import { existsSync, rmSync } from "node:fs"
 import { dirname } from "node:path"
@@ -19,6 +20,10 @@ const fixtures: [file: string, passed: (snapshot: unknown[]) => string][] = [
   [
     "test/writing-page.tsx",
     () => "chronicles and per-card wording and slot overrides save and restore through the writing page",
+  ],
+  [
+    "test/play-sheet.tsx",
+    (s) => `the reader's play sheet routes, holds while running and stacks the picker, in ${s.length} writes`,
   ],
   ["test/home.tsx", (s) => `home free-chat flow and visibility rules pass, in ${s.length} requests`],
   ["test/workshop.tsx", (s) => `a card is made, written and saved through the workshop, in ${s.length} requests`],

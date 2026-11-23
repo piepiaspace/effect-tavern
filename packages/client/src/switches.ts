@@ -3,7 +3,7 @@
 // switch card). A value not set leaves the card's or lower rank's text in force, and pressing the set one again unsets
 // it. Pure data and helpers, so a test and the side panel read them without the page.
 import type { Writing } from "@effect-tavern/runtime/src/fragment.ts"
-import { harness, type From } from "@effect-tavern/runtime/src/layer.ts"
+import { harness, type From, type Local } from "@effect-tavern/runtime/src/layer.ts"
 import { type Key, t } from "./i18n.ts"
 
 export type SwitchKey = "pov" | "echo" | "agency" | "verbosity"
@@ -96,4 +96,32 @@ export const chosen = (w: Writing | undefined, extra = false): string[] => {
   })
   const chips = on.length ? on : [t("switches.followCard")]
   return extra ? [...chips, t("switches.cardExtra")] : chips
+}
+/** The writing row in words: the first switch in force on the card (`chosen`, "跟随卡片" when none), its values left
+ *  out where free text holds their slot (the card's, or a fragment: it compiles no switch); the local row from the card's
+ *  view when it is this card's, else from the install's rows. */
+export const writingLine = (
+  view:
+    | {
+        id: string
+        local: Local
+        layer: NonNullable<Parameters<typeof takenBy>[1]> & { switches: { value: Writing } }
+      }
+    | null
+    | undefined,
+  locals: Readonly<Record<string, Local>>,
+  card: string | null,
+): string => {
+  const v = card && view?.id === card ? view : undefined
+  const loc = v?.local ?? (card ? locals[card] : undefined)
+  let sw = v ? v.layer.switches.value : loc?.switches
+  if (v && sw) {
+    const { pov, povText, echo, agency, verbosity, ...rest } = sw
+    sw = {
+      ...rest,
+      ...(takenBy("pov", v.layer) === null && { pov, povText, echo, agency }),
+      ...(takenBy("verbosity", v.layer) === null && { verbosity }),
+    }
+  }
+  return chosen(sw, !!loc?.fragments?.some((f) => f.text?.trim()))[0] ?? t("switches.followCard")
 }

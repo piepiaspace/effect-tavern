@@ -15,6 +15,7 @@ import {
   type Hat,
   type HatEntry,
 } from "@effect-tavern/runtime/src/fragment.ts"
+import { type Key, t } from "./i18n.ts"
 import type { Pair, Routing } from "./store.ts"
 /** A hat's name no other hat holds (runtime fragment.ts, the library's `hats.put` holds writes to the same rule). */
 export { uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
@@ -311,4 +312,142 @@ export const stalePair = (
   const gone = !p || !p.models.some((m) => m.id === pair.model)
   if (!gone && p.enabled) return undefined
   return { reason: gone ? "removed" : "disabled", name: p?.name ?? pair.provider, model: pair.model }
+}
+
+// ───────── The routing section (默认模型) ─────────
+// What the settings page's 默认模型 section and the reader's play sheet (#223) both draw and write: the menus' options
+// and their stale markers, the edits as transforms of a Routing (handed to `putRouting`), what a stage resolves to, and
+// the conflicts shown under a card and their words. The stage tables hold keys; the caller draws them with `t()`.
+/** A stage a model can be routed to; the hat stages are the four of them a template applies to. */
+export type RouteStage = keyof NonNullable<Routing["stages"]>
+/** The routed stages in the page's order, each with its label's key. */
+export const ROUTE_STAGES: readonly (readonly [RouteStage, Key])[] = [
+  ["narrate", "settings.stageNarrate"],
+  ["record", "settings.stageRecord"],
+  ["decide", "settings.stageDecide"],
+  ["direct", "settings.stageDirect"],
+  ["lookup", "settings.stageLookup"],
+  ["check", "settings.stageCheck"],
+  ["polish", "settings.stagePolish"],
+  ["author", "settings.stageAuthor"],
+]
+export const HAT_STAGE_KEYS: Record<HatStage, Key> = {
+  narrate: "settings.stageNarrate",
+  record: "settings.stageRecord",
+  check: "settings.stageCheck",
+  polish: "settings.stagePolish",
+}
+export const isHatStage = (s: RouteStage): s is HatStage => (HAT_STAGES as readonly string[]).includes(s)
+/** The stage hat menu's value for "no template" (`null` in `stageHats`); `""` is "follow the main template". */
+export const HAT_NONE = "__none__"
+/** One menu row (controls.tsx `Option`), and one a menu cannot offer, marked with why. */
+export interface RouteOption {
+  value: string
+  label: string
+  glyph?: string
+}
+export interface StaleOption extends RouteOption {
+  reason: "removed" | "disabled"
+}
+/** Every model of every enabled provider, as menu rows keyed by `pairKey`. */
+export const modelOptions = (providers: readonly Provider[]): RouteOption[] =>
+  providers
+    .filter((p) => p.enabled)
+    .flatMap((p) =>
+      p.models.map((m) => ({
+        value: pairKey({ provider: p.id, model: m.id }),
+        label: `${p.name} · ${m.id}`,
+        glyph: m.id,
+      })),
+    )
+export const hatOptions = (hats: readonly Hat[]): RouteOption[] => hats.map((h) => ({ value: h.id, label: h.name }))
+/** A pair the menus cannot offer (its provider off, or it or its model gone) still shows what the row holds, marked;
+ *  the next turn on it fails naming the provider, so the trigger must not look unset. */
+export const staleModelOption = (providers: readonly Provider[], pair: Pair | undefined): StaleOption | undefined => {
+  const s = stalePair(providers, pair)
+  return s && { value: pairKey(pair!), label: `${s.name} · ${s.model}`, reason: s.reason, glyph: s.model }
+}
+/** A template id no template holds any more, shown as its id. */
+export const staleHatOption = (hats: readonly Hat[], id: string | null | undefined): StaleOption | undefined =>
+  id && !hats.some((h) => h.id === id) ? { value: id, label: id, reason: "removed" } : undefined
+
+/** A pair as the model menu names it (its row, or its stale marker's words); undefined when unset. What a "follow
+ *  main" row says it follows (the play sheet, play-sheet.tsx). */
+export const pairLabel = (providers: readonly Provider[], pair: Pair | undefined): string | undefined => {
+  if (!pair) return undefined
+  const key = pairKey(pair)
+  return modelOptions(providers).find((o) => o.value === key)?.label ?? staleModelOption(providers, pair)?.label
+}
+/** A template as the template menu names it (its id once it is gone); undefined for none. */
+export const hatLabel = (hats: readonly Hat[], id: string | null | undefined): string | undefined =>
+  id ? (hats.find((h) => h.id === id)?.name ?? id) : undefined
+
+/** The pair a stage runs on: its own, else the main model's. */
+export const stagePair = (route: Routing, stage: RouteStage): Pair | undefined => route.stages?.[stage] ?? route.default
+/** The stage hat menu's value: `""` follows the main template, `HAT_NONE` is none, else the template's id. */
+export const stageHatValue = (route: Routing, stage: HatStage): string => {
+  const v = route.stageHats?.[stage]
+  return v === null ? HAT_NONE : (v ?? "")
+}
+
+/** The main model. */
+export const withDefaultPair =
+  (pair: Pair) =>
+  (r: Routing): Routing => ({ ...r, default: pair })
+/** A stage's own model, or (undefined) back to following the main one. */
+export const withStagePair =
+  (stage: RouteStage, pair: Pair | undefined) =>
+  (r: Routing): Routing => {
+    const { [stage]: _, ...rest } = r.stages ?? {}
+    return { ...r, stages: pair ? { ...rest, [stage]: pair } : rest }
+  }
+/** The main template, or (undefined) none. */
+export const withMainHat =
+  (id: string | undefined) =>
+  (r: Routing): Routing => {
+    const { hat: _, ...rest } = r
+    return id ? { ...rest, hat: id } : rest
+  }
+/** A stage's template from its menu value (`stageHatValue`): `""` follows the main one, `HAT_NONE` is none; an empty
+ *  `stageHats` is left out. */
+export const withStageHat =
+  (stage: HatStage, value: string) =>
+  ({ stageHats, ...base }: Routing): Routing => {
+    const { [stage]: _, ...rest } = stageHats ?? {}
+    const next = value === "" ? rest : { ...rest, [stage]: value === HAT_NONE ? null : value }
+    return Object.keys(next).length ? { ...base, stageHats: next } : base
+  }
+/** By stage on (an empty `stages`) or off (`stages` and `stageHats` both dropped). */
+export const flipByStage = (r: Routing): Routing => {
+  const { stages, stageHats: _, ...rest } = r
+  return stages ? rest : { ...rest, stages: {} }
+}
+
+/** Under the main card while by stage is off: the main template against every stage it runs on. */
+export const mainConflicts = (providers: readonly Provider[], hats: readonly Hat[], route: Routing): HatConflict[] => {
+  const h = hats.find((item) => item.id === route.hat)
+  return !route.stages && h ? hatTemplateConflicts(providers, route, h) : []
+}
+/** Under one stage's card: its template against its model. */
+export const stageConflicts = (
+  providers: readonly Provider[],
+  hats: readonly Hat[],
+  route: Routing,
+  stage: RouteStage,
+): HatConflict[] =>
+  isHatStage(stage) ? hatConflicts(providers, hats, stagePair(route, stage), routedHatId(route, stage), stage) : []
+/** A conflict in words, read where it is drawn (a function, so it follows the locale). */
+export const conflictText = (c: HatConflict): string => {
+  switch (c) {
+    case "prefill":
+      return t("settings.hatNeedsPrefill")
+    case "deliver_prefill":
+      return t("settings.hatDeliverNoPrefill")
+    case "deliver_tools":
+      return t("settings.hatDeliverNeedsTools")
+    case "handshake_tools":
+      return t("settings.hatHandshakeNeedsTools")
+    case "reasoning_unsigned":
+      return t("settings.hatReasoningUnsigned")
+  }
 }

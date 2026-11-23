@@ -163,7 +163,7 @@
   background: var(--alpha-2);
 }
 @media (hover: hover) and (pointer: fine) {
-  .select:hover {
+  .select:hover:not(:disabled) {
     background: var(--alpha-2);
   }
 }

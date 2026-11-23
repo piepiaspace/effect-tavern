@@ -3,13 +3,15 @@
 // with a search; a card's row has a dot while a turn runs on any of its stories) and the workspace (one card: its
 // head, which opens its page; the player's filing words on it (`Local.tags`, #133) as wrapping chips right under the
 // head (click a word to filter the shelf by `#word`, × to remove, + to add or open the tag manager); two rows under it,
-// the persona in force (the open story's when it is of this card, else the card's default) and the writing in force on this card; a search; its stories, starred first then newest, the open one on a tint, a dot on one
-// with a turn in flight; "新建故事" at the foot, which opens the card's page and makes no story: a story begins at
-// Begin). The top strip (the way back to the shelf, with a dot when another card is busy) and the foot (this card's
-// story manager at the right end) are one DOM for both layers: only the middle moves. Settings, theme and language
-// are the install's (`InstallKeys`): the canvas's top strip holds them, the phone's drawer its foot. On the desktop
-// it stands in the canvas's left space; under 72rem the same component is the phone's drawer. A row only switches
-// the story: the rename, star, export and delete live in the manager (manager.tsx, dialogs.tsx).
+// the persona in force (the open story's when it is of this card, else the card's default) and the writing in force
+// on this card, worded by stories.ts `personaLine` and switches.ts `writingLine`; a search; its stories, starred
+// first then newest, the open one on a tint, a dot on one with a turn in flight; "新建故事" at the foot, which opens
+// the card's page and makes no story: a story begins at Begin). The top strip (the way back to the shelf, with a dot
+// when another card is busy; this card's story manager at the right end) and, in the phone's drawer, the foot are one
+// DOM for both layers: only the middle moves. Settings, theme and language are the install's (`InstallKeys`): the
+// canvas's top strip holds them, the drawer's foot under either layer. On the desktop it stands in the canvas's left
+// space; under 72rem the same component is the phone's drawer. A row only switches the story: the rename, star,
+// export and delete live in the manager (manager.tsx, dialogs.tsx).
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
@@ -52,7 +54,7 @@ import {
   type Hit,
   kindLabel,
   matches,
-  personaOn,
+  personaLine,
   pieces,
   turnLabel,
 } from "./stories.ts"
@@ -71,7 +73,7 @@ import {
   stories,
   type StoryRow,
 } from "./store.ts"
-import { chosen, takenBy } from "./switches.ts"
+import { writingLine } from "./switches.ts"
 import { flip, theme } from "./theme.ts"
 import { fetchStories, putLocal, searchStories } from "./wire.ts"
 import { flip as flipLocale, t } from "./i18n.ts"
@@ -142,27 +144,8 @@ export const Sidebar = (props: {
   const allLocals = read(locals)
   const view = read(cardAtom)
   const people = read(personas)
-  // with none in force the card's own character is (a `persona` slot the card writes), or nobody
-  const own = () => view()?.id === at() && view()?.layer.frame.some((f) => f.id === "persona" && f.from === "card")
-  const persona = () =>
-    people().find((p) => p.id === personaOn(lib(), view(), at(), pg()))?.name ??
-    t(own() ? "switches.followCard" : "side.noPersona")
-  const writing = createMemo(() => {
-    const cid = at()
-    const v = cid && view()?.id === cid ? view() : undefined
-    const loc = v?.local ?? (cid ? allLocals()[cid] : undefined)
-    let sw = v ? v.layer.switches.value : loc?.switches
-    if (v && sw) {
-      // a slot free text holds (the card's, or a fragment) compiles no switch: its values are not in force
-      const { pov, povText, echo, agency, verbosity, ...rest } = sw
-      sw = {
-        ...rest,
-        ...(takenBy("pov", v.layer) === null && { pov, povText, echo, agency }),
-        ...(takenBy("verbosity", v.layer) === null && { verbosity }),
-      }
-    }
-    return chosen(sw, !!loc?.fragments?.some((f) => f.text?.trim()))[0] ?? t("switches.followCard")
-  })
+  const persona = () => personaLine(people(), lib(), view(), at(), pg())
+  const writing = createMemo(() => writingLine(view(), allLocals(), at()))
   // the player's filing words on this card: wrapping chips under the head (click a word to filter the shelf by `#word`,
   // × to remove, + to open the popover); each change is one PUT /cards/<id>/local over the last acknowledged local row (query.ts `withTags`)
   const allTags = createMemo(() => tagsOfLocals(allLocals()))
@@ -720,7 +703,7 @@ export const Sidebar = (props: {
           </section>
         </div>
       </div>
-      <Show when={props.inDrawer && which() !== "workspace"}>
+      <Show when={props.inDrawer}>
         <footer class="side-foot">
           {/* the phone has no top strip: the install's keys stay at the drawer's foot */}
           <span class="left">

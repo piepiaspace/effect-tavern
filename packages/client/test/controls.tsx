@@ -116,6 +116,7 @@ let picked = "openai"
 let delivered = "text"
 let flipped = false
 let ticked = false
+let heldPicked = false
 const sheet = dialogHandle()
 const prompt = dialogHandle()
 const modal = dialogHandle()
@@ -167,6 +168,17 @@ render(
           { value: "gemini", label: "Gemini" },
         ]}
         onPick={(v) => (setFormat(v), (picked = v))}
+      />
+      {/* held (a turn in flight holds the play sheet's menus): it still names its pick, and nothing picks */}
+      <Menu
+        label="锁定格式"
+        disabled
+        value="openai"
+        options={[
+          { value: "openai", label: "OpenAI" },
+          { value: "gemini", label: "Gemini" },
+        ]}
+        onPick={() => (heldPicked = true)}
       />
       <Segment
         label="正文交付"
@@ -269,6 +281,18 @@ const run = async () => {
   check(picked === "gemini", `the select's pick reached the app: ${picked}`)
   check(delivered === "tool", `the segment's pick reached the app: ${delivered}`)
   check(flipped, "the switch's flip reached the app")
+  const lockedEntry = agent.snapshot().find((e) => e.label === "锁定格式")
+  check(
+    lockedEntry?.disabled && lockedEntry.actions.length === 0,
+    `a disabled menu is held: ${JSON.stringify(lockedEntry)}`,
+  )
+  const lockedTrigger = document.querySelector<HTMLButtonElement>('button.select[aria-label="锁定格式"]')
+  check(
+    lockedTrigger?.disabled && lockedTrigger.querySelector(".label")?.textContent === "OpenAI",
+    "a disabled menu's trigger is disabled and still names its pick",
+  )
+  const locked = await agent.act({ steps: [{ ref: "锁定格式", action: "setValue", args: ["Gemini"] }] })
+  check(!locked.ok && !heldPicked, "a disabled menu takes no pick")
   const tick = await agent.act({ steps: [{ ref: "模拟模型读取", action: "setChecked", args: [true] }] })
   check(tick.ok && ticked, `checkbox: ${tick.error?.message} ${ticked}`)
 
