@@ -52,8 +52,8 @@ var inForce struct {
 }
 
 // applyAppearance pins the app to a side or lets it follow the system: the windows' backgrounds, the system's bars
-// and keyboard, the title bar, and the page's prefers-color-scheme with them, which is why the page pins nothing of
-// its own in the app.
+// and keyboard, the title bar, and the page's prefers-color-scheme with them. Android before 12 (API 31) takes none of
+// it (MyGo's HostImpl.setAppearance returns at once), so the page pins its own side too (the client's theme.ts).
 func applyAppearance(s mygo.ThemeSource) {
 	inForce.Lock()
 	inForce.pick = s

@@ -64,7 +64,8 @@ func main() {
 	mygo.Bind(Host{})
 	mygo.App.WhenReady(func() {
 		// Before the first window: its background, the status bar, the keyboard and the page's own
-		// prefers-color-scheme then agree from the first frame.
+		// prefers-color-scheme then agree from the first frame (where the system lets the app pick: not Android
+		// before 12, host.go).
 		applyAppearance(savedAppearance())
 		if menu := appMenu(runtime.GOOS); menu != nil {
 			mygo.App.SetMenu(menu)
