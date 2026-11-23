@@ -119,6 +119,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* the strip's middle column is only as wide as its names, so a share of it would cut a card name that fits beside a
+   short story title: there the cap is a share of the stage card (the screen), a name under it stands whole, and the
+   story alone gives way */
+.strip .c {
+  flex: none;
+  max-width: 26cqi;
+}
 .strip .sep,
 .shell-tab .sep {
   color: var(--ink-3);
