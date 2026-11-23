@@ -4,6 +4,7 @@ import { fetchDetail, fetchTrace, fetchContext } from "./wire.ts"
 import { HI, LO, LOOKUP } from "@effect-tavern/runtime/src/decision.ts"
 import { createEffect, createMemo, createSignal, For, Match, onSettled, Show, Switch, untrack } from "solid-js"
 import { read } from "./bridge.ts"
+import { copyText } from "./host.ts"
 import { Back, Change, Check, Clue, Copy, Next, Prev, Read } from "./icons.tsx"
 import {
   cached,
@@ -259,7 +260,9 @@ const Step = (props: {
   )
   const [copied, setCopied] = createSignal(false)
   const copy = () => {
-    void navigator.clipboard?.writeText(JSON.stringify(c(), null, 2)).then(() => {
+    // through the app's host where there is one; "copied" only when the text got to a clipboard
+    void copyText(JSON.stringify(c(), null, 2)).then((ok) => {
+      if (!ok) return
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
