@@ -26,7 +26,7 @@ import {
   setFragmentText,
   withExtra,
 } from "../src/requirements.ts"
-import { chosen, moot, pressing, sentence, SWITCHES, takenBy } from "../src/switches.ts"
+import { chosen, moot, pressing, sentence, SWITCHES, takenBy, writingLine } from "../src/switches.ts"
 
 // stageAskLabels covers every non-switch ask in `harness`, with `narrate.deliver` right after `narrate.persona`
 const askPairs = stageAskLabels()
@@ -84,6 +84,31 @@ assert.deepEqual(chosen({ pov: "custom", povText: "半文言旁白。", echo: fa
 assert.deepEqual(chosen({ pov: "none", echo: true, agency: "free" }), ["无主角"])
 assert.deepEqual(chosen({ polish: false }, true), ["跟随卡片", "本卡补充"])
 assert.ok(moot("echo", { pov: "none" }) && !moot("echo", { pov: "third" }) && !moot("pov", { pov: "none" }))
+// the writing row: the first switch in force, the slot free text holds left out, 跟随卡片 when nothing is chosen
+{
+  const loc = (p: Partial<Local> = {}): Local => ({ id: "local", name: "", card: "wuxia", ...p })
+  const local = loc()
+  const view = (taken: string | null, value: Parameters<typeof chosen>[0]) => ({
+    id: "wuxia",
+    local,
+    layer: {
+      frame: taken ? [{ id: "pov", from: taken }] : [{ id: "pov", from: "harness", compiled: true as const }],
+      tail: [],
+      switches: { value: value ?? {}, taken: { pov: taken, verbosity: null } },
+    },
+  })
+  const sw = { pov: "third", verbosity: "concise" } as const
+  assert.equal(writingLine(view(null, sw), {}, "wuxia"), "第三人称")
+  assert.equal(writingLine(view("card", sw), {}, "wuxia"), "简短") // the card's free text holds pov
+  assert.equal(writingLine(view("card", { pov: "third" }), {}, "wuxia"), "跟随卡片")
+  assert.equal(writingLine(undefined, {}, "wuxia"), "跟随卡片")
+  assert.equal(writingLine(undefined, { wuxia: loc({ switches: { echo: true } }) }, "wuxia"), "转述言行") // no view: the row
+  assert.equal(
+    writingLine(view(null, sw), { other: loc({ card: "other", switches: { echo: true } }) }, "other"),
+    "转述言行",
+  ) // another card's view
+  assert.equal(writingLine(undefined, { wuxia: loc({ fragments: [{ id: "x", text: "补充" }] }) }, "wuxia"), "跟随卡片")
+}
 // a press on the set value unsets it, on another sets it
 assert.equal(pressing("pov", { pov: "second" }, "second"), undefined)
 assert.equal(pressing("pov", { pov: "second" }, "third"), "third")

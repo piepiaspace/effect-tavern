@@ -9,8 +9,9 @@
 // the pointer at the screen's left edge floats it over the stage (ground turned figure), and the key docks it in
 // place. The stage's edge drags the width inside a band with a detent under its floor (fold.ts, edge.tsx); a fold forgets
 // the width. The device remembers the fold and the width. Under 72rem there is no canvas: the stage card is the screen,
-// the reader's strip is ☰ (the sidebar as a drawer, whose workspace holds the persona and writing), `card › story`
-// as plain text, and the same three keys.
+// the reader's strip is ☰ (the sidebar as a drawer, whose workspace holds the persona and writing), `card › story ▾`
+// as a key that opens the play sheet (play-sheet.tsx: the model, template, persona and writing in place, and the
+// Inspector), and two keys, Timeline and 读数; home's strip names home in plain text.
 import { type JSX } from "@solidjs/web"
 import { wide } from "./viewport.ts"
 import { createMemo, createSignal, For, Show } from "solid-js"
@@ -20,6 +21,7 @@ import { StoryDialogs } from "./dialogs.tsx"
 import { BrandGlyph } from "./home.tsx"
 import {
   Back,
+  Caret,
   Card as CardGlyph,
   Chat,
   Close,
@@ -39,6 +41,7 @@ import { Edge } from "./edge.tsx"
 import { remembered, SIDE } from "./fold.ts"
 import { hasReadings } from "./readings.tsx"
 import { InstallKeys, Sidebar } from "./side.tsx"
+import { closePlaySheet, openPlaySheet, PlaySheet } from "./play-sheet.tsx"
 import { card, cards, cardTitle, isHome, page, type Page, path, stories, tabs } from "./store.ts"
 import { add, remove, unread } from "./tabs.ts"
 import { close, open, pick } from "./pages.ts"
@@ -149,10 +152,21 @@ export const Shell = (props: { children: JSX.Element }) => {
   // ── the phone's drawer ──
   const drawer = createDrawerController()
   const leaveDrawer = () => void drawer.close()
-  /** The reader's three keys: Timeline, Inspector, 读数 (when the card has one), one behaviour (a page in place, Escape and Back to return);
-   *  small on the canvas, the strip's size on the phone. They are the reader's, so no page they open is ever under
-   *  them: no key of the three has a pressed state. */
-  const Keys = () => (
+  /** `card › story` as the strip draws it: the card in ink-2, the story in ink (shell.css `.strip .c`, `.s`). */
+  const Names = () => (
+    <>
+      <span class="c">{storyCard()}</span>
+      <span class="sep" aria-hidden="true">
+        ›
+      </span>
+      <span class={{ s: true, unnamed: current()?.title === null }}>{storyTitle()}</span>
+    </>
+  )
+  /** The reader's keys: Timeline, Inspector, 读数 (when the card has one), one behaviour (a page in place, Escape and
+   *  Back to return); small on the canvas, the strip's size on the phone, where the Inspector is the play sheet's (its
+   *  foot) and the strip keeps two. They are the reader's, so no page they open is ever under them: no key has a
+   *  pressed state. */
+  const Keys = (keys: { inspector: boolean }) => (
     <>
       <button
         type="button"
@@ -162,18 +176,20 @@ export const Shell = (props: { children: JSX.Element }) => {
       >
         <Tree />
       </button>
-      <button
-        type="button"
-        class={{ icon: true, sm: wide() }}
-        aria-label={t("side.inspector")}
-        disabled={line().length === 0}
-        onClick={() => {
-          const id = line().at(-1)?.id
-          if (id !== undefined) open({ inspect: id })
-        }}
-      >
-        <Probe />
-      </button>
+      <Show when={keys.inspector}>
+        <button
+          type="button"
+          class={{ icon: true, sm: wide() }}
+          aria-label={t("side.inspector")}
+          disabled={line().length === 0}
+          onClick={() => {
+            const id = line().at(-1)?.id
+            if (id !== undefined) open({ inspect: id })
+          }}
+        >
+          <Probe />
+        </button>
+      </Show>
       {/* a card with nothing to read (no shown field, no lore, no world product) has no 读数 page: no key */}
       <Show when={hasReadings(view())}>
         <button
@@ -332,8 +348,8 @@ export const Shell = (props: { children: JSX.Element }) => {
             <Show
               when={wide()}
               fallback={
-                /* the phone's strip: the drawer, what is read (a name, not a key), the reader's keys; a page covers it
-                  with its own head */
+                /* the phone's strip: the drawer, what is read (in the reader a key to the play sheet, elsewhere a
+                  name), the reader's keys; a page covers it with its own head */
                 <header class="strip">
                   <button
                     type="button"
@@ -343,18 +359,31 @@ export const Shell = (props: { children: JSX.Element }) => {
                   >
                     <List />
                   </button>
-                  <div class="crumb">
-                    <Show when={pg() !== "home"} fallback={<span class="s">{t("home.tab")}</span>}>
-                      <span class="c">{storyCard()}</span>
-                      <span class="sep" aria-hidden="true">
-                        ›
-                      </span>
-                      <span class={{ s: true, unnamed: current()?.title === null }}>{storyTitle()}</span>
-                    </Show>
-                  </div>
+                  {/* in the reader the names open the play sheet, a turn in flight or not (it is read there too) */}
+                  <Show
+                    when={pg() === "reader"}
+                    fallback={
+                      <div class="crumb">
+                        <Show when={pg() !== "home"} fallback={<span class="s">{t("home.tab")}</span>}>
+                          <Names />
+                        </Show>
+                      </div>
+                    }
+                  >
+                    <button
+                      type="button"
+                      class="crumb"
+                      aria-haspopup="dialog"
+                      aria-label={t("play.open", { card: storyCard(), story: storyTitle() })}
+                      onClick={openPlaySheet}
+                    >
+                      <Names />
+                      <Caret class="caret" aria-hidden="true" />
+                    </button>
+                  </Show>
                   <span class="strip-end">
                     <Show when={pg() !== "home"}>
-                      <Keys />
+                      <Keys inspector={false} />
                     </Show>
                   </span>
                 </header>
@@ -370,7 +399,7 @@ export const Shell = (props: { children: JSX.Element }) => {
                 the top fade */}
               <Show when={pg() === "reader"}>
                 <div class="stage-keys">
-                  <Keys />
+                  <Keys inspector />
                 </div>
               </Show>
             </Show>
@@ -387,8 +416,17 @@ export const Shell = (props: { children: JSX.Element }) => {
             <Sidebar inDrawer onLeave={leaveDrawer} />
           </DrawerContent>
         </Drawer>
+        {/* the play sheet: the phone's alone, so a viewport turned wide takes it away, open or not */}
+        <PlaySheet card={storyCard()} story={storyTitle()} unnamed={current()?.title === null} />
       </Show>
-      <StoryDialogs onLeave={leaveDrawer} />
+      {/* a dialog's way to a page (the persona picker's 管理人设, the manager's story) leaves the drawer and the play
+        sheet under it */}
+      <StoryDialogs
+        onLeave={() => {
+          leaveDrawer()
+          closePlaySheet()
+        }}
+      />
     </>
   )
 }

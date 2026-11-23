@@ -90,8 +90,8 @@ export interface Option<T extends string> {
   glyph?: string // a model id: its family glyph leads the row
 }
 /** A select without <select>, on @ui-sdk/solid/select: a trigger and its list, the pick lit (no check column), a bottom sheet on a
- *  small touch screen. With nothing to pick, the trigger is disabled and still names the pick it holds (a stale one
- *  too). */
+ *  small touch screen. With nothing to pick, or `disabled` (a turn in flight holds the reader's play sheet), the
+ *  trigger is disabled and still names the pick it holds (a stale one too). */
 export const Menu = <T extends string>(props: {
   value: T | undefined
   options: readonly Option<T>[]
@@ -103,6 +103,7 @@ export const Menu = <T extends string>(props: {
   label?: string
   small?: boolean
   fit?: boolean
+  disabled?: boolean
 }) => {
   const live = () => props.options.find((o) => o.value === props.value)
   const current = () => live() ?? props.stale
@@ -112,7 +113,7 @@ export const Menu = <T extends string>(props: {
       value={props.value ?? null}
       items={props.options.map((o) => ({ value: o.value, label: o.label }))}
       onValueChange={(v) => v !== null && props.onPick(v)}
-      disabled={props.options.length === 0}
+      disabled={!!props.disabled || props.options.length === 0}
       presentation="auto"
     >
       <SelectTrigger class={{ select: true, sm: !!props.small }} aria-label={props.label}>

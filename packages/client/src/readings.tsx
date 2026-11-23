@@ -416,9 +416,11 @@ export const Reading = (props: { el: Element }) => (
 
 export { demandable }
 
-/** A reading opens as a draggable sheet on a narrow canvas, a centered dialog on desktop. */
+/** A reading opens as a draggable sheet on a narrow canvas, a centered dialog on desktop. `fit`: as tall as its
+ *  content, not the full-page panel (the reader's play sheet, play-sheet.tsx). */
 export const Sheet = (props: {
   controller: DialogHandle
+  fit?: boolean
   heading: JSX.Element
   tools?: JSX.Element
   children: JSX.Element
@@ -428,7 +430,7 @@ export const Sheet = (props: {
 }) => {
   return (
     <Dialog controller={props.controller} presentation={wide() ? "dialog" : "sheet"} onOpenChange={props.onOpenChange}>
-      <DialogContent class="sheet" initialFocus={props.focus}>
+      <DialogContent class={{ sheet: true, fit: !!props.fit }} initialFocus={props.focus}>
         <header>
           <DialogTitle>{props.heading}</DialogTitle>
           {props.tools}

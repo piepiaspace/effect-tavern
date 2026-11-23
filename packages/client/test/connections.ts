@@ -3,8 +3,28 @@
 import assert from "node:assert/strict"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
+import type { Routing } from "../src/store.ts"
 import {
   applied,
+  conflictText,
+  flipByStage,
+  HAT_NONE,
+  hatLabel,
+  hatOptions,
+  isHatStage,
+  pairLabel,
+  mainConflicts,
+  modelOptions,
+  routedHatId,
+  stageConflicts,
+  stageHatValue,
+  stagePair,
+  staleHatOption,
+  staleModelOption,
+  withDefaultPair,
+  withMainHat,
+  withStageHat,
+  withStagePair,
   capOf,
   correctedModels,
   formatOf,
@@ -435,4 +455,93 @@ assert.deepEqual(stalePair([{ ...p, enabled: false }], { provider: "p", model: "
   name: "Proxy",
   model: "zz",
 }) // gone wins over off
+// The routing section: options from enabled providers only, stale markers, the edits, what a stage resolves to
+const off: Provider = { ...p, id: "q", name: "Off", enabled: false, models: [{ id: "z" }] }
+assert.deepEqual(modelOptions([p, off]), [
+  { value: pairKey({ provider: "p", model: "a" }), label: "Proxy · a", glyph: "a" },
+  { value: pairKey({ provider: "p", model: "c" }), label: "Proxy · c", glyph: "c" },
+  { value: pairKey({ provider: "p", model: "d" }), label: "Proxy · d", glyph: "d" },
+])
+assert.deepEqual(hatOptions([{ id: "h1", name: "One" }]), [{ value: "h1", label: "One" }])
+assert.equal(staleModelOption([p], pair), undefined)
+assert.equal(staleModelOption([p], undefined), undefined)
+assert.deepEqual(staleModelOption([off], { provider: "q", model: "z" }), {
+  value: pairKey({ provider: "q", model: "z" }),
+  label: "Off · z",
+  reason: "disabled",
+  glyph: "z",
+})
+assert.deepEqual(staleModelOption([], pair), { value: pairKey(pair), label: "p · a", reason: "removed", glyph: "a" })
+assert.equal(staleHatOption([{ id: "h1", name: "One" }], "h1"), undefined)
+assert.equal(staleHatOption([], undefined), undefined)
+assert.equal(staleHatOption([], null), undefined)
+assert.deepEqual(staleHatOption([], "gone"), { value: "gone", label: "gone", reason: "removed" })
+assert.ok(isHatStage("record") && !isHatStage("decide") && !isHatStage("author"))
+// what a "follow main" row names: the menu's own words for the pair or template, stale ones too
+assert.equal(pairLabel([p], pair), "Proxy · a")
+assert.equal(pairLabel([p, off], { provider: "q", model: "z" }), "Off · z")
+assert.equal(pairLabel([], pair), "p · a")
+assert.equal(pairLabel([p], undefined), undefined)
+assert.equal(hatLabel([{ id: "h1", name: "One" }], "h1"), "One")
+assert.equal(hatLabel([], "gone"), "gone")
+assert.equal(hatLabel([{ id: "h1", name: "One" }], undefined), undefined)
+assert.equal(hatLabel([{ id: "h1", name: "One" }], null), undefined)
+
+const other = { provider: "p", model: "d" }
+const base: Routing = { default: pair, hat: "h1" }
+assert.deepEqual(withDefaultPair(other)(base), { default: other, hat: "h1" })
+assert.deepEqual(withStagePair("author", other)(base), { ...base, stages: { author: other } })
+assert.deepEqual(withStagePair("author", undefined)({ ...base, stages: { author: other, narrate: pair } }), {
+  ...base,
+  stages: { narrate: pair },
+}) // cleared: follows the main model again
+assert.deepEqual(withStagePair("narrate", undefined)(base), { ...base, stages: {} })
+assert.deepEqual(withMainHat("h2")(base), { default: pair, hat: "h2" })
+assert.deepEqual(withMainHat(undefined)(base), { default: pair })
+assert.equal("hat" in withMainHat(undefined)(base), false)
+const staged: Routing = { ...base, stages: {}, stageHats: { narrate: "h2" } }
+assert.deepEqual(withStageHat("check", "h3")(staged), {
+  ...base,
+  stages: {},
+  stageHats: { narrate: "h2", check: "h3" },
+})
+assert.deepEqual(withStageHat("check", HAT_NONE)(staged), {
+  ...base,
+  stages: {},
+  stageHats: { narrate: "h2", check: null },
+})
+assert.deepEqual(withStageHat("narrate", "")(staged), { ...base, stages: {} }) // follow main, and no empty stageHats
+assert.equal("stageHats" in withStageHat("narrate", "")(staged), false)
+assert.deepEqual(withStageHat("narrate", HAT_NONE)(base), { ...base, stageHats: { narrate: null } })
+assert.equal(stageHatValue(base, "narrate"), "")
+assert.equal(stageHatValue({ ...staged, stageHats: { narrate: null } }, "narrate"), HAT_NONE)
+assert.equal(stageHatValue(staged, "narrate"), "h2")
+assert.deepEqual(flipByStage(base), { ...base, stages: {} })
+assert.deepEqual(flipByStage({ ...staged, stages: { narrate: other } }), base) // off drops stages and stageHats
+assert.deepEqual(stagePair(base, "narrate"), pair)
+assert.deepEqual(stagePair({ ...base, stages: { narrate: other } }, "narrate"), other)
+assert.deepEqual(stagePair({ ...base, stages: { narrate: other } }, "check"), pair)
+assert.equal(routedHatId(staged, "narrate"), "h2")
+assert.equal(routedHatId(staged, "check"), "h1")
+assert.equal(routedHatId({ ...staged, stages: undefined }, "narrate"), "h1") // stageHats apply only by stage
+
+// The two conflict lists: by stage off, the main template's review slots conflict on a model without tools while its
+// narrate slots do not; the main card says so, the narrate stage's card does not
+const offRoute: Routing = { default: noTools, hat: reviewHat.id }
+assert.deepEqual(mainConflicts([conflictProv], [reviewHat], offRoute), ["handshake_tools"])
+assert.deepEqual(stageConflicts([conflictProv], [reviewHat], offRoute, "narrate"), [])
+assert.deepEqual(stageConflicts([conflictProv], [reviewHat], offRoute, "check"), ["handshake_tools"])
+assert.deepEqual(stageConflicts([conflictProv], [reviewHat], offRoute, "decide"), []) // not a template stage
+assert.deepEqual(mainConflicts([conflictProv], [reviewHat], { ...offRoute, stages: {} }), []) // by stage: per card
+assert.deepEqual(mainConflicts([conflictProv], [], offRoute), []) // the template gone
+assert.deepEqual(
+  stageConflicts(
+    [conflictProv],
+    [reviewHat],
+    { default: withTools, stages: { polish: noTools }, hat: reviewHat.id },
+    "polish",
+  ),
+  ["handshake_tools"],
+)
+assert.equal(conflictText("handshake_tools"), "该模板包含工具握手消息，但当前模型不支持工具调用，请求将失败")
 console.log("connections ok")

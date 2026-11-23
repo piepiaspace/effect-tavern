@@ -6,6 +6,7 @@ import {
   empty,
   matches,
   openOn,
+  personaLine,
   personaOn,
   pieces,
   preview,
@@ -111,5 +112,23 @@ assert.deepEqual([turnLabel({ ...hits.get(3)!, turn: 0 }), turnLabel(hits.get(3)
   assert.equal(personaOn(lib, { id: "other", persona: "monk" }, "other", "reader"), "monk") // another card's story is open
   assert.equal(personaOn(lib, view, "other", "reader"), undefined) // the view is another card's
   assert.equal(personaOn({ ...lib, current: 1 }, { id: "wuxia", persona: null }, "wuxia", "card"), undefined)
+}
+// The persona row in words: the name in force, else the card's own character when the card writes a `persona` slot,
+// else nobody.
+{
+  const lib = { current: 2, stories: [row(1, { persona: "monk" }), row(2)] }
+  const people = [
+    { id: "monk", name: "Monk" },
+    { id: "friend", name: "Friend" },
+  ]
+  const layer = (from?: string) => ({ frame: from ? [{ id: "persona", from }] : [{ id: "pov", from: "harness" }] })
+  const view = { id: "wuxia", persona: "friend", layer: layer() }
+  assert.equal(personaLine(people, { ...lib, current: 1 }, view, "wuxia", "reader"), "Monk") // the open story's
+  assert.equal(personaLine(people, lib, view, "wuxia", "card"), "Friend") // the card's default
+  const none = { id: "wuxia", persona: null }
+  assert.equal(personaLine(people, lib, { ...none, layer: layer() }, "wuxia", "card"), "不用人设")
+  assert.equal(personaLine(people, lib, { ...none, layer: layer("card") }, "wuxia", "card"), "跟随卡片")
+  assert.equal(personaLine(people, lib, { ...none, layer: layer("local") }, "wuxia", "card"), "不用人设") // not the card's
+  assert.equal(personaLine(people, lib, { ...none, layer: layer("card") }, "other", "card"), "不用人设") // another card's view
 }
 console.log("ok")

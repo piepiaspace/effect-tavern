@@ -229,6 +229,13 @@ const zh = {
     structuredTool: "工具调用",
     thinkingHistory: "回传历史思考过程",
   },
+  play: {
+    allSettings: "全部设置",
+    followMainHat: "跟随主模板（{hat}）",
+    followMainModel: "跟随主模型（{model}）",
+    narrateModel: "叙事模型",
+    open: "调整模型、模板与人设：{card} › {story}",
+  },
   providers: {
     addAll: "添加全部",
     addCustom: "添加自定义服务商",
