@@ -406,4 +406,5 @@ const leave = (): void => {
   ;(closeGuard?.page === kindOf(at) ? closeGuard.run : close)()
 }
 // The page stack answers the system's back for itself (back.ts): as many steps as closes reach the bottom.
-closable({ steps: () => stepsOf(activeOf(tabs())), close: leave })
+const offPages = closable({ steps: () => stepsOf(activeOf(tabs())), close: leave })
+import.meta.hot?.dispose(offPages) // a hot reload registers the new module's own

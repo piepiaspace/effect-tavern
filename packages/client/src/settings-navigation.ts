@@ -12,10 +12,11 @@ export const [pane, setPane] = createSignal<"list" | "detail">("list")
 // Under 72rem the settings show one pane at a time (settings.css), so the system's back from a record's detail returns
 // to the list before the page closes (back.ts). It counts only while the settings are the page on top: under another
 // page the detail is not what a back steps out of. 路由 has no list to return to.
-closable({
+const offDetail = closable({
   steps: () => (page() === "settings" && !wide() && pane() === "detail" && section() !== "routing" ? 1 : 0),
   close: () => setPane("list"),
 })
+import.meta.hot?.dispose(offDetail) // a hot reload registers the new module's own
 export const pickedAtom = Atom.make<Partial<Record<Section, string>>>({}).pipe(Atom.keepAlive)
 /** The settings layer on a section, 模型服务 when none is named: a missing model opens it on 默认模型 (the draft's
  *  error, the card page); Back or Escape returns to the page that opened it. Optional `id` pre-selects a record. */

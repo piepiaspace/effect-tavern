@@ -34,7 +34,7 @@ import { Demand, Sheet } from "../src/readings.tsx"
 import { card, page, registry, type CardView } from "../src/store.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { timelineNode } from "./fixtures.ts"
-import { quiet, tracked, until } from "./settle.ts"
+import { quiet, touch, tracked, until } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -573,11 +573,38 @@ const run = async () => {
   await quiet()
   check(!document.querySelector(".side-drawer") && document.activeElement === trigger, "drawer restores its opener")
 
-  // system back (back.ts): reload unwinds stale entries; `.facet-pop` takes no entry; native `popover="auto"` closes
-  // on back; a focused field on a page over home blurs and closes the page in one back
+  // system back (back.ts): after a touch a layer's first entry is pushed; reload unwinds stale entries, and steps
+  // taken after that go forward onto them rather than push; `.facet-pop` takes no entry; native `popover="auto"`
+  // closes on back; a focused field on a page over home blurs and closes the page in one back
   addEventListener("keydown", onKey)
+  const pushes: unknown[] = []
+  const push = history.pushState.bind(history)
+  history.pushState = (state: unknown, unused: string, url?: string | URL | null) => {
+    pushes.push(state)
+    push(state, unused, url)
+  }
+  const nativePop = document.getElementById("native-pop")!
+  // nothing of ours in the history yet: the entry is a real push, made once the page has been touched
+  const depth = history.length
+  const unmountFresh = mountBack()
+  touch()
+  nativePop.showPopover()
+  check(
+    await until(() => (history.state as { back?: number } | null)?.back === 1),
+    "a native popover takes a back entry",
+  )
+  check(
+    pushes.length === 1 && history.length === depth + 1,
+    `pushed, with nothing ahead to go forward onto: ${JSON.stringify(pushes)}, ${history.length - depth}`,
+  )
+  history.back()
+  check(await until(() => !nativePop.matches(":popover-open")), "system back closes the popover it was pushed for")
+  await quiet()
+  unmountFresh()
+  // a reload's leftovers, stood in for: two entries of ours with nothing open
   history.pushState({ back: 1 }, "")
   history.pushState({ back: 2 }, "")
+  pushes.length = 0
   const unmountBack = mountBack()
   check(
     await until(() => (history.state as { back?: number } | null)?.back === undefined),
@@ -588,24 +615,24 @@ const run = async () => {
   await quiet()
   check(history.state === null, "`.facet-pop` takes no history entry")
   facetPop.hidePopover()
-  const nativePop = document.getElementById("native-pop")!
   nativePop.showPopover()
   check(
     await until(() => (history.state as { back?: number } | null)?.back === 1),
-    "native popover pushes a back entry",
+    "a native popover takes a back entry again",
   )
   history.back()
   check(await until(() => !nativePop.matches(":popover-open")), "system back closes a native `popover=auto`")
   openPage("settings")
   check(
     await until(() => (history.state as { back?: number } | null)?.back === 1),
-    "a page over home pushes a back entry",
+    "a page over home takes a back entry",
   )
   nativePop.showPopover()
   check(
     await until(() => (history.state as { back?: number } | null)?.back === 2),
-    "popover over a page pushes a second back entry",
+    "a popover over a page takes a second back entry",
   )
+  check(pushes.length === 0, `all three by going forward onto the unwound entries: ${JSON.stringify(pushes)}`)
   history.back()
   check(
     await until(() => !nativePop.matches(":popover-open") && (history.state as { back?: number } | null)?.back === 1),
