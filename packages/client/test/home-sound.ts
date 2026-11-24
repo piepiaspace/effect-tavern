@@ -24,8 +24,10 @@ const node = () => ({
   stop() {},
 })
 const made: FakeContext[] = [] // every context the sound made
+let born: State = "suspended" // a context's state when made (a browser's, made inside a gesture: running)
+let notes = 0 // oscillators started
 class FakeContext {
-  state: State = "suspended"
+  state: State = born
   currentTime = 0
   destination = {}
   resumes = 0
@@ -35,7 +37,10 @@ class FakeContext {
   createGain = node
   createBiquadFilter = node
   createDelay = node
-  createOscillator = node
+  createOscillator = () => {
+    notes++
+    return node()
+  }
   resume() {
     this.resumes++
     this.state = "running"
@@ -149,5 +154,27 @@ assert.equal(c.state, "closed")
 before = c.resumes
 await gesture()
 assert.equal(c.resumes, before, "a disposed sound hears no gesture")
+
+// a fresh sound turned on while held, its context made in a gesture and so already running: quieted at once, no
+// note from it and the audio session left to others, until the page lets it go
+born = "running"
+const fresh = createMechanicalSound()
+fresh.suspend()
+fresh.setEnabled(true)
+await tick()
+const f = made.at(-1)!
+assert.notEqual(f, c, "a context of its own")
+assert.equal(f.state, "suspended", "made running while held, it is quieted")
+assert.equal(audioSession.type, "ambient", "and gives the audio session back")
+before = notes
+fresh.detent("engage")
+assert.equal(notes, before, "held, a chime sounds nothing")
+fresh.resume()
+await tick()
+assert.equal(f.state, "running")
+assert.equal(audioSession.type, "playback")
+fresh.detent("engage")
+assert.ok(notes > before, "let go, it sounds")
+fresh.dispose()
 
 console.log("home-sound: a context the system stopped resumes on the next gesture, one the page held does not")

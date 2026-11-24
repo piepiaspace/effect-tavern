@@ -54,9 +54,9 @@ export const DEFAULT_SOUND_PROFILE: SoundProfile = {
 // A phone's own speaker gives back little under about 800 Hz, where every profile's notes sit (196–1109 Hz), so there
 // the music box is played louder and each note carries two consonant partials (a twelfth and two octaves above) in
 // the band it does carry, from which the ear hears the note itself. The partials go around the warmth low-pass, whose
-// cutoff (1.3–3.9 kHz) would take back the very band they are for; a partial a profile already sounds as its own
-// overtone is not doubled. A page cannot tell the speaker from headphones, so a phone with headphones gets this too;
-// desktops and laptops keep the voicing the profiles were tuned on. Tuned by ear on the phones themselves.
+// cutoff (1.3–3.9 kHz) would take back the very band they are for; a profile's own overtone of a partial's ratio is
+// sounded by that partial instead. A page cannot tell the speaker from headphones, so a phone with headphones gets
+// this too; desktops and laptops keep the voicing the profiles were tuned on. Tuned by ear on the phones themselves.
 const SMALL_SPEAKER = {
   bus: 0.8,
   partials: [
@@ -211,7 +211,7 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
   }
 
   const ready = (): AudioContext | null => {
-    if (!on || document.hidden || !ctx || !bus) return null
+    if (!wanted() || document.hidden || !ctx || !bus) return null
     if (ctx.state !== "running") return null
     return ctx
   }
@@ -236,7 +236,8 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
     osc1.start(t0)
     osc1.stop(t0 + decay + 0.03)
 
-    if (overtone.level > 0) {
+    // on a phone, the presence partial of the same ratio sounds this overtone instead (louder, past the low-pass)
+    if (overtone.level > 0 && !(presence && SMALL_SPEAKER.partials.some((p) => p.ratio === overtone.ratio))) {
       const osc2 = c.createOscillator()
       osc2.type = "sine"
       osc2.frequency.setValueAtTime(freq * overtone.ratio, t0)
@@ -255,7 +256,6 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
 
     if (presence) {
       for (const p of SMALL_SPEAKER.partials) {
-        if (overtone.level > 0 && p.ratio === overtone.ratio) continue
         const osc = c.createOscillator()
         osc.type = "sine"
         osc.frequency.setValueAtTime(freq * p.ratio, t0)
@@ -303,8 +303,15 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       claim()
       listen(next)
       if (next) {
+        // made now even when held: outside a gesture a browser would refuse to start it later
         const c = ensureContext()
-        if (!c || held) return
+        if (!c) return
+        if (held) {
+          // a context made in a gesture starts running: quiet it, and give the audio session back
+          claim()
+          if (c.state === "running") void c.suspend().catch(() => {})
+          return
+        }
         if (c.state === "running") {
           playEngage(c)
         } else {
