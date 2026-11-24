@@ -13,14 +13,52 @@ export interface StageDoc {
   known: string[] // record's Known: items
   questions: { id: string; options: string[] }[] // record's readout questions, option ids
   asked: string[] // record's product asks
+  schemas?: Readonly<Record<string, unknown>> // per-product JSON schemas on record / theater calls
   tools: string[]
   targets: [id: string, sentence: string][] // polish's <target> marks
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
 const after = (lines: readonly string[], label: string) => lines.find((l) => l.startsWith(label))?.slice(label.length)
 const head = (s: string, sep: string) => s.slice(0, s.indexOf(sep)).trim()
 const unwrap = (s: string) =>
   /^<(?:input|draft|scene)>\n([\s\S]*?)\n<\/(?:input|draft|scene)>(?:\n|$)/.exec(s)?.[1] ?? s
+
+const firstEnumLiteral = (s: unknown): string | undefined => {
+  if (!isRecord(s)) return undefined
+  if (typeof s.const === "string") return s.const
+  if (Array.isArray(s.enum)) return s.enum.find((x): x is string => typeof x === "string")
+  const branches = Array.isArray(s.anyOf) ? s.anyOf : Array.isArray(s.oneOf) ? s.oneOf : undefined
+  if (branches && branches.length > 0 && branches.every((b) => firstEnumLiteral(b) !== undefined))
+    return firstEnumLiteral(branches[0])
+  return undefined
+}
+
+const columnFallback = (s: unknown): unknown => {
+  const lit = firstEnumLiteral(s)
+  if (lit !== undefined) return lit
+  if (!isRecord(s)) return undefined
+  if (s.type === "integer" || s.type === "number") return typeof s.minimum === "number" && s.minimum > 1 ? s.minimum : 1
+  if (s.type === "string") return ""
+  if (s.type === "boolean") return false
+  const branches = Array.isArray(s.anyOf) ? s.anyOf : Array.isArray(s.oneOf) ? s.oneOf : undefined
+  if (branches) {
+    for (const b of branches) {
+      const v = columnFallback(b)
+      if (v !== undefined) return v
+    }
+  }
+  return undefined
+}
+
+const enumTableFallback = (s: unknown): unknown[] | undefined => {
+  if (!isRecord(s) || s.type !== "array" || !isRecord(s.items)) return undefined
+  if (s.items.type !== "object" || !isRecord(s.items.properties)) return undefined
+  const cols = Object.entries(s.items.properties)
+  if (!cols.some(([, col]) => firstEnumLiteral(col) !== undefined)) return undefined
+  if (s.maxItems === 0) return []
+  return [Object.fromEntries(cols.map(([k, col]) => [k, columnFallback(col)]))]
+}
 
 export const readStage = (o: FakeCall): StageDoc => {
   const msgs = o.prompt.map(fakeText)
@@ -33,7 +71,18 @@ export const readStage = (o: FakeCall): StageDoc => {
       .find((m) => m.includes("\nQuestions: "))
       ?.split("\nQuestions: ")[1]!
       .split("\n") ?? []
-  const tools = o.tools?.filter((t) => t.type === "function").map((t) => t.name) ?? []
+  const fnTools = o.tools?.filter((t) => t.type === "function") ?? []
+  const tools = fnTools.map((t) => t.name)
+  const finish = fnTools.find((t) => t.name === "finish_record")
+  const rootSchema = finish
+    ? finish.inputSchema
+    : o.responseFormat?.type === "json"
+      ? o.responseFormat.schema
+      : undefined
+  const rawProps = isRecord(rootSchema) && isRecord(rootSchema.properties) ? rootSchema.properties : undefined
+  const schemas = rawProps
+    ? Object.fromEntries(Object.entries(rawProps).filter(([k]) => !finish || k !== "answers"))
+    : undefined
   return {
     tools,
     subject: unwrap(last),
@@ -54,6 +103,7 @@ export const readStage = (o: FakeCall): StageDoc => {
       return m ? [{ id: m[1], options: m[2].split(" | ").map((x) => head(x, ":")) }] : []
     }),
     asked: recordTask.flatMap((l) => /^(\w+): /.exec(l)?.[1] ?? []),
+    ...(schemas && { schemas }),
     targets: [...last.matchAll(/<target id="(hit-\d+)"[^>]*>(.*?)<\/target>/g)].map(
       ([, id, s]) => [id, s] as [string, string],
     ),
@@ -61,8 +111,8 @@ export const readStage = (o: FakeCall): StageDoc => {
 }
 
 /** A well-formed answer for the stage, in `fake()`'s reply shape: lookup reads nothing, decide ends, direct opens what
- *  the gate offered, check is clean, polish echoes every target, record answers each question with its first option and
- *  fills each asked product from `canned`, narrate says hello. */
+ *  the gate offered, check is clean, polish echoes every target, record answers each question with its first option,
+ *  fills each asked product from `canned`, and synthesizes one row for any uncanned enum-table schema, narrate says hello. */
 export const defaultAnswer = (doc: StageDoc, canned: Record<string, unknown> = {}): FakeReply => {
   const json = (v: unknown) => ({ text: JSON.stringify(v) })
   switch (doc.phase) {
@@ -78,7 +128,10 @@ export const defaultAnswer = (doc: StageDoc, canned: Record<string, unknown> = {
       return json(Object.fromEntries(doc.targets))
     case "record": {
       const cross = new Set(doc.tools.filter((t) => t.startsWith("read_")).map((t) => t.slice(5)))
-      const products = Object.fromEntries(doc.asked.filter((id) => !cross.has(id)).map((id) => [id, canned[id]]))
+      const ids = [...new Set([...doc.asked, ...Object.keys(doc.schemas ?? {})])].filter((id) => !cross.has(id))
+      const products = Object.fromEntries(
+        ids.map((id) => [id, Object.hasOwn(canned, id) ? canned[id] : enumTableFallback(doc.schemas?.[id])]),
+      )
       if (!doc.tools.includes("finish_record")) return json(products)
       const calls: NonNullable<FakeReply["toolCalls"]>[number][] = []
       for (const id of cross) {

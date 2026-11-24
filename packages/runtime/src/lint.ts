@@ -8,7 +8,8 @@ import { type Cond, holds, reads, STATE_HOLE } from "./cond.ts"
 import { SLOTS } from "./fragment.ts"
 import { hook } from "./lore.ts"
 import { harness } from "./layer.ts"
-import { colsAt } from "./product.ts"
+import { mediaBaseUrlError, mediaFileError } from "./media.ts"
+import { colsAt, type Product, type Shape } from "./product.ts"
 import { HOLE, unfilled } from "./names.ts"
 import { type Entry, scan } from "./polish.ts"
 
@@ -263,6 +264,13 @@ const rules: Rule[] = [
         ...q.options.map((o): [string, string] => [`rules.readouts.${q.id}.options.${o.id}.text`, o.text]),
       ]),
       ...(card.products ?? []).map((p): [string, string | undefined] => [`products.${p.id}.text`, p.text]),
+      ...(card.catalogs ?? []).flatMap((c) =>
+        c.items.map((i): [string, string | undefined] => [`catalogs.${c.id}.items.${i.id}.label`, i.label]),
+      ),
+      ...(card.media?.portraits ?? []).map((p, i): [string, string | undefined] => [
+        `media.portraits[${i}].label`,
+        p.label,
+      ]),
     ]
     return texts
       .filter(([, t]) => t !== undefined && !t.trim())
@@ -644,6 +652,234 @@ const rules: Rule[] = [
       message: `${path.split(".").at(-1)} is declared twice`,
       hint: "give each catalog, and each item in one, its own id",
     }))
+  },
+  // Closed media bindings (`Card.media`), `Catalog.kind` consistency, and production HTTPS asset paths on bound catalogs.
+  (card) => {
+    if (!card.media) return []
+    const out: Diagnostic[] = []
+    const products = new Map<string, Partial<Product> & { id: string }>(
+      (harness(card.input ?? "act").products ?? []).map((p) => [p.id, p]),
+    )
+    for (const p of card.products ?? []) products.set(p.id, { ...products.get(p.id), ...p })
+    const catalogs = new Map((card.catalogs ?? []).map((c) => [c.id, c]))
+    const consumers: { catalog: string; expected: "image" | "audio"; path: string }[] = []
+
+    const illustrationShapeOk = (s: Shape | undefined): boolean => {
+      if (s?.kind !== "table" || s.columns.length !== 2) return false
+      const after = s.columns.find((c) => c.key === "afterParagraph")
+      const idCol = s.columns.find((c) => c.key === "id")
+      return (
+        after?.type === "int" &&
+        after.options === undefined &&
+        after.catalog === undefined &&
+        idCol?.type === "enum" &&
+        idCol.catalog !== undefined &&
+        idCol.options === undefined
+      )
+    }
+    const bgmShapeOk = (s: Shape | undefined): boolean => {
+      if (s?.kind !== "table" || s.max !== 1 || s.columns.length !== 1) return false
+      const idCol = s.columns[0]
+      return idCol.key === "id" && idCol.type === "enum" && idCol.catalog !== undefined && idCol.options === undefined
+    }
+
+    const seenIllust = new Set<string>()
+    for (const [i, b] of (card.media.illustrations ?? []).entries()) {
+      const path = `media.illustrations[${i}].product`
+      if (seenIllust.has(b.product)) {
+        out.push({
+          rule: "duplicate-media-binding",
+          level: "error",
+          path,
+          message: `${b.product} is bound twice in media.illustrations`,
+        })
+        continue
+      }
+      seenIllust.add(b.product)
+      const p = products.get(b.product)
+      if (!p) {
+        out.push({
+          rule: "unknown-product",
+          level: "error",
+          path,
+          message: `${b.product} is not a product of this card`,
+        })
+        continue
+      }
+      const catId = p.shape?.kind === "table" ? p.shape.columns.find((c) => c.key === "id")?.catalog : undefined
+      if (catId !== undefined) consumers.push({ catalog: catId, expected: "image", path })
+      if (
+        (p.stage ?? "record") !== "record" ||
+        (p.role !== "chronicle" && p.role !== "theater") ||
+        !illustrationShapeOk(p.shape)
+      ) {
+        out.push({
+          rule: "bad-media-product",
+          level: "error",
+          path,
+          message: `${b.product}: media.illustrations requires a record-stage chronicle or theater table with exact columns afterParagraph (int) and id (catalog enum)`,
+        })
+      }
+    }
+
+    if (card.media.bgm) {
+      const path = "media.bgm.product"
+      const b = card.media.bgm
+      const p = products.get(b.product)
+      if (!p) {
+        out.push({
+          rule: "unknown-product",
+          level: "error",
+          path,
+          message: `${b.product} is not a product of this card`,
+        })
+      } else {
+        const catId = p.shape?.kind === "table" ? p.shape.columns.find((c) => c.key === "id")?.catalog : undefined
+        if (catId !== undefined) consumers.push({ catalog: catId, expected: "audio", path })
+        if (
+          (p.stage ?? "record") !== "record" ||
+          (p.role !== "chronicle" && p.role !== "theater") ||
+          !bgmShapeOk(p.shape)
+        ) {
+          out.push({
+            rule: "bad-media-product",
+            level: "error",
+            path,
+            message: `${b.product}: media.bgm requires a record-stage chronicle or theater table with max: 1 and exact column id (catalog enum)`,
+          })
+        }
+      }
+    }
+
+    const seenSlots = new Set<string>()
+    for (const [i, slot] of (card.media.portraits ?? []).entries()) {
+      const slotId = slot.id ?? slot.catalog
+      if (slot.id !== undefined && !slot.id.trim()) {
+        out.push({
+          rule: "bad-media-slot",
+          level: "error",
+          path: `media.portraits[${i}].id`,
+          message: "portrait slot id must not be empty",
+        })
+      } else if (seenSlots.has(slotId)) {
+        out.push({
+          rule: "duplicate-media-slot",
+          level: "error",
+          path: slot.id !== undefined ? `media.portraits[${i}].id` : `media.portraits[${i}].catalog`,
+          message: `portrait slot ${slotId} is declared twice`,
+        })
+      } else {
+        seenSlots.add(slotId)
+      }
+      const catPath = `media.portraits[${i}].catalog`
+      if (!catalogs.has(slot.catalog)) {
+        out.push({
+          rule: "unknown-catalog",
+          level: "error",
+          path: catPath,
+          message: `${slot.catalog} is not a catalog of this card`,
+          hint: "declare it in catalogs, or fix the spelling",
+        })
+      } else {
+        consumers.push({ catalog: slot.catalog, expected: "image", path: catPath })
+      }
+    }
+
+    const seenGallery = new Set<string>()
+    for (const [i, catId] of (card.media.gallery ?? []).entries()) {
+      const path = `media.gallery[${i}]`
+      if (seenGallery.has(catId)) {
+        out.push({
+          rule: "duplicate-media-binding",
+          level: "error",
+          path,
+          message: `${catId} is listed twice in media.gallery`,
+        })
+      } else {
+        seenGallery.add(catId)
+      }
+      if (!catalogs.has(catId)) {
+        out.push({
+          rule: "unknown-catalog",
+          level: "error",
+          path,
+          message: `${catId} is not a catalog of this card`,
+          hint: "declare it in catalogs, or fix the spelling",
+        })
+      } else {
+        consumers.push({ catalog: catId, expected: "image", path })
+      }
+    }
+
+    const boundCatalogIds = new Set(consumers.map((u) => u.catalog))
+    for (const cat of card.catalogs ?? []) {
+      if (!boundCatalogIds.has(cat.id)) continue
+      const uses = consumers.filter((u) => u.catalog === cat.id)
+      if (cat.kind !== undefined) {
+        for (const u of uses) {
+          if (u.expected !== cat.kind)
+            out.push({
+              rule: "media-kind-mismatch",
+              level: "error",
+              path: u.path,
+              message: `catalog ${cat.id} has kind "${cat.kind}", expected "${u.expected}"`,
+            })
+        }
+      } else if (uses.some((u) => u.expected === "image") && uses.some((u) => u.expected === "audio")) {
+        out.push({
+          rule: "media-kind-mismatch",
+          level: "error",
+          path: `catalogs.${cat.id}`,
+          message: `catalog ${cat.id} cannot be bound to both image and audio consumers`,
+        })
+      }
+
+      if (cat.baseUrl === undefined) {
+        out.push({
+          rule: "bad-media-url",
+          level: "error",
+          path: `catalogs.${cat.id}`,
+          message: `media catalog ${cat.id} requires an https:// baseUrl`,
+        })
+      } else {
+        const why = mediaBaseUrlError(cat.baseUrl)
+        if (why) out.push({ rule: "bad-media-url", level: "error", path: `catalogs.${cat.id}.baseUrl`, message: why })
+      }
+
+      if (!cat.items.length) {
+        out.push({
+          rule: "bad-media-variant",
+          level: "error",
+          path: `catalogs.${cat.id}.items`,
+          message: `media catalog ${cat.id} requires at least one item`,
+        })
+      }
+      for (const item of cat.items) {
+        if (!item.variants?.length) {
+          out.push({
+            rule: "bad-media-variant",
+            level: "error",
+            path:
+              item.variants === undefined
+                ? `catalogs.${cat.id}.items.${item.id}`
+                : `catalogs.${cat.id}.items.${item.id}.variants`,
+            message: `media catalog item ${cat.id}.${item.id} requires at least one variant file`,
+          })
+        } else {
+          for (const [j, file] of item.variants.entries()) {
+            const why = mediaFileError(file)
+            if (why)
+              out.push({
+                rule: "bad-media-variant",
+                level: "error",
+                path: `catalogs.${cat.id}.items.${item.id}.variants[${j}]`,
+                message: why,
+              })
+          }
+        }
+      }
+    }
+    return out
   },
   // A section is read as `card:<entry>#<section>`: `#` is the joint, so neither id may hold one; ids are unique within
   // their entry, and an entry holds at most 8 (lookup lists them all; more is another entity).

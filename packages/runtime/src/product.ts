@@ -19,10 +19,12 @@ type Col = typeof Col.Type
  *  (files relative to `baseUrl`, several takes of one id) by the node's seed. */
 export const Catalog = Schema.Struct({
   id: Schema.String,
+  kind: Schema.optionalKey(Schema.Literals(["image", "audio"])),
   baseUrl: Schema.optionalKey(Schema.String),
   items: Schema.Array(
     Schema.Struct({
       id: Schema.String,
+      label: Schema.optionalKey(Schema.String),
       when: Schema.optionalKey(Cond), // pickable only while it holds; no `when`, always
       variants: Schema.optionalKey(Schema.Array(Schema.String)),
     }),
@@ -133,21 +135,52 @@ export const colsAt = (s: Shape, path = "shape"): [string, Col][] =>
         )
       : []
 export const colsOf = (s: Shape): Col[] => colsAt(s).map(([, col]) => col)
+const shapeLabels = new WeakMap<Shape, readonly { id: string; label: string }[]>()
+const pushLabels = (
+  target: { id: string; label: string }[],
+  seen: Set<string>,
+  items: readonly { id: string; label: string }[],
+) => {
+  for (const item of items) {
+    const key = `${item.id}\0${item.label}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    target.push(item)
+  }
+}
+
 /** A shape with each catalog column's `options` set to the ids of its catalog's items that hold on `state`. A catalog
  *  with no survivor drops what references it: a table (a row needs every column) or a record's key; a record left with
  *  no key, and so the product, is dropped too. An id not in the list does not decode: nothing is asked of the model. */
 const resolveShape = (s: Shape, catalogs: readonly Catalog[], state: State): Shape | undefined => {
+  const labels: { id: string; label: string }[] = []
+  const seenLabels = new Set<string>()
   const col = (c: Col): Col | undefined => {
     if (c.catalog === undefined) return c
     const cat = catalogs.find((x) => x.id === c.catalog)
     if (!cat) throw new Error(`${c.key}: no catalog ${c.catalog}`)
-    const ids = [...new Set(cat.items.filter((i) => !i.when || holds(i.when, state)).map((i) => i.id))]
+    const seenIds = new Set<string>()
+    const surviving = cat.items.filter((i) => {
+      if (i.when && !holds(i.when, state)) return false
+      if (seenIds.has(i.id)) return false
+      seenIds.add(i.id)
+      return true
+    })
+    if (!surviving.length) return undefined
+    pushLabels(
+      labels,
+      seenLabels,
+      surviving.flatMap(({ id, label }) => (label?.trim() ? [{ id, label }] : [])),
+    )
     const { catalog: _, ...rest } = c
-    return ids.length ? { ...rest, options: ids } : undefined
+    return { ...rest, options: surviving.map((i) => i.id) }
   }
   if (s.kind === "table") {
     const columns = s.columns.map(col)
-    return columns.every((c) => c !== undefined) ? { ...s, columns: columns } : undefined
+    if (!columns.every((c) => c !== undefined)) return undefined
+    const out: Shape = { ...s, columns }
+    if (labels.length) shapeLabels.set(out, labels)
+    return out
   }
   if (s.kind !== "record") return s
   const keys = s.keys.flatMap((k): RecordShape["keys"][number][] => {
@@ -156,9 +189,13 @@ const resolveShape = (s: Shape, catalogs: readonly Catalog[], state: State): Sha
       return c ? [c] : []
     }
     const shape = resolveShape(k.shape, catalogs, state) as typeof k.shape | undefined
+    if (shape) pushLabels(labels, seenLabels, shapeLabels.get(shape) ?? [])
     return shape ? [{ key: k.key, shape }] : []
   })
-  return keys.length ? { kind: "record", keys } : undefined
+  if (!keys.length) return undefined
+  const out: Shape = { kind: "record", keys }
+  if (labels.length) shapeLabels.set(out, labels)
+  return out
 }
 /** The products as one record request asks them on `state` (the post-settlement context), catalogs resolved. */
 export const withCatalogs = <P extends Pick<Product, "shape">>(
@@ -321,5 +358,13 @@ export const askedAt = (
       !p.unasked &&
       (!p.when || holds(p.when, state)),
   )
-export const productAsks = (products: readonly Product[], state: State): string[] =>
-  products.map((p) => `${p.id}: ${expandState(p.text, state)}`)
+export const productAsks = (products: readonly Product[], state: State, catalogs?: readonly Catalog[]): string[] =>
+  products.map((p) => {
+    const base = `${p.id}: ${expandState(p.text, state)}`
+    let labels = shapeLabels.get(p.shape)
+    if (!labels && catalogs && colsOf(p.shape).some((c) => c.catalog !== undefined)) {
+      const resolved = resolveShape(p.shape, catalogs, state)
+      labels = resolved ? shapeLabels.get(resolved) : undefined
+    }
+    return labels?.length ? `${base} [${labels.map((x) => `${x.id}: ${x.label}`).join(" | ")}]` : base
+  })

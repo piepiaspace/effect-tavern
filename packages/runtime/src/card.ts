@@ -13,6 +13,7 @@ import { Effect, Random, Schema } from "effect"
 import { Cond, holds, expandState, type State as Paths } from "./cond.ts"
 import { Fragment } from "./fragment.ts"
 import { expand, Names } from "./names.ts"
+import { Media } from "./media.ts"
 import { Entry } from "./polish.ts"
 import { Catalog, ProductPatch } from "./product.ts"
 
@@ -323,6 +324,7 @@ export const Card = Schema.Struct({
   asks: Schema.optionalKey(Schema.Array(Fragment)), // the harness's own wording, overridden by id
   catalogs: Schema.optionalKey(Schema.Array(Catalog)), // attachments by id: an enum column's `catalog` names one
   products: Schema.optionalKey(Schema.Array(ProductPatch)), // record products: patches over the harness defaults by id, or new ones
+  media: Schema.optionalKey(Media), // closed media bindings over catalogs and record products
   lexicon: Schema.optionalKey(Schema.Array(Entry)), // slop patterns the polish stage scans for, after the player's own
   names: Schema.optionalKey(Names), // the author's defaults for the `{{key}}` holes in its text (GLOSSARY Names)
 })

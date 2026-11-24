@@ -5,14 +5,15 @@ import assert from "node:assert/strict"
 import { Schema } from "effect"
 import {
   cap,
+  Catalog,
   decodeProducts,
   fold,
+  productAsks,
   render,
   rows,
   shapeSchema,
   validate,
   withCatalogs,
-  type Catalog,
   type Product,
 } from "../src/product.ts"
 
@@ -166,4 +167,45 @@ assert.throws(() => validate(col({ key: "id", type: "enum" })), /exactly one of 
 assert.throws(() => validate(col({ key: "id", type: "enum", options: ["a"], catalog: "cg" })), /exactly one/)
 assert.throws(() => validate(col({ key: "id", type: "text", catalog: "cg" })), /exactly one/)
 assert.throws(() => validate({ ...pics, role: "world" }), /not world state/)
+
+// Catalog `kind` and item `label`: surviving item labels append `[id: label | ...]` in productAsks; unlabeled catalogs
+// produce exact legacy ask bytes.
+const decodeCatalog = Schema.decodeUnknownSync(Catalog)
+const labeledCatalog = decodeCatalog({
+  id: "cg",
+  kind: "image",
+  baseUrl: "https://media.tavern.example/cg",
+  items: [
+    { id: "dawn", label: "晨雾渡口", variants: ["dawn.webp"] },
+    { id: "night", label: "夜航船灯", when: { path: "dark", is: true }, variants: ["night.webp"] },
+  ],
+})
+assert.equal(labeledCatalog.kind, "image")
+assert.throws(() => decodeCatalog({ id: "bad", kind: "video", items: [] }))
+
+// No labels on surviving items -> exact unchanged bytes
+assert.deepEqual(productAsks([p1, m1], day), ["pics: illustrations after paragraphs", "mood: this turn"])
+// Surviving item labels -> appended in author order, filtered by `when`
+assert.deepEqual(productAsks(withCatalogs([pics], [labeledCatalog], day), day), [
+  "pics: illustrations after paragraphs [dawn: 晨雾渡口]",
+])
+assert.deepEqual(
+  productAsks(withCatalogs([pics], [labeledCatalog], { fields: { dark: true, hp: 50 } }), {
+    fields: { dark: true, hp: 50 },
+  }),
+  ["pics: illustrations after paragraphs [dawn: 晨雾渡口 | night: 夜航船灯]"],
+)
+assert.deepEqual(productAsks([pics], { fields: { dark: true, hp: 50 } }, [labeledCatalog]), [
+  "pics: illustrations after paragraphs [dawn: 晨雾渡口 | night: 夜航船灯]",
+])
+// When the only labeled item is filtered out and the surviving item has no label, ask bytes remain unchanged
+const mixedCatalog: Catalog = {
+  id: "cg",
+  items: [{ id: "plain" }, { id: "night", label: "夜航", when: { path: "dark", is: true } }],
+}
+assert.deepEqual(productAsks(withCatalogs([pics], [mixedCatalog], day), day), ["pics: illustrations after paragraphs"])
+const literalLabel = { id: "cg", items: [{ id: "sky", label: "Sky {{fields.missing}}" }] }
+assert.deepEqual(productAsks(withCatalogs([pics], [literalLabel], day), day), [
+  "pics: illustrations after paragraphs [sky: Sky {{fields.missing}}]",
+])
 console.log("product ok")

@@ -221,4 +221,82 @@ for (const name of cardNames) {
     [{ text: "又下雨了。", note: "从雨里写起。" }],
   )
 }
+
+// Media bindings, catalogs (`kind`, `baseUrl`, `label`, `variants`), and bound products survive untouched roundtrips and edits.
+{
+  const mediaCard: Card = {
+    ...blank,
+    title: "渡口",
+    fiction: [{ id: "cast", label: "人物", text: "老艄公守着渡船。" }],
+    greetings: [{ text: "江雾未散。" }],
+    catalogs: [
+      {
+        id: "crossings",
+        kind: "image",
+        baseUrl: "https://media.tavern.example/ferry/crossings",
+        items: [{ id: "misty_pier", label: "渡口薄雾", variants: ["misty-1.webp", "misty-2.webp"] }],
+      },
+      {
+        id: "ferry_bgm",
+        kind: "audio",
+        baseUrl: "https://media.tavern.example/ferry/audio",
+        items: [{ id: "clear_water", label: "晴江远棹", variants: ["clear-1.mp3"] }],
+      },
+    ],
+    products: [
+      {
+        id: "ferry_cg",
+        role: "chronicle",
+        feed: false,
+        label: "渡口插图",
+        text: "按段落挑出插图",
+        shape: {
+          kind: "table",
+          max: 2,
+          columns: [
+            { key: "afterParagraph", type: "int" },
+            { key: "id", type: "enum", catalog: "crossings" },
+          ],
+        },
+      },
+      {
+        id: "score",
+        role: "chronicle",
+        feed: false,
+        label: "江上曲目",
+        text: "挑选本轮曲目",
+        shape: { kind: "table", max: 1, columns: [{ key: "id", type: "enum", catalog: "ferry_bgm" }] },
+      },
+    ],
+    media: {
+      illustrations: [{ product: "ferry_cg" }],
+      portraits: [{ catalog: "crossings", label: "渡口" }],
+      gallery: ["crossings"],
+      bgm: { product: "score" },
+    },
+  }
+  assert.deepEqual(errors(mediaCard), [])
+  const m = manuscriptOf(mediaCard)
+  assert.ok(same(cardOf(mediaCard, m), mediaCard))
+  const edited = cardOf(mediaCard, {
+    ...m,
+    chapters: [{ ...m.chapters[0], text: "老艄公撑篙离岸。" }],
+  })
+  assert.deepEqual(errors(edited), [])
+  assert.deepEqual(edited.catalogs, mediaCard.catalogs)
+  assert.deepEqual(edited.products, mediaCard.products)
+  assert.deepEqual(edited.media, mediaCard.media)
+}
+// And the shipped `samples/ferry/ferry.yaml` sample card roundtrips key-for-key through the workshop manuscript.
+{
+  const { readFileSync } = await import("node:fs")
+  const { resolve } = await import("node:path")
+  const { parseCard } = await import("@effect-tavern/runtime/support/author.ts")
+  const ferry = validateCard(
+    parseCard(readFileSync(resolve(import.meta.dir, "../../../samples/ferry/ferry.yaml"), "utf8")),
+  ).card!
+  const m = manuscriptOf(ferry)
+  assert.ok(same(cardOf(ferry, m), ferry))
+  assert.deepEqual(errors(cardOf(ferry, m)), [])
+}
 console.log("manuscript ok")

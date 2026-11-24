@@ -45,6 +45,7 @@ export interface CardView {
   tokens: { head: number } // what the card's own text costs each turn, estimated
   fiction: readonly { id: string; label?: string; when?: Cond }[] // the fiction's modules without their text
   catalogs?: Card["catalogs"]
+  media?: Card["media"]
   rules: Rules
   local: Local
   mounts: readonly { id: string; name: string }[]

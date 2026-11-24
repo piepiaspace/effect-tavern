@@ -22,7 +22,7 @@ import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
 import { expand, nameOk, Names, unfilled } from "./names.ts"
 import { Entry as LexiconEntry } from "./polish.ts"
-import { decodeProducts, ProductPatch, validate, type Product } from "./product.ts"
+import { decodeProducts, ProductPatch, validate, type Catalog, type Product } from "./product.ts"
 import { sourceKindFrom, type OmittedItem, type SourceRef } from "./trace.ts"
 
 export const Ask = Schema.Struct({ id: Schema.String, text: Schema.String })
@@ -958,6 +958,9 @@ export const resolveWithTrace = (
 
 /** The one place a layer is merged. Pure; called once per request; never throws for a player's row. */
 export const resolve = (card: Card, rows: Rows): Resolved => resolveWithTrace(card, rows).resolved
+
+/** The effective catalogs in force for `card` and `rows` (first round: the card's own). */
+export const catalogsOf = (card: Card, _rows: Rows = {}): readonly Catalog[] => card.catalogs ?? []
 
 /** A resolved layer as it leaves the server: a card's item goes without its text, a card's lexicon entry goes whole (the
  *  pattern is the text, and a ban is a prompt, to a player too). */
