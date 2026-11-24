@@ -287,4 +287,16 @@ for (const name of cardNames) {
   assert.deepEqual(edited.products, mediaCard.products)
   assert.deepEqual(edited.media, mediaCard.media)
 }
+// And the shipped `samples/ferry/ferry.yaml` sample card roundtrips key-for-key through the workshop manuscript.
+{
+  const { readFileSync } = await import("node:fs")
+  const { resolve } = await import("node:path")
+  const { parseCard } = await import("@effect-tavern/runtime/support/author.ts")
+  const ferry = validateCard(
+    parseCard(readFileSync(resolve(import.meta.dir, "../../../samples/ferry/ferry.yaml"), "utf8")),
+  ).card!
+  const m = manuscriptOf(ferry)
+  assert.ok(same(cardOf(ferry, m), ferry))
+  assert.deepEqual(errors(cardOf(ferry, m)), [])
+}
 console.log("manuscript ok")
