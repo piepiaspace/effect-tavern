@@ -1594,6 +1594,8 @@ export const makeSession = ({
         products: products(),
         catalogs: catalogs(),
         turnProducts: n.turn.products,
+        fields: n.state,
+        events: n.events,
         context: () => derived.at([...parents, n.turn]).context(),
       }),
     )

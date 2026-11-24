@@ -204,4 +204,8 @@ const mixedCatalog: Catalog = {
   items: [{ id: "plain" }, { id: "night", label: "夜航", when: { path: "dark", is: true } }],
 }
 assert.deepEqual(productAsks(withCatalogs([pics], [mixedCatalog], day), day), ["pics: illustrations after paragraphs"])
+const literalLabel = { id: "cg", items: [{ id: "sky", label: "Sky {{fields.missing}}" }] }
+assert.deepEqual(productAsks(withCatalogs([pics], [literalLabel], day), day), [
+  "pics: illustrations after paragraphs [sky: Sky {{fields.missing}}]",
+])
 console.log("product ok")

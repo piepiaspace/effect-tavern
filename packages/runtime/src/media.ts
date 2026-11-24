@@ -1,8 +1,8 @@
 // Browser-safe media schemas, node projection, deterministic variant selection, and HTTPS URL resolution.
 import { sha256 } from "@noble/hashes/sha2.js"
 import { Schema } from "effect"
-import { holds, type State } from "./cond.ts"
-import type { Catalog, Product } from "./product.ts"
+import { holds, reads, type State } from "./cond.ts"
+import { rows, type Catalog, type Product } from "./product.ts"
 
 export const IllustrationBinding = Schema.Struct({
   product: Schema.String,
@@ -35,71 +35,70 @@ export interface NodeMedia {
   bgm?: { catalog: string; id: string }
 }
 
-const catalogColumnOf = (p: Product | undefined): string | undefined =>
-  p?.shape.kind === "table" ? p.shape.columns.find((c) => c.key === "id")?.catalog : undefined
-
 /** Project a node's semantic media view from declared card bindings, merged products, effective catalogs, and path context. */
 export const projectNodeMedia = ({
   media,
   products,
   catalogs,
   turnProducts,
+  fields,
+  events,
   context,
 }: {
   media: Media | undefined
   products: readonly Product[]
   catalogs: readonly Catalog[]
   turnProducts: Readonly<Record<string, unknown>>
+  fields: State
+  events: readonly string[]
   context: () => State
 }): NodeMedia | undefined => {
   if (!media) return undefined
 
-  let illustrations: { catalog: string; id: string; afterParagraph: number }[] | undefined
-  if (media.illustrations?.length) {
-    const out: { catalog: string; id: string; afterParagraph: number }[] = []
-    for (const binding of media.illustrations) {
-      const p = products.find((x) => x.id === binding.product)
-      const catalog = catalogColumnOf(p)
-      if (!catalog) continue
-      const rows = turnProducts[binding.product]
-      if (!Array.isArray(rows)) continue
-      for (const row of rows) {
-        if (!row || typeof row !== "object") continue
-        const { id, afterParagraph } = row as { id?: unknown; afterParagraph?: unknown }
-        if (typeof id === "string" && typeof afterParagraph === "number" && Number.isInteger(afterParagraph))
-          out.push({ catalog, id, afterParagraph })
-      }
-    }
-    if (out.length) illustrations = out
+  // Replay checks catalog membership; an item's selection-time guard may have closed since.
+  const picks = (productId: string) => {
+    const shape = products.find((p) => p.id === productId)?.shape
+    const value = turnProducts[productId]
+    if (shape?.kind !== "table" || !Array.isArray(value)) return []
+    const catalogId = shape.columns.find((c) => c.key === "id")?.catalog
+    const catalog = catalogs.find((c) => c.id === catalogId)
+    if (!catalog) return []
+    return rows(shape, value).flatMap(({ row }) => {
+      const id = row?.id
+      return typeof id === "string" && catalog.items.some((item) => item.id === id)
+        ? [{ catalog: catalog.id, id, afterParagraph: row.afterParagraph }]
+        : []
+    })
   }
-
-  let bgm: { catalog: string; id: string } | undefined
-  if (media.bgm) {
-    const p = products.find((x) => x.id === media.bgm!.product)
-    const catalog = catalogColumnOf(p)
-    const rows = turnProducts[media.bgm.product]
-    if (catalog && Array.isArray(rows) && rows.length > 0 && rows[0] && typeof rows[0] === "object") {
-      const id = (rows[0] as { id?: unknown }).id
-      if (typeof id === "string") bgm = { catalog, id }
-    }
-  }
+  const illustrations = media.illustrations?.flatMap(({ product }) =>
+    picks(product).flatMap(({ catalog, id, afterParagraph }) =>
+      typeof afterParagraph === "number" && Number.isInteger(afterParagraph) ? [{ catalog, id, afterParagraph }] : [],
+    ),
+  )
+  const track = media.bgm && picks(media.bgm.product)[0]
+  const bgm = track && { catalog: track.catalog, id: track.id }
 
   let portraits: { id: string; catalog: string; item: string }[] | undefined
   if (media.portraits?.length) {
-    const state = context()
+    const fieldState = { fields }
+    let fullState: State | undefined
     const out: { id: string; catalog: string; item: string }[] = []
     for (const slot of media.portraits) {
       const cat = catalogs.find((c) => c.id === slot.catalog)
       if (!cat) continue
-      const matched = cat.items.find((item) => !item.when || holds(item.when, state))
+      const matched = cat.items.find(({ when }) => {
+        if (!when) return true
+        const needsContext = reads(when).some((p) => p.startsWith("world.") || p.startsWith("lore."))
+        return holds(when, needsContext ? (fullState ??= context()) : fieldState, events)
+      })
       if (matched) out.push({ id: slot.id ?? slot.catalog, catalog: slot.catalog, item: matched.id })
     }
     if (out.length) portraits = out
   }
 
-  if (!illustrations && !portraits && !bgm) return undefined
+  if (!illustrations?.length && !portraits && !bgm) return undefined
   return {
-    ...(illustrations && { illustrations }),
+    ...(illustrations?.length && { illustrations }),
     ...(portraits && { portraits }),
     ...(bgm && { bgm }),
   }

@@ -170,10 +170,7 @@ const resolveShape = (s: Shape, catalogs: readonly Catalog[], state: State): Sha
     pushLabels(
       labels,
       seenLabels,
-      surviving.flatMap((i) => {
-        const l = i.label?.trim()
-        return l ? [{ id: i.id, label: expandState(l, state) }] : []
-      }),
+      surviving.flatMap(({ id, label }) => (label?.trim() ? [{ id, label }] : [])),
     )
     const { catalog: _, ...rest } = c
     return { ...rest, options: surviving.map((i) => i.id) }

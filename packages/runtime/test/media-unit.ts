@@ -12,6 +12,7 @@ import {
   pickBgmVariant,
   pickIllustrationVariant,
   pickPortraitVariant,
+  projectNodeMedia,
   resolveCatalogUrl,
   resolveCatalogVariant,
   resolveMediaUrl,
@@ -256,6 +257,28 @@ assert.equal(
 )
 
 // ───────── 3. Session, CardView, view(), and TimelineNode.media projection ─────────
+// Field guards reuse settled fields; world and lore share one full context for the node.
+{
+  const fields = { 潮位: 2, 天气: "晴" }
+  let calls = 0
+  const project = (...slots: string[]) =>
+    projectNodeMedia({
+      media: { portraits: slots.map((catalog) => ({ catalog })) },
+      catalogs: sampleCatalogs,
+      products: [],
+      turnProducts: {},
+      fields,
+      events: [],
+      context: () => {
+        calls++
+        return { fields, world: { boat: { aboard: true } }, lore: { ledger: { floor: 1 } } }
+      },
+    })
+  assert.equal(project("ferryman")?.portraits?.[0].item, "high_tide")
+  assert.equal(calls, 0)
+  assert.equal(project("passenger", "witness")?.portraits?.length, 2)
+  assert.equal(calls, 1)
+}
 const collect = (s: Stream.Stream<Event, unknown>) =>
   Effect.runPromise(Stream.runCollect(s)).then((c) => [...c] as Event[])
 
@@ -550,6 +573,45 @@ const fullTimeline = S.timeline()
 assert.deepEqual(fullTimeline.nodes, [incG0, incN1, incN2])
 const reopened = makeSession({ card: ferryCard, rows: () => ({}), model: () => scripted, store })
 assert.deepEqual(reopened.timeline(), fullTimeline)
+
+// Replay the same journal after the author narrows table visibility or removes an item.
+for (const change of ["filter", "remove"] as const) {
+  const card = decodeCard({
+    ...ferryCard,
+    catalogs: sampleCatalogs.map((c) => ({
+      ...c,
+      items: c.items.filter((item) => change !== "remove" || !["misty_pier", "clear_water"].includes(item.id)),
+    })),
+    products: ferryCard.products?.map((p) => {
+      if (change !== "filter" || p.shape?.kind !== "table") return p
+      const allowed = p.id === "score" ? "night_rain" : "night_crossing"
+      return { ...p, shape: { ...p.shape, filter: { path: "id", is: allowed } } }
+    }),
+  })
+  const replay = makeSession({ card, rows: () => ({}), model: () => scripted, store })
+  assert.equal(replay.timelineNode(n1.id).media?.bgm, undefined)
+  assert.equal(replay.timelineNode(n1.id).media?.illustrations, undefined)
+  assert.deepEqual(replay.timelineNode(n2.id).media?.illustrations, [
+    { catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
+  ])
+}
+// After the ancestor edit the weather is rainy, but the previously selected sunny track is still declared.
+assert.equal(incN1.media?.bgm?.id, "clear_water")
+
+const eventCard = decodeCard({
+  ...legacyCard,
+  greetings: [{ text: "靠岸。", do: [{ event: "arrival" }] }, { text: "船已停稳。" }],
+  media: { portraits: [{ catalog: "boat" }] },
+  catalogs: [{ id: "boat", items: [{ id: "arriving", when: { event: "arrival" } }, { id: "still" }] }],
+})
+const eventSession = makeSession({ card: eventCard, rows: () => ({}), model: () => scripted })
+const arrival = eventSession.greet(eventCard.greetings[0]).node!
+assert.equal(eventSession.projectTimeline(arrival).media?.portraits?.[0].item, "arriving")
+eventSession.greet(eventCard.greetings[1])
+assert.deepEqual(
+  eventSession.timeline().nodes.map((n) => n.media?.portraits?.[0].item),
+  ["arriving", "still"],
+)
 
 // Card whose media has NO portraits and whose node produces empty illustrations/bgm omits `TimelineNode.media` completely.
 const cgOnlyCard = decodeCard({
