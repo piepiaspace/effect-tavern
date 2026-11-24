@@ -5,9 +5,17 @@
 // block's last text holder (the paragraph, the heading, the quote's last paragraph, the list's last item, the
 // fence, the table's last cell), so moving on to a new block only moves the cursor and never rebuilds a <p>.
 // A link is a link only on http(s) or mailto; raw HTML and an image are text, as markdown.ts says.
+import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import { type JSX } from "@solidjs/web"
-import { createMemo, For } from "solid-js"
+import { createMemo, For, Show } from "solid-js"
+import { read } from "./bridge.ts"
+import { t } from "./i18n.ts"
+import { Die } from "./icons.tsx"
+import { MediaFrame } from "./lightbox.tsx"
 import { blocks, mend, parse, type PhrasingContent, type RootContent } from "./markdown.ts"
+import { resolveNodeIllustrations, type MediaViewLike, type ResolvedIllustration } from "./media.ts"
+import { dismiss, working } from "./store.ts"
+import { turn } from "./turn.ts"
 
 export { plain } from "./markdown.ts"
 
@@ -162,14 +170,55 @@ const block = (n: RootContent, tail?: Tail): JSX.Element => {
   }
 }
 
+const noneIllustrations: readonly ResolvedIllustration[] = []
+
+const sameIllustration = (a: ResolvedIllustration, b: ResolvedIllustration): boolean =>
+  a.catalog === b.catalog &&
+  a.id === b.id &&
+  a.afterParagraph === b.afterParagraph &&
+  a.occurrence === b.occurrence &&
+  a.label === b.label &&
+  a.url === b.url &&
+  a.theaterProductId === b.theaterProductId
+
+const sameIllustrationBuckets = (
+  a: ReadonlyMap<number, readonly ResolvedIllustration[]> | undefined,
+  b: ReadonlyMap<number, readonly ResolvedIllustration[]> | undefined,
+): boolean => {
+  if (a === b) return true
+  if (!a || !b || a.size !== b.size) return false
+  for (const [para, listA] of a) {
+    const listB = b.get(para)
+    if (!listB || listA.length !== listB.length || !listA.every((item, idx) => sameIllustration(item, listB[idx]))) {
+      return false
+    }
+  }
+  return true
+}
+
 /** The prose as blocks. `open`: the last block is still being written (its marks are mended for display); `tail`
  *  rides after the last glyph, and an empty text with a tail is one empty paragraph holding it. */
-export const Prose = (props: { text: string; open?: boolean; tail?: JSX.Element }) => {
-  const bs = createMemo(() => {
-    const bs = blocks(props.text)
-    return bs.length || !("tail" in props) ? bs : [""]
-  })
+export const Prose = (props: {
+  text: string
+  open?: boolean
+  tail?: JSX.Element
+  node?: Node
+  view?: MediaViewLike | null
+}) => {
+  const busy = read(working)
+  const unresolved = () => props.node?.settlementStatus === "pending" || props.node?.settlementStatus === "failed"
+  const bs = createMemo(
+    () => {
+      const bs = blocks(props.text)
+      return bs.length || !("tail" in props) ? bs : [""]
+    },
+    { equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) },
+  )
   const last = createMemo(() => bs().length - 1)
+  const byParagraph = createMemo(
+    () => (props.node ? resolveNodeIllustrations(props.node, props.view, bs().length) : undefined),
+    { equals: sameIllustrationBuckets },
+  )
   // `.md` scopes reader.css's block styles; display: contents, so the blocks stay the host's own flex children.
   // Selectable on a touch screen too, where the chrome around it is not (reader.css)
   return (
@@ -181,7 +230,39 @@ export const Prose = (props: { text: string; open?: boolean; tail?: JSX.Element 
           const text = createMemo(() => (props.open && isLast() ? mend(b()) : b()))
           const nodes = createMemo(() => parse(text()))
           const tail: Tail = () => (isLast() ? props.tail : undefined)
-          return <>{nodes().length ? run(nodes(), tail) : block({ type: "paragraph", children: [] }, tail)}</>
+          return (
+            <>
+              {nodes().length ? run(nodes(), tail) : block({ type: "paragraph", children: [] }, tail)}
+              <For
+                each={byParagraph()?.get(i + 1) ?? noneIllustrations}
+                keyed={(ill) => `${ill.catalog}\0${ill.id}\0${ill.occurrence}`}
+              >
+                {(ill) => (
+                  <MediaFrame as="figure" class="illust" src={ill().url} label={ill().label} lightbox>
+                    <Show when={ill().theaterProductId}>
+                      {(productId) => (
+                        <span class="acts">
+                          <button
+                            type="button"
+                            class="icon"
+                            aria-label={t("readings.again")}
+                            disabled={busy() || unresolved()}
+                            onClick={() => {
+                              if (!props.node) return
+                              dismiss()
+                              turn.demand(props.node.id, productId())
+                            }}
+                          >
+                            <Die />
+                          </button>
+                        </span>
+                      )}
+                    </Show>
+                  </MediaFrame>
+                )}
+              </For>
+            </>
+          )
         }}
       </For>
     </div>

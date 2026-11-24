@@ -24,3 +24,4 @@
 @import "./home.css" layer(components);
 @import "./workshop.css" layer(components);
 @import "./prompt-tree.css" layer(components);
+@import "./lightbox.css" layer(components);

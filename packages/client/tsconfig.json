@@ -20,6 +20,7 @@
     "src/figures/*.tsx",
     "test/*.ts",
     "test/*.tsx",
+    "../server/src/*.d.ts",
     "vite.config.ts"
   ]
 }

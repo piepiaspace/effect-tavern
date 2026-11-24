@@ -59,10 +59,12 @@ export const Manager = (props: {
       })
     }, 200)
   }
-  const list = createMemo(() =>
-    ranked(rows())
-      .filter((s) => filter() === "all" || s.starred)
-      .filter((s) => matches(s, q(), hits())),
+  const list = createMemo(
+    () =>
+      ranked(rows())
+        .filter((s) => filter() === "all" || s.starred)
+        .filter((s) => matches(s, q(), hits())),
+    { equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) },
   )
   /** The selected rows still present on this card: a deleted story leaves the set on its own. */
   const chosen = createMemo(() => rows().filter((s) => picked().has(s.id)), {

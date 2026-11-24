@@ -1,9 +1,15 @@
 // The card page's chips and opening lines on the fixture cards' shapes: a fiction label is not a chip, a hidden
 // field is not a state, an opening's tag prefers the route it sets.
-import { full } from "../../runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+import { validateCard } from "@effect-tavern/runtime/src/author.ts"
+import { cardView } from "@effect-tavern/runtime/src/session.ts"
+import { parseCard } from "@effect-tavern/runtime/support/author.ts"
+import { full } from "../../runtime/test/cards/index.ts"
 import { admitsOpening, chips, firstLine, openingTag, openingTags } from "../src/manifest.ts"
-import type { CardView } from "../src/store.ts"
+import { activeStoryMatchesCard, galleryReadsEvent, resolveGallery } from "../src/media.ts"
+import type { CardView, StoryRow } from "../src/store.ts"
 
 const view = (over: Partial<CardView>): CardView => ({
   id: "t",
@@ -119,4 +125,66 @@ assert.equal(admitsOpening(yandao, bloody, "平静"), false)
 assert.equal(firstLine("  黄昏。盐津镇的石板街上\r\n第二段"), "黄昏。盐津镇的石板街上")
 assert.equal(firstLine("**午后的阳光**从彩绘玻璃窗渗入\n\n*第二段*"), "午后的阳光从彩绘玻璃窗渗入")
 assert.ok(chips(view({ rules: full.rules })).some((c) => c.label === "状态" && c.items?.includes("体力")))
+
+// Card gallery derivations on `samples/ferry/ferry.yaml` + story-match guard (`activeStoryMatchesCard`) + `{ event }` check
+const ferryYaml = readFileSync(resolve(import.meta.dir, "../../../samples/ferry/ferry.yaml"), "utf8")
+const ferryCard = validateCard(parseCard(ferryYaml)).card!
+const { meta: ferryMeta, ...ferryProj } = cardView(ferryCard)
+const ferryView: CardView = {
+  ...ferryMeta,
+  ...ferryProj,
+  local: { id: "local", name: "渡口", card: "ferry" },
+  origin: { via: "file" },
+  mounts: [],
+  persona: null,
+  follows: null,
+}
+assert.equal(galleryReadsEvent(ferryView), false)
+assert.equal(
+  galleryReadsEvent(
+    view({
+      media: { gallery: ["cg"] },
+      catalogs: [
+        {
+          id: "cg",
+          baseUrl: "https://media.tavern.example/cg",
+          items: [{ id: "bell", when: { event: "渡船:解缆" }, variants: ["bell.webp"] }],
+        },
+      ],
+    }),
+  ),
+  true,
+)
+
+const staticFerry = resolveGallery(ferryView)
+assert.deepEqual(
+  [staticFerry.unlockedCount, staticFerry.revealedCount, staticFerry.totalCount, staticFerry.hasGated],
+  [2, 2, 6, true],
+)
+assert.deepEqual(
+  staticFerry.catalogs.map((c) => c.id),
+  ["crossings", "ferryman"],
+)
+assert.equal(
+  staticFerry.items.every((item) => (item.masked ? item.url === undefined : typeof item.url === "string")),
+  true,
+)
+
+const storyRow = (id: number, cardId: string): StoryRow => ({
+  id,
+  card: cardId,
+  busy: null,
+  title: null,
+  starred: false,
+  persona: null,
+  updated: 1,
+  turns: 2,
+  last: null,
+})
+const runningFerryLib = { current: 1, stories: [storyRow(1, "ferry"), storyRow(2, "other")] }
+assert.equal(activeStoryMatchesCard("ferry", runningFerryLib), true)
+// Shelf card browse over an open story of another card must NOT match (`other` browsed while `ferry` story 1 is open)
+assert.equal(activeStoryMatchesCard("other", runningFerryLib), false)
+assert.equal(activeStoryMatchesCard("ferry", { current: null, stories: runningFerryLib.stories }), false)
+
 console.log("manifest ok")

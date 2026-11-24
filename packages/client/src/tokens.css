@@ -139,6 +139,7 @@
   --foot: calc(
     var(--fade) + var(--space-4)
   ); /* the column's bottom padding: clears a two-row composer, hides the action row under a three-row one */
+  --selection-foot: 0px; /* extra scroll range while a late illustration moves selected prose */
   --lift: 0px; /* how far the composer's box has risen into the column above its one-line slot (App.tsx) */
 
   /* motion: five durations, one ease for movement, one for pulses */

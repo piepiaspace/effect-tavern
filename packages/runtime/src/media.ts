@@ -30,7 +30,7 @@ export const Media = Schema.Struct({
 export type Media = typeof Media.Type
 
 export interface NodeMedia {
-  illustrations?: readonly { catalog: string; id: string; afterParagraph: number }[]
+  illustrations?: readonly { productId: string; catalog: string; id: string; afterParagraph: number }[]
   portraits?: readonly { id: string; catalog: string; item: string }[]
   bgm?: { catalog: string; id: string }
 }
@@ -72,7 +72,9 @@ export const projectNodeMedia = ({
   }
   const illustrations = media.illustrations?.flatMap(({ product }) =>
     picks(product).flatMap(({ catalog, id, afterParagraph }) =>
-      typeof afterParagraph === "number" && Number.isInteger(afterParagraph) ? [{ catalog, id, afterParagraph }] : [],
+      typeof afterParagraph === "number" && Number.isInteger(afterParagraph)
+        ? [{ productId: product, catalog, id, afterParagraph }]
+        : [],
     ),
   )
   const track = media.bgm && picks(media.bgm.product)[0]

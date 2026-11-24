@@ -42,6 +42,7 @@ body {
 /* the frame holds still: the strip, the column and the composer fill the stage card (shell.css), and only the
    column scrolls */
 .panel {
+  position: relative;
   flex: 1;
   min-height: 0;
   display: flex;
@@ -52,6 +53,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden; /* dust in flight (dust.ts) must not raise a horizontal scrollbar */
+  overflow-anchor: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable; /* a classic scrollbar's width is reserved whether or not the story overflows: the column never shifts between stories */
   container-type: size;
@@ -77,6 +79,11 @@ body {
   .scroll:hover {
     scrollbar-color: var(--alpha-2) transparent;
   }
+}
+.scroll::after {
+  content: "";
+  display: block;
+  height: var(--selection-foot);
 }
 main {
   max-width: var(--measure);
@@ -246,15 +253,81 @@ main > section:last-of-type {
 }
 /* WebKit 17.5 / macOS 14.5 lacks CSS Anchor Positioning: centre over .panel above the composer's raised box */
 @supports not (position-area: top) {
-  .panel {
-    position: relative;
-  }
   .latest {
     position: absolute;
     inset: auto 0 calc(var(--control) + 2 * var(--space-1) + var(--composer-foot) + var(--lift) + var(--space-3)) 0;
     margin: 0 auto;
     z-index: 1;
   }
+}
+/* desktop reader portraits: out-of-flow bust medallions in the blank right margin below `.stage-keys` */
+.reader-portraits {
+  position: absolute;
+  top: calc(var(--strip) + var(--space-3));
+  right: var(--space-3);
+  z-index: 1;
+  width: 60px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.reader-portrait {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.reader-portrait-frame {
+  width: 56px;
+  height: 56px;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+  box-shadow:
+    var(--shadow-1),
+    inset 0 0 0 var(--hairline) var(--line);
+}
+.reader-portrait-frame > .media-img {
+  object-position: 50% 18%;
+}
+.reader-portrait-frame > .media-fallback {
+  padding: var(--space-1);
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+}
+.reader-portrait-name {
+  max-width: 100%;
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+  color: var(--ink-2);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* after-paragraph illustration figure inside `.md`: 16 / 10 frame with optional theater re-roll key */
+.illust {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.illust > .acts {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 2;
+}
+.illust > .acts .icon {
+  background: color-mix(in oklab, var(--surface-1) 76%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line);
 }
 /* left-aligned: justified CJK re-spaces the whole line on every character that streams in, then snaps it at the
    wrap; no chat reader justifies */
@@ -444,7 +517,7 @@ section:has(> .editor) > .actions {
    settings. Hidden at rest on desktop, they fade and settle in while the pointer is on the block or turn they belong
    to (or while focus or an open reword box holds them); a touch screen, having no pointer to hover with, shows every
    row */
-:is(.spoke, .actions, .theater, .group > summary) .acts {
+:is(.spoke, .actions, .theater, .illust, .group > summary) .acts {
   display: flex;
   flex: none;
   align-items: center;
@@ -456,6 +529,7 @@ section:has(> .editor) > .actions {
     translate var(--dur-3) var(--ease);
 }
 .spoke:focus-within .acts,
+.illust:focus-within .acts,
 .group > summary:focus-within .acts,
 main > section:focus-within > :is(.actions, .theater) .acts {
   opacity: 1;
@@ -463,7 +537,9 @@ main > section:focus-within > :is(.actions, .theater) .acts {
 }
 @media (hover: hover) and (pointer: fine) {
   .spoke:hover .acts,
+  .illust:hover .acts,
   .group > summary:hover .acts,
+  main > section:hover .illust .acts,
   main > section:hover > :is(.actions, .theater) .acts {
     opacity: 1;
     translate: 0 0;
@@ -472,7 +548,7 @@ main > section:focus-within > :is(.actions, .theater) .acts {
 /* the keys: matched to the stage keys' ink-2 weight and 26px box so they read as interactive controls, brightening to
    ink on hover with a subtle press scale. The line's row sits close under its bubble and ends on the bubble's own text
    axis (--space-3 in) */
-:is(.spoke .acts, .actions, .theater, .editkeys) .icon {
+:is(.spoke .acts, .actions, .theater, .illust, .editkeys) .icon {
   width: var(--control-key);
   height: var(--control-key);
   border-radius: var(--radius-sm);
@@ -483,17 +559,23 @@ main > section:focus-within > :is(.actions, .theater) .acts {
     scale var(--dur-1) var(--ease);
 }
 @media (hover: hover) and (pointer: fine) {
-  :is(.spoke .acts, .actions, .theater, .editkeys) .icon:hover:not(:disabled) {
+  :is(.spoke .acts, .actions, .theater, .illust, .editkeys) .icon:hover:not(:disabled) {
     background: var(--ghost-hover);
     color: var(--ink);
   }
+  .illust > .acts .icon:hover:not(:disabled) {
+    background: color-mix(in oklab, var(--surface-2) 92%, transparent);
+  }
 }
-:is(.spoke .acts, .actions, .theater, .editkeys) .icon:active:not(:disabled) {
+:is(.spoke .acts, .actions, .theater, .illust, .editkeys) .icon:active:not(:disabled) {
   background: var(--ghost-active);
   color: var(--ink);
   scale: 0.94;
 }
-:is(.spoke .acts, .actions, .theater, .editkeys) .icon svg {
+.illust > .acts .icon:active:not(:disabled) {
+  background: var(--surface-2);
+}
+:is(.spoke .acts, .actions, .theater, .illust, .editkeys) .icon svg {
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
@@ -506,11 +588,11 @@ main > section:focus-within > :is(.actions, .theater) .acts {
 }
 /* on the draft (or while a turn streams) disabled action keys hide in place: the row keeps its height, so nothing
    moves when the node lands */
-:is(.spoke, .actions, .theater, .group > summary) .acts .icon:disabled {
+:is(.spoke, .actions, .theater, .illust, .group > summary) .acts .icon:disabled {
   visibility: hidden;
 }
 @media (hover: none), (pointer: coarse) {
-  :is(.spoke, .actions, .theater, .group > summary) .acts {
+  :is(.spoke, .actions, .theater, .illust, .group > summary) .acts {
     opacity: 1;
     translate: 0 0;
   }
@@ -1132,7 +1214,7 @@ a.chip:active {
   border-radius: var(--radius-sm);
 }
 @media (prefers-reduced-motion: reduce) {
-  :is(.spoke, .actions, .theater, .group > summary) .acts {
+  :is(.spoke, .actions, .theater, .illust, .group > summary) .acts {
     translate: 0 0;
   }
 }

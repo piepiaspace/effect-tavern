@@ -27,6 +27,7 @@ import {
   Tick,
 } from "../src/controls.tsx"
 import { openExport, openPicker, StoryDialogs } from "../src/dialogs.tsx"
+import { closeLightbox, Lightbox, MediaFrame, openLightbox } from "../src/lightbox.tsx"
 import { Edge } from "../src/edge.tsx"
 import { SIDE } from "../src/fold.ts"
 import { closable, mountBack } from "../src/back.ts"
@@ -210,6 +211,18 @@ render(
       <Composer />
       <Confirm />
       <StoryDialogs />
+      <Lightbox />
+      <div style={{ display: "grid", width: "160px", gap: "8px" }}>
+        <MediaFrame
+          id="media-ready-probe"
+          as="figure"
+          url="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+          label="渡口薄雾"
+          lightbox
+        />
+        <MediaFrame id="media-broken-probe" as="figure" url="data:image/png;base64,broken" label="断缆旧图" lightbox />
+        <MediaFrame id="media-missing-probe" as="figure" url={undefined} label="未明江景" lightbox />
+      </div>
       {/* the install's keys, as the canvas's top strip and the drawer's foot hold them */}
       <span id="install-keys">
         <InstallKeys />
@@ -596,6 +609,72 @@ const run = async () => {
   await quiet()
   check(!document.querySelector(".modal") && left === 1, `the modal's onClose runs once it has left (${left})`)
 
+  // MediaFrame & Lightbox: decoded ready state, broken/missing alt fallbacks, @ui-sdk agent snapshot & dismissal
+  check(
+    await until(() => document.querySelector("#media-ready-probe")?.getAttribute("data-state") === "ready"),
+    "MediaFrame settles to ready once its image decodes",
+  )
+  check(
+    getComputedStyle(document.querySelector("#media-ready-probe")!).userSelect === "none",
+    "MediaFrame disables user-select so prose drag-selection skips figure chrome",
+  )
+  check(
+    await until(() => document.querySelector("#media-broken-probe")?.getAttribute("data-state") === "error"),
+    "MediaFrame settles to error on broken image",
+  )
+  check(
+    !document.querySelector("#media-broken-probe img") &&
+      !document.querySelector("#media-broken-probe .media-hit") &&
+      document.querySelector("#media-broken-probe .media-fallback")?.textContent === "断缆旧图",
+    "broken MediaFrame hides <img>/.media-hit and renders calm alt fallback",
+  )
+  check(
+    document.querySelector("#media-missing-probe")?.getAttribute("data-state") === "error" &&
+      document.querySelector("#media-missing-probe .media-fallback")?.textContent === "未明江景",
+    "undefined-url MediaFrame renders calm alt fallback immediately",
+  )
+  const mediaHit = document.querySelector<HTMLButtonElement>("#media-ready-probe .media-hit")!
+  mediaHit.focus()
+  const openImage = await agent.act({ steps: [{ ref: "渡口薄雾", action: "press" }] })
+  check(openImage.ok, `opening Lightbox via agent: ${openImage.error?.message}`)
+  await quiet()
+  check(
+    shows(".lightbox") && document.querySelector(".lightbox")?.getAttribute("data-presentation") === "dialog",
+    "clicking MediaFrame opens centered Lightbox with dialog presentation",
+  )
+  check(
+    await until(() => document.querySelector(".lightbox-img")?.getAttribute("data-state") === "ready"),
+    "Lightbox image settles to ready",
+  )
+  for (const e of agent.snapshot().filter((e) => !e.offPage)) check(e.label, `${e.component} ${e.ref} has no name`)
+  check(
+    agent.snapshot().some((e) => e.label === "渡口薄雾" && e.open),
+    "open Lightbox is named by its image label in the agent snapshot",
+  )
+  const closeLb = await agent.act({ steps: [{ ref: "渡口薄雾", action: "setOpen", args: [false] }] })
+  await quiet()
+  check(
+    closeLb.ok && !document.querySelector(".lightbox") && document.activeElement === mediaHit,
+    `closing Lightbox via agent restores focus to its trigger (${closeLb.error?.message ?? "ok"})`,
+  )
+  openLightbox({ src: "data:image/png;base64,broken", label: "损坏大图" })
+  await quiet()
+  check(
+    await until(() => document.querySelector(".lightbox-fallback")?.textContent === "损坏大图"),
+    "broken image inside Lightbox renders calm alt fallback",
+  )
+  const pressLbClose = await agent.act({ steps: [{ ref: "损坏大图", action: "press", args: ["关闭"] }] })
+  await quiet()
+  check(
+    pressLbClose.ok && !document.querySelector(".lightbox"),
+    `Lightbox DialogClose dismisses dialog (${pressLbClose.error?.message ?? "ok"})`,
+  )
+  openLightbox({ src: "data:image/png;base64,broken", label: "程序关闭" })
+  await quiet()
+  closeLightbox()
+  await quiet()
+  check(!document.querySelector(".lightbox"), "closeLightbox() dismisses Lightbox")
+
   // ModelDialog 3-way structured output menu (`schema` | `tool` | `json`) via @ui-sdk agent bridge
   openModel?.({ id: "uncut-model" })
   await quiet()
@@ -802,6 +881,21 @@ const run = async () => {
   check(
     await until(() => registry.get(page) === "home" && (history.state as { back?: number } | null)?.back === undefined),
     "browser forward from home unwinds the popped entry instead of stranding back=1",
+  )
+  openLightbox({
+    src: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+    label: "夜航潮涨",
+  })
+  check(
+    await until(() => !!document.querySelector(".lightbox") && (history.state as { back?: number } | null)?.back === 1),
+    "opening Lightbox takes a system back entry",
+  )
+  history.back()
+  check(
+    await until(
+      () => !document.querySelector(".lightbox") && (history.state as { back?: number } | null)?.back === undefined,
+    ),
+    "system back closes Lightbox cleanly",
   )
   unmountBack()
   removeEventListener("keydown", onKey)

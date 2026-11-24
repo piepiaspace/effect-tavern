@@ -12,12 +12,25 @@ import { Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/d
 import { Menu, MenuContent, MenuItem, MenuTrigger } from "@ui-sdk/solid/menu"
 import { type DialogHandle, dialogHandle } from "./controls.tsx"
 import { Back, Change, Close, Clue, Die, Edit, Record, Reword, Swipe, Warning } from "./icons.tsx"
+import { MediaFrame } from "./lightbox.tsx"
+import { activePortraits, illustrationTheaterIds } from "./media.ts"
 import { close } from "./pages.ts"
 import { openSettings, type Section } from "./settings-navigation.ts"
-import { demandable, fresh, heading, kindOf, marked, record, status, theater, whens, type Element } from "./record.ts"
+import {
+  demandable,
+  fresh,
+  hasReadings,
+  heading,
+  kindOf,
+  marked,
+  record,
+  status,
+  theater,
+  whens,
+  type Element,
+} from "./record.ts"
 import {
   card,
-  type CardView,
   demanded,
   dismiss,
   editing,
@@ -420,7 +433,7 @@ export const Reading = (props: { el: Element }) => (
   </Switch>
 )
 
-export { demandable }
+export { demandable, hasReadings }
 
 /** A reading opens as a draggable sheet on a narrow canvas, a centered dialog on desktop. `fit`: as tall as its
  *  content, not the full-page panel (the reader's play sheet, play-sheet.tsx). */
@@ -540,7 +553,7 @@ export const Demand = (props: { node: Node; n: number }) => {
   const failed = read(error)
   const asked = read(demanded)
   const unresolved = () => props.node.settlementStatus === "pending" || props.node.settlementStatus === "failed"
-  const demands = () => demandable(view()?.layer?.products ?? [], props.node)
+  const demands = () => demandable(view()?.layer?.products ?? [], props.node, view()?.media, view()?.catalogs)
   return (
     <>
       <Show when={demands().length}>
@@ -589,7 +602,12 @@ export const Theater = (props: { products: Readonly<Record<string, unknown>>; no
   const view = read(card)
   const busy = read(working)
   const unresolved = () => props.node?.settlementStatus === "pending" || props.node?.settlementStatus === "failed"
-  const answered = () => theater(view()?.layer?.products ?? []).filter((p) => props.products[p.id] !== undefined)
+  const answered = () => {
+    const illustIds = illustrationTheaterIds(view()?.media)
+    return theater(view()?.layer?.products ?? []).filter(
+      (p) => !illustIds.has(p.id) && props.products[p.id] !== undefined,
+    )
+  }
   return (
     <For each={answered()} keyed={(p) => p.id}>
       {(p) => (
@@ -715,13 +733,41 @@ const World = () => {
   )
 }
 
-/** Does the card have a 读数 page at all: a shown field, a world product. Without one the
- *  page's key is not drawn (shell.tsx `Keys`). */
-export const hasReadings = (view: CardView | null | undefined) =>
-  !!view && (view.rules.fields.some((f) => !f.hidden) || view.layer.products.some((p) => kindOf(p) === "world"))
+const StandingPortraits = () => {
+  const portraits = activePortraits
+  return (
+    <Show when={portraits().length}>
+      <section class="portraits">
+        <h2>{t("readings.portraits")}</h2>
+        <div class="portrait-grid">
+          <For each={portraits()} keyed={(p) => p.id}>
+            {(p) => (
+              <figure class="portrait-card">
+                <MediaFrame
+                  class="portrait-card-frame"
+                  src={p().url}
+                  label={p().label}
+                  triggerLabel={p().slotLabel ? `${p().slotLabel} · ${p().label}` : p().label}
+                  lightboxLabel={p().label}
+                  lightbox
+                />
+                <figcaption class="portrait-card-caption">
+                  <span class="portrait-card-slot">{p().slotLabel || p().label}</span>
+                  <Show when={p().slotLabel && p().itemLabel && p().itemLabel !== p().slotLabel}>
+                    <span class="portrait-card-item">{p().itemLabel}</span>
+                  </Show>
+                </figcaption>
+              </figure>
+            )}
+          </For>
+        </div>
+      </section>
+    </Show>
+  )
+}
 
-/** 读数, a page over the reader: the world now, as one column: Status, and the world products' folded values.
- *  A turn's change is its Record pill's (`RecordSheet`), not this page's. */
+/** 读数, a page over the reader: the world now, as one column: active portraits, Status, and the world products'
+ *  folded values. A turn's change is its Record pill's (`RecordSheet`), not this page's. */
 export const StatusPage = () => (
   <div class="status-page">
     <header>
@@ -732,6 +778,7 @@ export const StatusPage = () => (
     </header>
     <div class="status-body">
       <div class="still">
+        <StandingPortraits />
         <section class="status">
           <h2>{t("common.status")}</h2>
           <AsyncView>

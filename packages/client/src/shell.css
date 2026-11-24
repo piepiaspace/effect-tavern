@@ -102,6 +102,52 @@
 .strip .icon {
   flex: none;
 }
+.strip-start {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.strip-portraits {
+  flex: none;
+  height: var(--control);
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  display: inline-flex;
+  align-items: center;
+}
+@media (hover: hover) and (pointer: fine) {
+  .strip-portraits:hover {
+    background: var(--ghost-hover);
+  }
+}
+.strip-portraits:active {
+  background: var(--ghost-active);
+  scale: 0.96;
+}
+.strip-portraits .strip-avatar {
+  width: 22px;
+  height: 22px;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  box-shadow:
+    0 0 0 1.5px var(--surface-1),
+    inset 0 0 0 var(--hairline) var(--line-strong);
+}
+.strip-portraits .strip-avatar + .strip-avatar {
+  margin-inline-start: calc(-1 * var(--space-1));
+}
+.strip-portraits .strip-avatar > .media-img {
+  object-position: 50% 18%;
+}
+.strip-portraits .strip-avatar > .media-fallback {
+  padding: 0;
+  font-size: var(--text-caption);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--ink-2);
+}
 .strip-end {
   display: flex;
   justify-content: flex-end;
@@ -885,6 +931,48 @@
   font-size: var(--text-body);
   font-weight: 600;
   color: var(--ink-2);
+}
+.status-page .portrait-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--space-3);
+}
+.status-page .portrait-card {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+.status-page .portrait-card-frame {
+  aspect-ratio: 3 / 4;
+  border-radius: var(--radius-card);
+  background: var(--surface-2);
+}
+.status-page .portrait-card-frame > .media-img {
+  object-position: 50% 15%;
+}
+.status-page .portrait-card-caption {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+  padding: 0 var(--space-1);
+  min-width: 0;
+}
+.status-page .portrait-card-slot {
+  font-size: var(--text-body);
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.status-page .portrait-card-item {
+  font-size: var(--text-footnote);
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ── the phone's drawer: the sidebar sliding in from the left ── */

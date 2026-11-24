@@ -6,24 +6,52 @@
 // Browsing openings writes nothing: Begin greets the one shown, and it lands as the story's root; mid-story the same
 // pick starts a new story beside the old one. A card with no opening begins on an empty line,
 // the player's first words start it.
+import type { ShownGreeting as Greeting } from "@effect-tavern/runtime/src/card.ts"
+import type { ActiveContextView } from "@effect-tavern/runtime/src/projection.ts"
 import { tokens } from "@effect-tavern/runtime/src/tokens.ts"
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
+import { Segment, Switch } from "./controls.tsx"
 import { Back, Change, Clue, Next, Prev, Up } from "./icons.tsx"
+import { MediaFrame } from "./lightbox.tsx"
 import { admitsOpening, chips, firstLine, openingTags } from "./manifest.ts"
+import { activeStoryMatchesCard, galleryReadsEvent, resolveGallery } from "./media.ts"
 import { Prose } from "./prose.tsx"
 import { fillKnown } from "./pack.ts"
 import { openSettings } from "./settings-navigation.ts"
-import { backOf, close, newStory, open } from "./pages.ts"
-import { activeOf, card, log, routing, stories, tabs, working } from "./store.ts"
-import type { ShownGreeting as Greeting } from "@effect-tavern/runtime/src/card.ts"
+import {
+  backOf,
+  cardTabReq,
+  clearCardTab,
+  close,
+  newStory,
+  open,
+  openCard,
+  openGallery,
+  peekCardTab,
+  requestCardTab,
+  type CardTab,
+} from "./pages.ts"
+import { activeOf, card, log, path, routing, stories, tabs, working } from "./store.ts"
 import type { CardView } from "./store.ts"
 import { turn } from "./turn.ts"
+import { fetchContext, fetchDetail } from "./wire.ts"
 import { t } from "./i18n.ts"
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 })
-export const openCard = () => open("card")
+export { openCard, openGallery, requestCardTab, type CardTab }
+
+const catalogTitle = (c: CardView, catalogId: string): string => {
+  const slot = c.media?.portraits?.find((s) => s.catalog === catalogId && s.label)
+  if (slot?.label) return slot.label
+  const boundIds = new Set(c.media?.illustrations?.map((b) => b.product) ?? [])
+  for (const p of c.layer.products) {
+    if (!boundIds.has(p.id) || !p.label || p.shape.kind !== "table") continue
+    if (p.shape.columns.some((col) => col.key === "id" && col.catalog === catalogId)) return p.label
+  }
+  return catalogId
+}
 
 /** A size readout: the word, then `~N tokens`. */
 const Size = (props: { label: string; n: number }) => (
@@ -55,6 +83,7 @@ const Line = (props: { c: CardView; g: Greeting; i: number }) => (
 export const CardPage = () => {
   const view = read(card)
   const all = read(log)
+  const line = read(path)
   const busy = read(working) // no new root under a turn in flight
   const route = read(routing)
   const lib = read(stories)
@@ -65,8 +94,103 @@ export const CardPage = () => {
   const [oq, setOq] = createSignal(() => (id(), ""))
   const [searching, setSearching] = createSignal(false)
   const [starting, setStarting] = createSignal(false)
+  const [showAll, setShowAll] = createSignal(() => (id(), false))
   const openingsPop = createPopoverController()
   const inStory = () => all().nodes.size > 0
+  const storyOpenForCard = createMemo(() => {
+    const c = view()
+    return !!c && activeStoryMatchesCard(c.id, lib()) && all().nodes.size > 0 && all().head !== null
+  })
+  const staticGallery = createMemo(() => resolveGallery(view()))
+  const needsEvents = createMemo(() => galleryReadsEvent(view()))
+  const [headEval, setHeadEval] = createSignal<{
+    readonly storyId: number
+    readonly cardId: string
+    readonly headId: number
+    readonly context: ActiveContextView
+    readonly events?: readonly string[]
+  } | null>(null)
+
+  createEffect(
+    () => {
+      const c = view()
+      const l = lib()
+      const currentLog = all()
+      if (!c || !storyOpenForCard() || !staticGallery().hasGated) return null
+      const storyId = l?.current
+      const headId = currentLog.head
+      if (storyId == null || headId === null) return null
+      return {
+        storyId,
+        cardId: c.id,
+        headId,
+        logVersion: currentLog,
+        withEvents: needsEvents(),
+      }
+    },
+    (req) => {
+      if (!req) return
+      let cancelled = false
+      const { storyId, cardId, headId, withEvents } = req
+      void Promise.all([
+        fetchContext(headId),
+        withEvents ? fetchDetail(headId).then((d) => d.events) : Promise.resolve(undefined),
+      ])
+        .then(([context, events]) => {
+          if (cancelled) return
+          setHeadEval({ storyId, cardId, headId, context, ...(events !== undefined && { events }) })
+        })
+        .catch(() => {})
+      return () => {
+        cancelled = true
+      }
+    },
+  )
+
+  const matchedHead = createMemo(() => {
+    if (!storyOpenForCard()) return null
+    const c = view()
+    const storyId = lib()?.current
+    const headId = all().head
+    const h = headEval()
+    if (!c || storyId == null || headId === null || !h) return null
+    return h.storyId === storyId && h.cardId === c.id && h.headId === headId ? h : null
+  })
+  const gallery = createMemo(() => {
+    const openForCard = storyOpenForCard()
+    const h = matchedHead()
+    return resolveGallery(view(), {
+      storyOpen: openForCard,
+      pathNodes: openForCard ? line() : [],
+      headContext: h ? { worldState: { ...h.context.worldState } } : null,
+      headEvents: h?.events,
+      showAll: showAll(),
+    })
+  })
+  const cardHasGallery = createMemo(() => staticGallery().totalCount > 0)
+  const cardNoOpenings = createMemo(() => (view()?.greetings.length ?? 0) === 0)
+  const defaultTab = (): CardTab => (cardNoOpenings() && cardHasGallery() ? "gallery" : "opening")
+  const tabReq = read(cardTabReq)
+  const [tab, setTab] = createSignal<CardTab>(() => {
+    const cid = id()
+    tabReq()
+    const pending = peekCardTab()
+    if (pending !== null && (pending.card === "*" || pending.card === cid)) {
+      return pending.tab === "gallery" && cardHasGallery() ? "gallery" : "opening"
+    }
+    return defaultTab()
+  })
+  createEffect(
+    () => [id(), tabReq()] as const,
+    ([cid]) => {
+      if (cid !== undefined) clearCardTab(cid)
+    },
+  )
+  onSettled(() => () => {
+    clearCardTab()
+  })
+  const activeTab = (): CardTab => (tab() === "gallery" && cardHasGallery() ? "gallery" : "opening")
+  const showOpeningsList = () => activeTab() === "opening" && openings().length > 1
   /** Begin lands in the open story: it is empty and of this card. Otherwise (a story in progress, none yet, an empty
    *  story of another card: this one was browsed from the shelf) Begin makes a new story of this card first. */
   const fresh = () => {
@@ -121,7 +245,7 @@ export const CardPage = () => {
     <div class="inspect manifest">
       <Show when={view()}>
         {(c) => (
-          <article class={{ cardsheet: true, many: openings().length > 1 }}>
+          <article class={{ cardsheet: true, many: showOpeningsList() }}>
             <section class="about" aria-label={t("card.card")}>
               <div class="title">
                 {/* Back only where there is somewhere to go: the story, or home under a card entered from it */}
@@ -190,8 +314,24 @@ export const CardPage = () => {
                 </button>
               </Show>
               <Size label={t("card.prompt")} n={c().tokens.head} />
+              <Show when={cardHasGallery()}>
+                <div class="card-tabs">
+                  <Segment
+                    label={t("common.view")}
+                    value={activeTab()}
+                    options={[
+                      { value: "opening", label: t("card.opening") },
+                      { value: "gallery", label: t("card.gallery") },
+                    ]}
+                    onPick={setTab}
+                  />
+                  <span class="gallery-badge mono">
+                    {gallery().unlockedCount} / {gallery().totalCount}
+                  </span>
+                </div>
+              </Show>
             </section>
-            <Show when={openings().length > 1}>
+            <Show when={showOpeningsList()}>
               <div class="openings-wrap">
                 <div class="openings-head">
                   <span>{t("card.opening")}</span>
@@ -245,116 +385,171 @@ export const CardPage = () => {
                 </ul>
               </div>
             </Show>
-            <section class="opening" aria-label={t("card.opening")}>
-              <Show
-                when={opening()}
-                fallback={
-                  <div class="well empty">
-                    <p>{t("card.noOpening")}</p>
-                  </div>
-                }
-              >
-                {(g) => (
-                  <div class="well">
-                    <div class="wscroll">
-                      {/* the names in force; a hole still unfilled stays literal, marked (prose.tsx) */}
-                      <Prose text={fillKnown(g().text.trim(), view()?.layer.names)} />
+            <Show when={activeTab() === "opening"}>
+              <section class="opening" aria-label={t("card.opening")}>
+                <Show
+                  when={opening()}
+                  fallback={
+                    <div class="well empty">
+                      <p>{t("card.noOpening")}</p>
                     </div>
-                  </div>
-                )}
-              </Show>
-              <footer class="foot">
-                {/* the phone's stepper and its sheet; the desktop has the list column instead (card.css) */}
-                <Show when={openings().length > 1}>
-                  <span class="siblings">
-                    <button
-                      class="icon"
-                      aria-label={t("card.prevOpening")}
-                      disabled={at() === 0}
-                      onClick={() => setAt(at() - 1)}
-                    >
-                      <Prev />
-                    </button>
-                    <Popover controller={openingsPop}>
-                      <PopoverTrigger class="count" aria-label={t("card.pickOpening")}>
-                        {at() + 1} / {openings().length}
-                        <Up />
-                      </PopoverTrigger>
-                      <PopoverContent
-                        id="openings"
-                        class="versions"
-                        aria-label={t("card.pickOpening")}
-                        side="top"
-                        align="start"
-                        sideOffset={8}
-                      >
-                        <div class="openings-head">
-                          <span>{t("card.opening")}</span>
-                          <label class="inline-search" data-open={searching() || !!oq() ? "true" : "false"}>
-                            <Clue aria-hidden="true" />
-                            <input
-                              type="search"
-                              enterkeyhint="search"
-                              placeholder={t("card.searchOpenings")}
-                              aria-label={t("card.searchOpenings")}
-                              value={oq()}
-                              onFocus={() => setSearching(true)}
-                              onBlur={() => setSearching(false)}
-                              onInput={(e) => setOq(e.currentTarget.value)}
-                              onKeyDown={(e) => {
-                                if (e.key !== "Escape" || !oq()) return
-                                e.preventDefault()
-                                e.stopPropagation()
-                                setOq("")
-                              }}
-                            />
-                          </label>
-                          <span class="mono">
-                            {at() + 1} / {openings().length}
-                          </span>
-                        </div>
-                        <For each={listed()} keyed={(x) => x.i}>
-                          {(x) => (
-                            <button
-                              type="button"
-                              class="version"
-                              aria-current={x().i === at() ? "true" : undefined}
-                              onClick={() => {
-                                setAt(x().i)
-                                openingsPop.close()
-                              }}
-                            >
-                              <Line c={c()} g={x().g} i={x().i} />
-                            </button>
-                          )}
-                        </For>
-                        <Show when={!listed().length}>
-                          <div class="none">{t("card.noOpeningMatch")}</div>
-                        </Show>
-                      </PopoverContent>
-                    </Popover>
-                    <button
-                      class="icon"
-                      aria-label={t("card.nextOpening")}
-                      disabled={at() === openings().length - 1}
-                      onClick={() => setAt(at() + 1)}
-                    >
-                      <Next />
-                    </button>
-                  </span>
-                </Show>
-                <Show when={opening()}>{(g) => <Size label={t("card.opening")} n={tokens(g().text)} />}</Show>
-                <button
-                  type="button"
-                  class={{ begin: true, primary: fresh() }}
-                  disabled={busy() || starting()}
-                  onClick={() => void begin()}
+                  }
                 >
-                  {fresh() ? t("card.begin") : t("side.newStory")}
-                  <Change />
-                </button>
-              </footer>
-            </section>
+                  {(g) => (
+                    <div class="well">
+                      <div class="wscroll">
+                        {/* the names in force; a hole still unfilled stays literal, marked (prose.tsx) */}
+                        <Prose text={fillKnown(g().text.trim(), view()?.layer.names)} />
+                      </div>
+                    </div>
+                  )}
+                </Show>
+                <footer class="foot">
+                  {/* the phone's stepper and its sheet; the desktop has the list column instead (card.css) */}
+                  <Show when={openings().length > 1}>
+                    <span class="siblings">
+                      <button
+                        class="icon"
+                        aria-label={t("card.prevOpening")}
+                        disabled={at() === 0}
+                        onClick={() => setAt(at() - 1)}
+                      >
+                        <Prev />
+                      </button>
+                      <Popover controller={openingsPop}>
+                        <PopoverTrigger class="count" aria-label={t("card.pickOpening")}>
+                          {at() + 1} / {openings().length}
+                          <Up />
+                        </PopoverTrigger>
+                        <PopoverContent
+                          id="openings"
+                          class="versions"
+                          aria-label={t("card.pickOpening")}
+                          side="top"
+                          align="start"
+                          sideOffset={8}
+                        >
+                          <div class="openings-head">
+                            <span>{t("card.opening")}</span>
+                            <label class="inline-search" data-open={searching() || !!oq() ? "true" : "false"}>
+                              <Clue aria-hidden="true" />
+                              <input
+                                type="search"
+                                enterkeyhint="search"
+                                placeholder={t("card.searchOpenings")}
+                                aria-label={t("card.searchOpenings")}
+                                value={oq()}
+                                onFocus={() => setSearching(true)}
+                                onBlur={() => setSearching(false)}
+                                onInput={(e) => setOq(e.currentTarget.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key !== "Escape" || !oq()) return
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  setOq("")
+                                }}
+                              />
+                            </label>
+                            <span class="mono">
+                              {at() + 1} / {openings().length}
+                            </span>
+                          </div>
+                          <For each={listed()} keyed={(x) => x.i}>
+                            {(x) => (
+                              <button
+                                type="button"
+                                class="version"
+                                aria-current={x().i === at() ? "true" : undefined}
+                                onClick={() => {
+                                  setAt(x().i)
+                                  openingsPop.close()
+                                }}
+                              >
+                                <Line c={c()} g={x().g} i={x().i} />
+                              </button>
+                            )}
+                          </For>
+                          <Show when={!listed().length}>
+                            <div class="none">{t("card.noOpeningMatch")}</div>
+                          </Show>
+                        </PopoverContent>
+                      </Popover>
+                      <button
+                        class="icon"
+                        aria-label={t("card.nextOpening")}
+                        disabled={at() === openings().length - 1}
+                        onClick={() => setAt(at() + 1)}
+                      >
+                        <Next />
+                      </button>
+                    </span>
+                  </Show>
+                  <Show when={opening()}>{(g) => <Size label={t("card.opening")} n={tokens(g().text)} />}</Show>
+                  <button
+                    type="button"
+                    class={{ begin: true, primary: fresh() }}
+                    disabled={busy() || starting()}
+                    onClick={() => void begin()}
+                  >
+                    {fresh() ? t("card.begin") : t("side.newStory")}
+                    <Change />
+                  </button>
+                </footer>
+              </section>
+            </Show>
+            <Show when={activeTab() === "gallery"}>
+              <section class="gallery" aria-label={t("card.gallery")}>
+                <header class="gallery-head">
+                  <span class="gallery-title">
+                    <span>{t("card.gallery")}</span>
+                    <span class="gallery-count mono">
+                      {gallery().unlockedCount} / {gallery().totalCount}
+                    </span>
+                  </span>
+                  <Show when={gallery().hasGated}>
+                    <div class="gallery-reveal">
+                      <span>{t("card.showAll")}</span>
+                      <Switch on={showAll()} label={t("card.showAll")} onFlip={() => setShowAll((v) => !v)} />
+                    </div>
+                  </Show>
+                </header>
+                <div class="gallery-scroll scroller">
+                  <For each={gallery().catalogs} keyed={(cat) => cat.id}>
+                    {(cat) => (
+                      <div class="gallery-group" data-catalog={cat().id}>
+                        <Show when={gallery().catalogs.length > 1}>
+                          <h2 class="gallery-cat">{catalogTitle(c(), cat().id)}</h2>
+                        </Show>
+                        <div class="gallery-grid">
+                          <For each={cat().items} keyed={(item) => item.id}>
+                            {(item) => (
+                              <figure
+                                class="gallery-tile"
+                                data-catalog={item().catalog}
+                                data-item={item().id}
+                                data-state={item().masked ? "masked" : "revealed"}
+                              >
+                                <MediaFrame
+                                  class="gallery-frame"
+                                  masked={item().masked}
+                                  src={item().masked ? undefined : item().url}
+                                  label={item().masked ? t("card.spoiler") : item().label}
+                                  maskedLabel={t("card.spoiler")}
+                                  lightbox={!item().masked}
+                                />
+                                <Show when={item().revealed}>
+                                  <figcaption class="gallery-caption">{item().label}</figcaption>
+                                </Show>
+                              </figure>
+                            )}
+                          </For>
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </div>
+              </section>
+            </Show>
           </article>
         )}
       </Show>

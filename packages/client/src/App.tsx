@@ -16,7 +16,7 @@ import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { Phase } from "@effect-tavern/runtime/src/session.ts"
 import type { JSX } from "@solidjs/web"
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, onSettled, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, untrack, Errored, For, lazy, Loading, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
@@ -24,7 +24,9 @@ import { copyText } from "./host.ts"
 import { Home } from "./home.tsx"
 import { imeController } from "./ime.ts"
 import { Back, Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
+import { MediaFrame } from "./lightbox.tsx"
 import { blocks } from "./markdown.ts"
+import { activePortraits, activeStoryMatchesCard } from "./media.ts"
 import { plain, Prose } from "./prose.tsx"
 import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
 import { apart, lineOf, versions } from "./record.ts"
@@ -33,6 +35,7 @@ import { shrinkwrap } from "./shrinkwrap.ts"
 import { Swipe } from "./swipe.ts"
 import { gutter, wide } from "./viewport.ts"
 import {
+  card,
   updateComposition,
   dismiss,
   draft,
@@ -235,10 +238,16 @@ const stick = () => {
   follow.ours = scroller().scrollTop
   syncLift()
 }
+const hasSelection = () => {
+  const sel = document.getSelection?.()
+  return Boolean(sel && !sel.isCollapsed)
+}
 const Latest = () => {
   const [away, setAway] = createSignal(false)
   const lib = read(stories)
   const all = read(log)
+  const d = read(draft)
+  let settledHead: Id | null = null
   // another story opened: the reader lands at its live edge whatever the hand was doing (the row was just clicked):
   // following is on when its nodes arrive, and that arrival sticks by itself (two stories of one opening are the same
   // height, so the growth the observer would see may never come)
@@ -250,20 +259,31 @@ const Latest = () => {
         follow.touched = -Infinity
         follow.landing = true
         follow.checkout = null
+        settledHead = null
       }
     },
   )
   createEffect(
     () => all(),
-    () => {
+    (curLog) => {
       if (follow.landing) {
         follow.landing = false
-        stick()
+        settledHead = curLog.head
+        if (!hasSelection()) stick()
         return
       }
-      if (!follow.checkout) return
+      if (!follow.checkout) {
+        if (settledHead === null && curLog.head !== null) {
+          settledHead = curLog.head
+          if (follow.on && !hasSelection()) stick()
+        } else if (curLog.head !== null && untrack(d) === null) {
+          settledHead = curLog.head
+        }
+        return
+      }
       const { index, top } = follow.checkout
       follow.checkout = null
+      settledHead = curLog.head
       follow.touched = performance.now()
       const sec = document.querySelectorAll("main > section")[index]
       if (!sec) return
@@ -275,7 +295,45 @@ const Latest = () => {
     },
   )
   onSettled(() => {
+    const mainEl = document.querySelector("main")!
+    // Keep the selected text at its viewport position when a settled illustration is inserted above it.
+    // The main element can keep its min-height through the insertion, so ResizeObserver alone misses it.
+    let selection: { range: Range; top: number } | undefined
+    const rememberSelection = () => {
+      const sel = document.getSelection()
+      selection = undefined
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return
+      const range = sel.getRangeAt(0)
+      if (mainEl.contains(range.commonAncestorContainer)) selection = { range, top: range.getBoundingClientRect().top }
+    }
+    const mediaChanges = new MutationObserver((changes) => {
+      if (!selection || !mainEl.contains(selection.range.commonAncestorContainer)) return
+      const isIllustration = (node: globalThis.Node) => node instanceof Element && node.matches(".illust")
+      if (!changes.some((change) => [...change.addedNodes, ...change.removedNodes].some(isIllustration))) return
+      const delta = selection.range.getBoundingClientRect().top - selection.top
+      if (Math.abs(delta) <= 0.5) return
+      const scroll = scroller()
+      const top = scroll.scrollTop + delta
+      // A short last turn can still fit the viewport after the insertion. Give its selected line
+      // enough trailing space to reach its previous position before clamping scrollTop.
+      const missing = Math.ceil(top - (scroll.scrollHeight - scroll.clientHeight))
+      if (missing > 0) {
+        const reserve = Number.parseFloat(scroll.style.getPropertyValue("--selection-foot")) || 0
+        scroll.style.setProperty("--selection-foot", `${reserve + missing}px`)
+      }
+      scroll.scrollTop = top
+    })
+    const onSelectionChange = () => {
+      rememberSelection()
+      mediaChanges.disconnect()
+      if (!selection) scroller().style.removeProperty("--selection-foot")
+      if (selection) mediaChanges.observe(mainEl, { childList: true, subtree: true })
+    }
+    document.addEventListener("selectionchange", onSelectionChange)
+    let booted = false
+    let lastMainHeight = 0
     const onScroll = () => {
+      if (selection) rememberSelection()
       syncLift()
       const g = gap()
       setAway(hidden() > 120)
@@ -289,13 +347,26 @@ const Latest = () => {
       if (e.type === "keydown" ? !field : t.closest?.(".scroll")) follow.touched = performance.now()
     }
     // opening included: the first growth is the story loading, and following from the start lands at its live edge;
-    // the scroller shrinking is the same event from the other side
+    // the scroller shrinking is the same event from the other side. Late record/demand amendments on an already-landed
+    // turn (`d() === null && head === settledHead`) or an active text selection never yank scroll: CSS overflow-anchor
+    // keeps the visible prose paragraph stationary.
     const ro = new ResizeObserver(() => {
       fit()
-      if (follow.on && performance.now() - follow.touched >= 150) stick()
+      const mainHeight = mainEl.offsetHeight
+      const mainChanged = booted && mainHeight !== lastMainHeight
+      lastMainHeight = mainHeight
+      const head = all().head
+      const amendedSettledTurn = booted && d() === null && mainChanged && head !== null && head === settledHead
+      booted = true
+      if (head !== null && d() === null) settledHead = head
+      if (amendedSettledTurn) {
+        follow.on = gap() <= 40
+      } else if (follow.on && !hasSelection() && performance.now() - follow.touched >= 150) {
+        stick()
+      }
       setAway(!follow.on && hidden() > 120)
     })
-    ro.observe(document.querySelector("main")!)
+    ro.observe(mainEl)
     ro.observe(scroller())
     const boxRo = new ResizeObserver(syncLift)
     const box = document.querySelector(".composer .box")
@@ -318,6 +389,8 @@ const Latest = () => {
     scroller().addEventListener("scroll", onScroll, { passive: true })
     for (const e of inputs) addEventListener(e, onInput, { passive: true })
     return () => {
+      document.removeEventListener("selectionchange", onSelectionChange)
+      mediaChanges.disconnect()
       ro.disconnect()
       boxRo.disconnect()
       scroller().removeEventListener("scroll", onScroll)
@@ -516,13 +589,21 @@ const Options = (props: { items: readonly string[] }) => (
   </div>
 )
 
-const Section = (props: { node: Node; n: number; last: boolean }) => {
+const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType<typeof card> }) => {
   const busy = read(working)
   const all = read(log)
   const edited = read(editing)
   const revised = read(revising)
   // versions that differ in the player's line are told apart by it; otherwise by the prose
-  const vs = createMemo(() => versions(all(), props.node))
+  const vs = createMemo(() => versions(all(), props.node), {
+    equals: (a, b) =>
+      a.index === b.index &&
+      a.varied === b.varied &&
+      a.list.length === b.list.length &&
+      a.list.every(
+        (s, i) => s.id === b.list[i]?.id && prose(s) === prose(b.list[i]) && lineOf(s) === lineOf(b.list[i]),
+      ),
+  })
   const siblings = () => vs().list
   const told = createMemo(() => apart(siblings().map((s) => plain(prose(s)))))
   const versionsPop = createPopoverController()
@@ -551,7 +632,10 @@ const Section = (props: { node: Node; n: number; last: boolean }) => {
         node={props.node}
         revising={revised()?.node === props.node.id ? revised()!.field : undefined}
       />
-      <Show when={edited() === props.node.id} fallback={<Prose text={prose(props.node)} />}>
+      <Show
+        when={edited() === props.node.id}
+        fallback={<Prose text={prose(props.node)} node={props.view ? props.node : undefined} view={props.view} />}
+      >
         <Editor text={prose(props.node)} onDone={done} />
       </Show>
       <Settlement node={props.node} />
@@ -641,13 +725,40 @@ const Reader = () => {
   const shown = createMemo(() => drawn(line(), d()), {
     equals: (a, b) => a.length === b.length && a.every((n, i) => n === b[i]),
   })
+  const storyView = createMemo(() => {
+    const view = card()
+    return activeStoryMatchesCard(view?.id) ? view : null
+  })
+  const portraits = activePortraits
   return (
     <div class="panel">
+      <Show when={wide() && portraits().length}>
+        <aside class="reader-portraits" aria-label={t("readings.portraits")}>
+          <For each={portraits()} keyed={(p) => p.id}>
+            {(p) => (
+              <div class="reader-portrait">
+                <MediaFrame
+                  class="reader-portrait-frame"
+                  src={p().url}
+                  label={p().label}
+                  fallbackText={p().slotLabel || p().label}
+                  triggerLabel={p().slotLabel ? `${p().slotLabel} · ${p().label}` : p().label}
+                  lightboxLabel={p().label}
+                  lightbox
+                />
+                <span class="reader-portrait-name">{p().slotLabel || p().label}</span>
+              </div>
+            )}
+          </For>
+        </aside>
+      </Show>
       <div class="scroll">
         <main>
           {/* keyed by id: a snapshot read back (after a stop) refreshes each section in place instead of rebuilding them */}
           <For each={shown()} keyed={(n) => n.id}>
-            {(n, i) => <Section node={n()} n={i() + 1} last={!busy() && i() === shown().length - 1} />}
+            {(n, i) => (
+              <Section view={storyView()} node={n()} n={i() + 1} last={!busy() && i() === shown().length - 1} />
+            )}
           </For>
           <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>
         </main>

@@ -10,6 +10,7 @@
 // back from any page, which also puts the open story's card back in the view. Landing reads the story's card (stories of every card
 // share one listing) and picks up a turn in flight there. One Escape rule for every page, mounted once by the App. The
 // reader stays mounted under all of it, so a turn in flight keeps streaming; another story only stops reading it.
+import * as Atom from "./atom.ts"
 import { closable } from "./back.ts"
 import { host } from "./host.ts"
 import { emptyDraft } from "./composition.ts"
@@ -22,6 +23,7 @@ import {
   characterCards,
   clearHomeDraft,
   composition,
+  focus,
   freeChatCard,
   homeDrafts,
   homeSending,
@@ -50,6 +52,31 @@ const loads: Partial<Record<Kind, () => unknown>> = {
   workshop: wire.fetchCards,
 }
 const tab = () => activeOf(registry.get(tabs)) // the page stack is the active tab's (tabs.ts)
+
+export type CardTab = "opening" | "gallery"
+let pendingCardTab: { card: string; tab: CardTab } | null = null
+export const cardTabReq = Atom.make(0).pipe(Atom.keepAlive)
+export const peekCardTab = () => pendingCardTab
+export const clearCardTab = (cardId?: string): void => {
+  if (
+    pendingCardTab !== null &&
+    (cardId === undefined || pendingCardTab.card === "*" || pendingCardTab.card === cardId)
+  ) {
+    pendingCardTab = null
+  }
+}
+export const requestCardTab = (next: CardTab, cardId?: string | null): void => {
+  pendingCardTab = { card: cardId ?? registry.get(focus) ?? registry.get(card)?.id ?? "*", tab: next }
+  registry.update(cardTabReq, (n) => n + 1)
+}
+export const openCard = (): void => {
+  requestCardTab("opening")
+  open("card")
+}
+export const openGallery = (): void => {
+  requestCardTab("gallery")
+  open("card")
+}
 
 /** A page over the current one. The same page again (the Inspect page walking to another node, or the settings moved
  *  to another section) replaces it: no return point, no reload. The reader is under every page, never over one:
