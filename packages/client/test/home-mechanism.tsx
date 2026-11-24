@@ -29,7 +29,7 @@ const sound: MechanicalSound = {
   setEnabled: (on) => void calls.push(`enabled ${on}`),
   setProfile: () => {},
   step: () => void calls.push("step"),
-  setWarmth: () => {},
+  setWarmth: (x) => void warmth.push(x),
   iris: () => {},
   detent: () => {},
   suspend: () => void calls.push("suspend"),
@@ -37,10 +37,11 @@ const sound: MechanicalSound = {
   dispose: () => {},
 }
 const steps: number[] = [] // figures turned to by a sideways stroke
+const warmth: number[] = [] // where the pointer warms the sound, -1 (left) to 1 (right)
 const layer = dialogHandle()
 render(
   () => (
-    <>
+    <div class="home-page">
       <HomeMechanism
         figure={DEFAULT_FIGURE}
         index={0}
@@ -55,7 +56,7 @@ render(
       <Modal title="遮挡" controller={layer}>
         <p>一层</p>
       </Modal>
-    </>
+    </div>
   ),
   document.getElementById("root")!,
 )
@@ -98,7 +99,8 @@ const run = async () => {
   check(await moving(), "and the frames start again")
   await quiet()
 
-  // a finger on the stage: a stroke sideways turns the figure on release, and the stage itself never moves with it
+  // a finger on the stage: the mechanism aims at it and counts it a hover while it presses; a stroke sideways turns the
+  // figure on release, and the stage itself never moves with it
   const stage = document.querySelector<HTMLElement>(".home-mech-stage")!
   const r = stage.getBoundingClientRect()
   const touch = (type: string, x: number) =>
@@ -116,8 +118,22 @@ const run = async () => {
   touch("pointermove", x0 + 20)
   touch("pointermove", x0 + 60)
   check(!stage.style.transform, `the stage stays put under a finger: ${stage.style.transform}`)
+  const page = document.querySelector<HTMLElement>(".home-page")!
+  const mech = document.querySelector<HTMLElement>(".home-mech")!
+  const spot = () => page.style.getPropertyValue("--home-spot")
+  check(mech.hasAttribute("data-pressed") && spot() === "1", `pressed, it is a hover: ${spot()}`)
+  check((warmth.at(-1) ?? 0) > 0, `and aims right of the middle: ${warmth.join()}`)
   touch("pointerup", x0 + 60)
   check(steps.join() === "-1", `a stroke to the right turns to the previous figure: ${steps.join()}`)
+  check(!mech.hasAttribute("data-pressed") && spot() === "0" && warmth.at(-1) === 0, "released, it lets go")
+
+  // no release reaches a press once the window goes inactive: the press ends there, and the next one is heard
+  touch("pointerdown", x0)
+  check(mech.hasAttribute("data-pressed"), "pressed again")
+  standIn.active = false
+  check(await until(() => !mech.hasAttribute("data-pressed")), "inactive, the press ends")
+  standIn.active = true
+  check(await sounds("resume"), "and the window comes back")
   touch("pointerdown", x0)
   touch("pointermove", x0 + 20)
   touch("pointerup", x0 + 20)

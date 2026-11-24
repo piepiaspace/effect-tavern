@@ -127,6 +127,18 @@ assert.equal(audioSession.type, "ambient", "muted, the session is given back")
 await gesture()
 assert.equal(c.state, "suspended", "muted stays muted")
 
+// turned on while the page holds it (the mechanism paused or covered): quiet, the audio session left to others, until
+// the page lets it go
+sound.suspend()
+sound.setEnabled(true)
+await tick()
+assert.equal(c.state, "suspended", "turned on while held, it stays quiet")
+assert.equal(audioSession.type, "ambient", "and does not take the audio session")
+sound.resume()
+await tick()
+assert.equal(c.state, "running", "let go, it plays")
+assert.equal(audioSession.type, "playback")
+
 // on again, then disposed: the gesture listeners go with it
 sound.setEnabled(true)
 await tick()

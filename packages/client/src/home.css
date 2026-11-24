@@ -262,6 +262,10 @@
     opacity: 1;
   }
 }
+/* a finger pressing the stage is a hover (home-mechanism.tsx `press`) */
+.home-mech[data-pressed] .home-hairline-svg :is(.hl-belt, .hl-vernier) {
+  opacity: 1;
+}
 .home-emblem-wrap {
   position: relative;
   z-index: 1;

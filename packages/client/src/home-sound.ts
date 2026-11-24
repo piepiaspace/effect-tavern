@@ -53,8 +53,10 @@ export const DEFAULT_SOUND_PROFILE: SoundProfile = {
 
 // A phone's own speaker gives back little under about 800 Hz, where every profile's notes sit (196–1109 Hz), so there
 // the music box is played louder and each note carries two consonant partials (a twelfth and two octaves above) in
-// the band it does carry, from which the ear hears the note itself. Desktops, headphones and laptops keep the voicing
-// the profiles were tuned on. Tuned by ear on the phones themselves.
+// the band it does carry, from which the ear hears the note itself. The partials go around the warmth low-pass, whose
+// cutoff (1.3–3.9 kHz) would take back the very band they are for; a partial a profile already sounds as its own
+// overtone is not doubled. A page cannot tell the speaker from headphones, so a phone with headphones gets this too;
+// desktops and laptops keep the voicing the profiles were tuned on. Tuned by ear on the phones themselves.
 const SMALL_SPEAKER = {
   bus: 0.8,
   partials: [
@@ -70,8 +72,11 @@ const smallSpeaker = () =>
 /** iOS (WebKit's `navigator.audioSession`): `playback` sounds through the ring/silent switch, as media the player
  *  started does; `ambient` gives way to it and to the music of other apps. Elsewhere there is none and this does nothing. */
 const session = (type: "playback" | "ambient") => {
+  if (typeof navigator === "undefined") return
   const { audioSession } = navigator as Navigator & { audioSession?: { type: string } }
-  if (audioSession && audioSession.type !== type) audioSession.type = type
+  try {
+    if (audioSession && audioSession.type !== type) audioSession.type = type
+  } catch {} // a WebKit that refuses the type leaves the session as it was
 }
 
 export interface MechanicalSound {
@@ -106,18 +111,20 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
   let delayNode: DelayNode | null = null
   let feedbackNode: GainNode | null = null
   let wetNode: GainNode | null = null
+  let presence: GainNode | null = null
+  // on: the player turned the sound on. held: something of ours holds it (paused, covered, hidden; `suspend` until
+  // `resume`), so a sound turned on meanwhile waits, quiet and without the audio session, until it is let go.
   let on = false
-  // The sound is wanted now: the player turned it on and nothing of ours holds it (paused, covered, hidden). The
-  // system can still stop the context on its own (iOS: the lock screen, a call, another app taking the audio session),
-  // leaving it `suspended` or WebKit's `interrupted`; a resume outside a gesture is refused there, so the next touch
-  // or key anywhere on the page asks again, until it runs.
-  let wanted = false
-  const want = (yes: boolean) => {
-    wanted = yes
-    if (yes || ctx) session(yes ? "playback" : "ambient")
+  let held = false
+  // The sound is wanted now: on and not held. The system can still stop the context on its own (iOS: the lock screen,
+  // a call, another app taking the audio session), leaving it `suspended` or WebKit's `interrupted`; a resume outside
+  // a gesture is refused there, so the next touch or key anywhere on the page asks again, until it runs.
+  const wanted = () => on && !held
+  const claim = () => {
+    if (wanted() || ctx) session(wanted() ? "playback" : "ambient")
   }
   const heal = () => {
-    if (wanted && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
+    if (wanted() && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
       void ctx.resume().catch(() => {})
   }
   const GESTURES = ["pointerup", "touchend", "click", "keydown"] as const
@@ -185,6 +192,12 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       bus.connect(toneFilter)
       toneFilter.connect(ctx.destination)
 
+      if (small) {
+        presence = ctx.createGain()
+        presence.gain.value = SMALL_SPEAKER.bus
+        presence.connect(ctx.destination)
+      }
+
       toneFilter.connect(delayNode)
       delayNode.connect(echoFilter)
       echoFilter.connect(feedbackNode)
@@ -240,8 +253,9 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       osc2.stop(t0 + overDecay + 0.03)
     }
 
-    if (small) {
+    if (presence) {
       for (const p of SMALL_SPEAKER.partials) {
+        if (overtone.level > 0 && p.ratio === overtone.ratio) continue
         const osc = c.createOscillator()
         osc.type = "sine"
         osc.frequency.setValueAtTime(freq * p.ratio, t0)
@@ -251,7 +265,7 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
         env.gain.linearRampToValueAtTime(gain * p.level, t0 + 0.004)
         env.gain.exponentialRampToValueAtTime(0.0001, t0 + end)
         osc.connect(env)
-        env.connect(bus)
+        env.connect(presence)
         osc.start(t0)
         osc.stop(t0 + end + 0.03)
       }
@@ -286,18 +300,18 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
     state: () => ctx?.state ?? "uninitialized",
     setEnabled: (next: boolean) => {
       on = next
-      want(next)
+      claim()
       listen(next)
       if (next) {
         const c = ensureContext()
-        if (!c) return
+        if (!c || held) return
         if (c.state === "running") {
           playEngage(c)
         } else {
           void c
             .resume()
             .then(() => {
-              if (on && ctx === c) playEngage(c)
+              if (wanted() && ctx === c) playEngage(c)
             })
             .catch(() => {})
         }
@@ -366,23 +380,26 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       }
     },
     suspend: () => {
-      want(false)
+      held = true
+      claim()
       if (ctx && ctx.state === "running") void ctx.suspend().catch(() => {})
     },
     resume: () => {
-      want(on)
+      held = false
+      claim()
       // WebKit can also interrupt the context while another app has the audio session.
       if (on && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
         void ctx.resume().catch(() => {})
     },
     dispose: () => {
       on = false
-      want(false)
+      claim()
       listen(false)
       if (ctx) {
         const c = ctx
         ctx = null
         bus = null
+        presence = null
         toneFilter = null
         delayNode = null
         feedbackNode = null
