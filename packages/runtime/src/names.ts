@@ -23,7 +23,23 @@ export const HOLE = /\{\{\s*([A-Za-z_]\w*)\s*\}\}/g
 export const holes = (text: string): string[] => [...new Set(Array.from(text.matchAll(HOLE), (m) => m[1]))]
 /** The holes the table has no value for (own keys only: `{{constructor}}` is a hole like any other). */
 export const unfilled = (text: string, names: Names): string[] => holes(text).filter((k) => !Object.hasOwn(names, k))
-/** Who wrote a text: `"card"` for the card's own; anything else (a row's `From`, `"hat"`) is a player's. */
+/** The holes the harness fills itself, never from the table (#220, #221), by the ask that may hold them: `{{tool}}` the
+ *  delivery tool's name in force, `{{context}}` the wrapped story context (only in the tool's description, only under
+ *  wrap). The same two in a hat's `tool.description` / `tool.param` (and `{{tool}}` in its narrate entries) under tool
+ *  delivery: request.ts and preview.ts `prepareHat` fill them; there they win over a Names key of the same spelling. */
+export const HARNESS_HOLES: Readonly<Record<string, readonly string[]>> = {
+  "narrate.deliver": ["tool"],
+  "narrate.deliver.tool": ["tool", "context"],
+  "narrate.deliver.param": ["tool"],
+  "narrate.wrap": ["tool"],
+}
+/** The table with each of `keys` standing for itself: a text expanded through it keeps those holes for the harness. */
+export const keepHoles = (names: Names, keys: readonly string[]): Names =>
+  keys.length ? { ...names, ...Object.fromEntries(keys.map((k) => [k, `{{${k}}}`])) } : names
+/** Only the given holes filled, every other left as written. */
+export const fillHoles = (text: string, values: Readonly<Record<string, string>>): string =>
+  text.replace(HOLE, (hole, k: string) => (Object.hasOwn(values, k) ? values[k] : hole))
+/** Who wrote a text:`"card"` for the card's own; anything else (a row's `From`, `"hat"`) is a player's. */
 export type Author = string
 /** The text with every known name filled. A hole nothing fills stays as written in the card's text; in a player's the
  *  whole text is undefined: that entry does not go out. */

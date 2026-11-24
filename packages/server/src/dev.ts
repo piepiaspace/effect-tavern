@@ -45,7 +45,9 @@ let n = 0
  *  A line containing 重写 is the slow demo: longer prose at reading pace, a second of check and of record, and the
  *  rewrite — the first draft says 一稿, check fails it, the correction draft says 二稿. */
 const answer = (o: FakeCall) => {
-  const text = o.prompt.map(fakeText).join("\n")
+  // a hat's wrap (#220) moves the request's text into the delivery tool's description: read it there too
+  const tools = (o.tools ?? []).flatMap((t) => (t.type === "function" ? [t] : []))
+  const text = [...o.prompt.map(fakeText), ...tools.map((t) => t.description ?? "")].join("\n")
   const doc = readStage(o)
   const demo = /重写|一稿|二稿/.test(text)
   switch (doc.phase) {
@@ -75,12 +77,15 @@ const answer = (o: FakeCall) => {
       // inner is a narrate-stage product: asked for on the turn (an `inner:` ask line) it follows the prose as a block;
       // demanded on a node ("Write no prose") the block is the whole answer
       const inner = "对方垂眼看着桌面，心里在想你究竟是从哪里听来这件事的。"
-      if (text.includes("Write no prose")) return { text: `<<aside>> inner\n${inner}`, delay: 20 }
+      // under a hat's tool delivery the one function tool is the delivery tool: answer through it, as a model would
+      const through = (r: { text: string; delay: number }) =>
+        tools[0] ? { text: "", toolCalls: [{ name: tools[0].name, input: { text: r.text } }], delay: r.delay } : r
+      if (text.includes("Write no prose")) return through({ text: `<<aside>> inner\n${inner}`, delay: 20 })
       const block = /^inner: /m.test(text) ? `\n<<aside>> inner\n${inner}` : ""
-      return {
+      return through({
         text: `第${++n}段。${text.includes("Previous draft broke") ? "二稿。" : demo ? "一稿。" : ""}${"雨刚停，屋檐上的水还在一滴一滴往下落。"}${"对方站在三步开外，没有说话，目光落在你带来的东西上。".repeat(demo ? 6 : 2)}${block}`,
         delay: demo ? 120 : 20,
-      }
+      })
     }
     default: // decide ends, polish hands every marked sentence back unchanged (a pass-through, so the prose stands)
       return defaultAnswer(doc)

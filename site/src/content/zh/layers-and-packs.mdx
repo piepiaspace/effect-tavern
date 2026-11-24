@@ -79,6 +79,8 @@ harness（代码默认 + 玩家全局叠加行）
 
 **`deliver`** 决定 `narrate` 如何交付正文：`"text"`（默认）直接流式输出纯文本；`"tool"` 让模型调用唯一的 `narrative({ text })` 工具并边流边解码，在请求开头追加 `narrate.deliver` 问法，要求原生工具调用，且请求不得以 `assistant` 预填收尾。工具交付下 **`toolChoice`** 取 `"auto"`（默认，适配拒绝强制工具的思考模型）或 `"force"`；非工具交付时不保留该字段。
 
+工具交付下，帽子还可以给交付工具命名并改写说明（**`tool`**）：工具名 `name`（默认 `narrative`；以字母或 `_` 开头，至多 64 个字母、数字、`_` 与 `-`，否则保存被拒）只属于帽子；`description` 与 `param` 覆盖 Harness 自有的两条问法：`narrate.deliver.tool`（工具说明）与 `narrate.deliver.param`（`text` 参数说明）。这些文字以及 `narrate.deliver`、帽子自己的消息里，`{{tool}}` 都是当前工具名。**`wrap: true`**（与任一 `toolChoice` 兼容）即工具封装：`messages[]` 只保留帽子的 `narrate.lead` 与 `narrate.tail`，叙述者读到的其余内容按原本发送的样子、以带角色标记的分段（`<message role="system">` … `</message>`）写进工具说明，放在其 `{{context}}` 处，没有该占位则接在说明文字之后。lead 与 tail 都没有 `user` 消息时，由 `narrate.wrap` 问法补一条收尾的 user 消息；该问法被清空时，请求在发出前即被拒绝。封装下任何消息都不带缓存断点，前缀缓存失效；按需补写的单块同样封装。其余阶段不受影响。
+
 语言模型连接 **`Connection`**（`/providers`）仅维护接口凭据、模型 ID、`maxOutputTokens` 与思考预算（`effort`），底座**不发送任何硬编码采样参数**（`temperature`、`topP` 等），一律交由推理端点默认策略决定。只有 `narrate` 读取完整 `frame` 与叙事帽；其余所有幕后阶段仅读取各自的职能描述（`stage.role`）加紧凑的 XML 标签化 `<world>` 摘要（`worldOf`，剥离写作指令与 `fiction` 正文）。
 
 除常规阶段路由外，实例还可配置可选的专用决策模型 **`DecisionModel`**（`/decision`，位于默认模型路由页的 `pre-check` 卡片，支持 `google`、`openai`、`typesafe` 三种驱动）：单次纯概率调用即可完成一组二元命题打分，零 LLM 往返直接结算完整目录 `lookup`（`≤ 256` 单元且 `≤ 10,000` 字符）与边界分明的 `check`（`< 0.25` / `> 0.75`），遇到目录超界或概率处于模糊区间时无缝回退至该阶段路由的常规语言模型。

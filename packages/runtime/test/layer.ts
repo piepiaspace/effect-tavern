@@ -8,7 +8,15 @@ import { Effect, Schema, Stream } from "effect"
 import assert from "node:assert/strict"
 import { readFileSync, writeFileSync } from "node:fs"
 import type { Card } from "../src/card.ts"
-import { Hat, hatEntryActive, hatHasToolHandshake } from "../src/fragment.ts"
+import {
+  Hat,
+  hatEntryActive,
+  hatHasToolHandshake,
+  hatToolName,
+  hatToolProblem,
+  hatWraps,
+  normalizeHatDelivery,
+} from "../src/fragment.ts"
 import { prose as proseOf } from "../src/journal.ts"
 import {
   decodeLayer,
@@ -1255,6 +1263,83 @@ for (const povText of ["", "{{missing}}"]) {
   assert.throws(() =>
     decodeHat({ id: "bad-tool", name: "Bad", narrate: { head: [{ role: "tool", text: "no-name" }] } }),
   )
+}
+
+// The delivery tool and the wrap on a hat (#220, #221): one stored shape, a name every model accepts
+{
+  const toolHat = Schema.decodeUnknownSync(Hat)({
+    id: "t",
+    name: "T",
+    deliver: "tool",
+    wrap: true,
+    tool: { name: "actual_content", description: "  ", param: "Every word." },
+  })
+  assert.deepEqual(normalizeHatDelivery(toolHat), {
+    id: "t",
+    name: "T",
+    deliver: "tool",
+    toolChoice: "auto",
+    wrap: true,
+    tool: { name: "actual_content", param: "Every word." },
+  })
+  assert.equal(hatWraps(toolHat), true)
+  assert.equal(hatToolName(toolHat), "actual_content")
+  // text delivery keeps none of it; an empty tool and wrap: false go
+  assert.deepEqual(normalizeHatDelivery({ ...toolHat, deliver: "text" }), { id: "t", name: "T", deliver: "text" })
+  assert.deepEqual(normalizeHatDelivery({ id: "u", name: "U", toolChoice: "force", wrap: true, tool: { name: "x" } }), {
+    id: "u",
+    name: "U",
+  })
+  assert.deepEqual(normalizeHatDelivery({ id: "v", name: "V", deliver: "tool", wrap: false, tool: { name: " " } }), {
+    id: "v",
+    name: "V",
+    deliver: "tool",
+    toolChoice: "auto",
+  })
+  assert.equal(hatWraps({ deliver: "text", wrap: true }), false)
+  assert.equal(hatWraps({ deliver: "tool" }), false)
+  assert.equal(hatToolName({ deliver: "tool" }), "narrative")
+  assert.equal(hatToolName({ deliver: "text", tool: { name: "x" } }), undefined)
+  // the name: checked with the provider's own words
+  assert.equal(hatToolProblem(toolHat), undefined)
+  assert.equal(hatToolProblem({}), undefined)
+  assert.match(hatToolProblem({ tool: { name: "9 lives" } }) ?? "", /is not one every model accepts/)
+  assert.match(hatToolProblem({ tool: { name: "x".repeat(65) } }) ?? "", /at most 64/)
+
+  // the three asks: defaults the provider's own words; `{{tool}}` / `{{context}}` are the harness's, never a name
+  const R = resolve(chat, {})
+  assert.equal(R.asks["narrate.deliver.tool"].text, "Deliver the complete scene narration.")
+  assert.equal(R.asks["narrate.deliver.param"].text, "The full reply, nothing omitted.")
+  assert.equal(R.asks["narrate.wrap"].text, "Read the {{tool}} tool's description, then call it with your reply.")
+  assert.match(R.asks["narrate.deliver"].text, /by calling the \{\{tool\}\} tool/)
+  const overlay: Layer = {
+    id: "harness",
+    name: "内置",
+    asks: [{ id: "narrate.deliver.tool", text: "Call {{tool}} as {{user}}. {{context}}" }],
+    names: { user: "Ada", tool: "SHADOW", context: "SHADOW" },
+  }
+  const pack: Layer = { id: "p", name: "P", asks: [{ id: "narrate.deliver.param", text: "Pack {{tool}}." }] }
+  const local: Local = {
+    id: "local",
+    name: "local",
+    card: chat.id,
+    mounts: ["p"],
+    asks: [{ id: "narrate.deliver.param", text: "Local {{tool}}." }],
+  }
+  const T = resolveWithTrace(chat, { harness: overlay, packs: [pack], local })
+  assert.equal(T.resolved.asks["narrate.deliver.tool"].text, "Call {{tool}} as Ada. {{context}}")
+  assert.equal(T.resolved.asks["narrate.deliver.param"].text, "Local {{tool}}.") // the later layer wins
+  assert.equal(T.sources.asks["narrate.deliver.param"].kind, "local")
+  assert.ok(!T.resolved.holes.includes("tool") && !T.resolved.holes.includes("context"))
+  // a hole the harness does not fill there is still the player's: that ask does not go out
+  const stray = resolveWithTrace(chat, {
+    harness: { id: "harness", name: "内置", asks: [{ id: "narrate.wrap", text: "Read {{tool}} {{context}}." }] },
+  })
+  assert.equal(
+    stray.resolved.asks["narrate.wrap"].text,
+    harness("act").asks!.find((a) => a.id === "narrate.wrap")!.text,
+  )
+  assert.deepEqual(stray.omitted.find((o) => o.id === "narrate.wrap")?.missingHoles, ["context"])
 }
 
 console.log("layer ok")

@@ -66,6 +66,8 @@ const omittedReasonLabel = (r: OmittedReason): string => {
       return t("promptTree.reasonOutsideWindow")
     case "invalid":
       return t("promptTree.reasonInvalid")
+    case "not_wrapped":
+      return t("promptTree.reasonNotWrapped")
   }
 }
 

@@ -804,6 +804,7 @@ const en: Dict = {
     turnsOutsideWindow: "{n|turn has|turns have} left the history window without a summary.",
     turnsSummarized: "The summary for #{from}–#{to} covers {n|turn|turns}.",
     reasonInvalid: "Invalid",
+    reasonNotWrapped: "Not wrapped",
     resourcesTitle: "Resources & simulated reads",
     resourcesEmpty: "No lookup resources on this card",
     simulatedCount: "{n} simulated",

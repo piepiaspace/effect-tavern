@@ -54,7 +54,7 @@ import {
 import { author } from "./author.ts"
 import { type Card } from "@effect-tavern/runtime/src/card.ts"
 import { validateCard } from "@effect-tavern/runtime/src/author.ts"
-import { Hat, normalizeHatDelivery, uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
+import { Hat, hatToolProblem, normalizeHatDelivery, uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   decodeLayer,
   decodeLocal,
@@ -568,9 +568,13 @@ export const library = ({
     hats: {
       list: listHats,
       /** Written under a name no other hat holds (fragment.ts `uniqueHatName`): a colliding one is numbered, the same
-       *  hat rewritten keeps its own. */
-      put: (h: Hat) =>
-        data.hats.put({ ...normalizeHatDelivery(h), name: uniqueHatName(data.hats.list(), h.name, h.id) }),
+       *  hat rewritten keeps its own. A delivery tool name not every model accepts is refused in plain words. */
+      put: (h: Hat) => {
+        const hat = normalizeHatDelivery(h)
+        const problem = hatToolProblem(hat)
+        if (problem) throw new Error(`hat "${h.name}": ${problem}`)
+        data.hats.put({ ...hat, name: uniqueHatName(data.hats.list(), h.name, h.id) })
+      },
       del: (id: string) => {
         data.hats.del(id)
         pruneHat(id)
@@ -822,7 +826,10 @@ export const library = ({
       let wornHat: Hat | undefined
       if (req.candidateHat !== undefined) {
         try {
-          wornHat = decodeHat(req.candidateHat)
+          // an unsaved hat in the shape a save would store; a tool name a save would refuse is refused here alike
+          wornHat = normalizeHatDelivery(decodeHat(req.candidateHat))
+          const problem = hatToolProblem(wornHat)
+          if (problem) throw new Error(`hat "${wornHat.name}": ${problem}`)
         } catch (err) {
           throw new PreviewError(400, err instanceof Error ? err.message : String(err), "invalid-candidate")
         }

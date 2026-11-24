@@ -72,6 +72,7 @@ Renders the exact prompt sections, cache breakpoints, slot origins, and `Cond` c
 - `--pin <id>`: Simulate player invocation of an unlocked `player: true` resource (`card:<id>` or `pack:<row>/<entry>`).
 - `--persona <text>`: Override player persona prose.
 - `--lore`: Include fully unlocked lore entries with no active window.
+- `--hat <file.hat.json>`: Wear an exported hat: its messages, and on `narrate` its delivery tool (name, description, parameter) and, under its wrap, the description carrying the story context.
 
 ### `card test <card> [scenario.yaml]`
 Executes the full runtime `Session` against the deterministic `fake` model at zero token cost. Omitting `scenario.yaml` runs a one-turn smoke check.

@@ -62,7 +62,8 @@ bun run tavern card test my-card.yaml scenario.yaml
 - `--events <a,b>`：传入本轮事件以预览 `lore` 的 `offer` 开窗；
 - `--pin <id>`：模拟玩家本轮主动调用已解锁且 `player: true` 的条目（如 `card:<id>` 或 `pack:<row>/<entry>`）；
 - `--persona <text>`：覆盖玩家人设文本；
-- `--lore`：同时列出已全部解锁且无未开窗口的 lore 条目。
+- `--lore`：同时列出已全部解锁且无未开窗口的 lore 条目；
+- `--hat <file.hat.json>`：佩戴导出的帽子：其消息，以及 `narrate` 的交付工具（名称、说明、参数说明），工具封装时连同承载故事上下文的工具说明一并打印。
 
 ### `card test <card> [scenario.yaml]`
 使用零 Token 确定性 `fake` 模型跑通完整 `Session` 回合断言；省略场景文件时执行单轮冒烟测试。

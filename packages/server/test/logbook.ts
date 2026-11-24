@@ -567,6 +567,38 @@ rmSync(dir, { recursive: true, force: true })
   assert.deepEqual(g.facts, ["maxOutputTokens 8192", "tools: look"])
   // a body no reading knows is the caller's to print as it came
   for (const body of ["not json", "[1]", '{"prompt":"x"}']) assert.equal(readRequest(body), undefined)
+  // narrate's delivery tool (#221) is content when asked for: its description (the wrapped context under a hat's wrap,
+  // #220) and its parameter's, first, in each vendor's shape; without the option a tool stays a name among the facts
+  const wrapped = '<message role="user">\n上岸\n</message>'
+  const deliver = (format: "anthropic" | "openai" | "gemini") => {
+    const params = { type: "object", properties: { text: { type: "string", description: "Every word." } } }
+    return format === "anthropic"
+      ? {
+          system: "S",
+          messages: [{ role: "user", content: "Go." }],
+          tools: [{ name: "actual_content", description: wrapped, input_schema: params }],
+        }
+      : format === "openai"
+        ? {
+            messages: [{ role: "user", content: "Go." }],
+            tools: [
+              { type: "function", function: { name: "actual_content", description: wrapped, parameters: params } },
+            ],
+          }
+        : {
+            contents: [{ role: "user", parts: [{ text: "Go." }] }],
+            tools: [{ functionDeclarations: [{ name: "actual_content", description: wrapped, parameters: params }] }],
+          }
+  }
+  for (const format of ["anthropic", "openai", "gemini"] as const) {
+    const body = JSON.stringify(deliver(format))
+    assert.deepEqual(readRequest(body, { tools: true })!.said[0], {
+      who: "tool actual_content",
+      texts: [wrapped, "text: Every word."],
+    })
+    assert.ok(!readRequest(body)!.said.some((s) => s.who.startsWith("tool ")), format)
+    assert.ok(readRequest(body, { tools: true })!.facts.includes("tools: actual_content"), format)
+  }
 }
 
 // The same lookup request before and after a terminal resize. Rejoin its displayed rows to check every character.

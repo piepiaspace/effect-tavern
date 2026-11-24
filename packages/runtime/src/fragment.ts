@@ -1,5 +1,6 @@
 // §8 / §18: Fragment = text + position + condition. The head zone = player layer → card frame → fiction.
 // Frame ids are slots; how a player's slot meets the card's same slot is the player's per-fragment setting.
+import { isToolName, NARRATIVE_TOOL, toolNameProblem } from "@effect-tavern/provider/src/deliver.ts"
 import { Schema } from "effect"
 import { Cond, holds, expandState, type State } from "./cond.ts"
 import type { SourceRef } from "./trace.ts"
@@ -112,6 +113,18 @@ export const Hat = Schema.Struct({
   name: Schema.String,
   deliver: Schema.optionalKey(Schema.Literals(["text", "tool"])),
   toolChoice: Schema.optionalKey(Schema.Literals(["auto", "force"])),
+  // the delivery tool's identity and wording (#221): the name is the hat's alone (an identifier, default `narrative`); a
+  // blank description or param keeps the harness's ask (`narrate.deliver.tool`, `narrate.deliver.param`). Tool delivery only.
+  tool: Schema.optionalKey(
+    Schema.Struct({
+      name: Schema.optionalKey(Schema.String),
+      description: Schema.optionalKey(Schema.String),
+      param: Schema.optionalKey(Schema.String),
+    }),
+  ),
+  // #220 tool wrap: narrate's story context goes into the delivery tool's description and `messages[]` keeps only the
+  // hat's lead and tail (request.ts `wrapNarrate`). Tool delivery only, with either toolChoice.
+  wrap: Schema.optionalKey(Schema.Boolean),
   narrate: Schema.optionalKey(
     Schema.Struct({
       lead: HatSlot,
@@ -124,8 +137,34 @@ export const Hat = Schema.Struct({
 })
 export type Hat = typeof Hat.Type
 
-export const normalizeHatDelivery = <T extends Omit<Hat, "id">>({ toolChoice, ...hat }: T) =>
-  hat.deliver === "tool" ? { ...hat, toolChoice: toolChoice ?? "auto" } : hat
+/** The hat in its one stored shape: `toolChoice`, `tool` and `wrap` only under `deliver: "tool"` (toolChoice defaulting
+ *  to `auto`); a blank `tool` field, an empty `tool` and `wrap: false` dropped. Never contradictory. */
+export const normalizeHatDelivery = <T extends Omit<Hat, "id">>({ toolChoice, tool, wrap, ...hat }: T): T => {
+  if (hat.deliver !== "tool") return hat as T
+  const kept = Object.fromEntries(
+    Object.entries(tool ?? {}).filter(([, v]) => typeof v === "string" && v.trim() !== ""),
+  ) as NonNullable<Hat["tool"]>
+  return {
+    ...hat,
+    toolChoice: toolChoice ?? "auto",
+    ...(Object.keys(kept).length > 0 && { tool: kept }),
+    ...(wrap === true && { wrap: true }),
+  } as T
+}
+
+/** Whether the hat wraps narrate's story context into its delivery tool (#220): tool delivery with `wrap: true`. */
+export const hatWraps = (hat: Pick<Hat, "deliver" | "wrap"> | undefined): boolean =>
+  hat?.deliver === "tool" && hat.wrap === true
+
+/** The delivery tool's name a hat puts in force: its own `tool.name`, else `narrative`; none under text delivery. */
+export const hatToolName = (hat: Pick<Hat, "deliver" | "tool"> | undefined): string | undefined =>
+  hat?.deliver === "tool" ? hat.tool?.name?.trim() || NARRATIVE_TOOL : undefined
+
+/** Plain words for why the hat's delivery tool name cannot be sent, or undefined when it can or names none. */
+export const hatToolProblem = (hat: Pick<Hat, "tool">): string | undefined => {
+  const name = hat.tool?.name
+  return name === undefined || name.trim() === "" || isToolName(name) ? undefined : toolNameProblem(name)
+}
 
 /** Whether a HatEntry carries non-blank content (skipping empty editor rows). */
 export const hatEntryActive = (entry: HatEntry): boolean =>

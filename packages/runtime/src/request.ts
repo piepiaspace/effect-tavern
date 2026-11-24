@@ -28,10 +28,40 @@
 // Data lines and wrappers live here: `<world>`, `<persona>`, `<setting>`, `<fiction>`, `<context>`, `<turn>`, `<input>`,
 // `<draft>`, `<scene>`, Available, State / Actions / So far, Rule, Open, Events, Must, Outcome, Current, MUST / MAY reveal, Tone,
 // Player note, Known, Questions, Player's line.
+// Under a hat's delivery tool (#221) and its wrap (#220): the narrate document is built exactly as above, then
+// `wrapNarrate` partitions it by subzone. The hat's lead and tail stay `messages[]`; every other message goes, in
+// document order and as it would have been sent, into the delivery tool's description as role-marked text sections
+// (`<message role="…">`), placed at its `{{context}}` hole or after its own wording. No message carries a cache
+// breakpoint then: the tool definition precedes everything in every vendor's cache order and changes each turn.
 import { breakpoint, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
-import type { Hat, HatEntry, HatNarrateSlot, Msg, Slotted } from "./fragment.ts"
+import {
+  NARRATIVE_PARAM_DESCRIPTION,
+  NARRATIVE_TOOL,
+  NARRATIVE_TOOL_DESCRIPTION,
+} from "@effect-tavern/provider/src/deliver.ts"
+import {
+  hatToolName,
+  hatWraps,
+  type Hat,
+  type HatEntry,
+  type HatNarrateSlot,
+  type Msg,
+  type Slotted,
+} from "./fragment.ts"
 import type { Input } from "./journal.ts"
-import type { MessageSubzone, MessageTrace, MessageZone, OmittedItem, SourceRef, Span, SpanKind } from "./trace.ts"
+import { fillHoles } from "./names.ts"
+import type {
+  DeliveryToolTrace,
+  MessageSubzone,
+  MessageTrace,
+  MessageZone,
+  OmittedItem,
+  SourceRef,
+  Span,
+  SpanKind,
+  WrapSection,
+  WrapTrace,
+} from "./trace.ts"
 
 /** The connection's say: whether past reasoning parts go back, and the head's cache lifetime. */
 export interface Wire {
@@ -54,7 +84,10 @@ export interface Common {
   role: string // `stage.role`: off-stage framing before <world> on every non-narrate stage
   narrator: string // `narrate.role`: what the narrate call is, before its frame
   persona?: string
-  deliver?: string
+  deliver?: string // `narrate.deliver`: the lead line under tool delivery; `{{tool}}` is filled here
+  deliverTool?: string // `narrate.deliver.tool`: the delivery tool's description unless the hat writes its own
+  deliverParam?: string // `narrate.deliver.param`: its `text` parameter's description unless the hat writes its own
+  wrapAsk?: string // `narrate.wrap`: under wrap, the user message added when the hat's lead and tail hold none
   contextLead?: string
   directions: string // `narrate.turn`: the lead line of <turn>
   input: Input
@@ -184,9 +217,17 @@ const thoughtOf = (c: Common) => (c.thought && /⦅/.test(c.input.text) ? [sys(c
 const sceneBody = (i: Input, prose: string) => (i.text ? `Player's line: ${i.text}\n\n${prose}` : prose)
 
 export interface DetailedRequest {
+  /** What goes out as `messages[]`: under a hat's wrap, only the outer shell (the hat's lead and tail, then the
+   *  `narrate.wrap` user message when they hold none). */
   messages: Message[]
   traces: MessageTrace[]
   omitted: OmittedItem[]
+  /** narrate under tool delivery: the delivery tool as it goes out. */
+  tool?: DeliveryToolTrace
+  /** narrate under a hat's wrap: the wrapped messages as they would have been sent, with their traces and sections. */
+  wrap?: WrapTrace & { messages: Message[] }
+  /** narrate under a hat's wrap with no user message to send: why the call cannot go, in plain words. */
+  wrapRefusal?: string
 }
 
 const writer = () => {
@@ -413,6 +454,207 @@ const compileHatSlot = (
   return kept
 }
 
+// ───────── The delivery tool and the wrap (#220, #221) ─────────
+const CONTEXT_HOLE = /\{\{\s*context\s*\}\}/
+const hatField = (hat: Hat, path: string): SourceRef => ({
+  kind: "hat",
+  hatId: hat.id,
+  hatName: hat.name,
+  path,
+  label: path,
+})
+interface ToolDraft {
+  name: string
+  template: string // the description's own wording: `{{tool}}` filled, `{{context}}` kept (only under wrap)
+  param: string
+  sources: DeliveryToolTrace["sources"]
+}
+/** The tool in force: each field the hat's own when non-blank, else the ask as the layers resolved it, else the
+ *  built-in default. A player's description holding `{{context}}` outside wrap does not go out (names.ts, #170): the
+ *  next one down stands and the dropped one is listed. */
+const deliveryTool = (c: Common, hat: Hat, wraps: boolean, omitted: OmittedItem[]): ToolDraft => {
+  const name = hatToolName(hat) ?? NARRATIVE_TOOL
+  const pick = (field: "description" | "param", askId: string, ask: string | undefined, fallback: string) => {
+    const candidates = [
+      {
+        text: hat.tool?.[field],
+        source: hatField(hat, `tool.${field}`),
+        category: "hat" as const,
+        id: `tool.${field}`,
+      },
+      { text: ask, source: askSource(c, askId), category: "ask" as const, id: askId },
+    ]
+    for (const x of candidates) {
+      if (x.text === undefined || !x.text.trim()) continue
+      const text = fillHoles(x.text, { tool: name })
+      if (field === "description" && !wraps && CONTEXT_HOLE.test(text) && x.source.kind !== "card") {
+        omitted.push({
+          category: x.category,
+          id: x.id,
+          label: x.category === "hat" ? hat.name : x.id,
+          reason: "unfilled_hole",
+          missingHoles: ["context"],
+          detail: "{{context}} is filled only when the hat wraps the story context into its delivery tool",
+          preview: x.text,
+          source: { ...x.source, rawText: x.text },
+        })
+        continue
+      }
+      return { text, source: x.source }
+    }
+    return {
+      text: fallback,
+      source: { kind: "harness", builtIn: true, path: `asks.${askId}`, label: askId } as SourceRef,
+    }
+  }
+  const description = pick("description", "narrate.deliver.tool", c.deliverTool, NARRATIVE_TOOL_DESCRIPTION)
+  const param = pick("param", "narrate.deliver.param", c.deliverParam, NARRATIVE_PARAM_DESCRIPTION)
+  return {
+    name,
+    template: description.text,
+    param: param.text,
+    sources: {
+      name: hat.tool?.name?.trim()
+        ? hatField(hat, "tool.name")
+        : { kind: "harness", builtIn: true, path: "tool.name", label: NARRATIVE_TOOL },
+      description: description.source,
+      param: param.source,
+    },
+  }
+}
+const finalTool = (t: ToolDraft, description: string): DeliveryToolTrace => ({
+  name: t.name,
+  description,
+  param: t.param,
+  sources: t.sources,
+})
+
+/** A wrapped message as one section's attributes and body, text only: a hat's tool handshake is its call (the
+ *  arguments as JSON) or its result; reasoning never goes (`dropped`). No body: nothing a text form can carry. */
+const sectionOf = (m: Message): { attrs: string; body?: string; dropped: boolean } => {
+  if (typeof m.content === "string") return { attrs: `role="${m.role}"`, body: m.content, dropped: false }
+  const parts = m.content as readonly { type: string; [k: string]: unknown }[]
+  const dropped = parts.some((p) => p.type === "reasoning" && typeof p.text === "string" && p.text.trim() !== "")
+  const call = parts.find((p) => p.type === "tool-call")
+  if (call)
+    return {
+      attrs: `role="${m.role}" tool_call="${String(call.toolName)}"`,
+      body: JSON.stringify(call.input ?? {}),
+      dropped,
+    }
+  const result = parts.find((p) => p.type === "tool-result")
+  if (result) {
+    const out = result.output as { value?: unknown } | undefined
+    return {
+      attrs: `role="${m.role}" tool_result="${String(result.toolName)}"`,
+      body: typeof out?.value === "string" ? out.value : (JSON.stringify(out?.value) ?? ""),
+      dropped,
+    }
+  }
+  const texts = parts.filter((p) => p.type === "text").map((p) => String(p.text))
+  return { attrs: `role="${m.role}"`, ...(texts.length > 0 && { body: texts.join("") }), dropped }
+}
+
+export const WRAP_REFUSAL =
+  "this hat wraps the story context into its delivery tool, so the request's messages are only the hat's lead and " +
+  "tail, and neither holds a user message; the narrate.wrap ask that would add one is empty. Write a user message " +
+  "in the hat's lead or tail, or restore the narrate.wrap ask."
+
+/** The narrate document under the hat's wrap: the hat's lead and tail stay the messages, in order; every other
+ *  message goes into the delivery tool's description, one `<message role="…">` section each, in document order. */
+const wrapNarrate = (
+  c: Common,
+  messages: readonly Message[],
+  traces: readonly MessageTrace[],
+  omitted: OmittedItem[],
+  draft: ToolDraft,
+): DetailedRequest => {
+  const outer: Message[] = []
+  const outerTraces: MessageTrace[] = []
+  const inner: Message[] = []
+  const innerTraces: MessageTrace[] = []
+  for (const tr of traces) {
+    const m = messages[tr.index]
+    if (tr.subzone === "hat-lead" || tr.subzone === "hat-tail") {
+      outerTraces.push({ ...tr, index: outer.length })
+      outer.push(m)
+    } else {
+      innerTraces.push({ ...tr, index: inner.length })
+      inner.push(m)
+    }
+  }
+  let wrapRefusal: string | undefined
+  if (!outer.some((m) => m.role === "user")) {
+    const text = c.wrapAsk ? fillHoles(c.wrapAsk, { tool: draft.name }) : ""
+    if (text.trim()) {
+      const source = askSource(c, "narrate.wrap")
+      outerTraces.push({
+        index: outer.length,
+        zone: "tail",
+        subzone: "wrap",
+        role: "user",
+        contentKind: "text",
+        chars: text.length,
+        source,
+        spans: [{ start: 0, end: text.length, kind: "wrap", source }],
+      })
+      outer.push(usr(text))
+    } else wrapRefusal = WRAP_REFUSAL
+  }
+  // the sections, then their place in the description
+  let ctx = ""
+  const sections: WrapSection[] = []
+  innerTraces.forEach((tr, i) => {
+    const { attrs, body, dropped } = sectionOf(inner[tr.index])
+    const src = tr.source
+    if (dropped && src?.kind === "hat")
+      omitted.push({
+        category: "hat",
+        id: `narrate.${src.hatSlot ?? "head"}[${src.hatIndex ?? 0}]`,
+        ...(src.hatName && { label: src.hatName }),
+        reason: "not_wrapped",
+        detail:
+          body === undefined
+            ? "it holds only reasoning, which the tool description's text cannot carry: the message is not wrapped"
+            : "its reasoning cannot be carried in the tool description's text: only its text is wrapped",
+        source: src,
+      })
+    if (body === undefined) return
+    if (ctx) ctx += "\n\n"
+    const start = ctx.length
+    ctx += `<message ${attrs}>\n`
+    const bodyStart = ctx.length
+    ctx += `${body}\n</message>`
+    sections.push({ trace: i, start, end: ctx.length, body: { start: bodyStart, end: bodyStart + body.length } })
+  })
+  const tpl = draft.template
+  const hole = CONTEXT_HOLE.exec(tpl)
+  const [description, at] = hole
+    ? [tpl.slice(0, hole.index) + ctx + tpl.slice(hole.index + hole[0].length), hole.index]
+    : tpl.trim()
+      ? [`${tpl}\n\n${ctx}`, tpl.length + 2]
+      : [ctx, 0]
+  return {
+    messages: outer,
+    traces: outerTraces,
+    omitted,
+    tool: finalTool(draft, description),
+    wrap: {
+      messages: inner,
+      traces: innerTraces,
+      sections: sections.map((s) => ({
+        ...s,
+        start: s.start + at,
+        end: s.end + at,
+        body: { start: s.body.start + at, end: s.body.end + at },
+      })),
+      context: { start: at, end: at + ctx.length },
+      prefixCache: "off",
+    },
+    ...(wrapRefusal && { wrapRefusal }),
+  }
+}
+
 export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedRequest => {
   const omitted: OmittedItem[] = []
   const head = worldHead(c)
@@ -467,6 +709,8 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
     case "narrate": {
       const messages: Message[] = []
       const traces: MessageTrace[] = []
+      const wraps = hatWraps(w.hat)
+      const tool = w.hat?.deliver === "tool" ? deliveryTool(c, w.hat, wraps, omitted) : undefined
       const pushMsg = (
         zoneName: MessageZone,
         subzone: MessageSubzone,
@@ -552,8 +796,8 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       if (c.narrator) leadEntries.push({ text: c.narrator, source: askSource(c, "narrate.role") })
       if (sysFrame.some((m) => m.id === "persona") && c.persona)
         leadEntries.push({ text: c.persona, source: askSource(c, "narrate.persona") })
-      if (w.hat?.deliver === "tool" && c.deliver)
-        leadEntries.push({ text: c.deliver, source: askSource(c, "narrate.deliver") })
+      if (tool && c.deliver)
+        leadEntries.push({ text: fillHoles(c.deliver, { tool: tool.name }), source: askSource(c, "narrate.deliver") })
       if (leadEntries.length) {
         const lw = writer()
         leadEntries.forEach((p, idx) => {
@@ -633,7 +877,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
         for (const hm of item.messages) pushHeadHat("hat-head", hm)
       }
       headDrafts.forEach((d, i) => {
-        const isLast = i === headDrafts.length - 1
+        const isLast = i === headDrafts.length - 1 && !wraps
         const msg = isLast ? breakpoint(d.msg, w.ttl) : d.msg
         pushMsg("head", d.subzone, msg, d.spans, {
           source: d.source,
@@ -644,7 +888,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
 
       // 2. History
       a.history.forEach((m, i, all) => {
-        const bp = i === all.length - 1 || (i === 0 && a.summarized)
+        const bp = !wraps && (i === all.length - 1 || (i === 0 && a.summarized))
         const isSummary = i === 0 && a.summarized
         const msg = bp ? breakpoint(toP(w)(m)) : toP(w)(m)
         const src: SourceRef = m.source ?? {
@@ -811,7 +1055,9 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       for (const item of compileHatSlot(w.hat?.narrate?.tail, w.hatSources?.tail, w, "narrate", "tail", omitted)) {
         for (const hm of item.messages) pushHatMsg("tail", "hat-tail", hm)
       }
-      return { messages, traces, omitted }
+      if (!tool) return { messages, traces, omitted }
+      if (!wraps) return { messages, traces, omitted, tool: finalTool(tool, tool.template) }
+      return wrapNarrate(c, messages, traces, omitted, tool)
     }
     case "check": // nothing open (a guard-only turn): no empty Open / Must labels, the rules alone sit above <draft>
       return {

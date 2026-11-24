@@ -19,7 +19,7 @@ Effect Tavern 以英文代码标识符作为**命名原语（Naming Primitives�
 | `has no agency` | 心声无能动性：一个念头不是动作，`decide` 阶段绝不从心声中提取机械动作。 |
 | `participant mode` / `author mode` | 参与者视角与作者视角：由 `persona` 槽位有无与默认输入通道 `act` / `note` 决定的坐标，而非两种卡格式。 |
 | `persona` | 玩家在虚构里是谁：既是 `frame` 的 `persona` 槽位，也是库中可设全局默认并按三态 `local.persona` 选用的玩家资产（`/personas`；参与者卡以 `yield` 让位模式继承默认人设）。 |
-| `hat` | 模型续写协议壳（`/hats`），由路由佩戴（主帽 `Routing.hat`，逐阶段 `Routing.stageHats`）：五个槽位 `narrate.lead`、`narrate.head`、`narrate.turn`、`narrate.tail`、`review.head`，每条为角色消息（可带 `reasoning`）或 `tool` 握手；另有正文交付 `deliver`（`"text"` \| `"tool"`，工具交付时 `toolChoice` 为 `"auto"` \| `"force"`）。 |
+| `hat` | 模型续写协议壳（`/hats`），由路由佩戴（主帽 `Routing.hat`，逐阶段 `Routing.stageHats`）：五个槽位 `narrate.lead`、`narrate.head`、`narrate.turn`、`narrate.tail`、`review.head`，每条为角色消息（可带 `reasoning`）或 `tool` 握手；另有正文交付 `deliver`（`"text"` \| `"tool"`）；工具交付时还有 `toolChoice`（`"auto"` \| `"force"`）、交付工具 `tool`（工具名 `name`，以及覆盖 `narrate.deliver.tool` / `narrate.deliver.param` 问法的 `description` / `param`）与工具封装 `wrap`（故事上下文移入工具说明，`messages[]` 只留 lead 与 tail，前缀缓存失效）。 |
 | `slop` (`claudeism`) | 模型高频复读的陈词滥调与套话句式，由 `lexicon` 词表与 `polish` 阶段定向重写。 |
 
 ## 运行时、回合与状态原语

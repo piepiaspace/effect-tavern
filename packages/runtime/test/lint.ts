@@ -318,6 +318,20 @@ assert.deepEqual(said(holed, "unfilled-name"), [
   "warn rules.readouts.q.text: {{h}} has no default in the card's names",
   "warn rules.readouts.q.options.o.text: {{i}} has no default in the card's names",
 ])
+// the harness's own holes in a delivery ask are filled by the harness (#220, #221); elsewhere they are names
+assert.deepEqual(
+  said(
+    {
+      ...base,
+      asks: [
+        { id: "narrate.deliver.tool", text: "Call {{tool}}. {{context}}" },
+        { id: "narrate.wrap", text: "Read {{tool}}, {{context}}." },
+      ],
+    },
+    "unfilled-name",
+  ),
+  ["warn asks.narrate.wrap.text: {{context}} has no default in the card's names"],
+)
 // unsupported-macro: a scripted macro or anything else in braces that is not a plain key; a plain hole is not one.
 assert.deepEqual(
   said(

@@ -8,6 +8,7 @@ import { mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Card } from "../src/card.ts"
+import type { Hat } from "../src/fragment.ts"
 import { makeSession } from "../src/session.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 import { fields, openings, view } from "../src/view.ts"
@@ -255,6 +256,35 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
     assert.ok(sent(stage).join("\n").includes(current))
   }
   assert.match(preview("record").doc.map(text).join("\n"), /scene: At inn, score 2/)
+}
+// a hat worn on the view (#220, #221): its delivery tool printed, and under its wrap the description with the context
+{
+  const hat: Omit<Hat, "id"> = {
+    name: "Wrap",
+    deliver: "tool",
+    wrap: true,
+    tool: { name: "actual_content" },
+    narrate: { lead: [{ role: "system", text: "SHELL" }] },
+  }
+  const v = view(yandao, player, { hat: { id: "w", ...hat } })
+  assert.deepEqual(
+    v.doc.map((m) => m.role),
+    ["system", "user"],
+  )
+  assert.match(
+    v.text,
+    /── delivery tool actual_content, wrapping \d+ messages \(prefix cache off\) ──\ndescription:\nDeliver the complete scene narration\.\n\n<message role="system">/,
+  )
+  assert.match(v.text, /text parameter: The full reply, nothing omitted\./)
+  const hatFile = join(mkdtempSync(join(tmpdir(), "hat-")), "wrap.hat.json")
+  writeFileSync(hatFile, JSON.stringify(hat))
+  const shown = await run("view", cardFile("yandao").pathname, "--hat", hatFile)
+  assert.equal(shown.exitCode, 0, shown.stderr)
+  assert.match(shown.stdout, /── delivery tool actual_content, wrapping/)
+  writeFileSync(hatFile, JSON.stringify({ ...hat, tool: { name: "no spaces allowed" } }))
+  const badHat = await run("view", cardFile("yandao").pathname, "--hat", hatFile)
+  assert.equal(badHat.exitCode, 1)
+  assert.match(badHat.stderr, /is not one every model accepts/)
 }
 const help = await run("--help")
 assert.equal(help.exitCode, 0)
