@@ -59,12 +59,17 @@ const gesture = async (type = "pointerup") => {
   await tick()
 }
 
+// iOS's audio session: what the page asks of it
+const audioSession = { type: "auto" }
+;(globalThis.navigator as any).audioSession = audioSession
+
 const { createMechanicalSound } = await import("../src/home-sound.ts")
 const sound = createMechanicalSound()
 
 // before the player turns it on, a gesture makes no context
 await gesture()
 assert.equal(made.length, 0, "no context before the sound is on")
+assert.equal(audioSession.type, "auto", "and the audio session is not asked for")
 
 // on: the context runs
 sound.setEnabled(true)
@@ -72,6 +77,7 @@ await tick()
 assert.equal(made.length, 1)
 const c = made[0]
 assert.equal(c.state, "running")
+assert.equal(audioSession.type, "playback", "turned on, it sounds through iOS's silent switch")
 
 // the system interrupts it (a call), then suspends it (the lock screen): the next touch, and then a key, bring it back
 for (const [stopped, type] of [
@@ -95,11 +101,13 @@ assert.equal(c.resumes, before, "a running context is left alone")
 sound.suspend()
 await tick()
 assert.equal(c.state, "suspended")
+assert.equal(audioSession.type, "ambient", "held, it gives the audio session back")
 await gesture()
 assert.equal(c.state, "suspended", "a context the page suspended stays suspended under a gesture")
 sound.resume()
 await tick()
 assert.equal(c.state, "running", "and comes back when the page resumes it")
+assert.equal(audioSession.type, "playback")
 
 // a hidden page asks nothing: the gesture that wakes it again is after it is shown
 c.state = "interrupted"
@@ -115,6 +123,7 @@ assert.equal(c.state, "running", "and on the first gesture once shown")
 sound.setEnabled(false)
 await tick()
 assert.equal(c.state, "suspended")
+assert.equal(audioSession.type, "ambient", "muted, the session is given back")
 await gesture()
 assert.equal(c.state, "suspended", "muted stays muted")
 

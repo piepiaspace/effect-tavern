@@ -51,6 +51,29 @@ export const DEFAULT_SOUND_PROFILE: SoundProfile = {
   },
 }
 
+// A phone's own speaker gives back little under about 800 Hz, where every profile's notes sit (196–1109 Hz), so there
+// the music box is played louder and each note carries two consonant partials (a twelfth and two octaves above) in
+// the band it does carry, from which the ear hears the note itself. Desktops, headphones and laptops keep the voicing
+// the profiles were tuned on. Tuned by ear on the phones themselves.
+const SMALL_SPEAKER = {
+  bus: 0.8,
+  partials: [
+    { ratio: 3, level: 0.4 },
+    { ratio: 4, level: 0.28 },
+  ],
+  /** each partial's decay, as a share of the note's */
+  decay: 0.6,
+} as const
+const smallSpeaker = () =>
+  typeof window !== "undefined" && !!window.matchMedia?.("(hover: none) and (pointer: coarse)").matches
+
+/** iOS (WebKit's `navigator.audioSession`): `playback` sounds through the ring/silent switch, as media the player
+ *  started does; `ambient` gives way to it and to the music of other apps. Elsewhere there is none and this does nothing. */
+const session = (type: "playback" | "ambient") => {
+  const { audioSession } = navigator as Navigator & { audioSession?: { type: string } }
+  if (audioSession && audioSession.type !== type) audioSession.type = type
+}
+
 export interface MechanicalSound {
   /** Whether sound is currently enabled. */
   enabled(): boolean
@@ -89,6 +112,10 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
   // leaving it `suspended` or WebKit's `interrupted`; a resume outside a gesture is refused there, so the next touch
   // or key anywhere on the page asks again, until it runs.
   let wanted = false
+  const want = (yes: boolean) => {
+    wanted = yes
+    if (yes || ctx) session(yes ? "playback" : "ambient")
+  }
   const heal = () => {
     if (wanted && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
       void ctx.resume().catch(() => {})
@@ -103,6 +130,7 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       else window.removeEventListener(type, heal, { capture: true })
   }
 
+  const small = smallSpeaker()
   let profile: SoundProfile = initial
   let warmthX = 0
   let motifPos = 0
@@ -136,12 +164,10 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
     if (!Ctor) return null
     if (!ctx) {
-      const { audioSession } = navigator as Navigator & { audioSession?: { type: string } }
-      if (audioSession) audioSession.type = "ambient"
       ctx = new Ctor()
 
       bus = ctx.createGain()
-      bus.gain.value = 0.42
+      bus.gain.value = small ? SMALL_SPEAKER.bus : 0.42
 
       toneFilter = ctx.createBiquadFilter()
       toneFilter.type = "lowpass"
@@ -214,6 +240,23 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       osc2.stop(t0 + overDecay + 0.03)
     }
 
+    if (small) {
+      for (const p of SMALL_SPEAKER.partials) {
+        const osc = c.createOscillator()
+        osc.type = "sine"
+        osc.frequency.setValueAtTime(freq * p.ratio, t0)
+        const end = decay * SMALL_SPEAKER.decay
+        const env = c.createGain()
+        env.gain.setValueAtTime(0.0001, t0)
+        env.gain.linearRampToValueAtTime(gain * p.level, t0 + 0.004)
+        env.gain.exponentialRampToValueAtTime(0.0001, t0 + end)
+        osc.connect(env)
+        env.connect(bus)
+        osc.start(t0)
+        osc.stop(t0 + end + 0.03)
+      }
+    }
+
     if (tap.level > 0) {
       const tapOsc = c.createOscillator()
       tapOsc.type = "sine"
@@ -243,7 +286,7 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
     state: () => ctx?.state ?? "uninitialized",
     setEnabled: (next: boolean) => {
       on = next
-      wanted = next
+      want(next)
       listen(next)
       if (next) {
         const c = ensureContext()
@@ -323,18 +366,18 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       }
     },
     suspend: () => {
-      wanted = false
+      want(false)
       if (ctx && ctx.state === "running") void ctx.suspend().catch(() => {})
     },
     resume: () => {
-      wanted = on
+      want(on)
       // WebKit can also interrupt the context while another app has the audio session.
       if (on && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
         void ctx.resume().catch(() => {})
     },
     dispose: () => {
       on = false
-      wanted = false
+      want(false)
       listen(false)
       if (ctx) {
         const c = ctx

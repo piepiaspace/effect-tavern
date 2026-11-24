@@ -95,6 +95,37 @@ export const HomeMechanism = (props: {
     watched: untrack(() => watched()), // as of now; the effect on `watched` below follows it
   }
 
+  const clamp1 = (v: number) => Math.max(-1, Math.min(1, v))
+  /** The one input the mechanism follows: a mouse over the page, or a finger on the stage while it presses. It aims the
+   *  vernier and the dial, moves the figure's glints and warms the sound; the page's sheen follows it. (px, py) is
+   *  taken from the stage's middle for a finger, where it touches, and from about the stage's place on the page for a
+   *  mouse. */
+  const aim = (e: PointerEvent, stage?: HTMLElement) => {
+    const page = rootEl?.closest<HTMLElement>(".home-page")
+    if (!page) return
+    const rect = page.getBoundingClientRect()
+    if (!rect.width || !rect.height) return
+    const rx = (e.clientX - rect.left) / rect.width
+    const ry = (e.clientY - rect.top) / rect.height
+    const s = stage?.getBoundingClientRect()
+    phys.targetPx = clamp1(s?.width ? ((e.clientX - s.left) / s.width - 0.5) * 2 : (rx - 0.5) * 2)
+    phys.targetPy = clamp1(s?.height ? ((e.clientY - s.top) / s.height - 0.5) * 2 : (ry - 0.44) * 2)
+    phys.hasPointer = true
+    phys.lastMove = performance.now()
+    props.sound.setWarmth(phys.targetPx)
+    page.style.setProperty("--home-px", `${(rx * 100).toFixed(1)}%`)
+    page.style.setProperty("--home-py", `${(ry * 100).toFixed(1)}%`)
+    page.style.setProperty("--home-spot", "1")
+  }
+  const unaim = () => {
+    phys.targetPx = 0
+    phys.targetPy = 0
+    phys.hasPointer = false
+    phys.lastMove = performance.now()
+    props.sound.setWarmth(0)
+    rootEl?.closest<HTMLElement>(".home-page")?.style.setProperty("--home-spot", "0")
+  }
+
   let wake: (() => void) | undefined
   let halt: (() => void) | undefined
   let bindFigure: ((fig: HomeFigure | null) => void) | undefined
@@ -273,28 +304,9 @@ export const HomeMechanism = (props: {
     }
 
     const onMove = (e: PointerEvent) => {
-      if (!page || e.pointerType !== "mouse") return
-      const rect = page.getBoundingClientRect()
-      if (!rect.width || !rect.height) return
-      const rx = (e.clientX - rect.left) / rect.width
-      const ry = (e.clientY - rect.top) / rect.height
-      phys.targetPx = Math.max(-1, Math.min(1, (rx - 0.5) * 2))
-      phys.targetPy = Math.max(-1, Math.min(1, (ry - 0.44) * 2))
-      phys.hasPointer = true
-      phys.lastMove = performance.now()
-      props.sound.setWarmth(phys.targetPx)
-      page.style.setProperty("--home-px", `${(rx * 100).toFixed(1)}%`)
-      page.style.setProperty("--home-py", `${(ry * 100).toFixed(1)}%`)
-      page.style.setProperty("--home-spot", "1")
+      if (e.pointerType === "mouse") aim(e)
     }
-    const onLeave = () => {
-      phys.targetPx = 0
-      phys.targetPy = 0
-      phys.hasPointer = false
-      phys.lastMove = performance.now()
-      props.sound.setWarmth(0)
-      page?.style.setProperty("--home-spot", "0")
-    }
+    const onLeave = unaim
     if (page && fine) {
       page.addEventListener("pointermove", onMove, { passive: true })
       page.addEventListener("pointerleave", onLeave, { passive: true })
@@ -338,51 +350,46 @@ export const HomeMechanism = (props: {
     setPaused((v) => !v)
   }
 
-  // Touch horizontal swipe gesture on the figure stage: tracks gentle rubber-band drag, switches figure on release
-  const swipe = { id: -1, x0: 0, y0: 0, dx: 0, locked: "" as "" | "x" | "y" }
-  const resetSwipe = () => {
-    swipe.id = -1
-    swipe.dx = 0
-    swipe.locked = ""
-    if (stageEl) {
-      stageEl.style.transition = ""
-      stageEl.style.transform = ""
-    }
+  // A finger (touch, pen) on the stage is what a mouse over the page is (`aim`), for as long as it presses: the
+  // mechanism turns toward it, opens its iris and speeds up as under a hovering mouse, and the press itself kicks the
+  // wheel as a keystroke does. The stage and its drawing frame stay where they are. A stroke that went sideways turns
+  // to the next or previous figure on release; a vertical one is the page's scroll, which cancels the press.
+  const press = { id: -1, x0: 0, y0: 0, dx: 0, locked: "" as "" | "x" | "y" }
+  const letGo = () => {
+    press.id = -1
+    phys.hovered = false
+    unaim()
+    if (shouldRun()) props.sound.iris(false)
   }
   const onStagePointerDown = (e: PointerEvent) => {
-    if (e.pointerType === "mouse" || swipe.id !== -1) return
-    swipe.id = e.pointerId
-    swipe.x0 = e.clientX
-    swipe.y0 = e.clientY
-    swipe.dx = 0
-    swipe.locked = ""
-    if (stageEl) stageEl.style.transition = "none"
+    if (e.pointerType === "mouse" || press.id !== -1) return
+    press.id = e.pointerId
+    press.x0 = e.clientX
+    press.y0 = e.clientY
+    press.dx = 0
+    press.locked = ""
+    phys.hovered = true
+    if (!phys.paused) phys.vel = Math.min(phys.vel + 18, 65)
+    aim(e, stageEl)
+    if (shouldRun()) props.sound.iris(true)
   }
   const onStagePointerMove = (e: PointerEvent) => {
-    if (e.pointerId !== swipe.id) return
-    const dx = e.clientX - swipe.x0
-    const dy = e.clientY - swipe.y0
-    if (!swipe.locked) {
-      if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
-      swipe.locked = Math.abs(dx) > Math.abs(dy) * 1.25 ? "x" : "y"
-    }
-    if (swipe.locked !== "x") return
-    swipe.dx = dx
-    const damped = Math.sign(dx) * Math.min(42, Math.abs(dx) * 0.32)
-    if (stageEl) stageEl.style.transform = `translate3d(${damped.toFixed(1)}px, 0, 0)`
+    if (e.pointerId !== press.id) return
+    aim(e, stageEl)
+    const dx = e.clientX - press.x0
+    const dy = e.clientY - press.y0
+    if (!press.locked && (Math.abs(dx) >= 8 || Math.abs(dy) >= 8))
+      press.locked = Math.abs(dx) > Math.abs(dy) * 1.25 ? "x" : "y"
+    press.dx = dx
   }
   const onStagePointerEnd = (e: PointerEvent) => {
-    if (e.pointerId !== swipe.id) return
-    const dx = swipe.dx
-    const wasX = swipe.locked === "x"
-    resetSwipe()
-    if (wasX && Math.abs(dx) >= 36) {
-      props.onStep(dx < 0 ? 1 : -1)
-    }
+    if (e.pointerId !== press.id) return
+    const stroke = press.locked === "x" ? press.dx : 0
+    letGo()
+    if (Math.abs(stroke) >= 36) props.onStep(stroke < 0 ? 1 : -1)
   }
   const onStagePointerCancel = (e: PointerEvent) => {
-    if (e.pointerId !== swipe.id) return
-    resetSwipe()
+    if (e.pointerId === press.id) letGo()
   }
 
   const counterText = () => `${String(props.index + 1).padStart(2, "0")}/${String(props.total).padStart(2, "0")}`

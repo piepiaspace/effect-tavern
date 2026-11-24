@@ -100,6 +100,9 @@ func main() {
 				StateKey:        "main",
 				BackgroundColor: backgroundColor(runtime.GOOS),
 				URL:             url,
+				// The page's sound starts only from the player's own toggle (home's music box); this lets it come back
+				// by itself when the app returns to the front, instead of waiting for another touch.
+				Page: mygo.PageOptions{Autoplay: mygo.AutoplayAllow},
 			})
 			w.Page().OnRenderProcessGone(func(string) {
 				if w == win {

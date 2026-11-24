@@ -10,6 +10,7 @@ import { standIn } from "./stand-in-host.ts"
 import { render } from "@solidjs/web"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import { dialogHandle, Modal } from "../src/controls.tsx"
+import { DEFAULT_FIGURE } from "../src/figures/index.ts"
 import { HomeMechanism } from "../src/home-mechanism.tsx"
 import type { MechanicalSound } from "../src/home-sound.ts"
 import { flip, locale } from "../src/i18n.ts"
@@ -35,16 +36,17 @@ const sound: MechanicalSound = {
   resume: () => void calls.push("resume"),
   dispose: () => {},
 }
+const steps: number[] = [] // figures turned to by a sideways stroke
 const layer = dialogHandle()
 render(
   () => (
     <>
       <HomeMechanism
-        figure={null}
+        figure={DEFAULT_FIGURE}
         index={0}
         total={1}
         dir="none"
-        onStep={() => {}}
+        onStep={(d) => void steps.push(d)}
         pulse={0}
         focused={false}
         dark={false}
@@ -95,6 +97,31 @@ const run = async () => {
   check(await sounds("resume"), `active again, the sound is up: ${calls.join(", ")}`)
   check(await moving(), "and the frames start again")
   await quiet()
+
+  // a finger on the stage: a stroke sideways turns the figure on release, and the stage itself never moves with it
+  const stage = document.querySelector<HTMLElement>(".home-mech-stage")!
+  const r = stage.getBoundingClientRect()
+  const touch = (type: string, x: number) =>
+    stage.dispatchEvent(
+      new PointerEvent(type, {
+        pointerId: 7,
+        pointerType: "touch",
+        clientX: x,
+        clientY: r.top + r.height / 2,
+        bubbles: true,
+      }),
+    )
+  const x0 = r.left + r.width / 2
+  touch("pointerdown", x0)
+  touch("pointermove", x0 + 20)
+  touch("pointermove", x0 + 60)
+  check(!stage.style.transform, `the stage stays put under a finger: ${stage.style.transform}`)
+  touch("pointerup", x0 + 60)
+  check(steps.join() === "-1", `a stroke to the right turns to the previous figure: ${steps.join()}`)
+  touch("pointerdown", x0)
+  touch("pointermove", x0 + 20)
+  touch("pointerup", x0 + 20)
+  check(steps.join() === "-1", `a short one turns nothing: ${steps.join()}`)
 
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)
