@@ -3,24 +3,14 @@
 import type { HomeFigure } from "../home-figure.tsx"
 import type { SoundProfile } from "../home-sound.ts"
 
-// Warm brass horology identity (Cmaj9 pentatonic: C4, D4, E4, G4, A4, C5, D5, E5, G5)
+// Forged-steel & brass horological bezel projector: crisp Geneva-drive escapement and poised C5 brass lock-in
 const SOUND: SoundProfile = {
-  scale: [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99],
-  motif: [0, 2, 4, 5, 7, 5, 4, 3, 1, 3, 6, 4],
-  wave: "sine",
-  overtone: { ratio: 2, level: 0.2, decayRatio: 0.5 },
-  tap: { startHz: 310, endHz: 135, level: 0.24 },
-  filter: { baseHz: 2200, rangeHz: 550 },
-  echo: { delaySec: 0.29, feedback: 0.22, wet: 0.24 },
-  decay: { base: 0.56, accent: 0.78 },
-  accents: {
-    beats: [0, 4, 8],
-    irisOpen: 7,
-    irisClose: 3,
-    hover: [5, 8],
-    click: 5,
-    engage: [0, 5],
-  },
+  escapement: { freq: 2520, q: 3.1, decay: 0.0085, gap: 0.0072, asymmetry: 0.95, level: 0.34 },
+  spring: { freq: 2920, q: 14, decay: 0.036, level: 0.1 },
+  shutter: { blades: 3, spread: 0.019, openHz: 2720, closeHz: 1980, q: 2.8, decay: 0.021, level: 0.24 },
+  engage: { latchGap: 0.056, bellHz: 523.25, overtoneRatio: 2, ringHz: 2880, decay: 0.34, level: 0.16 },
+  filter: { baseHz: 3650, rangeHz: 850 },
+  room: { delaySec: 0.032, feedback: 0.13, wet: 0.12 },
 }
 
 const ExtraHairline = () => (

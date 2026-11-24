@@ -3,24 +3,14 @@
 import type { HomeFigure } from "../home-figure.tsx"
 import type { SoundProfile } from "../home-sound.ts"
 
-// Crisp kinetic wheel identity (Fmaj9 / F Lydian pentatonic: F4, G4, A4, C5, D5, E5, F5, G5, A5)
+// Eccentric kinetic flywheel: brisk asymmetric cam-pawl snap, dry machined-steel contact, nimble E5 catch
 const SOUND: SoundProfile = {
-  scale: [349.23, 392.0, 440.0, 523.25, 587.33, 659.25, 698.46, 783.99, 880.0],
-  motif: [0, 2, 3, 4, 6, 4, 3, 1, 2, 4, 7, 5],
-  wave: "sine",
-  overtone: { ratio: 3, level: 0.11, decayRatio: 0.32 },
-  tap: { startHz: 380, endHz: 155, level: 0.25 },
-  filter: { baseHz: 2850, rangeHz: 700 },
-  echo: { delaySec: 0.24, feedback: 0.2, wet: 0.22 },
-  decay: { base: 0.42, accent: 0.62 },
-  accents: {
-    beats: [0, 4, 8],
-    irisOpen: 8,
-    irisClose: 2,
-    hover: [4, 7],
-    click: 6,
-    engage: [0, 3],
-  },
+  escapement: { freq: 2760, q: 3.4, decay: 0.0068, gap: 0.0052, asymmetry: 1.07, level: 0.35 },
+  spring: { freq: 3180, q: 14, decay: 0.028, level: 0.11 },
+  shutter: { blades: 2, spread: 0.017, openHz: 2950, closeHz: 2180, q: 3.1, decay: 0.018, level: 0.23 },
+  engage: { latchGap: 0.042, bellHz: 659.25, overtoneRatio: 2, ringHz: 3120, decay: 0.26, level: 0.15 },
+  filter: { baseHz: 4050, rangeHz: 900 },
+  room: { delaySec: 0.024, feedback: 0.1, wet: 0.09 },
 }
 
 const ExtraHairline = () => (

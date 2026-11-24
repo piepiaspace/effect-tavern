@@ -8,24 +8,14 @@ import type { SoundProfile } from "../home-sound.ts"
 const FRAME_CX = 514
 const FRAME_CY = 495
 
-// Crystalline F#m11 / A6/9 glass astrolabe identity (F#4, A4, B4, C#5, E5, F#5, A5, B5, C#6 + glassy 3x overtone)
+// Oblique glass & speculum-bronze astrolabe disc: airy vernier escapement, high-Q shimmer, crystalline F#5 engage
 const SOUND: SoundProfile = {
-  scale: [369.99, 440.0, 493.88, 554.37, 659.25, 739.99, 880.0, 987.77, 1108.73],
-  motif: [0, 3, 4, 2, 5, 4, 3, 1, 2, 4, 6, 4],
-  wave: "sine",
-  overtone: { ratio: 3, level: 0.14, decayRatio: 0.38 },
-  tap: { startHz: 420, endHz: 190, level: 0.12 },
-  filter: { baseHz: 2900, rangeHz: 800 },
-  echo: { delaySec: 0.42, feedback: 0.28, wet: 0.34 },
-  decay: { base: 0.68, accent: 0.94 },
-  accents: {
-    beats: [0, 5, 9],
-    irisOpen: 6,
-    irisClose: 2,
-    hover: [4, 6],
-    click: 4,
-    engage: [1, 4],
-  },
+  escapement: { freq: 3480, q: 4.6, decay: 0.0062, gap: 0.005, asymmetry: 1.05, level: 0.34 },
+  spring: { freq: 3920, q: 18, decay: 0.046, level: 0.14 },
+  shutter: { blades: 3, spread: 0.024, openHz: 3420, closeHz: 2540, q: 4, decay: 0.025, level: 0.22 },
+  engage: { latchGap: 0.058, bellHz: 739.99, overtoneRatio: 3, ringHz: 3640, decay: 0.41, level: 0.15 },
+  filter: { baseHz: 5000, rangeHz: 1000 },
+  room: { delaySec: 0.05, feedback: 0.18, wet: 0.17 },
 }
 
 const ExtraHairline = () => (

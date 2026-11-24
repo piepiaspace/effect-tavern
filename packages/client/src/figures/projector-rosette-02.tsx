@@ -7,24 +7,14 @@ import type { SoundProfile } from "../home-sound.ts"
 // Coupled gear ratio derived from rotor & lower wheel radii (2.43 / 1.45)
 const LOWER_GEAR_RATIO = -2.43 / 1.45
 
-// Deep mechanical studio chronometer identity (Gmaj9 pentatonic: G3, A3, B3, D4, E4, G4, A4, B4, D5)
+// Heavy cast-iron studio chronometer: wide pawl double-click, warm iron escapement, stately A4 bronze lock
 const SOUND: SoundProfile = {
-  scale: [196.0, 220.0, 246.94, 293.66, 329.63, 392.0, 440.0, 493.88, 587.33],
-  motif: [0, 3, 5, 4, 7, 5, 3, 1, 2, 5, 8, 5],
-  wave: "triangle",
-  overtone: { ratio: 2, level: 0.12, decayRatio: 0.4 },
-  tap: { startHz: 185, endHz: 78, level: 0.28 },
-  filter: { baseHz: 1850, rangeHz: 520 },
-  echo: { delaySec: 0.36, feedback: 0.28, wet: 0.28 },
-  decay: { base: 0.62, accent: 0.86 },
-  accents: {
-    beats: [0, 6],
-    irisOpen: 8,
-    irisClose: 3,
-    hover: [5, 7],
-    click: 5,
-    engage: [0, 3],
-  },
+  escapement: { freq: 1880, q: 2.2, decay: 0.0115, gap: 0.0092, asymmetry: 0.93, level: 0.32 },
+  spring: { freq: 2180, q: 11, decay: 0.038, level: 0.08 },
+  shutter: { blades: 2, spread: 0.024, openHz: 2150, closeHz: 1520, q: 2.2, decay: 0.028, level: 0.25 },
+  engage: { latchGap: 0.064, bellHz: 440, overtoneRatio: 1.5, ringHz: 2260, decay: 0.38, level: 0.17 },
+  filter: { baseHz: 2900, rangeHz: 750 },
+  room: { delaySec: 0.046, feedback: 0.17, wet: 0.15 },
 }
 
 const ExtraHairline = () => (

@@ -10,24 +10,14 @@ const OUTER_CY = 503
 const IRIS_CX = 511
 const IRIS_CY = 498
 
-// Celestial Eb maj9 celesta identity (Eb4, F4, G4, Bb4, C5, Eb5, F5, G5, Bb5 — always-consonant pentatonic)
+// Obsidian & gilt-brass celestial astrolabe: fine jewel-pivot tick, gleaming hairspring, Eb5 bell-bronze engage
 const SOUND: SoundProfile = {
-  scale: [311.13, 349.23, 392.0, 466.16, 523.25, 622.25, 698.46, 783.99, 932.33],
-  motif: [0, 2, 5, 3, 6, 5, 4, 2, 3, 5, 7, 5],
-  wave: "triangle",
-  overtone: { ratio: 2, level: 0.2, decayRatio: 0.52 },
-  tap: { startHz: 320, endHz: 150, level: 0.14 },
-  filter: { baseHz: 2700, rangeHz: 750 },
-  echo: { delaySec: 0.38, feedback: 0.3, wet: 0.32 },
-  decay: { base: 0.62, accent: 0.88 },
-  accents: {
-    beats: [0, 4, 8],
-    irisOpen: 7,
-    irisClose: 3,
-    hover: [5, 7],
-    click: 5,
-    engage: [2, 5],
-  },
+  escapement: { freq: 3120, q: 4, decay: 0.0072, gap: 0.0056, asymmetry: 0.96, level: 0.32 },
+  spring: { freq: 3480, q: 16, decay: 0.044, level: 0.13 },
+  shutter: { blades: 3, spread: 0.022, openHz: 3180, closeHz: 2320, q: 3.6, decay: 0.026, level: 0.23 },
+  engage: { latchGap: 0.054, bellHz: 622.25, overtoneRatio: 2.756, ringHz: 3360, decay: 0.4, level: 0.16 },
+  filter: { baseHz: 4550, rangeHz: 950 },
+  room: { delaySec: 0.044, feedback: 0.16, wet: 0.16 },
 }
 
 const ExtraHairline = () => (

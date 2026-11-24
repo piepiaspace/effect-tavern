@@ -4,24 +4,14 @@
 import type { HomeFigure } from "../home-figure.tsx"
 import type { SoundProfile } from "../home-sound.ts"
 
-// Art Deco warm chime identity (Bbmaj9 pentatonic: Bb3, C4, D4, F4, G4, Bb4, C5, D5, F5)
+// Art Deco stepped-crown bronze medallion: crisp 72-tick vernier, warm medallion resonance, B4 architectural bronze lock
 const SOUND: SoundProfile = {
-  scale: [233.08, 261.63, 293.66, 349.23, 392.0, 466.16, 523.25, 587.33, 698.46],
-  motif: [0, 2, 3, 5, 7, 5, 4, 3, 5, 6, 8, 5],
-  wave: "triangle",
-  overtone: { ratio: 2, level: 0.14, decayRatio: 0.5 },
-  tap: { startHz: 210, endHz: 95, level: 0.18 },
-  filter: { baseHz: 2050, rangeHz: 520 },
-  echo: { delaySec: 0.36, feedback: 0.28, wet: 0.3 },
-  decay: { base: 0.58, accent: 0.84 },
-  accents: {
-    beats: [0, 4, 10],
-    irisOpen: 8,
-    irisClose: 3,
-    hover: [5, 7],
-    click: 6,
-    engage: [3, 5],
-  },
+  escapement: { freq: 2920, q: 3.7, decay: 0.0078, gap: 0.006, asymmetry: 0.95, level: 0.33 },
+  spring: { freq: 3240, q: 15, decay: 0.04, level: 0.12 },
+  shutter: { blades: 3, spread: 0.021, openHz: 2980, closeHz: 2140, q: 3.3, decay: 0.027, level: 0.24 },
+  engage: { latchGap: 0.056, bellHz: 493.88, overtoneRatio: 2.5, ringHz: 3080, decay: 0.38, level: 0.17 },
+  filter: { baseHz: 4250, rangeHz: 900 },
+  room: { delaySec: 0.042, feedback: 0.16, wet: 0.15 },
 }
 
 const ExtraHairline = () => (

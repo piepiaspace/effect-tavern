@@ -7,24 +7,14 @@ import type { SoundProfile } from "../home-sound.ts"
 const UPPER_RATIO = -151.5 / 115
 const LOWER_RATIO = -151.5 / 126
 
-// Warm vintage projector music-box identity (Dmaj9 pentatonic, pure sine + octave shimmer + felt escapement tap)
+// Three-reel 35mm optical projector: cast-steel & brass Geneva-drive escapement, oiled 8-blade iris, D5 brass lock
 const SOUND: SoundProfile = {
-  scale: [293.66, 329.63, 369.99, 440.0, 493.88, 587.33, 659.25, 739.99, 880.0],
-  motif: [0, 3, 5, 3, 6, 5, 3, 2, 4, 5, 7, 5],
-  wave: "sine",
-  overtone: { ratio: 2, level: 0.16, decayRatio: 0.45 },
-  tap: { startHz: 240, endHz: 110, level: 0.22 },
-  filter: { baseHz: 2400, rangeHz: 600 },
-  echo: { delaySec: 0.32, feedback: 0.24, wet: 0.26 },
-  decay: { base: 0.52, accent: 0.72 },
-  accents: {
-    beats: [0, 6],
-    irisOpen: 7,
-    irisClose: 4,
-    hover: [5, 7],
-    click: 5,
-    engage: [3, 5],
-  },
+  escapement: { freq: 2350, q: 2.8, decay: 0.009, gap: 0.0065, asymmetry: 0.94, level: 0.34 },
+  spring: { freq: 2680, q: 13, decay: 0.034, level: 0.09 },
+  shutter: { blades: 3, spread: 0.02, openHz: 2550, closeHz: 1850, q: 2.6, decay: 0.022, level: 0.24 },
+  engage: { latchGap: 0.052, bellHz: 587.33, overtoneRatio: 1.5, ringHz: 2720, decay: 0.32, level: 0.16 },
+  filter: { baseHz: 3400, rangeHz: 850 },
+  room: { delaySec: 0.034, feedback: 0.14, wet: 0.13 },
 }
 
 const ExtraHairline = () => (

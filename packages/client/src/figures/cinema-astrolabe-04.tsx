@@ -4,24 +4,14 @@
 import type { HomeFigure } from "../home-figure.tsx"
 import type { SoundProfile } from "../home-sound.ts"
 
-// Crisp camera-shutter crystal bell identity (Emaj9 pentatonic: E4, F#4, G#4, B4, C#5, E5, F#5, G#5, B5)
+// Precision camera-shutter astrolabe: surgical leaf-shutter snap, dry optical-barrel click, crisp G5 tuning-fork catch
 const SOUND: SoundProfile = {
-  scale: [329.63, 369.99, 415.3, 493.88, 554.37, 659.25, 739.99, 830.61, 987.77],
-  motif: [0, 3, 5, 7, 5, 3, 1, 4, 6, 8, 6, 3],
-  wave: "sine",
-  overtone: { ratio: 3, level: 0.13, decayRatio: 0.36 },
-  tap: { startHz: 420, endHz: 185, level: 0.25 },
-  filter: { baseHz: 3100, rangeHz: 750 },
-  echo: { delaySec: 0.27, feedback: 0.22, wet: 0.24 },
-  decay: { base: 0.44, accent: 0.66 },
-  accents: {
-    beats: [0, 3, 9],
-    irisOpen: 8,
-    irisClose: 3,
-    hover: [5, 7],
-    click: 6,
-    engage: [3, 5],
-  },
+  escapement: { freq: 3650, q: 5, decay: 0.0054, gap: 0.0044, asymmetry: 1.06, level: 0.36 },
+  spring: { freq: 4050, q: 17, decay: 0.03, level: 0.13 },
+  shutter: { blades: 2, spread: 0.016, openHz: 3560, closeHz: 2640, q: 4.4, decay: 0.016, level: 0.25 },
+  engage: { latchGap: 0.04, bellHz: 783.99, overtoneRatio: 2, ringHz: 3740, decay: 0.25, level: 0.14 },
+  filter: { baseHz: 5100, rangeHz: 1000 },
+  room: { delaySec: 0.023, feedback: 0.09, wet: 0.09 },
 }
 
 const ExtraHairline = () => (
