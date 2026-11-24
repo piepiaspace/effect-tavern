@@ -6,10 +6,13 @@ import type { Beat, Check, Rules, State } from "./card.ts"
 import type { DeliverySnapshot, Source } from "./context.ts"
 import type { Node } from "./derived.ts"
 import type { Turn } from "./journal.ts"
+import type { NodeMedia } from "./media.ts"
 import type { Product } from "./product.ts"
 import type { DomainChange, WorldState } from "./world.ts"
 import type { Event } from "./session.ts"
 import type { Change } from "./log.ts"
+
+export type { NodeMedia } from "./media.ts"
 
 export interface InvocationToken {
   resourceId: string
@@ -28,6 +31,7 @@ export interface TimelineNode {
   invocations: readonly InvocationToken[]
   prose: string
   theater: Record<string, unknown>
+  media?: NodeMedia
   heading?: string
   end: Turn<Beat>["end"]
   sibling?: Turn<Beat>["sibling"]
@@ -69,7 +73,13 @@ const fieldChanges = (n: Node, before: State, rules: Rules) =>
     .filter((f) => !f.hidden && before[f.path] !== n.state[f.path])
     .map((f) => ({ path: f.path, was: before[f.path], now: n.state[f.path] }))
 
-export const timelineNode = (n: Node, before: State, rules: Rules, products: readonly Product[]): TimelineNode => ({
+export const timelineNode = (
+  n: Node,
+  before: State,
+  rules: Rules,
+  products: readonly Product[],
+  media?: NodeMedia,
+): TimelineNode => ({
   id: n.id,
   parent: n.parent,
   input: n.turn.input,
@@ -86,6 +96,7 @@ export const timelineNode = (n: Node, before: State, rules: Rules, products: rea
       .filter((p) => p.role === "theater" && n.turn.products[p.id] !== undefined)
       .map((p) => [p.id, n.turn.products[p.id]]),
   ),
+  ...(media && { media }),
   heading: n.heading,
   end: n.turn.end,
   sibling: n.turn.sibling,

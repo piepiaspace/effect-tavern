@@ -2,6 +2,7 @@
 import assert from "node:assert/strict"
 import type { Card } from "../src/card.ts"
 import { lint } from "../src/lint.ts"
+import { cardPaths } from "../src/paths.ts"
 import { loadCard } from "./cards/index.ts"
 
 const base: Card = {
@@ -346,6 +347,166 @@ assert.deepEqual(of({ ...base, greetings: [{ text: "开场。" }, { note: "由�
   "error empty-greeting greetings[2]",
 ])
 assert.ok(of({ ...base, greetings: [{ text: "  " }] }).includes("error empty-greeting greetings[0]"))
+
+// Card.media, Catalog.kind, media-bound HTTPS baseUrl/variants, and blank labels:
+{
+  const validMedia: Card = {
+    ...base,
+    rules: { fields: [bond], actions: [], readouts: [readout] },
+    catalogs: [
+      {
+        id: "crossings",
+        kind: "image",
+        baseUrl: "https://media.tavern.example/ferry/crossings",
+        items: [
+          { id: "dawn", label: "渡口晨雾", when: { path: "bond", op: "gte", value: 0 }, variants: ["dawn.webp"] },
+        ],
+      },
+      {
+        id: "ferryman",
+        kind: "image",
+        baseUrl: "https://media.tavern.example/ferry/ferryman/",
+        items: [{ id: "calm", label: "船夫静候", variants: ["sub/calm-1.webp", "sub/calm-2.webp"] }],
+      },
+      {
+        id: "ferry_bgm",
+        kind: "audio",
+        baseUrl: "https://media.tavern.example/ferry/audio",
+        items: [{ id: "clear", label: "晴江远棹", variants: ["clear.mp3"] }],
+      },
+      // Unbound legacy pure-enum catalog without baseUrl or variants remains completely valid!
+      {
+        id: "pure_enum",
+        items: [{ id: "tag_a" }, { id: "tag_b" }],
+      },
+    ],
+    products: [
+      {
+        id: "ferry_cg",
+        role: "chronicle",
+        feed: false,
+        text: "插图",
+        shape: {
+          kind: "table",
+          max: 2,
+          columns: [
+            { key: "afterParagraph", type: "int" },
+            { key: "id", type: "enum", catalog: "crossings" },
+          ],
+        },
+      },
+      {
+        id: "sketch",
+        role: "theater",
+        trigger: "demand",
+        text: "速写",
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "afterParagraph", type: "int" },
+            { key: "id", type: "enum", catalog: "crossings" },
+          ],
+        },
+      },
+      {
+        id: "score",
+        role: "chronicle",
+        feed: false,
+        text: "配乐",
+        shape: {
+          kind: "table",
+          max: 1,
+          columns: [{ key: "id", type: "enum", catalog: "ferry_bgm" }],
+        },
+      },
+      {
+        id: "tags",
+        role: "chronicle",
+        text: "标签",
+        shape: { kind: "table", columns: [{ key: "id", type: "enum", catalog: "pure_enum" }] },
+      },
+    ],
+    media: {
+      illustrations: [{ product: "ferry_cg" }, { product: "sketch" }],
+      portraits: [
+        { catalog: "ferryman", label: "船夫" },
+        { id: "ferryman_alt", catalog: "ferryman", label: "船夫远景" },
+      ],
+      gallery: ["crossings", "ferryman"],
+      bgm: { product: "score" },
+    },
+  }
+  assert.deepEqual(lint(validMedia), [])
+
+  // Product binding, shape, stage, role, slot ID, gallery, kind mismatch, URL/variant, and blank label errors
+  const brokenMedia: Card = {
+    ...validMedia,
+    catalogs: [
+      {
+        id: "bad_url",
+        kind: "audio", // contradicts illustrations (image)
+        baseUrl: "http://insecure.example/cg",
+        items: [{ id: "x", label: "  ", variants: ["/abs.webp", "../escape.webp"] }],
+      },
+      {
+        id: "no_url",
+        // kind omitted, bound to BOTH gallery (image) and bgm (audio) -> conflict!
+        items: [{ id: "y", variants: [] }, { id: "z" }],
+      },
+    ],
+    products: [
+      {
+        id: "wrong_illust",
+        role: "world",
+        text: "错插图",
+        shape: { kind: "table", columns: [{ key: "id", type: "enum", catalog: "bad_url" }] },
+      },
+      {
+        id: "wrong_bgm",
+        role: "theater",
+        text: "错曲目",
+        // max: 2 instead of 1
+        shape: { kind: "table", max: 2, columns: [{ key: "id", type: "enum", catalog: "no_url" }] },
+      },
+    ],
+    media: {
+      illustrations: [{ product: "wrong_illust" }, { product: "wrong_illust" }, { product: "missing_illust" }],
+      portraits: [
+        { catalog: "bad_url", label: " " },
+        { id: "bad_url", catalog: "missing_cat" }, // collides with previous effective slot id `bad_url`
+      ],
+      gallery: ["no_url", "no_url", "missing_gallery"],
+      bgm: { product: "wrong_bgm" },
+    },
+  }
+  const ds = lint(brokenMedia)
+  const paths = cardPaths(brokenMedia)
+  for (const d of ds) assert.ok(paths.has(d.path), `diagnostic path not in cardPaths: ${d.path}`)
+  assert.deepEqual(
+    ds.map((d) => `${d.level} ${d.rule} ${d.path}`),
+    [
+      "error empty-text catalogs.bad_url.items.x.label",
+      "error empty-text media.portraits[0].label",
+      "error bad-media-product media.illustrations[0].product",
+      "error duplicate-media-binding media.illustrations[1].product",
+      "error unknown-product media.illustrations[2].product",
+      "error bad-media-product media.bgm.product",
+      "error duplicate-media-slot media.portraits[1].id",
+      "error unknown-catalog media.portraits[1].catalog",
+      "error duplicate-media-binding media.gallery[1]",
+      "error unknown-catalog media.gallery[2]",
+      "error media-kind-mismatch media.illustrations[0].product",
+      "error media-kind-mismatch media.portraits[0].catalog",
+      "error bad-media-url catalogs.bad_url.baseUrl",
+      "error bad-media-variant catalogs.bad_url.items.x.variants[0]",
+      "error bad-media-variant catalogs.bad_url.items.x.variants[1]",
+      "error media-kind-mismatch catalogs.no_url",
+      "error bad-media-url catalogs.no_url",
+      "error bad-media-variant catalogs.no_url.items.y.variants",
+      "error bad-media-variant catalogs.no_url.items.z",
+    ],
+  )
+}
 
 // The fixture cards (test/cards): no errors, and exactly these warnings (a new one fails here until it is meant).
 const templates: Record<string, string[]> = {
