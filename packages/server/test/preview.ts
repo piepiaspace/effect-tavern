@@ -616,6 +616,76 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
       lib.hats.list().some((h) => h.id === "unsaved-shell"),
       false,
     )
+
+    // 9. The delivery tool and the wrap (#220, #221): a hat write stores one shape and refuses a bad tool name in plain
+    // words; preview carries the tool in force, `wrap`, and the wrapped messages, for a saved and an unsaved hat
+    const wrapHat = {
+      name: "Wrap Hat",
+      deliver: "tool" as const,
+      toolChoice: "force" as const,
+      wrap: true,
+      tool: { name: "actual_content", description: "Story: {{context}}", param: "   " },
+      narrate: { lead: [{ role: "system" as const, text: "WRAP-SHELL" }] },
+    }
+    const put = async (id: string, body: unknown) =>
+      fetch(`${base}/hats/${id}`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      })
+    assert.equal((await put("h-wrap", wrapHat)).status, 200)
+    const storedWrap = lib.hats.list().find((h) => h.id === "h-wrap")
+    assert.deepEqual(storedWrap?.tool, { name: "actual_content", description: "Story: {{context}}" })
+    assert.equal(storedWrap?.wrap, true)
+    assert.equal((await put("h-textwrap", { name: "Text Wrap", wrap: true, tool: { name: "x" } })).status, 200)
+    assert.deepEqual(
+      lib.hats.list().find((h) => h.id === "h-textwrap"),
+      { id: "h-textwrap", name: "Text Wrap" },
+    )
+    const badName = await put("h-bad", { ...wrapHat, tool: { name: "my tool!" } })
+    assert.equal(badName.status, 400)
+    const badBody = await badName.text()
+    assert.match(badBody, /the delivery tool name \\?"my tool!\\?" is not one every model accepts/)
+    assert.ok(!badBody.includes("Expected"), badBody) // plain words, no schema dump
+    assert.equal(
+      lib.hats.list().some((h) => h.id === "h-bad"),
+      false,
+    )
+    const wrapPrev = (await (
+      await fetch(`${base}/preview`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cardId: lifeOfPi.id, greetingIndex: 0, hatId: "h-wrap" }),
+      })
+    ).json()) as PreviewNarrateResult
+    assert.equal(wrapPrev.connection.wrap, true)
+    assert.equal(wrapPrev.connection.tool?.name, "actual_content")
+    assert.ok(wrapPrev.connection.tool?.description.startsWith('Story: <message role="system">'))
+    assert.equal(wrapPrev.connection.tool?.sources.description.kind, "hat")
+    assert.equal(wrapPrev.connection.tool?.param, "The full reply, nothing omitted.")
+    assert.deepEqual(
+      wrapPrev.messages.map((m) => m.role),
+      ["system", "user"],
+    )
+    assert.equal(wrapPrev.wrap?.prefixCache, "off")
+    assert.ok((wrapPrev.wrap?.traces.length ?? 0) > 0)
+    const candWrap = await fetch(`${base}/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ cardId: lifeOfPi.id, greetingIndex: 0, candidateHat: { id: "unsaved-wrap", ...wrapHat } }),
+    })
+    assert.equal(candWrap.status, 200)
+    assert.equal(((await candWrap.json()) as PreviewNarrateResult).connection.wrap, true)
+    const candBad = await fetch(`${base}/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        cardId: lifeOfPi.id,
+        candidateHat: { id: "unsaved-bad", ...wrapHat, tool: { name: "9lives" } },
+      }),
+    })
+    assert.equal(candBad.status, 400)
+    assert.match(await candBad.text(), /is not one every model accepts/)
   } finally {
     await server.stop(true)
   }

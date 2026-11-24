@@ -1,10 +1,12 @@
 // Offline authoring commands (`tavern card init|check|view|test`, run by the tree in packages/server/bin/tavern.ts);
 // pure preview lives in src/view.ts. They read files against `Here` (cli.ts) and print through the tree's Console.
-import { Console, Effect, FileSystem, Option } from "effect"
+import { basename } from "node:path"
+import { Console, Effect, FileSystem, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
 import { here, Json } from "./cli.ts"
 import { checkCard, readCard, scaffold, templates } from "../support/author.ts"
 import { runScenario } from "../support/scenario.ts"
+import { Hat, hatToolProblem, normalizeHatDelivery } from "../src/fragment.ts"
 import { stages, view } from "../src/view.ts"
 import { player } from "../support/rows.ts"
 
@@ -13,6 +15,23 @@ const load = (name: string) =>
   Effect.flatMap(here(name), (path) =>
     Effect.tryPromise({
       try: () => readCard(path),
+      catch: (e) => (e as Error).message,
+    }),
+  )
+
+/** A `.hat.json` file (the settings page's export: a hat without its id), in its one stored shape. */
+const loadHat = (name: string) =>
+  Effect.flatMap(here(name), (path) =>
+    Effect.tryPromise({
+      try: async () => {
+        const raw: unknown = JSON.parse(await Bun.file(path).text())
+        const hat = normalizeHatDelivery(
+          Schema.decodeUnknownSync(Hat)({ name: basename(path, ".hat.json"), ...(raw as object), id: "file" }),
+        )
+        const problem = hatToolProblem(hat)
+        if (problem) throw new Error(`${name}: ${problem}`)
+        return hat
+      },
       catch: (e) => (e as Error).message,
     }),
   )
@@ -111,11 +130,16 @@ const show = Command.make(
       Flag.withDescription("list every lore entry, the fully unlocked ones with no window included"),
       Flag.withDefault(false),
     ),
+    hat: Flag.String("hat").pipe(
+      Flag.withDescription("a .hat.json file to wear: its messages, and on narrate its delivery tool and wrap"),
+      Flag.optional,
+    ),
   },
-  ({ card: name, state, greeting, stage, events, pin, persona, lore }) =>
+  ({ card: name, state, greeting, stage, events, pin, persona, lore, hat }) =>
     Effect.gen(function* () {
       const json = yield* Json
       const c = yield* load(name)
+      const worn = Option.isSome(hat) ? yield* loadHat(hat.value) : undefined
       const v = yield* Effect.try({
         try: () =>
           view(
@@ -128,6 +152,7 @@ const show = Command.make(
               events: Option.getOrUndefined(events)?.split(",").filter(Boolean),
               pin: Option.getOrUndefined(pin),
               lore,
+              ...(worn && { hat: worn }),
             },
           ),
         catch: (e) => (e as Error).message,

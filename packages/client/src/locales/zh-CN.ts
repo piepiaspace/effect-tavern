@@ -796,6 +796,7 @@ const zh = {
     turnsOutsideWindow: "{n} 轮已移出历史窗口，本次请求没有这段历史的摘要。",
     turnsSummarized: "这 {n} 轮已计入 #{from}–#{to} 的摘要。",
     reasonInvalid: "无效条目",
+    reasonNotWrapped: "未封装",
     resourcesTitle: "条目与模拟读取",
     resourcesEmpty: "当前卡片没有可检索条目",
     simulatedCount: "已模拟 {n} 项",
