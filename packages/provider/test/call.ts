@@ -7,6 +7,7 @@ import {
   NARRATIVE_TOOL,
   NARRATIVE_TOOL_DESCRIPTION,
   effortOptions,
+  geminiThreshold,
   isToolName,
   resolveDeliverTool,
   toolNameProblem,
@@ -44,7 +45,7 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   )
 }
 
-// ───────── 2. Gemini BLOCK_NONE safetySettings & Gemini 2.5 / 3 thinking wire ─────────
+// ───────── 2. Gemini safety threshold (OFF; BLOCK_NONE for 1.x) & Gemini 2.5 / 3 thinking wire ─────────
 {
   const captureGemini = async (
     model: string,
@@ -73,22 +74,36 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
     return { sent: sent!, res }
   }
 
-  // Default BLOCK_NONE across all 4 configurable harm categories
+  // Default OFF across all 4 configurable harm categories
   const plain = await captureGemini("gemini-2.5-flash")
   assert.deepEqual(plain.sent.safetySettings, [
-    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+    { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "OFF" },
+    { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "OFF" },
+    { category: "HARM_CATEGORY_HARASSMENT", threshold: "OFF" },
+    { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "OFF" },
   ])
   assert.equal(plain.res.rawFinishReason, "STOP")
+  // OFF for every generation that knows it and for a name that says nothing; BLOCK_NONE only for 1.x, which predates OFF
+  for (const id of ["gemini-2.0-flash", "gemini-3-pro-preview", "models/gemini-2.5-pro", "some-gateway-alias"])
+    assert.equal(geminiThreshold(id), "OFF", id)
+  assert.equal(geminiThreshold(undefined), "OFF")
+  for (const id of [
+    "gemini-1.5-pro",
+    "gemini-1.0-pro",
+    "google/gemini-1.5-flash-002",
+    "gemini-pro",
+    "gemini-pro-vision",
+  ])
+    assert.equal(geminiThreshold(id), "BLOCK_NONE", id)
+  const old = await captureGemini("gemini-1.5-pro")
+  assert.ok((old.sent.safetySettings as Array<{ threshold: string }>).every((s) => s.threshold === "BLOCK_NONE"))
 
   // Caller providerOptions.google overrides threshold while keeping thinkingConfig intact
   const overridden = await captureGemini("gemini-2.5-flash", {
     effort: "medium",
-    providerOptions: { google: { threshold: "OFF" } },
+    providerOptions: { google: { threshold: "BLOCK_NONE" } },
   })
-  assert.ok((overridden.sent.safetySettings as Array<{ threshold: string }>).every((s) => s.threshold === "OFF"))
+  assert.ok((overridden.sent.safetySettings as Array<{ threshold: string }>).every((s) => s.threshold === "BLOCK_NONE"))
   assert.deepEqual((overridden.sent.generationConfig as Record<string, unknown>).thinkingConfig, {
     thinkingBudget: 8192,
     includeThoughts: true,

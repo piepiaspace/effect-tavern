@@ -1,5 +1,7 @@
-// Which safety threshold the gemini format should send by default (#221 part 2): today provider call.ts `settings()`
-// sends `{ google: { threshold: "BLOCK_NONE" } }` on every gemini call, and `@ai-sdk/google` also takes "OFF".
+// Whether a saved gemini connection takes the safety threshold the harness sends (#221 part 2). The default is settled
+// from Google's API definitions and docs, not by this script: provider call.ts `geminiThreshold` sends "OFF" (the filter
+// turned off, and the Developer API's own default from Gemini 2.5 on) and "BLOCK_NONE" only to the 1.x generation. This
+// is the check for one channel, a gateway above all: does it accept OFF, and does anything differ from BLOCK_NONE there.
 // `bun bin/gemini-threshold.ts [DATA dir, default ../../.dev] [--model <substring>] [--scene <file>] [--stream] [--dry]`
 //
 // Reads the library file read-only (no lock, so a running dev session is untouched), takes every saved model whose
@@ -371,26 +373,29 @@ const anyBlocked = rowsOut.some(blockedRow)
 const said: string[] = []
 if (readable.length === 0)
   said.push(
-    "No model answered even with BLOCK_NONE, today's default, so these rows say nothing about OFF yet: fix what the " +
+    "No model answered even with BLOCK_NONE, so these rows say nothing about OFF, the default, yet: fix what the " +
       "notes above name and run this again.",
   )
 else {
   if (refusedOff.length === 0)
     said.push(
       `${readable.length === 1 ? "The one model that answered" : `Every model that answered (${readable.length})`} ` +
-        `accepted OFF wherever it accepted BLOCK_NONE, so switching the default to OFF would not break ` +
+        `accepted OFF wherever it accepted BLOCK_NONE, so the default (OFF) works on ` +
         `${readable.length === 1 ? "this connection" : "these connections"}.`,
     )
   else
     said.push(
-      `${list(refusedOff)} refused OFF where BLOCK_NONE went through: a default of OFF would break ` +
-        `${refusedOff.length === 1 ? "it" : "them"}, so keep BLOCK_NONE or choose the threshold by model` +
+      `${list(refusedOff)} refused OFF where BLOCK_NONE went through: the default (OFF) fails on ` +
+        `${refusedOff.length === 1 ? "it" : "them"}, and provider call.ts \`geminiThreshold\` needs a rule for ` +
+        `${refusedOff.length === 1 ? "that model or channel" : "those models or channels"}` +
         `${tookOff.length ? ` (${list(tookOff)} took OFF)` : ""}.`,
     )
   if (offFreed.length)
-    said.push(`OFF let through replies that BLOCK_NONE blocked on ${list(offFreed)}, which is the case for OFF.`)
+    said.push(`OFF let through replies that BLOCK_NONE blocked on ${list(offFreed)}, as the docs describe OFF.`)
   if (offBlocked.length)
-    said.push(`OFF blocked replies that BLOCK_NONE let through on ${list(offBlocked)}, which is a case against it.`)
+    said.push(
+      `OFF blocked replies that BLOCK_NONE let through on ${list(offBlocked)}, which the docs do not describe: report it with the rows above.`,
+    )
   if (!offFreed.length && !offBlocked.length && tookOff.length)
     said.push(
       anyBlocked

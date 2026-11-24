@@ -220,13 +220,24 @@ const mergeProviderOptions = (
   return out
 }
 
+/** The safety threshold a gemini call sends for the four adjustable harm categories (the driver's `threshold` is
+ *  shorthand for the wire's `safetySettings`, the upstream `HarmBlockThreshold` enum passed through; the Developer API
+ *  and Vertex declare the same enum). `OFF` turns the adjustable filter off: nothing blocked, no ratings returned. It is
+ *  the upstream's own default on the Developer API for Gemini 2.5 and later, and sending it also covers the channels
+ *  and older models whose default still blocks (Vertex names `BLOCK_MEDIUM_AND_ABOVE`). `BLOCK_NONE` keeps the
+ *  classifiers running and returns their scores without blocking; it is sent only to the 1.x generation, which
+ *  predates `OFF`. Neither value touches the protections no setting adjusts (`PROHIBITED_CONTENT`, `SPII`). A caller's
+ *  `providerOptions.google` overrides it; a refusal is never retried under another threshold. */
+export const geminiThreshold = (modelId?: string): "OFF" | "BLOCK_NONE" =>
+  modelId !== undefined && (GEMINI_1_RE.test(modelId) || GEMINI_PRE2_RE.test(modelId)) ? "BLOCK_NONE" : "OFF"
+
 export const settings = (format: Format, o: CallOptions, modelId?: string) => ({
   allowSystemInMessages: true, // the head and mid-history lore are system messages in the message list; ai 7 refuses them by default
   maxOutputTokens: o.maxOutputTokens,
   // No sampling parameters: the harness holds no opinion on them. Claude rejects temperature, Kimi K2.5+ accepts
   // one fixed value only, and an unset field is never sent (docs/provider-reading.md §6.3).
   providerOptions: mergeProviderOptions(
-    format === "gemini" ? { google: { threshold: "BLOCK_NONE" } } : undefined,
+    format === "gemini" ? { google: { threshold: geminiThreshold(modelId) } } : undefined,
     o.effort ? effortOptions(format, o.effort, modelId) : undefined,
     o.providerOptions,
   ) as never,
