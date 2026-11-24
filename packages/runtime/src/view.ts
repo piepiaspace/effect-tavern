@@ -7,11 +7,12 @@ import { unlocks, unlockPath, whenPaths, conditionChildren } from "./paths.ts"
 import type { Message } from "@effect-tavern/provider"
 import { drawn, makeCard, type Card, type State } from "./card.ts"
 import { holds, lookup, reads, type Cond } from "./cond.ts"
-import { head, type Fragment } from "./fragment.ts"
+import { head, type Fragment, type Hat } from "./fragment.ts"
 import { catalogsOf, resolve, worldOf, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore } from "./lore.ts"
 import { lines, fill } from "./names.ts"
-import { request, type Ask } from "./request.ts"
+import { prepareHat } from "./preview.ts"
+import { requestDetailed, type Ask } from "./request.ts"
 import { cond, effect, labels } from "./phrase.ts"
 import { catalogBlock, contextLookup, deliveryText, freeze, latest, resourcesAt, fedResources } from "./context.ts"
 import { floorAt, currentAt } from "./derived.ts"
@@ -29,6 +30,7 @@ export interface Options {
   pin?: string
   stage?: Stage
   lore?: boolean // list every lore entry; by default the fully unlocked ones with no window are one count line
+  hat?: Hat // a hat worn on the stage: its messages, and on narrate its delivery tool and wrap
 }
 export interface Section {
   name: string
@@ -232,7 +234,10 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
               may: offered.map((d) => ({ id: d.id, text: d.text })),
               blocks: { question: R.asks["narrate.blocks"].text, asks: penned },
             }
-  const doc = request(
+  // a hat, when given, is worn as the session wears it (its names and delivery tool filled): narrate under its delivery
+  // tool prints the tool, and under its wrap the description that carries the story context
+  const worn = o.hat && prepareHat(o.hat, R.names)
+  const detailed = requestDetailed(
     {
       frame: head(R.frame, { state: context }),
       world: head(worldOf(card, R.frame), { state: context }),
@@ -240,6 +245,9 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
       narrator: R.asks["narrate.role"].text,
       persona: R.asks["narrate.persona"].text,
       deliver: R.asks["narrate.deliver"].text,
+      deliverTool: R.asks["narrate.deliver.tool"].text,
+      deliverParam: R.asks["narrate.deliver.param"].text,
+      wrapAsk: R.asks["narrate.wrap"].text,
       contextLead: R.asks["narrate.context"].text,
       directions: R.asks["narrate.turn"].text,
       tail: head(R.tail, { state: context }),
@@ -247,8 +255,11 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
       thought: R.asks["input.thought"].text,
     },
     ask,
+    worn ? { hat: worn.hat, hatSources: worn.sources } : {},
   )
-  const total = tokens(doc.map(textOf).join("\n"))
+  const doc = detailed.messages
+  const tool = detailed.tool
+  const total = tokens([...doc.map(textOf), tool?.description ?? "", tool?.param ?? ""].join("\n"))
 
   // ───────── bands ↔ readouts ─────────
   const bands = rpg.asked(s, R.names, context).map((q) => {
@@ -295,6 +306,14 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
       (m, i) =>
         `[${i}] ${m.role}${m.providerOptions?.anthropic?.cacheControl ? " [cache breakpoint]" : ""}\n${textOf(m)}`,
     ),
+    ...(tool
+      ? [
+          `\n── delivery tool ${tool.name}${detailed.wrap ? `, wrapping ${detailed.wrap.sections.length} messages (prefix cache off)` : ""} ──`,
+          `description:\n${tool.description}`,
+          `text parameter: ${tool.param}`,
+          ...(detailed.wrapRefusal ? [`refused: ${detailed.wrapRefusal}`] : []),
+        ]
+      : []),
   ].join("\n")
   return {
     state: s,

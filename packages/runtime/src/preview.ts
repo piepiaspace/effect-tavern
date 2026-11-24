@@ -21,6 +21,8 @@ import {
 import { gateOf, makeDerived } from "./derived.ts"
 import {
   evaluateHead,
+  hatToolName,
+  hatWraps,
   type Hat,
   type HatEntry,
   type HatNarrateSlot,
@@ -32,7 +34,7 @@ import { narratorHistory, policyFor, type Policy } from "./history.ts"
 import { type Input, type Turn as TurnOf } from "./journal.ts"
 import { resolveWithTrace, type ResolvedTrace, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
-import { expand, fill, unfilled, type Names } from "./names.ts"
+import { expand, fill, keepHoles, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
 import { cond, labels } from "./phrase.ts"
 import { askedAt } from "./product.ts"
@@ -40,7 +42,9 @@ import { requestDetailed, type Ask, type Common, type HatSource } from "./reques
 import {
   sourceKindFrom,
   type ConditionDetail,
+  type DeliveryToolTrace,
   type MessageTrace,
+  type WrapTrace,
   type OmittedItem,
   type SourceRef,
   type WireErrorInfo,
@@ -54,6 +58,11 @@ export interface PreviewConnectionMeta {
   tools?: boolean
   deliver?: "text" | "tool"
   toolChoice?: Hat["toolChoice"]
+  /** Tool delivery: the delivery tool as it goes out, each field's source (under wrap the description holds the context). */
+  tool?: DeliveryToolTrace
+  /** The hat wraps narrate's context into its delivery tool (#220): `messages` is the outer shell, the result's `wrap`
+   *  the wrapped messages, and the prefix cache is off. */
+  wrap?: true
   reasoningBack: boolean
   ttl?: CacheTtl
   contextTokens?: number
@@ -122,6 +131,7 @@ export interface PreviewDiagnostic {
     | "invalid_read"
     | "unfilled_holes"
     | "layer_dropped"
+    | "wrap_needs_user"
   message: string
   detail?: string
   holes?: readonly string[]
@@ -134,7 +144,7 @@ export interface PreviewNarrateInput {
   rows: Rows
   packNames?: Readonly<Record<string, string>>
   hat?: Hat
-  connection: Omit<PreviewConnectionMeta, "toolChoice">
+  connection: Omit<PreviewConnectionMeta, "toolChoice" | "tool" | "wrap">
   mode: "sandbox" | "story"
   storyId?: number
   nodeId?: number | null
@@ -160,6 +170,9 @@ export interface PreviewNarrateResult {
   traces: readonly MessageTrace[]
   omitted: readonly OmittedItem[]
   wireError?: WireErrorInfo
+  /** Under the hat's wrap: the wrapped messages as they would have been sent, their traces and their sections in
+   *  `connection.tool.description` (trace.ts `WrapTrace`). */
+  wrap?: WrapTrace & { messages: readonly Message[] }
   resources: readonly ResourceEntryView[]
   diagnostics: readonly PreviewDiagnostic[]
   upstream: {
@@ -244,6 +257,10 @@ export interface PrepareNarrateResult {
   traces: MessageTrace[]
   omitted: OmittedItem[]
   wireError?: WireErrorInfo
+  /** request.ts `DetailedRequest`: the delivery tool under tool delivery, the wrapped context and its refusal under wrap. */
+  tool?: DeliveryToolTrace
+  wrap?: WrapTrace & { messages: Message[] }
+  wrapRefusal?: string
 }
 
 export const evaluateCondition = (
@@ -418,7 +435,7 @@ const expandToolInput = (raw: string, names: Names): string | undefined => {
 
 export const prepareHat = (
   worn: Hat,
-  names: Names,
+  table: Names,
 ): {
   hat: Hat
   sources: {
@@ -430,6 +447,41 @@ export const prepareHat = (
   omitted: OmittedItem[]
 } => {
   const omitted: OmittedItem[] = []
+  // under tool delivery `{{tool}}` is the tool's name in every text of the hat, over a Names key of that spelling;
+  // under its wrap `{{context}}` stays in the tool's description for request.ts to place the story context
+  const toolName = hatToolName(worn)
+  const names = toolName ? { ...table, tool: toolName } : table
+  const toolField = (field: "description" | "param") => {
+    const raw = worn.tool?.[field]
+    if (!toolName || raw === undefined || !raw.trim()) return undefined
+    const scope = field === "description" && hatWraps(worn) ? keepHoles(names, ["context"]) : names
+    const text = expand(raw, scope, "hat")
+    if (text === undefined)
+      omitted.push({
+        category: "hat",
+        id: `tool.${field}`,
+        label: worn.name,
+        reason: "unfilled_hole",
+        missingHoles: unfilled(raw, scope),
+        preview: raw,
+        source: {
+          kind: "hat",
+          hatId: worn.id,
+          hatName: worn.name,
+          path: `tool.${field}`,
+          label: `tool.${field}`,
+          rawText: raw,
+        },
+      })
+    return text
+  }
+  const description = toolField("description")
+  const param = toolField("param")
+  const tool = worn.tool && {
+    ...(worn.tool.name !== undefined && { name: worn.tool.name }),
+    ...(description !== undefined && { description }),
+    ...(param !== undefined && { param }),
+  }
   const prep = (rows: readonly HatEntry[] = [], stage: "narrate" | "review", slot: HatNarrateSlot) => {
     const kept: HatEntry[] = []
     const sources: (HatSource | undefined)[] = []
@@ -512,6 +564,7 @@ export const prepareHat = (
   return {
     hat: {
       ...worn,
+      ...(tool && { tool }),
       narrate: { lead: lead.kept, head: head.kept, turn: turn.kept, tail: tail.kept },
       review: { head: review.kept },
     },
@@ -723,6 +776,9 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     narrator: wording("narrate.role"),
     persona: wording("narrate.persona"),
     deliver: wording("narrate.deliver"),
+    deliverTool: wording("narrate.deliver.tool"),
+    deliverParam: wording("narrate.deliver.param"),
+    wrapAsk: wording("narrate.wrap"),
     contextLead: wording("narrate.context"),
     directions: wording("narrate.turn"),
     tail: keptTail,
@@ -782,6 +838,9 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
       ...detailed.omitted,
     ],
     ...(wireError && { wireError }),
+    ...(detailed.tool && { tool: detailed.tool }),
+    ...(detailed.wrap && { wrap: detailed.wrap }),
+    ...(detailed.wrapRefusal && { wrapRefusal: detailed.wrapRefusal }),
   }
 }
 
@@ -1112,7 +1171,17 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     ...connection,
     deliver: effectiveDeliver,
     ...(effectiveDeliver === "tool" && { toolChoice: hat?.toolChoice ?? "auto" }),
+    ...(prepped.tool && { tool: prepped.tool }),
+    ...(prepped.wrap && { wrap: true }),
   }
+
+  if (prepped.wrapRefusal)
+    diagnostics.push({
+      level: "error",
+      code: "wrap_needs_user",
+      message: prepped.wrapRefusal,
+      ...(hat && { source: { kind: "hat", hatId: hat.id, hatName: hat.name } }),
+    })
 
   if (effectiveDeliver === "tool" && connection.tools === false) {
     diagnostics.push({
@@ -1167,10 +1236,15 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     })
   }
 
-  const assembledText = prepped.traces
-    .filter((tr) => tr.zone !== "history" && tr.zone !== "input")
-    .flatMap((tr) => {
-      const text = plainText(prepped.messages[tr.index])
+  const docs = [
+    { messages: prepped.messages, traces: prepped.traces },
+    ...(prepped.wrap ? [{ messages: prepped.wrap.messages, traces: prepped.wrap.traces }] : []),
+  ]
+  const assembledText = docs
+    .flatMap(({ messages, traces }) => traces.map((tr) => ({ tr, msg: messages[tr.index] })))
+    .filter(({ tr }) => tr.zone !== "history" && tr.zone !== "input")
+    .flatMap(({ tr, msg }) => {
+      const text = plainText(msg)
       if (!tr.spans.length) return [text]
       return tr.spans
         .filter((s) => s.source.label !== "input.note" || s.source.kind !== "runtime")
@@ -1402,6 +1476,9 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       prepped.wiredMessages.some((m, i) => m !== prepped.messages[i])) && { wiredMessages: prepped.wiredMessages }),
     ...shownOnce(prepped.traces, prepped.messages, prepped.omitted),
     ...(prepped.wireError && { wireError: prepped.wireError }),
+    ...(prepped.wrap && {
+      wrap: { ...prepped.wrap, traces: shownOnce(prepped.wrap.traces, prepped.wrap.messages, []).traces },
+    }),
     resources: resourceViews,
     diagnostics,
     upstream: {

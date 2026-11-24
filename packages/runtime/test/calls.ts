@@ -521,6 +521,122 @@ for (const [phase, demand] of [
     const malCall = calls(malTurn.events).find((c) => c.phase === "narrate")!
     assert.match(malCall.fault?.message ?? "", /malformed narrative tool arguments/)
     assert.equal(malCall.usage.input, 120)
+
+    // 3d. The hat's wrap (#220): `auto` answered in plain text lands; `block()` wraps the same way; the outer shell is
+    // what is sent, the context is in the description, and the call reports the tool and the wrap
+    const wrapHats: Record<string, Hat> = {
+      wrap: {
+        id: "wrap",
+        name: "Wrap",
+        deliver: "tool",
+        toolChoice: "auto",
+        wrap: true,
+        tool: { name: "actual_content", description: "Context:\n{{context}}" },
+        narrate: { lead: [{ role: "system", text: "SHELL" }], tail: [{ role: "user", text: "Go, {{tool}}." }] },
+      },
+      "wrap-prefill": {
+        id: "wrap-prefill",
+        name: "Wrap Prefill",
+        deliver: "tool",
+        wrap: true,
+        narrate: { lead: [{ role: "user", text: "U" }], tail: [{ role: "assistant", text: "Once" }] },
+      },
+      "wrap-silent": { id: "wrap-silent", name: "Wrap Silent", deliver: "tool", wrap: true },
+    }
+    const seen: FakeCall[] = []
+    let wrapHat = "wrap"
+    const wrapModel = () =>
+      customNarrateModel({
+        prefill: true,
+        tools: true,
+        hat: wrapHat,
+        doStream: async (o) => {
+          seen.push(o)
+          return {
+            stream: streamFrom([
+              { type: "stream-start", warnings: [] },
+              { type: "text-start", id: "0" },
+              { type: "text-delta", id: "0", delta: "Plain prose under auto." },
+              { type: "text-end", id: "0" },
+              { type: "finish", finishReason: { unified: "stop", raw: "STOP" }, usage: v4Usage },
+            ]),
+          }
+        },
+        doGenerate: async (o) => {
+          seen.push(o)
+          return {
+            content: [
+              { type: "tool-call", toolCallId: "w1", toolName: "actual_content", input: '{"text":"Wrapped block."}' },
+            ],
+            finishReason: { unified: "tool-calls", raw: "STOP" },
+            usage: v4Usage,
+            warnings: [],
+          }
+        },
+      })
+    const wrapSession = makeSession({
+      card: { ...chat, products: toolCard.products },
+      rows: () => ({}),
+      hat: (id) => wrapHats[id],
+      model: (phase) => (phase === "narrate" ? wrapModel() : scripted()),
+    })
+    const wrapRoot = wrapSession.greet({ text: "Opening." }).node!
+    const wrapTurn = await collectEvents(wrapSession.act(wrapRoot.id, { text: "Look up." }))
+    assert.ok(Exit.isSuccess(wrapTurn.exit))
+    assert.equal(wrapSession.log.nodes.get(1)?.reply.find((p) => p.type === "text")?.text, "Plain prose under auto.")
+    const turnReq = seen.at(-1)!
+    assert.deepEqual(turnReq.toolChoice, { type: "auto" })
+    assert.deepEqual(
+      turnReq.prompt.map((m) => m.role),
+      ["system", "user"],
+    )
+    const turnTool = turnReq.tools?.find((t) => t.type === "function")
+    assert.ok(turnTool?.type === "function")
+    assert.equal(turnTool.name, "actual_content")
+    assert.ok(turnTool.description?.startsWith('Context:\n<message role="system">'))
+    assert.ok(turnTool.description?.includes('<message role="user">\nLook up.\n</message>'))
+    assert.ok(turnTool.description?.includes("by calling the actual_content tool"))
+    assert.ok(!JSON.stringify(turnReq.prompt).includes("cacheControl"))
+    const turnCall = calls(wrapTurn.events).find((c) => c.phase === "narrate")!
+    assert.ok(turnCall.wrap)
+    assert.equal(turnCall.tool?.description, turnTool.description)
+    assert.deepEqual(
+      turnCall.msgs.map((m) => m.content),
+      ["SHELL", "Go, actual_content."],
+    )
+    // block() under the wrapping hat: the same shell, its own demand inside the description
+    const wrapDemand = await collectEvents(wrapSession.demand(1, "inner"))
+    assert.ok(Exit.isSuccess(wrapDemand.exit))
+    assert.equal(wrapSession.log.nodes.get(1)?.products["inner"], "Wrapped block.")
+    const demandReq = seen.at(-1)!
+    const demandTool = demandReq.tools?.find((t) => t.type === "function")
+    assert.ok(demandTool?.type === "function" && demandTool.description?.includes("Write no prose"))
+    assert.deepEqual(
+      demandReq.prompt.map((m) => m.role),
+      ["system", "user"],
+    )
+    const demandCall = calls(wrapDemand.events).find((c) => c.phase === "narrate")!
+    assert.ok(demandCall.wrap)
+    assert.ok(demandCall.wrap?.sections.length)
+    // the outer shell ending on the assistant is refused before any request; so is a shell with no user message
+    // once `narrate.wrap` is emptied
+    const before = seen.length
+    wrapHat = "wrap-prefill"
+    const pre = await collectEvents(wrapSession.act(wrapRoot.id, { text: "Again." }))
+    assert.ok(Exit.isFailure(pre.exit))
+    assert.match(String(Cause.squash(pre.exit.cause)), /cannot end in an assistant prefill/)
+    const silent = makeSession({
+      card: chat,
+      rows: () => ({ harness: { id: "harness", name: "内置", asks: [{ id: "narrate.wrap", text: "" }] } }),
+      hat: (id) => wrapHats[id],
+      model: (phase) => (phase === "narrate" ? { ...wrapModel(), hat: "wrap-silent" } : scripted()),
+    })
+    const silentRoot = silent.greet({ text: "Opening." }).node!
+    const refused = await collectEvents(silent.act(silentRoot.id, { text: "Hm." }))
+    assert.ok(Exit.isFailure(refused.exit))
+    assert.match(String(Cause.squash(refused.exit.cause)), /or restore the narrate\.wrap ask/)
+    assert.ok(calls(refused.events).find((c) => c.phase === "narrate")?.wrap)
+    assert.equal(seen.length, before)
   }
 
   // 4. Structured `obj()` stage (`check`) with live `emit.observe` preserves `PROHIBITED_CONTENT` & `usage` on HTTP 200

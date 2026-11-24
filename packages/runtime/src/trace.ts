@@ -62,6 +62,7 @@ export type SpanKind =
   | "correction"
   | "block"
   | "tail"
+  | "wrap" // the `narrate.wrap` ask: the user message the harness adds under a hat's wrap (#220)
 
 export interface Span {
   start: number
@@ -89,6 +90,7 @@ export type MessageSubzone =
   | "blocks"
   | "tail"
   | "hat-tail"
+  | "wrap" // under a hat's wrap: the `narrate.wrap` user message, last, when the hat's lead and tail hold no user message
 
 export interface MessageTrace {
   index: number
@@ -123,6 +125,7 @@ export type OmittedReason =
   | "folded"
   | "outside_window"
   | "invalid"
+  | "not_wrapped" // under a hat's wrap: part of a message the text form cannot carry (hand-written hat reasoning)
 
 export type OmittedCategory =
   | "frame"
@@ -147,6 +150,39 @@ export interface OmittedItem {
   source: SourceRef
   by?: SourceRef
   preview?: string
+}
+
+/** The narrate delivery tool in force under `deliver: "tool"` (#221), each field as sent, with where its wording came
+ *  from: the hat's own `tool` override (`kind: "hat"`, `path: "tool.name" | "tool.description" | "tool.param"`), the
+ *  ask as the layers resolved it (`asks.narrate.deliver.tool` / `asks.narrate.deliver.param`, any layer), or the
+ *  harness's built-in default (`builtIn: true`; for the name, `narrative`). Under wrap `description` is the whole
+ *  description sent, the serialized context included; `sources.description` is its own wording's. */
+export interface DeliveryToolTrace {
+  name: string
+  description: string
+  param: string
+  sources: { name: SourceRef; description: SourceRef; param: SourceRef }
+}
+
+/** One wrapped message's section in the tool description: `<message role="…">` … `</message>`. Offsets are into
+ *  `DeliveryToolTrace.description`; `body` is the message's text inside the tags, the span offsets of
+ *  `WrapTrace.traces[trace]` are relative to `body.start` (text messages; a parts message is `wholeMessage`). */
+export interface WrapSection {
+  trace: number
+  start: number
+  end: number
+  body: { start: number; end: number }
+}
+
+/** Narrate under a hat's wrap (#220): every message but the hat's lead and tail, as it would have been sent, moved
+ *  into the delivery tool's description. `traces` are those messages' traces (zones, subzones, sources and spans as in
+ *  the unwrapped document; `index` counts within the wrapped messages; never a `breakpoint`). `context` is where the
+ *  serialized sections sit in the description, the rest being its own wording. The prefix cache is off under wrap: the
+ *  tool definition, first in every vendor's cache order, changes each turn, so no message carries a breakpoint. */
+export interface WrapTrace {
+  traces: readonly MessageTrace[]
+  sections: readonly WrapSection[]
+  context: { start: number; end: number }
 }
 
 export interface WireErrorInfo {

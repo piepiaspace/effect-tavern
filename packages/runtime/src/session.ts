@@ -95,8 +95,8 @@ import { projectNodeMedia } from "./media.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
 import { prepareHat, prepareNarrate, stripTraceRawText } from "./preview.ts"
-import { request, worldBlock, type Ask, type Told } from "./request.ts"
-import type { MessageTrace, WireErrorInfo } from "./trace.ts"
+import { requestDetailed, worldBlock, type Ask, type DetailedRequest, type Told } from "./request.ts"
+import type { MessageTrace, WireErrorInfo, WrapTrace } from "./trace.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
 import { cap, shapeSchema, withCatalogs, askedAt, productAsks, type Catalog, type Product } from "./product.ts"
 import { recordTransaction, worldValue, type RecordResult, type WorldState } from "./world.ts"
@@ -149,6 +149,11 @@ export type Event =
       trace?: readonly MessageTrace[]
       wireError?: WireErrorInfo
       deliver?: "tool" // narrate's prose asked through the narrative tool (the worn hat's `deliver`)
+      // under `deliver`: the delivery tool as sent (#221; absent on calls stored before it, which sent the defaults)
+      tool?: { name: string; description: string; param: string }
+      // under the hat's wrap (#220): `msgs` is the outer shell and `tool.description` holds the wrapped context;
+      // `wrap`, present exactly then, maps it (its traces' spans and sections, raw templates stripped as in `trace`)
+      wrap?: WrapTrace
     }
   | ({ kind: "change" } & Change) // the log moved: a node landed or was amended, nodes dropped, and where head is now
 /** A narrate block's text as it streams, beside the provider's `text-delta`: the block `<<aside>> <id>` opened. */
@@ -175,7 +180,7 @@ const failedCall = (
   model: string | undefined,
   t0: number,
   e: unknown,
-  meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage; deliver?: "tool" },
+  meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo; out?: unknown; usage?: Usage } & DeliveryMeta,
 ) => {
   const errMeta = e instanceof ModelError ? e : undefined
   return {
@@ -189,17 +194,52 @@ const failedCall = (
     ...(meta?.trace && { trace: meta.trace }),
     ...(meta?.wireError && { wireError: meta.wireError }),
     ...(meta?.deliver && { deliver: meta.deliver }),
+    ...(meta?.tool && { tool: meta.tool }),
+    ...(meta?.wrap && { wrap: meta.wrap }),
     fault: readFault(e),
   } satisfies Event
 }
 
-const narrativeDelivery = (hat?: Hat) =>
-  hat?.deliver === "tool" ? { deliver: "tool" as const, toolChoice: hat.toolChoice } : undefined
+/** What a narrate call under tool delivery reports beside its messages: the tool as sent, and the wrap when it wrapped. */
+type DeliveryMeta = Partial<Pick<Extract<Event, { kind: "call" }>, "deliver" | "tool" | "wrap">>
 
-const checkDeliver = (delivery: ReturnType<typeof narrativeDelivery>, M: Model, msgs: readonly Message[]) => {
+/** The call options a narrate request's hat asks for: the delivery tool as request.ts resolved it. */
+const narrativeDelivery = (hat: Hat | undefined, req: Pick<DetailedRequest, "tool">) =>
+  hat?.deliver === "tool"
+    ? {
+        deliver: "tool" as const,
+        toolChoice: hat.toolChoice,
+        ...(req.tool && {
+          deliverTool: { name: req.tool.name, description: req.tool.description, param: req.tool.param },
+        }),
+      }
+    : undefined
+const deliveryMeta = (
+  delivery: ReturnType<typeof narrativeDelivery>,
+  req: Pick<DetailedRequest, "wrap">,
+): DeliveryMeta | undefined =>
+  delivery && {
+    deliver: "tool",
+    ...(delivery.deliverTool && { tool: delivery.deliverTool }),
+    ...(req.wrap && {
+      wrap: {
+        traces: stripTraceRawText(req.wrap.traces),
+        sections: req.wrap.sections,
+        context: req.wrap.context,
+      },
+    }),
+  }
+
+const checkDeliver = (
+  delivery: ReturnType<typeof narrativeDelivery>,
+  M: Model,
+  msgs: readonly Message[],
+  wrapRefusal?: string,
+) => {
   if (!delivery) return undefined
   if (M.tools === false)
     return modelError(new Error("hat deliver: tool requires native tool calling on this connection"))
+  if (wrapRefusal) return modelError(new Error(wrapRefusal))
   if (msgs.at(-1)?.role === "assistant")
     return modelError(new Error("hat deliver: tool cannot end in an assistant prefill"))
   return undefined
@@ -432,12 +472,12 @@ export const makeSession = ({
 
   // ───────── The document each stage reads (src/request.ts) ─────────
   /** A stage's document: the frame at this state, the input and what a thought in it is, then the stage's own ask. */
-  const ask = (state: Paths, input: Input, a: Ask) => {
+  const asked = (state: Paths, input: Input, a: Ask) => {
     const M = modelFor(a.stage)
     const { frame, tail, names: N } = layer()
     const worn = M.hat === undefined ? undefined : hat?.(M.hat)
     const prepHat = worn ? prepareHat(worn, N) : undefined
-    return request(
+    return requestDetailed(
       {
         frame: headOf(frame, { state }),
         world: headOf(worldOf(card, frame), { state }),
@@ -445,6 +485,9 @@ export const makeSession = ({
         narrator: wording("narrate.role"),
         persona: wording("narrate.persona"),
         deliver: wording("narrate.deliver"),
+        deliverTool: wording("narrate.deliver.tool"),
+        deliverParam: wording("narrate.deliver.param"),
+        wrapAsk: wording("narrate.wrap"),
         contextLead: wording("narrate.context"),
         directions: wording("narrate.turn"),
         tail: headOf(tail, { state }),
@@ -459,6 +502,7 @@ export const makeSession = ({
       },
     )
   }
+  const ask = (state: Paths, input: Input, a: Ask) => asked(state, input, a).messages
   /** The fiction at this state, expanded: narrate's alone. */
   const fictionAt = (state: Paths) => headOf(fill(card.fiction, layer().names, "card"), { state })
 
@@ -653,7 +697,8 @@ export const makeSession = ({
     Effect.gen(function* () {
       const here = derived.at(path)
       const sum = here.summary()
-      const msgs = ask(
+      // the hat's wrap and delivery tool hold here as on the turn (#220): `asked` is the same narrate document
+      const req = asked(
         here.context(state),
         { text: "", note: wording("narrate.demand") },
         {
@@ -669,16 +714,17 @@ export const makeSession = ({
           blocks: { question: wording("narrate.blocks"), asks: [`${p.id}: ${p.text}`] },
         },
       )
+      const msgs = req.messages
       const M = modelFor("narrate", emit.observe("narrate"))
       const worn = M.hat === undefined ? undefined : hat?.(M.hat)
-      const delivery = narrativeDelivery(worn)
+      const delivery = narrativeDelivery(worn, req)
       yield* emit({ kind: "stage", phase: "narrate" })
       const t0 = Date.now()
       const model = nameOf(M.model)
-      const marked = delivery && { deliver: "tool" as const }
-      let callMeta: { out?: unknown; usage?: Usage; deliver?: "tool" } | undefined = marked
+      const marked = deliveryMeta(delivery, req)
+      let callMeta: ({ out?: unknown; usage?: Usage } & DeliveryMeta) | undefined = marked
       const demanded = yield* Effect.gen(function* () {
-        const invalid = checkDeliver(delivery, M, msgs)
+        const invalid = checkDeliver(delivery, M, msgs, req.wrapRefusal)
         if (invalid) return yield* Effect.fail(invalid)
         const r = yield* whole(M, msgs, {
           name: "narrate",
@@ -1033,6 +1079,7 @@ export const makeSession = ({
         msgs: Message[],
         live: ReturnType<typeof splitter>,
         delivery: ReturnType<typeof narrativeDelivery>,
+        req: Pick<DetailedRequest, "wrap" | "wrapRefusal">,
         meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
         priorParts: readonly { type: "text" | "reasoning"; text: string }[] = [],
         allowAsideOnlyForCheck = false,
@@ -1040,32 +1087,44 @@ export const makeSession = ({
         Effect.gen(function* () {
           yield* emit({ kind: "stage", phase: "narrate" })
           const t0 = Date.now()
-          const marked = delivery && { deliver: "tool" as const }
+          const marked = deliveryMeta(delivery, req)
           let callMeta:
-            | {
+            | ({
                 trace?: readonly MessageTrace[]
                 wireError?: WireErrorInfo
                 out?: unknown
                 usage?: Usage
-                deliver?: "tool"
-              }
+              } & DeliveryMeta)
             | undefined = { ...meta, ...marked }
-          return yield* writing(msgs, live, t0, delivery, meta, priorParts, allowAsideOnlyForCheck, (extra) => {
-            callMeta = { ...meta, ...marked, ...extra }
-          }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
+          return yield* writing(
+            msgs,
+            live,
+            t0,
+            delivery,
+            req,
+            marked,
+            meta,
+            priorParts,
+            allowAsideOnlyForCheck,
+            (extra) => {
+              callMeta = { ...meta, ...marked, ...extra }
+            },
+          ).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
         })
       const writing = (
         msgs: Message[],
         live: ReturnType<typeof splitter>,
         t0: number,
         delivery: ReturnType<typeof narrativeDelivery>,
+        req: Pick<DetailedRequest, "wrapRefusal">,
+        marked: DeliveryMeta | undefined,
         meta: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo } | undefined,
         priorParts: readonly { type: "text" | "reasoning"; text: string }[],
         allowAsideOnlyForCheck: boolean,
         onReply: (extra: { out?: unknown; usage?: Usage }) => void,
       ) =>
         Effect.gen(function* () {
-          const invalid = checkDeliver(delivery, M, msgs)
+          const invalid = checkDeliver(delivery, M, msgs, req.wrapRefusal)
           if (invalid) return yield* Effect.fail(invalid)
           const { parts, reply } = yield* streamed(M, msgs, {
             ...opts,
@@ -1129,14 +1188,13 @@ export const makeSession = ({
             ...(model && { model }),
             ...(meta?.trace && { trace: meta.trace }),
             ...(meta?.wireError && { wireError: meta.wireError }),
-            ...(delivery && { deliver: "tool" as const }),
+            ...marked,
           })
           return r
         })
       const narrate = (correction?: string) =>
         Effect.gen(function* () {
           const worn = M.hat === undefined ? undefined : hat?.(M.hat)
-          const delivery = narrativeDelivery(worn)
           const allowAsideOnlyForCheck = !correction && (guard.length > 0 || brief.must.length > 0)
           const prep = prepareNarrate({
             card,
@@ -1168,11 +1226,13 @@ export const makeSession = ({
             events: gateEvents,
             packNames: packNames(),
           })
+          const delivery = narrativeDelivery(worn, prep)
           const live = splitter() // one draft, one cut, across a resumed write
           const r = yield* write(
             prep.messages,
             live,
             delivery,
+            prep,
             {
               trace: stripTraceRawText(prep.traces),
               wireError: prep.wireError,
@@ -1185,6 +1245,7 @@ export const makeSession = ({
             [...prep.messages, { role: "assistant", content: r.text }],
             live,
             delivery,
+            prep,
             undefined,
             r.parts,
             allowAsideOnlyForCheck,

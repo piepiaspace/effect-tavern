@@ -1107,3 +1107,162 @@ console.log("preview: ok")
   assert.deepEqual(holed.omitted[0]?.missingHoles, ["missing"])
   assert.equal(holed.omitted[0]?.preview, 'Ask {{char}}.\n{"who":"{{missing}}"}\nok')
 }
+
+// The delivery tool (#221) and the hat's wrap (#220) through preview: `{{tool}}` in the hat's texts, the meta, the
+// wrapped messages, the refusal as a diagnostic, and parity with the session's real request under the same hat.
+{
+  const card: Card = {
+    id: "wrap-card",
+    title: "Wrap",
+    input: "act",
+    frame: [{ id: "setting", text: "Harbor at dusk." }],
+    fiction: [],
+    greetings: [{ text: "Evening." }],
+    lore: [],
+    guard: [],
+    rules: { fields: [], actions: [] },
+    names: { char: "Lin" },
+  }
+  // under text delivery `{{tool}}` fills from nothing: the entry does not go out (names.ts #170)
+  const textHat: Hat = { id: "th", name: "TH", narrate: { tail: [{ role: "user", text: "Use {{tool}}." }] } }
+  const tp = prepareHat(textHat, { tool: "a Names value" })
+  assert.equal(tp.hat.narrate?.tail?.[0]?.text, "Use a Names value.") // nothing of the harness's here: an ordinary name
+  const tq = prepareHat(textHat, {})
+  assert.deepEqual(tq.hat.narrate?.tail, [])
+  assert.deepEqual(tq.omitted[0]?.missingHoles, ["tool"])
+  // under tool delivery the harness fills it, over a Names key of the same spelling; descriptions expand names
+  const toolHat: Hat = {
+    id: "wh",
+    name: "Wrap Hat",
+    deliver: "tool",
+    toolChoice: "force",
+    tool: { name: "actual_content", description: "For {{char}}: {{context}}", param: "{{char}}'s whole reply." },
+    narrate: {
+      lead: [{ role: "system", text: "Shell for {{tool}}." }],
+      head: [{ role: "system", text: "HEAD {{tool}}" }],
+    },
+  }
+  const pp = prepareHat(toolHat, { char: "Lin", tool: "SHADOW" })
+  assert.equal(pp.hat.narrate?.lead?.[0]?.text, "Shell for actual_content.")
+  assert.equal(pp.hat.tool?.param, "Lin's whole reply.")
+  // outside wrap `{{context}}` is a hole nothing fills: the hat's description does not go out, and is listed
+  assert.equal(pp.hat.tool?.description, undefined)
+  assert.equal(pp.omitted[0]?.id, "tool.description")
+  assert.deepEqual(pp.omitted[0]?.missingHoles, ["context"])
+  const unwrapped = previewNarrate({
+    card,
+    rows: {},
+    hat: toolHat,
+    connection: { format: "anthropic", prefill: false, tools: true, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look." },
+  })
+  assert.equal(unwrapped.connection.wrap, undefined)
+  assert.equal(unwrapped.wrap, undefined)
+  assert.deepEqual(
+    [unwrapped.connection.tool?.name, unwrapped.connection.tool?.description, unwrapped.connection.tool?.param],
+    ["actual_content", "Deliver the complete scene narration.", "Lin's whole reply."],
+  )
+  assert.equal(unwrapped.connection.tool?.sources.param.kind, "hat")
+  assert.ok(unwrapped.omitted.some((o) => o.id === "tool.description" && o.reason === "unfilled_hole"))
+  assert.ok(
+    (unwrapped.messages[unwrapped.traces.find((t) => t.subzone === "lead")!.index].content as string).includes(
+      "by calling the actual_content tool",
+    ),
+    "narrate.deliver names the tool in force",
+  )
+  assert.ok(unwrapped.traces.some((t) => t.breakpoint)) // no wrap: the prefix cache as today
+
+  // wrap: the lead stays, the fallback user message ends the shell, the rest is in the description
+  const wrapHat: Hat = { ...toolHat, wrap: true }
+  const pv = previewNarrate({
+    card,
+    rows: {},
+    hat: wrapHat,
+    connection: { format: "anthropic", prefill: false, tools: true, reasoningBack: true, ttl: "1h" },
+    mode: "sandbox",
+    greetingIndex: 0,
+    input: { text: "Look." },
+  })
+  assert.equal(pv.connection.wrap, true)
+  assert.equal(pv.connection.toolChoice, "force")
+  assert.deepEqual(
+    pv.messages.map((m) => [m.role, m.content]),
+    [
+      ["system", "Shell for actual_content."],
+      ["user", "Read the actual_content tool's description, then call it with your reply."],
+    ],
+  )
+  assert.ok(pv.traces.every((t) => !t.breakpoint))
+  const d = pv.connection.tool!.description
+  assert.ok(d.startsWith('For Lin: <message role="system">\n'))
+  assert.ok(d.includes('<message role="system">\nHEAD actual_content\n</message>'))
+  assert.ok(d.includes('<message role="assistant">\nEvening.\n</message>'))
+  assert.ok(d.endsWith('<message role="user">\nLook.\n</message>'))
+  assert.equal(pv.connection.tool!.sources.description.path, "tool.description")
+  assert.deepEqual(
+    pv.wrap?.traces.map((t) => t.subzone),
+    ["lead", "frame", "hat-head", "history", "input"],
+  )
+  const wrapped = pv.wrap
+  for (const s of wrapped.sections) {
+    const tr = wrapped.traces[s.trace]
+    const m = wrapped.messages[tr.index]
+    if (typeof m.content === "string") assert.equal(d.slice(s.body.start, s.body.end), m.content)
+    for (const sp of tr.spans) assert.ok(sp.end <= s.body.end - s.body.start)
+  }
+  assert.ok(!pv.diagnostics.some((x) => x.level === "error"), JSON.stringify(pv.diagnostics))
+
+  // the fallback disabled: a diagnostic in plain words with both fixes
+  const refused = previewNarrate({
+    card,
+    rows: { harness: { id: "harness", name: "内置", asks: [{ id: "narrate.wrap", text: "" }] } },
+    hat: wrapHat,
+    connection: { format: "anthropic", prefill: false, tools: true, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Look." },
+  })
+  const diag = refused.diagnostics.find((x) => x.code === "wrap_needs_user")
+  assert.equal(diag?.level, "error")
+  assert.match(diag?.message ?? "", /user message in the hat's lead or tail, or restore the narrate\.wrap ask/)
+
+  // parity: the session sends exactly the preview's outer messages and its tool, and the scripted model answers
+  // through the tool under `force`; the call event records the tool and the wrap
+  let seen: FakeCall | undefined
+  const s = makeSession({
+    card,
+    rows: () => ({}),
+    hat: (id) => (id === wrapHat.id ? wrapHat : undefined),
+    model: (phase) => ({
+      ...fake((o) => {
+        if (phase !== "narrate") return { text: "{}" }
+        seen = o
+        const tool = o.tools?.find((t) => t.type === "function")
+        return { text: "", toolCalls: [{ name: tool!.name, input: { text: "Lanterns sway." } }] }
+      }),
+      format: "anthropic",
+      prefill: false,
+      tools: true,
+      reasoningBack: true,
+      ttl: "1h",
+      hat: wrapHat.id,
+    }),
+  })
+  const events: Event[] = []
+  await Effect.runPromise(Stream.runForEach(s.begin({ greeting: 0 }), (e) => Effect.sync(() => void events.push(e))))
+  await Effect.runPromise(Stream.runForEach(s.act(0, { text: "Look." }), (e) => Effect.sync(() => void events.push(e))))
+  assertSdkPrompt(seen!.prompt, pv.wiredMessages ?? pv.messages)
+  const sent = seen!.tools?.find((t) => t.type === "function")
+  assert.equal(sent?.name, "actual_content")
+  assert.equal(sent?.type === "function" && sent.description, d)
+  assert.deepEqual(seen!.toolChoice, { type: "tool", toolName: "actual_content" })
+  const call = events.find((e) => e.kind === "call" && e.phase === "narrate")
+  assert.ok(call?.kind === "call")
+  assert.equal(call.deliver, "tool")
+  assert.ok(call.wrap)
+  assert.deepEqual(call.tool, { name: "actual_content", description: d, param: "Lin's whole reply." })
+  assert.deepEqual(call.wrap?.sections, pv.wrap?.sections)
+  assert.ok(call.wrap?.traces.every((t) => t.spans.every((sp) => sp.source.rawText === undefined)))
+  assert.equal(s.log.nodes.get(1)?.reply.find((p) => p.type === "text")?.text, "Lanterns sway.")
+}
+console.log("preview wrap: ok")

@@ -2,7 +2,14 @@
 // Default view is a compact outline (message order, cache breakpoints, role rewrites, prefill conflict, clickable source spans);
 // full message prose expands on demand. Gracefully falls back to region-only view for legacy Inspector calls without `trace`.
 import type { Message } from "@effect-tavern/provider/src/call.ts"
-import type { MessageTrace, SourceKind, SourceRef, WireErrorInfo } from "@effect-tavern/runtime/src/trace.ts"
+import type {
+  DeliveryToolTrace,
+  MessageTrace,
+  SourceKind,
+  SourceRef,
+  WireErrorInfo,
+  WrapTrace,
+} from "@effect-tavern/runtime/src/trace.ts"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import {
   Card as CardIcon,
@@ -19,10 +26,13 @@ import {
   Warning,
   Write,
 } from "./icons.tsx"
+import { WrapMark } from "./controls.tsx"
 import { pattern, regions, textOf } from "./inspect.ts"
 import {
   breakpointChars,
   messageText,
+  toolParts,
+  wrappedTexts,
   sliceSpanText,
   snippetOf,
   spanRows,
@@ -235,6 +245,11 @@ export const SourceDetailCard = (props: {
 export interface RequestViewProps {
   messages: readonly Message[]
   traces?: readonly MessageTrace[]
+  /** Tool delivery (#221): the delivery tool as sent, its fields' sources when known (a recorded call has none). */
+  tool?: Pick<DeliveryToolTrace, "name" | "description" | "param"> & { sources?: DeliveryToolTrace["sources"] }
+  /** The hat's wrap (#220): the wrapped messages' traces and their sections in `tool.description`; `messages` and
+   *  `traces` are then the outer shell, after the tool in the order the model meets them. */
+  wrap?: Pick<WrapTrace, "traces" | "sections" | "context">
   wireError?: WireErrorInfo
   deliver?: "text" | "tool"
   q?: string
@@ -246,6 +261,9 @@ export interface RequestViewProps {
   resolveDestination?: (source: SourceRef) => SourceDestination
   onJump?: (source: SourceRef) => void
 }
+
+/** The expansion key of a wrapped message: below zero, apart from the outer messages' indices. */
+export const wrappedExpandKey = (index: number) => -(index + 1)
 
 export const RequestView = (props: RequestViewProps) => {
   const [localSelected, setLocalSelected] = createSignal<string | null>(null)
@@ -272,6 +290,232 @@ export const RequestView = (props: RequestViewProps) => {
   const bpMap = createMemo(() => breakpointChars(props.traces ?? [], props.messages), {
     equals: (a, b) => a.size === b.size && [...a].every(([index, chars]) => b.get(index) === chars),
   })
+
+  // the wrapped messages as the description carries them: each section's body, by its trace's index
+  const wrapped = createMemo(() => (props.wrap && props.tool ? wrappedTexts(props.tool.description, props.wrap) : []))
+  const wrappedText = createMemo(() => new Map(wrapped().map((w) => [w.trace.index, w.text])))
+  const tool = createMemo(() => props.tool && toolParts(props.tool, props.wrap))
+
+  /** One row of the tool: what it says, from where; opened, its source card (or its text alone, for a recorded call). */
+  const ToolRow = (p: { id: string; label: string; text: string; source?: SourceRef; mono?: boolean }) => {
+    const key = () => `tool:${p.id}`
+    const open = () => selectedKey() === key()
+    return (
+      <div class={{ "rv-span-wrap": true, open: open() }}>
+        <button
+          type="button"
+          class="rv-span-row"
+          aria-expanded={open() ? "true" : "false"}
+          onClick={() => toggleSelect(key())}
+        >
+          <Next class="rv-chev" aria-hidden="true" />
+          <Show when={p.source}>{(src) => <SourceKindGlyph kind={src().kind} />}</Show>
+          <span class="rv-span-label">{p.label}</span>
+          <span class={{ "rv-span-snip": true, mono: !!p.mono }}>{snippetOf(p.text)}</span>
+          <span class="rv-chars mono">{fmt(p.text.length)}c</span>
+        </button>
+        <Show when={open()}>
+          <Show
+            when={p.source}
+            fallback={
+              <div class="rv-detail">
+                <pre class="rv-excerpt scroller">{p.text}</pre>
+              </div>
+            }
+          >
+            {(src) => (
+              <SourceDetailCard
+                source={src()}
+                excerpt={p.text}
+                destination={props.resolveDestination?.(src())}
+                onJump={props.onJump}
+              />
+            )}
+          </Show>
+        </Show>
+      </div>
+    )
+  }
+
+  /** Messages as rows: the outer shell (`outer`: breakpoints and the wire's conflict), or the wrapped context. */
+  const TraceRows = (p: {
+    traces: readonly MessageTrace[]
+    textAt: (tr: MessageTrace) => string
+    prefix: "msg" | "wrap"
+    expandAt: (index: number) => number
+    outer?: boolean
+  }) => (
+    <For each={p.traces} keyed={(tr) => tr.index}>
+      {(tr) => {
+        const text = createMemo(() => p.textAt(tr()))
+        const spans = createMemo(() => spanRows(tr().spans))
+        const rewritten = () => tr().wiredRole !== undefined && tr().wiredRole !== tr().role
+        const effectiveRole = () => tr().wiredRole ?? tr().role
+        const conflict = () => !!p.outer && props.wireError?.messageIndex === tr().index
+        const expanded = () => isExpanded(p.expandAt(tr().index), text())
+        const wholeKey = () => `${p.prefix}:${tr().index}:whole`
+
+        return (
+          <>
+            <article class={{ "rv-msg": true, conflict: conflict() }} data-role={effectiveRole()} data-zone={tr().zone}>
+              <header class="rv-msg-head">
+                <span class="rv-idx mono">#{tr().index + 1}</span>
+                <span class="rv-zone mono">
+                  {tr().zone === tr().subzone ? tr().zone : `${tr().zone} · ${tr().subzone}`}
+                </span>
+                <Show
+                  when={rewritten()}
+                  fallback={
+                    <span class="rv-role" data-role={tr().role}>
+                      {tr().role}
+                    </span>
+                  }
+                >
+                  <span class="rv-role-rewrite" title={t("promptTree.roleRewritten")}>
+                    <span class="rv-role" data-role={tr().role}>
+                      {tr().role}
+                    </span>
+                    <span class="rv-arrow" aria-hidden="true">
+                      →
+                    </span>
+                    <span class="rv-role" data-role={tr().wiredRole}>
+                      {tr().wiredRole}
+                    </span>
+                  </span>
+                </Show>
+                <Show when={conflict()}>
+                  <span class="rv-badge bad">{t("promptTree.prefillConflict")}</span>
+                </Show>
+                <Show when={tr().partSummary?.reasoningCount}>
+                  {(n) => <span class="rv-badge">{t("promptTree.reasoningParts", { n: n() })}</span>}
+                </Show>
+                <Show when={tr().partSummary?.toolCallCount}>
+                  {(n) => <span class="rv-badge">{t("promptTree.toolCallParts", { n: n() })}</span>}
+                </Show>
+                <Show when={tr().partSummary?.toolResultCount}>
+                  {(n) => <span class="rv-badge">{t("promptTree.toolResultParts", { n: n() })}</span>}
+                </Show>
+                <span class="rv-spacer" />
+                <span class="rv-chars mono">{fmt(text().length || tr().chars)}c</span>
+                <button
+                  type="button"
+                  class="icon sm rv-expand-btn"
+                  aria-label={expanded() ? t("promptTree.collapseText") : t("promptTree.expandText")}
+                  aria-pressed={expanded() ? "true" : "false"}
+                  title={expanded() ? t("promptTree.collapseText") : t("promptTree.expandText")}
+                  onClick={() => toggleExpand(p.expandAt(tr().index))}
+                >
+                  <Show when={expanded()} fallback={<Expand aria-hidden="true" />}>
+                    <Fold aria-hidden="true" />
+                  </Show>
+                </button>
+              </header>
+
+              <Show
+                when={!expanded()}
+                fallback={
+                  <div class="rv-full-wrap">
+                    <div class="rv-full">
+                      <Marked text={text()} q={props.q ?? ""} />
+                    </div>
+                  </div>
+                }
+              >
+                <div class="rv-spans">
+                  <Show
+                    when={tr().spans.length > 0}
+                    fallback={
+                      <Show when={tr().source} fallback={<div class="rv-plain-snip">{snippetOf(text(), 180)}</div>}>
+                        {(src) => {
+                          const open = () => selectedKey() === wholeKey()
+                          return (
+                            <div class={{ "rv-span-wrap": true, open: open() }}>
+                              <button
+                                type="button"
+                                class="rv-span-row"
+                                aria-expanded={open() ? "true" : "false"}
+                                onClick={() => toggleSelect(wholeKey())}
+                              >
+                                <Next class="rv-chev" aria-hidden="true" />
+                                <SourceKindGlyph kind={src().kind} />
+                                <span class="rv-span-label">{sourceLabel(src())}</span>
+                                <span class="rv-span-snip">{snippetOf(text())}</span>
+                                <span class="rv-chars mono">{fmt(text().length || tr().chars)}c</span>
+                              </button>
+                              <Show when={open()}>
+                                <SourceDetailCard
+                                  source={src()}
+                                  excerpt={text()}
+                                  destination={props.resolveDestination?.(src())}
+                                  onJump={props.onJump}
+                                />
+                              </Show>
+                            </div>
+                          )
+                        }}
+                      </Show>
+                    }
+                  >
+                    <For each={spans()} keyed={(row) => row.key}>
+                      {(row) => {
+                        const sp = createMemo(() => row().item)
+                        const key = () => `${p.prefix}:${tr().index}:span:${row().key}`
+                        const open = () => selectedKey() === key()
+                        const sliced = createMemo(() => sliceSpanText(text(), sp()))
+                        const chars = () => Math.max(0, sp().end - sp().start)
+                        return (
+                          <div class={{ "rv-span-wrap": true, open: open() }}>
+                            <button
+                              type="button"
+                              class="rv-span-row"
+                              aria-expanded={open() ? "true" : "false"}
+                              onClick={() => toggleSelect(key())}
+                            >
+                              <Next class="rv-chev" aria-hidden="true" />
+                              <SourceKindGlyph kind={sp().source.kind} />
+                              <span class="rv-span-label">{sourceLabel(sp().source)}</span>
+                              <Show when={sp().source.whenText}>
+                                {(w) => (
+                                  <span class="rv-cond ok" title={w()}>
+                                    ✓ {w()}
+                                  </span>
+                                )}
+                              </Show>
+                              <span class="rv-span-snip">{snippetOf(sliced())}</span>
+                              <span class="rv-chars mono">{fmt(chars())}c</span>
+                            </button>
+                            <Show when={open()}>
+                              <SourceDetailCard
+                                source={sp().source}
+                                excerpt={sliced()}
+                                destination={props.resolveDestination?.(sp().source)}
+                                onJump={props.onJump}
+                              />
+                            </Show>
+                          </div>
+                        )
+                      }}
+                    </For>
+                  </Show>
+                </div>
+              </Show>
+            </article>
+
+            <Show when={p.outer && tr().breakpoint}>
+              {(bp) => (
+                <div class="rv-bp" title={t("inspector.breakpoint")}>
+                  <span>
+                    {bpLabel(bp().zone)} · {fmt(bpMap().get(tr().index) ?? 0)}c
+                    <Show when={bp().ttl}>{(ttl) => ` · ${t("promptTree.bpTtl", { ttl: ttl() })}`}</Show>
+                  </span>
+                </div>
+              )}
+            </Show>
+          </>
+        )
+      }}
+    </For>
+  )
 
   return (
     <div class={{ "rv-root": true, compact: !!props.compact }}>
@@ -300,6 +544,89 @@ export const RequestView = (props: RequestViewProps) => {
             </div>
           )
         }}
+      </Show>
+
+      {/* the delivery tool first, as every vendor's request puts it before the messages; under the wrap the story
+          context sits inside its description, between the description's own wording */}
+      <Show when={tool()}>
+        {(parts) => (
+          <section class={{ "rv-tool": true, wrapped: !!props.wrap }} aria-label={t("promptTree.toolZone")}>
+            <header class="rv-tool-head">
+              <span class="rv-tool-title">{t("promptTree.toolZone")}</span>
+              <span class="rv-tool-name mono">{parts().name}</span>
+              <Show when={props.wrap}>
+                <WrapMark />
+              </Show>
+              <span class="rv-spacer" />
+              <span class="rv-chars mono">{fmt(parts().description.length)}c</span>
+            </header>
+            <div class="rv-spans">
+              <ToolRow
+                id="name"
+                label={t("promptTree.toolName")}
+                text={parts().name}
+                source={props.tool?.sources?.name}
+                mono
+              />
+              <Show
+                when={props.wrap}
+                fallback={
+                  <ToolRow
+                    id="description"
+                    label={t("promptTree.toolDescription")}
+                    text={parts().description}
+                    source={props.tool?.sources?.description}
+                  />
+                }
+              >
+                <Show when={parts().before}>
+                  <ToolRow
+                    id="before"
+                    label={t("promptTree.toolDescription")}
+                    text={parts().before}
+                    source={props.tool?.sources?.description}
+                  />
+                </Show>
+                <div class="rv-wrapped" role="group" aria-label={t("promptTree.wrappedContext")}>
+                  <div class="rv-wrapped-head">
+                    <span>{t("promptTree.wrappedContext")}</span>
+                    <span class="rv-spacer" />
+                    <span class="rv-chars mono">{fmt(parts().context.length)}c</span>
+                  </div>
+                  <div class="rv-list">
+                    <TraceRows
+                      traces={wrapped().map((w) => w.trace)}
+                      textAt={(tr) => wrappedText().get(tr.index) ?? ""}
+                      prefix="wrap"
+                      expandAt={wrappedExpandKey}
+                    />
+                  </div>
+                </div>
+                <Show when={parts().after}>
+                  <ToolRow
+                    id="after"
+                    label={t("promptTree.toolDescription")}
+                    text={parts().after}
+                    source={props.tool?.sources?.description}
+                  />
+                </Show>
+              </Show>
+              <ToolRow
+                id="param"
+                label={t("promptTree.toolParam")}
+                text={parts().param}
+                source={props.tool?.sources?.param}
+              />
+            </div>
+          </section>
+        )}
+      </Show>
+      {/* where a breakpoint would be marked: under the wrap there is none, the prefix cache is off */}
+      <Show when={props.wrap}>
+        <div class="rv-bp off" title={t("promptTree.cacheOffWhy")}>
+          <span>{t("promptTree.cacheOff")}</span>
+        </div>
+        <div class="rv-zone-title">{t("promptTree.outerMessages")}</div>
       </Show>
 
       <Show
@@ -332,184 +659,13 @@ export const RequestView = (props: RequestViewProps) => {
         }
       >
         <div class="rv-list">
-          <For each={props.traces} keyed={(tr) => tr.index}>
-            {(tr) => {
-              const msg = createMemo(() => props.messages[tr().index])
-              const text = createMemo(() => messageText(msg()))
-              const spans = createMemo(() => spanRows(tr().spans))
-              const rewritten = () => tr().wiredRole !== undefined && tr().wiredRole !== tr().role
-              const effectiveRole = () => tr().wiredRole ?? tr().role
-              const conflict = () => props.wireError?.messageIndex === tr().index
-              const expanded = () => isExpanded(tr().index, text())
-              const wholeKey = () => `msg:${tr().index}:whole`
-
-              return (
-                <>
-                  <article
-                    class={{ "rv-msg": true, conflict: conflict() }}
-                    data-role={effectiveRole()}
-                    data-zone={tr().zone}
-                  >
-                    <header class="rv-msg-head">
-                      <span class="rv-idx mono">#{tr().index + 1}</span>
-                      <span class="rv-zone mono">
-                        {tr().zone === tr().subzone ? tr().zone : `${tr().zone} · ${tr().subzone}`}
-                      </span>
-                      <Show
-                        when={rewritten()}
-                        fallback={
-                          <span class="rv-role" data-role={tr().role}>
-                            {tr().role}
-                          </span>
-                        }
-                      >
-                        <span class="rv-role-rewrite" title={t("promptTree.roleRewritten")}>
-                          <span class="rv-role" data-role={tr().role}>
-                            {tr().role}
-                          </span>
-                          <span class="rv-arrow" aria-hidden="true">
-                            →
-                          </span>
-                          <span class="rv-role" data-role={tr().wiredRole}>
-                            {tr().wiredRole}
-                          </span>
-                        </span>
-                      </Show>
-                      <Show when={conflict()}>
-                        <span class="rv-badge bad">{t("promptTree.prefillConflict")}</span>
-                      </Show>
-                      <Show when={tr().partSummary?.reasoningCount}>
-                        {(n) => <span class="rv-badge">{t("promptTree.reasoningParts", { n: n() })}</span>}
-                      </Show>
-                      <Show when={tr().partSummary?.toolCallCount}>
-                        {(n) => <span class="rv-badge">{t("promptTree.toolCallParts", { n: n() })}</span>}
-                      </Show>
-                      <Show when={tr().partSummary?.toolResultCount}>
-                        {(n) => <span class="rv-badge">{t("promptTree.toolResultParts", { n: n() })}</span>}
-                      </Show>
-                      <span class="rv-spacer" />
-                      <span class="rv-chars mono">{fmt(text().length || tr().chars)}c</span>
-                      <button
-                        type="button"
-                        class="icon sm rv-expand-btn"
-                        aria-label={expanded() ? t("promptTree.collapseText") : t("promptTree.expandText")}
-                        aria-pressed={expanded() ? "true" : "false"}
-                        title={expanded() ? t("promptTree.collapseText") : t("promptTree.expandText")}
-                        onClick={() => toggleExpand(tr().index)}
-                      >
-                        <Show when={expanded()} fallback={<Expand aria-hidden="true" />}>
-                          <Fold aria-hidden="true" />
-                        </Show>
-                      </button>
-                    </header>
-
-                    <Show
-                      when={!expanded()}
-                      fallback={
-                        <div class="rv-full-wrap">
-                          <div class="rv-full">
-                            <Marked text={text()} q={props.q ?? ""} />
-                          </div>
-                        </div>
-                      }
-                    >
-                      <div class="rv-spans">
-                        <Show
-                          when={tr().spans.length > 0}
-                          fallback={
-                            <Show
-                              when={tr().source}
-                              fallback={<div class="rv-plain-snip">{snippetOf(text(), 180)}</div>}
-                            >
-                              {(src) => {
-                                const open = () => selectedKey() === wholeKey()
-                                return (
-                                  <div class={{ "rv-span-wrap": true, open: open() }}>
-                                    <button
-                                      type="button"
-                                      class="rv-span-row"
-                                      aria-expanded={open() ? "true" : "false"}
-                                      onClick={() => toggleSelect(wholeKey())}
-                                    >
-                                      <Next class="rv-chev" aria-hidden="true" />
-                                      <SourceKindGlyph kind={src().kind} />
-                                      <span class="rv-span-label">{sourceLabel(src())}</span>
-                                      <span class="rv-span-snip">{snippetOf(text())}</span>
-                                      <span class="rv-chars mono">{fmt(text().length || tr().chars)}c</span>
-                                    </button>
-                                    <Show when={open()}>
-                                      <SourceDetailCard
-                                        source={src()}
-                                        excerpt={text()}
-                                        destination={props.resolveDestination?.(src())}
-                                        onJump={props.onJump}
-                                      />
-                                    </Show>
-                                  </div>
-                                )
-                              }}
-                            </Show>
-                          }
-                        >
-                          <For each={spans()} keyed={(row) => row.key}>
-                            {(row) => {
-                              const sp = createMemo(() => row().item)
-                              const key = () => `msg:${tr().index}:span:${row().key}`
-                              const open = () => selectedKey() === key()
-                              const sliced = createMemo(() => sliceSpanText(text(), sp()))
-                              const chars = () => Math.max(0, sp().end - sp().start)
-                              return (
-                                <div class={{ "rv-span-wrap": true, open: open() }}>
-                                  <button
-                                    type="button"
-                                    class="rv-span-row"
-                                    aria-expanded={open() ? "true" : "false"}
-                                    onClick={() => toggleSelect(key())}
-                                  >
-                                    <Next class="rv-chev" aria-hidden="true" />
-                                    <SourceKindGlyph kind={sp().source.kind} />
-                                    <span class="rv-span-label">{sourceLabel(sp().source)}</span>
-                                    <Show when={sp().source.whenText}>
-                                      {(w) => (
-                                        <span class="rv-cond ok" title={w()}>
-                                          ✓ {w()}
-                                        </span>
-                                      )}
-                                    </Show>
-                                    <span class="rv-span-snip">{snippetOf(sliced())}</span>
-                                    <span class="rv-chars mono">{fmt(chars())}c</span>
-                                  </button>
-                                  <Show when={open()}>
-                                    <SourceDetailCard
-                                      source={sp().source}
-                                      excerpt={sliced()}
-                                      destination={props.resolveDestination?.(sp().source)}
-                                      onJump={props.onJump}
-                                    />
-                                  </Show>
-                                </div>
-                              )
-                            }}
-                          </For>
-                        </Show>
-                      </div>
-                    </Show>
-                  </article>
-
-                  <Show when={tr().breakpoint}>
-                    {(bp) => (
-                      <div class="rv-bp" title={t("inspector.breakpoint")}>
-                        <span>
-                          {bpLabel(bp().zone)} · {fmt(bpMap().get(tr().index) ?? 0)}c
-                          <Show when={bp().ttl}>{(ttl) => ` · ${t("promptTree.bpTtl", { ttl: ttl() })}`}</Show>
-                        </span>
-                      </div>
-                    )}
-                  </Show>
-                </>
-              )
-            }}
-          </For>
+          <TraceRows
+            traces={props.traces!}
+            textAt={(tr) => messageText(props.messages[tr.index])}
+            prefix="msg"
+            expandAt={(i) => i}
+            outer
+          />
         </div>
       </Show>
     </div>

@@ -662,4 +662,246 @@ assert.deepEqual(read("record").asked, ["notes", "options"])
 assert.deepEqual(read("record").questions, [{ id: "warmth", options: ["cold", "flat"] }])
 assert.deepEqual(read("polish").targets, [["hit-1", "指节发白。"]])
 
+// ───────── The delivery tool (#221) and the hat's wrap (#220) ─────────
+{
+  const bareAsk: Ask = {
+    stage: "narrate",
+    fiction: [],
+    history: [],
+    summarized: false,
+    told: [],
+    outcome: [],
+    must: [],
+    may: [],
+  }
+  const c0: Common = {
+    frame: [],
+    world: [],
+    role: "",
+    narrator: "N.",
+    directions: "",
+    input: { text: "hi" },
+    thought: "",
+    deliver: "Use {{tool}}.",
+    deliverTool: "Story follows. {{context}} End.",
+    deliverParam: "All of it, {{tool}}.",
+    wrapAsk: "Read {{tool}}.",
+  }
+  function toolHat(extra: Partial<Hat> = {}): Hat {
+    return { id: "w", name: "W", deliver: "tool", ...extra }
+  }
+
+  // effective values: the hat's field over the ask, the ask over the default; `{{tool}}` filled in each
+  {
+    const asked = requestDetailed(c0, bareAsk, { hat: toolHat({ tool: { name: "actual_content" } }) })
+    assert.equal(text(asked.messages[0]), "N. Use actual_content.")
+    assert.equal(asked.tool?.name, "actual_content")
+    assert.equal(asked.tool?.param, "All of it, actual_content.")
+    assert.equal(asked.tool?.sources.name.path, "tool.name")
+    assert.equal(asked.tool?.sources.name.kind, "hat")
+    assert.equal(asked.tool?.sources.param.path, "asks.narrate.deliver.param")
+    // outside wrap `{{context}}` in a player's description is an unfilled hole: the default stands, the ask is listed
+    assert.equal(asked.tool?.description, "Deliver the complete scene narration.")
+    assert.equal(asked.tool?.sources.description.builtIn, true)
+    assert.deepEqual(
+      asked.omitted.map((o) => [o.id, o.reason, o.missingHoles]),
+      [["narrate.deliver.tool", "unfilled_hole", ["context"]]],
+    )
+    // a card's own ask keeps the literal hole and goes out (names.ts #170)
+    const cardAsk = requestDetailed(
+      { ...c0, askSources: { "narrate.deliver.tool": { kind: "card", path: "asks.narrate.deliver.tool" } } },
+      bareAsk,
+      { hat: toolHat() },
+    )
+    assert.equal(cardAsk.tool?.description, "Story follows. {{context}} End.")
+    // the hat's own wording over the ask, `{{tool}}` filled; the default name
+    const own = requestDetailed(c0, bareAsk, {
+      hat: toolHat({ tool: { description: "Call {{tool}}.", param: "  " } }),
+    })
+    assert.deepEqual(
+      [own.tool?.name, own.tool?.description, own.tool?.param, own.tool?.sources.description.path],
+      ["narrative", "Call narrative.", "All of it, narrative.", "tool.description"],
+    )
+    assert.equal(own.tool?.sources.name.builtIn, true)
+    // no ask at all (a document built without them): the provider's defaults
+    const plain = requestDetailed({ ...c0, deliverTool: undefined, deliverParam: undefined }, bareAsk, {
+      hat: toolHat(),
+    })
+    assert.deepEqual(
+      [plain.tool?.description, plain.tool?.param],
+      ["Deliver the complete scene narration.", "The full reply, nothing omitted."],
+    )
+    // text delivery: no tool, no wrap, whatever the hat says about them
+    const text0 = requestDetailed(c0, bareAsk, { hat: { id: "t", name: "T", wrap: true, tool: { name: "x" } } })
+    assert.equal(text0.tool, undefined)
+    assert.equal(text0.wrap, undefined)
+    assert.equal(text(text0.messages[0]), "N.")
+  }
+
+  // the context stands once: a second `{{context}}` is taken out, never sent as a literal
+  {
+    const twice = requestDetailed({ ...c0, deliverTool: "A {{context}} B {{ context }} C" }, bareAsk, {
+      hat: toolHat({ wrap: true }),
+    })
+    const d = twice.tool!.description
+    assert.ok(d.startsWith('A <message role="system">'))
+    assert.ok(d.endsWith("</message> B  C"))
+    assert.ok(!d.includes("{{"))
+    assert.equal(d.split("<message ").length - 1, twice.wrap?.sections.length)
+  }
+
+  // wrap with only a lead: the lead stays, the fallback user message ends the shell, everything else is in the
+  // description at its `{{context}}` hole, one role-marked section a message
+  {
+    const hatW = toolHat({
+      wrap: true,
+      toolChoice: "force",
+      tool: { name: "actual_content" },
+      narrate: { lead: [{ role: "system", text: "SHELL" }] },
+    })
+    const r = requestDetailed(c0, bareAsk, { hat: hatW, ttl: "1h" })
+    assert.deepEqual(
+      r.messages.map((m) => [m.role, text(m)]),
+      [
+        ["system", "SHELL"],
+        ["user", "Read actual_content."],
+      ],
+    )
+    assert.equal(
+      r.tool?.description,
+      'Story follows. <message role="system">\nN. Use actual_content.\n</message>\n\n<message role="user">\nhi\n</message> End.',
+    )
+    assert.deepEqual(
+      r.traces.map((t) => [t.index, t.subzone, t.role]),
+      [
+        [0, "hat-lead", "system"],
+        [1, "wrap", "user"],
+      ],
+    )
+    assert.equal(r.traces[1].spans[0].source.path, "asks.narrate.wrap")
+    assert.equal(r.traces[1].spans[0].kind, "wrap")
+    assert.deepEqual(
+      r.wrap?.traces.map((t) => [t.index, t.zone, t.subzone]),
+      [
+        [0, "head", "lead"],
+        [1, "input", "input"],
+      ],
+    )
+    // sections point into the description; spans stay relative to each body
+    const d = r.tool.description
+    for (const s of r.wrap.sections) {
+      const body = d.slice(s.body.start, s.body.end)
+      assert.equal(body, text(r.wrap.messages[r.wrap.traces[s.trace].index]))
+      for (const sp of r.wrap.traces[s.trace].spans) assert.ok(sp.end <= body.length)
+    }
+    assert.equal(d.slice(r.wrap.context.start, r.wrap.context.end).startsWith('<message role="system">'), true)
+    assert.ok(d.slice(r.wrap.context.end).startsWith(" End."))
+    // the prefix cache is off: no breakpoint on any message or trace
+    assert.deepEqual(marks(r.messages), [])
+    assert.ok([...r.traces, ...r.wrap.traces].every((t) => t.breakpoint === undefined))
+    assert.equal(r.wrapRefusal, undefined)
+    // no hole: the context after the description's own wording and a blank line
+    const appended = requestDetailed({ ...c0, deliverTool: "Desc." }, bareAsk, { hat: hatW })
+    assert.ok(appended.tool!.description.startsWith('Desc.\n\n<message role="system">\nN. Use actual_content.'))
+    assert.equal(appended.wrap!.context.start, "Desc.\n\n".length)
+    // the fallback disabled: the call cannot go, and says why in plain words
+    const refused = requestDetailed({ ...c0, wrapAsk: "" }, bareAsk, { hat: hatW })
+    assert.deepEqual(refused.messages.map(text), ["SHELL"])
+    assert.match(
+      refused.wrapRefusal ?? "",
+      /write a user message in the hat's lead or tail, or restore the narrate\.wrap/i,
+    )
+  }
+
+  // lead and tail: both stay, in order, and no fallback (a user message is there); neither: the fallback alone
+  {
+    const hatLT = toolHat({
+      wrap: true,
+      narrate: {
+        lead: [
+          { role: "system", text: "SYS" },
+          { role: "user", text: "U1" },
+        ],
+        head: [{ role: "system", text: "HEAD-SYS" }],
+        turn: [{ role: "system", text: "TURN-SYS" }],
+        tail: [
+          { role: "assistant", text: "A1" },
+          { role: "user", text: "U2" },
+        ],
+      },
+    })
+    const full = {
+      ...c(drawn),
+      deliver: "Use {{tool}}.",
+      wrapAsk: "Read {{tool}}.",
+      tail: [{ role: "system" as const, text: "PLAYER-TAIL" }],
+    }
+    const r = requestDetailed(full, asks.narrate, { hat: hatLT, ttl: "1h", reasoningBack: true })
+    assert.deepEqual(r.messages.map(text), ["SYS", "U1", "A1", "U2"])
+    assert.deepEqual(marks(r.messages), [])
+    // the wrapped zone is the unwrapped document minus the hat's lead and tail, in order, text as sent
+    const unwrapped = requestDetailed(full, asks.narrate, { hat: { ...hatLT, wrap: undefined }, reasoningBack: true })
+    const inner = unwrapped.traces.filter((t) => t.subzone !== "hat-lead" && t.subzone !== "hat-tail")
+    assert.deepEqual(
+      r.wrap!.messages.map(text),
+      inner.map((t) => text(unwrapped.messages[t.index])),
+    )
+    assert.ok(r.wrap!.traces.map((t) => t.subzone).join() === inner.map((t) => t.subzone).join())
+    // a past reply's reasoning never goes into the wrap, whatever reasoningBack says, and nothing is listed for it
+    assert.ok(!r.tool!.description.includes(">\nR\n"))
+    assert.ok(r.tool!.description.includes('<message role="assistant">\nPROSE#1\n</message>'))
+    assert.ok(!r.omitted.some((o) => o.reason === "not_wrapped"))
+    assert.equal(
+      r.tool!.description,
+      `Deliver the complete scene narration.\n\n${r
+        .wrap!.messages.map((m) => {
+          const body =
+            typeof m.content === "string" ? m.content : m.content.map((p) => (p.type === "text" ? p.text : "")).join("")
+          return `<message role="${m.role}">\n${body}\n</message>`
+        })
+        .join("\n\n")}`,
+    )
+    const neither = requestDetailed(c0, bareAsk, { hat: toolHat({ wrap: true }) })
+    assert.deepEqual(
+      neither.messages.map((m) => [m.role, text(m)]),
+      [["user", "Read narrative."]],
+    )
+  }
+
+  // a handshake inside a wrapped slot is its call and its result; a hat's hand-written reasoning is listed, not lost
+  {
+    const hatH = toolHat({
+      wrap: true,
+      narrate: {
+        head: [{ role: "tool", toolName: "boot", toolInput: '{"v":2}', text: "BOOT-OK", reasoning: "Booting" }],
+        turn: [
+          { role: "assistant", text: "TURN-ACK", reasoning: "Ready" },
+          { role: "assistant", text: "", reasoning: "ONLY-THOUGHT" },
+        ],
+        tail: [{ role: "user", text: "GO" }],
+      },
+    })
+    const r = requestDetailed(c0, bareAsk, { hat: hatH })
+    const d = r.tool!.description
+    assert.ok(d.includes('<message role="assistant" tool_call="boot">\n{"v":2}\n</message>'))
+    assert.ok(d.includes('<message role="tool" tool_result="boot">\nBOOT-OK\n</message>'))
+    assert.ok(d.includes('<message role="assistant">\nTURN-ACK\n</message>'))
+    assert.ok(!/Booting|Ready|ONLY-THOUGHT/.test(d))
+    assert.deepEqual(
+      r.omitted.filter((o) => o.reason === "not_wrapped").map((o) => o.id),
+      ["narrate.head[0]", "narrate.turn[0]", "narrate.turn[1]"],
+    )
+    assert.match(r.omitted.find((o) => o.id === "narrate.turn[1]")!.detail!, /not wrapped/)
+    assert.deepEqual(r.messages.map(text), ["GO"])
+    // a wrapped request with a tail ending on the assistant still ends there (session.ts refuses it as a prefill)
+    const pre = requestDetailed(c0, bareAsk, {
+      hat: toolHat({
+        wrap: true,
+        narrate: { lead: [{ role: "user", text: "U" }], tail: [{ role: "assistant", text: "A" }] },
+      }),
+    })
+    assert.equal(pre.messages.at(-1)?.role, "assistant")
+  }
+}
+
 console.log("request ok")

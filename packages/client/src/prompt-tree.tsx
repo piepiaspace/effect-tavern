@@ -2,14 +2,14 @@
 // Outline-first, calm 2-column layout: left shows ordered narrate messages, cache breakpoints, role rewrites,
 // prefill conflicts, and clickable source attribution (with collapsed omitted & resources sections);
 // right holds restrained sandbox controls (opening, fields including hidden, player input) or story branch node picker.
-import type { PreviewDiagnostic, PreviewNarrateResult, ResourceEntryView } from "@effect-tavern/runtime/src/preview.ts"
+import type { PreviewNarrateResult, ResourceEntryView } from "@effect-tavern/runtime/src/preview.ts"
 import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection.ts"
 import type { OmittedReason, SourceRef } from "@effect-tavern/runtime/src/trace.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
-import { hatEntryActive } from "@effect-tavern/runtime/src/fragment.ts"
+import { hatEntryActive, hatWraps } from "@effect-tavern/runtime/src/fragment.ts"
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { Menu, Stepper, Switch, Tick } from "./controls.tsx"
+import { Menu, Stepper, Switch, Tick, WrapMark } from "./controls.tsx"
 import { Family } from "./family.tsx"
 import { Back, EyeOff, Fold, Next, Plugs, Swipe, Warning } from "./icons.tsx"
 import { t } from "./i18n.ts"
@@ -17,6 +17,7 @@ import { close, openPreviewEditor, openStoryPage } from "./pages.ts"
 import {
   buildPreviewRequest,
   defaultMemory,
+  diagnosticText,
   getPromptTreeMemory,
   omittedRows,
   reusePreviewOutline,
@@ -26,7 +27,7 @@ import {
   sourceLabel,
   type PromptTreeMemory,
 } from "./prompt-tree-state.ts"
-import { RequestView, SourceDetailCard } from "./request-view.tsx"
+import { RequestView, SourceDetailCard, wrappedExpandKey } from "./request-view.tsx"
 import { openSettings } from "./settings-navigation.ts"
 import {
   activeOf,
@@ -66,6 +67,8 @@ const omittedReasonLabel = (r: OmittedReason): string => {
       return t("promptTree.reasonOutsideWindow")
     case "invalid":
       return t("promptTree.reasonInvalid")
+    case "not_wrapped":
+      return t("promptTree.reasonNotWrapped")
   }
 }
 
@@ -79,21 +82,6 @@ const residencyLabel = (s: ResourceEntryView["residencyStatus"]): string => {
       return t("promptTree.resPermanent")
     case "delivered_this_turn":
       return t("promptTree.resThisTurn")
-  }
-}
-
-const diagnosticText = (d: PreviewDiagnostic, deliverTool: boolean): string => {
-  switch (d.code) {
-    case "deliver_needs_tools":
-      return t("promptTree.diagDeliverNeedsTools")
-    case "hat_needs_tools":
-      return t("promptTree.diagHatNeedsTools")
-    case "reasoning_unsigned":
-      return t("promptTree.diagReasoningUnsigned")
-    case "prefill_disallowed":
-      return deliverTool ? t("promptTree.diagDeliverNoPrefill") : t("promptTree.diagPrefillDisallowed")
-    default:
-      return d.message
   }
 }
 
@@ -411,15 +399,24 @@ export const PromptTreePage = () => {
     update({ expandedMessages: cur.includes(idx) ? cur.filter((x) => x !== idx) : [...cur, idx] })
   }
 
+  /** Every message's expansion key: the outer ones by index, the wrapped ones apart (request-view.tsx). */
+  const expandKeys = () => {
+    const r = result()
+    return [
+      ...(r?.traces ?? []).map((tr) => tr.index),
+      ...(r?.wrap?.traces ?? []).map((tr) => wrappedExpandKey(tr.index)),
+    ]
+  }
   const allExpanded = () => {
-    const traces = result()?.traces ?? []
-    return traces.length > 0 && traces.every((tr) => expandedMessages().includes(tr.index))
+    const keys = expandKeys()
+    return keys.length > 0 && keys.every((k) => expandedMessages().includes(k))
   }
 
   const toggleExpandAll = () => {
-    const traces = result()?.traces ?? []
-    update({ expandedMessages: allExpanded() ? [] : traces.map((tr) => tr.index) })
+    update({ expandedMessages: allExpanded() ? [] : expandKeys() })
   }
+  /** The hat worn wraps (#220): the server's word, else the unsaved candidate's own fields. */
+  const wraps = () => !!(shown()?.connection.wrap ?? hatWraps(mem().candidateHat))
 
   const displayedMessages = () => {
     const r = result()
@@ -585,7 +582,14 @@ export const PromptTreePage = () => {
                 <div class="pt-meta-strip">
                   <span class="pt-meta-item mono">{t("promptTree.messageCount", { n: r().traces.length })}</span>
                   <Show when={r().connection.hatName}>
-                    {(hn) => <span class="pt-meta-item">{t("promptTree.hatActive", { name: hn() })}</span>}
+                    {(hn) => (
+                      <span class="pt-meta-item pt-hat">
+                        {t("promptTree.hatActive", { name: hn() })}
+                        <Show when={wraps()}>
+                          <WrapMark />
+                        </Show>
+                      </span>
+                    )}
                   </Show>
                   <Show when={reviewHeld(r().connection.hatId)}>
                     <span class="pt-meta-item muted pt-absent" title={t("promptTree.reviewNotPreviewed")}>
@@ -613,7 +617,7 @@ export const PromptTreePage = () => {
                     {t("promptTree.updating")}
                   </span>
                   <span class="rv-spacer" />
-                  <Show when={r().traces.length > 0}>
+                  <Show when={expandKeys().length > 0}>
                     <button
                       type="button"
                       class="icon sm"
@@ -654,6 +658,8 @@ export const PromptTreePage = () => {
                 <RequestView
                   messages={displayedMessages()}
                   traces={r().traces}
+                  tool={r().connection.tool}
+                  wrap={r().wrap}
                   wireError={r().wireError}
                   deliver={r().connection.deliver ?? mem().candidateHat?.deliver}
                   selectedKey={selectedKey()}

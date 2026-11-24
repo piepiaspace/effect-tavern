@@ -891,7 +891,19 @@
       },
       {
         "id": "narrate.deliver",
-        "text": "Deliver your entire reply—prose and any requested <<aside>> blocks—by calling the narrative tool with the complete text in its text argument; write nothing outside the call."
+        "text": "Deliver your entire reply—prose and any requested <<aside>> blocks—by calling the {{tool}} tool with the complete text in its text argument; write nothing outside the call."
+      },
+      {
+        "id": "narrate.deliver.tool",
+        "text": "Deliver the complete scene narration."
+      },
+      {
+        "id": "narrate.deliver.param",
+        "text": "The full reply, nothing omitted."
+      },
+      {
+        "id": "narrate.wrap",
+        "text": "Read the {{tool}} tool's description, then call it with your reply."
       },
       {
         "id": "narrate.context",

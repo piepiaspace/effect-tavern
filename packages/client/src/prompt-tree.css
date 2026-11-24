@@ -389,6 +389,74 @@
   background: var(--line);
 }
 
+/* the delivery tool (#221), first, as the model meets it; under the wrap (#220) the story context's messages sit inside
+   it, between the description's own wording, drawn as the outer messages are */
+.rv-tool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-card);
+  background: var(--surface-0);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
+}
+.rv-root.compact .rv-tool {
+  background: var(--surface-1);
+}
+.rv-tool-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.rv-tool-title,
+.rv-zone-title,
+.rv-wrapped-head {
+  color: var(--ink-2);
+  font-size: var(--text-caption);
+  font-weight: 600;
+}
+.rv-tool-name {
+  padding: var(--space-half) var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--alpha-2);
+  color: var(--ink);
+  font-size: var(--text-caption);
+}
+.rv-wrapped {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-1) 0;
+  padding: var(--space-2);
+  border-radius: var(--radius);
+  background: var(--alpha-1);
+}
+.rv-wrapped-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-1);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.rv-wrapped .rv-msg {
+  background: var(--surface-2);
+}
+.rv-zone-title {
+  padding: 0 var(--space-2);
+  user-select: none;
+  -webkit-user-select: none;
+}
+/* where a breakpoint would be: none under the wrap, the prefix cache is off */
+.rv-bp.off {
+  color: var(--ink-2);
+  font-family: inherit;
+}
+
 /* ───────── Prompt Tree Page ───────── */
 .pt-title-wrap {
   display: flex;
@@ -476,6 +544,7 @@
 .pt-meta-item.muted {
   color: var(--ink-3);
 }
+.pt-hat,
 .pt-absent {
   display: inline-flex;
   align-items: center;

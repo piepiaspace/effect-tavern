@@ -7,7 +7,8 @@
 // four icons. Escape or Back returns to the page that opened it. The page holds only the nav, which section is open,
 // which record each section has picked, and the phone's pane; every edit is one write the server answers with the list
 // it changed (wire.ts), text committing on change (blur or Enter). The shared controls and shells are controls.tsx.
-import { hatEntryActive, type Hat, type HatEntry } from "@effect-tavern/runtime/src/fragment.ts"
+import { NARRATIVE_TOOL } from "@effect-tavern/provider/src/deliver.ts"
+import { hatEntryActive, hatToolName, hatWraps, type Hat, type HatEntry } from "@effect-tavern/runtime/src/fragment.ts"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { Dynamic, type JSX } from "@solidjs/web"
 import { createMemo, createSignal, flush, For, onSettled, Show, untrack } from "solid-js"
@@ -27,6 +28,7 @@ import {
   Switch,
   Tick,
   ToList,
+  WrapMark,
   type Pane,
 } from "./controls.tsx"
 import {
@@ -60,8 +62,11 @@ import {
   hatMounts,
   hatOptions,
   hatTemplateConflicts,
+  hatTemplateNotes,
   isHatStage,
   mainConflicts,
+  mainNotes,
+  noteText,
   modelOptions,
   pairKey,
   pairOf,
@@ -70,10 +75,12 @@ import {
   serializeHat,
   stageConflicts,
   stageHatValue,
+  stageNotes,
   staleHatOption,
   staleModelOption,
   toggleMainHat,
   toggleStageHat,
+  toolNameOk,
   uniqueHatName,
   validToolInput,
   withDefaultPair,
@@ -81,10 +88,12 @@ import {
   withMainHat,
   withStageHat,
   withStagePair,
+  withTool,
+  withWrap,
   type HatStage,
 } from "./connections.ts"
 import { Cards } from "./cards.tsx"
-import { leaveArea, leaveInput } from "./layer-tabs.tsx"
+import { DEFAULT_ASKS, leaveArea, leaveInput } from "./layer-tabs.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close } from "./pages.ts"
@@ -97,6 +106,7 @@ import {
   decision,
   hats,
   locals,
+  packs,
   personas,
   providers,
   registry,
@@ -277,6 +287,7 @@ const Routing = (props: { onDecision: () => void }) => {
             <For each={mainConflicts(list(), hatList(), route())}>
               {(c) => <div class="warn">{conflictText(c)}</div>}
             </For>
+            <For each={mainNotes(list(), hatList(), route())}>{(n) => <div class="note">{noteText(n)}</div>}</For>
           </div>
         </div>
         <div class="block">
@@ -329,6 +340,9 @@ const Routing = (props: { onDecision: () => void }) => {
                       </Show>
                       <For each={stageConflicts(list(), hatList(), route(), stage())}>
                         {(c) => <div class="warn">{conflictText(c)}</div>}
+                      </For>
+                      <For each={stageNotes(list(), hatList(), route(), stage())}>
+                        {(n) => <div class="note">{noteText(n)}</div>}
                       </For>
                     </div>
                   )
@@ -512,6 +526,11 @@ const Templates = (props: Pane) => {
     setDraft(next)
     void save(next)
   }
+  /** A typed tool field staged, as a slot's text is: written on change, or by `commitPending` before a tap elsewhere. */
+  const stageDelivery = (next: Hat) => {
+    pin(next.id)
+    setDraft(next)
+  }
   /** A rename onto another template's name keeps a numbered one (`uniqueHatName`), which may be its own: no write then. */
   const rename = (raw: string): string => {
     const h = hat()
@@ -620,6 +639,9 @@ const Templates = (props: Pane) => {
                   onClick={() => pick(h().id)}
                 >
                   <span class="p-name">{h().name}</span>
+                  <Show when={hatWraps(h())}>
+                    <WrapMark />
+                  </Show>
                   <Show when={targets()[0]}>
                     {(first) => (
                       <span class="tag ok">
@@ -628,7 +650,8 @@ const Templates = (props: Pane) => {
                       </span>
                     )}
                   </Show>
-                  <Show when={h().deliver === "tool"}>
+                  {/* the wrap mark already says tool delivery: no second tag for it, and the count keeps its room */}
+                  <Show when={h().deliver === "tool" && !hatWraps(h())}>
                     <span class="tag">{t("settings.hatDeliverTool")}</span>
                   </Show>
                   <span class="tag mono">{SLOTS.reduce((n, s) => n + slotOf(h(), s).length, 0)}</span>
@@ -675,6 +698,9 @@ const Templates = (props: Pane) => {
               { equals: sameArray },
             )
             const conflicts = createMemo(() => hatTemplateConflicts(providerList(), route(), h()), {
+              equals: sameArray,
+            })
+            const notes = createMemo(() => hatTemplateNotes(providerList(), route(), h()), {
               equals: sameArray,
             })
             const tailConflictIdx = createMemo(() => {
@@ -751,18 +777,24 @@ const Templates = (props: Pane) => {
                     </p>
                   </Show>
                   <For each={conflicts()}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
-                  <div class="hat-deliver-bar">
-                    <h3>{t("settings.hatDeliver")}</h3>
-                    <Segment
-                      label={t("settings.hatDeliver")}
-                      value={h().deliver === "tool" ? (h().toolChoice ?? "auto") : "text"}
-                      options={[
-                        { value: "text", label: t("settings.hatDeliverText") },
-                        { value: "auto", label: t("settings.hatDeliverAuto") },
-                        { value: "force", label: t("settings.hatDeliverForce") },
-                      ]}
-                      onPick={(v) => saveDelivery(withDeliver(h(), v))}
-                    />
+                  <For each={notes()}>{(n) => <div class="note">{noteText(n)}</div>}</For>
+                  <div class="hat-deliver">
+                    <div class="hat-deliver-bar">
+                      <h3>{t("settings.hatDeliver")}</h3>
+                      <Segment
+                        label={t("settings.hatDeliver")}
+                        value={h().deliver === "tool" ? (h().toolChoice ?? "auto") : "text"}
+                        options={[
+                          { value: "text", label: t("settings.hatDeliverText") },
+                          { value: "auto", label: t("settings.hatDeliverAuto") },
+                          { value: "force", label: t("settings.hatDeliverForce") },
+                        ]}
+                        onPick={(v) => saveDelivery(withDeliver(h(), v))}
+                      />
+                    </div>
+                    <Show when={h().deliver === "tool"}>
+                      <DeliveryTool hat={h()} onStage={stageDelivery} onSave={saveDelivery} />
+                    </Show>
                   </div>
                   <div class="hat-stack">
                     <SlotEditor
@@ -772,27 +804,41 @@ const Templates = (props: Pane) => {
                       onStage={(f) => editSlot("lead", f, false)}
                       onEdit={(f) => editSlot("lead", f)}
                     />
-                    <SlotEditor
-                      label={t("settings.slotHead")}
-                      said={slotOf(h(), "head")}
-                      onOpenModal={(i) => openModal("head", i)}
-                      onStage={(f) => editSlot("head", f, false)}
-                      onEdit={(f) => editSlot("head", f)}
-                    />
-                    <div class="hat-seam">
-                      <button type="button" class="btn sm hat-seam-btn" onClick={() => void previewHat()}>
-                        <Stack aria-hidden="true" />
-                        <span>{t("promptTree.preview")}</span>
-                        <Jump aria-hidden="true" />
-                      </button>
+                    {/* under the wrap, head and turn travel inside the tool's description: they sit in its frame, between
+                        lead and tail, which stay the outer messages; the frame is always here so a flip moves no field */}
+                    <div
+                      class={{ "hat-inner": true, wrapped: hatWraps(h()) }}
+                      role={hatWraps(h()) ? "group" : undefined}
+                      aria-label={hatWraps(h()) ? t("settings.hatWrapInside") : undefined}
+                    >
+                      <Show when={hatWraps(h())}>
+                        <div class="hat-inner-label">
+                          <WrapMark />
+                          <span class="mono">{hatToolName(h())}</span>
+                        </div>
+                      </Show>
+                      <SlotEditor
+                        label={t("settings.slotHead")}
+                        said={slotOf(h(), "head")}
+                        onOpenModal={(i) => openModal("head", i)}
+                        onStage={(f) => editSlot("head", f, false)}
+                        onEdit={(f) => editSlot("head", f)}
+                      />
+                      <div class="hat-seam">
+                        <button type="button" class="btn sm hat-seam-btn" onClick={() => void previewHat()}>
+                          <Stack aria-hidden="true" />
+                          <span>{t("promptTree.preview")}</span>
+                          <Jump aria-hidden="true" />
+                        </button>
+                      </div>
+                      <SlotEditor
+                        label={t("settings.slotTurn")}
+                        said={slotOf(h(), "turn")}
+                        onOpenModal={(i) => openModal("turn", i)}
+                        onStage={(f) => editSlot("turn", f, false)}
+                        onEdit={(f) => editSlot("turn", f)}
+                      />
                     </div>
-                    <SlotEditor
-                      label={t("settings.slotTurn")}
-                      said={slotOf(h(), "turn")}
-                      onOpenModal={(i) => openModal("turn", i)}
-                      onStage={(f) => editSlot("turn", f, false)}
-                      onEdit={(f) => editSlot("turn", f)}
-                    />
                     <SlotEditor
                       label={t("settings.slotTail")}
                       said={slotOf(h(), "tail")}
@@ -977,6 +1023,108 @@ const Templates = (props: Pane) => {
         </Modal>
       </section>
     </>
+  )
+}
+
+/** The ask a blank tool field follows, as the install's harness row holds it (its overlay, else the code default): the
+ *  writing layer a card mounts may still override it, which the hint says. */
+const harnessAsk = (rows: readonly { id: string; asks?: readonly { id: string; text: string }[] }[], id: string) =>
+  rows.find((p) => p.id === "harness")?.asks?.find((a) => a.id === id)?.text ?? DEFAULT_ASKS.get(id) ?? ""
+
+/** Under tool delivery: the delivery tool's name and wording (#221) and the wrap (#220), whose explanation here is the
+ *  feature's one. Text fields stage as typed and write on change (or by the page's `commitPending` before a tap
+ *  elsewhere: touch WebKit fires no change then); a name no vendor accepts is shown with why and never staged. */
+export const DeliveryTool = (props: { hat: Hat; onStage: (next: Hat) => void; onSave: (next: Hat) => void }) => {
+  const rows = read(packs)
+  const [badName, setBadName] = createSignal<{ id: string; raw: string } | null>(null)
+  const name = () => {
+    const bad = badName()
+    return bad && bad.id === props.hat.id ? bad.raw : (props.hat.tool?.name ?? "")
+  }
+  const nameOk = () => toolNameOk(name())
+  const wraps = () => hatWraps(props.hat)
+  return (
+    <div class="hat-tool">
+      <div class="hat-tool-fields">
+        <label class="hat-tool-field hat-tool-name">
+          <span class="hat-field-label">{t("settings.toolName")}</span>
+          <input
+            type="text"
+            class={{ "hat-tool-input": true, mono: true, invalid: !nameOk() }}
+            placeholder={NARRATIVE_TOOL}
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+            enterkeyhint="done"
+            aria-label={t("settings.toolName")}
+            aria-invalid={nameOk() ? undefined : "true"}
+            value={name()}
+            onKeyDown={leaveInput}
+            onInput={(e) => {
+              const raw = e.currentTarget.value
+              if (!toolNameOk(raw)) return setBadName({ id: props.hat.id, raw })
+              setBadName(null)
+              props.onStage(withTool(props.hat, "name", raw))
+            }}
+            onChange={(e) => {
+              const raw = e.currentTarget.value
+              if (!toolNameOk(raw)) return
+              setBadName(null)
+              props.onSave(withTool(props.hat, "name", raw))
+            }}
+          />
+          <Show when={!nameOk()}>
+            <span class="hat-tool-bad" role="alert">
+              {t("settings.hatToolNameBad")}
+            </span>
+          </Show>
+        </label>
+        <label class="hat-tool-field">
+          <span class="hat-field-label">{t("settings.hatToolDescription")}</span>
+          <textarea
+            ref={autosize(() => props.hat.tool?.description ?? "")}
+            class="hat-tool-input hat-tool-text"
+            rows="2"
+            aria-label={t("settings.hatToolDescription")}
+            placeholder={harnessAsk(rows(), "narrate.deliver.tool")}
+            value={props.hat.tool?.description ?? ""}
+            onKeyDown={leaveArea}
+            onInput={(e) => props.onStage(withTool(props.hat, "description", e.currentTarget.value))}
+            onChange={(e) => props.onSave(withTool(props.hat, "description", e.currentTarget.value))}
+          />
+        </label>
+        <label class="hat-tool-field">
+          <span class="hat-field-label">{t("settings.hatToolParam")}</span>
+          <textarea
+            ref={autosize(() => props.hat.tool?.param ?? "")}
+            class="hat-tool-input hat-tool-text"
+            rows="1"
+            aria-label={t("settings.hatToolParam")}
+            placeholder={harnessAsk(rows(), "narrate.deliver.param")}
+            value={props.hat.tool?.param ?? ""}
+            onKeyDown={leaveArea}
+            onInput={(e) => props.onStage(withTool(props.hat, "param", e.currentTarget.value))}
+            onChange={(e) => props.onSave(withTool(props.hat, "param", e.currentTarget.value))}
+          />
+        </label>
+        <p class="hat-tool-hint">{t("settings.hatToolHint", { tool: "{{tool}}", context: "{{context}}" })}</p>
+      </div>
+      <div class="hat-wrap">
+        <div class="hat-wrap-head">
+          <h3>{t("settings.hatWrap")}</h3>
+          <Show when={wraps()}>
+            <WrapMark />
+          </Show>
+          <span class="spacer" />
+          <Switch
+            on={wraps()}
+            label={t("settings.hatWrap")}
+            onFlip={() => props.onSave(withWrap(props.hat, !wraps()))}
+          />
+        </div>
+        <p class="hat-wrap-explain">{t("settings.hatWrapExplain")}</p>
+      </div>
+    </div>
   )
 }
 

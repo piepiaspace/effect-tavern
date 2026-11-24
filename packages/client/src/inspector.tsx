@@ -31,6 +31,7 @@ import {
   type Tray,
 } from "./inspect.ts"
 import { KeyValues, Reading, Shaped } from "./readings.tsx"
+import { WrapMark } from "./controls.tsx"
 import { RequestView } from "./request-view.tsx"
 import { previewFromPlay, sourceDestination } from "./prompt-tree-state.ts"
 import { channelOf, fields, lineOf, versions, whens } from "./record.ts"
@@ -293,6 +294,9 @@ const Step = (props: {
           <span class="nm">
             {c().product ?? props.row.phase}
             <Show when={props.ord}>{(n) => <span class="ord">{n()}</span>}</Show>
+            <Show when={c().wrap}>
+              <WrapMark />
+            </Show>
           </span>
           <Show when={hits()}>{(h) => <span class="hits">{h()}</span>}</Show>
         </span>
@@ -327,6 +331,8 @@ const Step = (props: {
                     compact
                     messages={c().msgs}
                     traces={c().trace}
+                    tool={c().tool}
+                    wrap={c().wrap}
                     wireError={c().wireError}
                     deliver={c().deliver}
                     q={props.q}

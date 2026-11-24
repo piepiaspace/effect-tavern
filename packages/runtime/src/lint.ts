@@ -10,7 +10,7 @@ import { hook } from "./lore.ts"
 import { harness } from "./layer.ts"
 import { mediaBaseUrlError, mediaFileError } from "./media.ts"
 import { colsAt, type Product, type Shape } from "./product.ts"
-import { HOLE, unfilled } from "./names.ts"
+import { HARNESS_HOLES, HOLE, unfilled } from "./names.ts"
 import { type Entry, scan } from "./polish.ts"
 
 export const identifier = /^[\p{L}\p{N}_:.\-{}]+$/u
@@ -344,16 +344,19 @@ const rules: Rule[] = [
       })),
   // A hole with no default: it goes out as the literal `{{key}}` (names.ts) until a pack or the player names it, so a typo
   // (`{{chr}}`) reaches the model as written. A warn, since leaving one to the player may be the card's design. `user` is exempt: it is the player's to name (a persona or
-  // a local name), and a warning would push an author to invent a stand-in word.
+  // a local name), and a warning would push an author to invent a stand-in word. The harness's own holes in a delivery
+  // ask (`{{tool}}`, and `{{context}}` in `narrate.deliver.tool`: names.ts `HARNESS_HOLES`) are filled by the harness.
   (card) =>
     named(card).flatMap(([path, t]) =>
-      unfilled(t, { user: "", ...card.names }).map((k) => ({
-        rule: "unfilled-name",
-        level: "warn" as const,
-        path,
-        message: `{{${k}}} has no default in the card's names`,
-        hint: "give it in `names`; a pack or the player can still override it",
-      })),
+      unfilled(t, { user: "", ...card.names })
+        .flatMap((k) => ((HARNESS_HOLES[/^asks\.(.+)\.text$/.exec(path)?.[1] ?? ""] ?? []).includes(k) ? [] : [k]))
+        .map((k) => ({
+          rule: "unfilled-name",
+          level: "warn" as const,
+          path,
+          message: `{{${k}}} has no default in the card's names`,
+          hint: "give it in `names`; a pack or the player can still override it",
+        })),
     ),
   // The ecosystem's scripted macros are not holes: nothing expands them, so the model would read them as written.
   (card) =>

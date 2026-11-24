@@ -236,7 +236,7 @@ async function run() {
     if (
       root.querySelector(".field-well") ||
       root.querySelector("textarea") ||
-      !askRow("narrate.deliver", root)?.textContent?.includes("calling the narrative tool") ||
+      !askRow("narrate.deliver", root)?.textContent?.includes("calling the {{tool}} tool") ||
       !askRow("lookup", root) ||
       !askRow("record.tools", root) ||
       !askRow("switch.pov.first", root)
@@ -246,7 +246,7 @@ async function run() {
     flush()
     const deliverArea = () =>
       root.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t("packs.askNarrateDeliver")}"]`)
-    if (!deliverArea()?.value.includes("calling the narrative tool") || root.querySelector(".field-well"))
+    if (!deliverArea()?.value.includes("calling the {{tool}} tool") || root.querySelector(".field-well"))
       throw Error("Expanding narrate.deliver on harness did not mount inline autosizing textarea")
     deliverArea()!.value = "Custom narrative tool instruction."
     deliverArea()!.dispatchEvent(new Event("change", { bubbles: true }))

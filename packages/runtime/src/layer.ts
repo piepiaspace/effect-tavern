@@ -20,7 +20,7 @@ import { ContextPolicy, checkContextPolicies } from "./lore.ts"
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
-import { expand, nameOk, Names, unfilled } from "./names.ts"
+import { expand, fillHoles, HARNESS_HOLES, keepHoles, nameOk, Names, unfilled } from "./names.ts"
 import { Entry as LexiconEntry } from "./polish.ts"
 import { decodeProducts, ProductPatch, validate, type Catalog, type Product } from "./product.ts"
 import { sourceKindFrom, type OmittedItem, type SourceRef } from "./trace.ts"
@@ -110,8 +110,17 @@ const words: readonly Ask[] = [
   },
   {
     id: "narrate.deliver",
-    text: "Deliver your entire reply—prose and any requested <<aside>> blocks—by calling the narrative tool with the complete text in its text argument; write nothing outside the call.",
+    text: "Deliver your entire reply—prose and any requested <<aside>> blocks—by calling the {{tool}} tool with the complete text in its text argument; write nothing outside the call.",
   },
+  // The delivery tool's own wording (#221), sent as its description and its `text` parameter's description; a hat's
+  // `tool.description` / `tool.param` overrides either. `{{tool}}` is the tool's name; under the hat's wrap (#220)
+  // `{{context}}` in the description is where the story context goes (appended after a blank line when absent).
+  // The same two sentences are the provider's fallback for a call that names none (provider deliver.ts); test/layer.ts
+  // holds the two copies equal.
+  { id: "narrate.deliver.tool", text: "Deliver the complete scene narration." },
+  { id: "narrate.deliver.param", text: "The full reply, nothing omitted." },
+  // Under wrap, the one user message the harness adds when the hat's lead and tail hold none (request.ts).
+  { id: "narrate.wrap", text: "Read the {{tool}} tool's description, then call it with your reply." },
   {
     id: "narrate.context",
     text: "<context> holds background lore and recalled facts for reference when relevant.",
@@ -493,9 +502,12 @@ export const resolveWithTrace = (
   ])
     for (const a of row.asks ?? []) {
       if (a.id.startsWith("product.") || asks.has(a.id)) continue
-      worded.push(a.text)
+      // the harness's own holes in this ask stay for request.ts to fill; nobody is asked to name them
+      const own = HARNESS_HOLES[a.id] ?? []
+      const scope = keepHoles(names, own)
+      worded.push(own.length ? fillHoles(a.text, Object.fromEntries(own.map((k) => [k, ""]))) : a.text)
       const src = sourceOf(from, `asks.${a.id}`, { builtIn, label: a.id, rawText: a.text })
-      const text = expand(a.text, names, from)
+      const text = expand(a.text, scope, from)
       if (text !== undefined) {
         asks.set(a.id, { text, from })
         askSources[a.id] = src
@@ -505,7 +517,7 @@ export const resolveWithTrace = (
           id: a.id,
           label: a.id,
           reason: "unfilled_hole",
-          missingHoles: unfilled(a.text, names),
+          missingHoles: unfilled(a.text, scope),
           preview: a.text,
           source: src,
         })

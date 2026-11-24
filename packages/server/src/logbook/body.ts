@@ -235,10 +235,39 @@ const decision = (b: J, questions: J | unknown[]): Reading => {
   return { ...r.done(), questions: items }
 }
 
+/** Each function tool's own words, first, under `tool <name>`: its description, then each parameter's description as
+ *  `<key>: <description>`. Narrate's delivery tool (#221) carries what the model is told about it there, and under a
+ *  hat's wrap (#220) the whole story context, so a narrate request is not read without it. */
+const toolSaid = (tools: unknown): Said[] =>
+  (Array.isArray(tools) ? tools : []).flatMap((t): Said[] => {
+    const decls: unknown[] = isObj(t) && Array.isArray(t["functionDeclarations"]) ? t["functionDeclarations"] : [t]
+    return decls.flatMap((d): Said[] => {
+      const f = isObj(d) && isObj(d["function"]) ? d["function"] : d
+      if (!isObj(f) || !str(f["name"])) return []
+      const schema = f["input_schema"] ?? f["parameters"] ?? f["parametersJsonSchema"]
+      const props = isObj(schema) && isObj(schema["properties"]) ? schema["properties"] : {}
+      const texts = [
+        ...(str(f["description"]) ? [f["description"]] : []),
+        ...Object.entries(props).flatMap(([k, v]) =>
+          isObj(v) && str(v["description"]) ? [`${k}: ${v["description"]}`] : [],
+        ),
+      ]
+      return texts.length ? [{ who: `tool ${f["name"]}`, texts }] : []
+    })
+  })
+
 const ANTHROPIC_BLOCKS = new Set(["tool_use", "tool_result", "thinking", "redacted_thinking"])
 /** The body read by its shape: gemini's `contents`; anthropic's top-level `system`, its own blocks or tool schemas;
- *  else openai's `messages` (which reads a plain anthropic text exchange the same way). */
-export const readRequest = (body: string): Reading | undefined => {
+ *  else openai's `messages` (which reads a plain anthropic text exchange the same way). `tools`: the function tools'
+ *  descriptions are content too, read first (narrate's delivery tool); elsewhere a tool is a name among the facts. */
+export const readRequest = (body: string, o: { tools?: boolean } = {}): Reading | undefined => {
+  const r = readBody(body)
+  if (!r || !o.tools) return r
+  const b = JSON.parse(body) as J
+  const said = toolSaid(b["tools"])
+  return said.length ? { ...r, said: [...said, ...r.said] } : r
+}
+const readBody = (body: string): Reading | undefined => {
   let b: unknown
   try {
     b = JSON.parse(body)

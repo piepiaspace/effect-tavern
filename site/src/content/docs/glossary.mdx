@@ -19,7 +19,7 @@ Canonical naming primitives for developers, card authors, and coding agents. The
 | `has no agency` | Mechanical rule that `decide` ignores `thought` when choosing card `actions`. |
 | `participant mode` / `author mode` | Coordinate pair (`persona` filled vs. empty, paired with default `input: "act" \| "note"`). |
 | `persona` | Frame slot (`persona`) and reusable player asset (`/personas`, with optional install-wide default and tri-state `local.persona`; inherited in `yield` mode on participant cards). |
-| `hat` | Provider-specific continuation shell (`/hats`), worn by the routing (`Routing.hat`, per stage `Routing.stageHats`): five slots `narrate.lead`, `narrate.head`, `narrate.turn`, `narrate.tail`, `review.head` of role messages (with optional `reasoning`) or `tool` handshakes, plus `deliver` (`"text"` \| `"tool"`, with `toolChoice` `"auto"` \| `"force"`). |
+| `hat` | Provider-specific continuation shell (`/hats`), worn by the routing (`Routing.hat`, per stage `Routing.stageHats`): five slots `narrate.lead`, `narrate.head`, `narrate.turn`, `narrate.tail`, `review.head` of role messages (with optional `reasoning`) or `tool` handshakes, plus `deliver` (`"text"` \| `"tool"`); under tool delivery `toolChoice` (`"auto"` \| `"force"`), the delivery `tool` (`name`, and `description` / `param` over the `narrate.deliver.tool` / `narrate.deliver.param` asks) and `wrap` (the story context moves into the tool's description, `messages[]` keeps the lead and tail, the prefix cache is off). |
 | `slop` (`claudeism`) | Over-repeated model stock phrases and clichés targeted by `lexicon` and `polish`. |
 
 ## Runtime, Turn & State

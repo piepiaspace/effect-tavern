@@ -6,11 +6,13 @@
 import { DEFAULTS, type Capabilities } from "@effect-tavern/provider/src/capabilities.ts"
 import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
+import { isToolName } from "@effect-tavern/provider/src/deliver.ts"
 import {
   HAT_NARRATE_SLOTS,
   hatEntryActive,
   hatHasReasoning,
   hatHasToolHandshake,
+  hatWraps,
   normalizeHatDelivery,
   type Hat,
   type HatEntry,
@@ -78,11 +80,35 @@ export const hasCompatOverrides = (p: Provider, m: ModelEntry): boolean => {
     capOf(p, m, "structured") !== def.structured
   )
 }
+/** The delivery picked: auto and force keep the tool's wording and the wrap (orthogonal to the choice); text drops
+ *  them with `toolChoice`, as `normalizeHatDelivery` would. */
 export const withDeliver = (h: Hat, choice: "text" | NonNullable<Hat["toolChoice"]>): Hat => {
-  const { deliver: _, toolChoice: __, ...rest } = h
-  return choice === "text" ? rest : { ...rest, deliver: "tool", toolChoice: choice }
+  const { deliver: _, toolChoice: __, tool, wrap, ...rest } = h
+  return choice === "text"
+    ? rest
+    : { ...rest, deliver: "tool", toolChoice: choice, ...(tool && { tool }), ...(wrap && { wrap }) }
 }
+/** One field of the delivery tool as typed (the name trimmed); a blank field is dropped (the default or the ask
+ *  applies), and an empty `tool` with it. */
+export const withTool = (h: Hat, field: keyof NonNullable<Hat["tool"]>, raw: string): Hat => {
+  const v = field === "name" ? raw.trim() : raw
+  const { [field]: _, ...kept } = h.tool ?? {}
+  const next = v.trim() ? { ...kept, [field]: v } : kept
+  const { tool: _t, ...rest } = h
+  return Object.keys(next).length ? { ...rest, tool: next } : rest
+}
+/** The wrap switched (tool delivery only: under text there is no tool to wrap into). */
+export const withWrap = (h: Hat, on: boolean): Hat => {
+  const { wrap: _, ...rest } = h
+  return on && h.deliver === "tool" ? { ...rest, wrap: true } : rest
+}
+/** Whether a typed delivery tool name can be sent: blank (the default, `narrative`) or one every vendor accepts. */
+export const toolNameOk = (raw: string): boolean => !raw.trim() || isToolName(raw.trim())
 export type HatConflict = "prefill" | "deliver_prefill" | "deliver_tools" | "handshake_tools" | "reasoning_unsigned"
+/** What a template does that the player should know and that is no fault (a conflict is one: the request fails or
+ *  loses part of itself). `wrap`: the wrap's facts (native tools, no prefix cache, a capped description may be
+ *  refused); `gemini_unstreamed`: a tool-delivered reply on a gemini-format connection arrives whole, not streamed. */
+export type HatNote = "wrap" | "gemini_unstreamed"
 /** Whether a Hat tool handshake's `toolInput` text is blank (defaulting to `{}`) or a valid JSON object. */
 export const validToolInput = (raw: string): boolean => {
   const trimmed = raw.trim()
@@ -161,6 +187,28 @@ export const hatTemplateConflicts = (providers: readonly Provider[], route: Rout
   }
   return [...conflicts]
 }
+/** A template's notes on one stage's connection: the wrap's facts wherever it wraps and, under tool delivery, a
+ *  gemini-format connection's unstreamed reply. Only narrate delivers through the tool; review stages have none. */
+export const hatNotes = (
+  providers: readonly Provider[],
+  hats: readonly Hat[],
+  pair: Pair | undefined,
+  hatId: string | undefined,
+  stage: HatStage = "narrate",
+): HatNote[] => {
+  const h = hatId ? hats.find((x) => x.id === hatId) : undefined
+  if (!h || stage !== "narrate" || h.deliver !== "tool") return []
+  const p = pair ? providers.find((x) => x.id === pair.provider) : undefined
+  const m = pair && p ? p.models.find((x) => x.id === pair.model) : undefined
+  const gemini = !!p && !!m && formatOf(p, m) === "gemini"
+  return [...(hatWraps(h) ? (["wrap"] as const) : []), ...(gemini ? (["gemini_unstreamed"] as const) : [])]
+}
+/** The notes while editing a template: those of narrate's connection when it is mounted there, without the wrap's
+ *  facts, which the editor already says once as its switch's explanation. */
+export const hatTemplateNotes = (providers: readonly Provider[], route: Routing, hat: Hat): HatNote[] =>
+  routedHatId(route, "narrate") === hat.id
+    ? hatNotes(providers, [hat], stagePair(route, "narrate"), hat.id).filter((n) => n !== "wrap")
+    : []
 export const serializeHat = (h: Hat): string =>
   JSON.stringify({ ...normalizeHatDelivery(h), id: undefined }, null, 2) + "\n"
 const parseHatEntries = (v: unknown): HatEntry[] | null => {
@@ -196,7 +244,21 @@ const parseHatEntries = (v: unknown): HatEntry[] | null => {
   }
   return out
 }
-const HAT_KEYS = ["name", "deliver", "narrate", "review"] as const
+const HAT_KEYS = ["name", "deliver", "tool", "wrap", "narrate", "review"] as const
+/** A file's `tool`: strings at most, its name (trimmed) one every vendor accepts; null refuses the file. */
+const parseHatTool = (v: unknown): NonNullable<Hat["tool"]> | undefined | null => {
+  if (v === undefined) return undefined
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null
+  const x = v as Record<string, unknown>
+  const out: { name?: string; description?: string; param?: string } = {}
+  for (const k of ["name", "description", "param"] as const) {
+    const field = x[k]
+    if (field === undefined) continue
+    if (typeof field !== "string") return null
+    out[k] = k === "name" ? field.trim() : field
+  }
+  return out.name && !isToolName(out.name) ? null : out
+}
 export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id"> | null => {
   let body: unknown
   try {
@@ -210,6 +272,9 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
   if (rec.deliver !== undefined && rec.deliver !== "text" && rec.deliver !== "tool") return null
   if (rec.toolChoice !== undefined && rec.toolChoice !== "auto" && rec.toolChoice !== "force") return null
   if (rec.name !== undefined && typeof rec.name !== "string") return null
+  if (rec.wrap !== undefined && typeof rec.wrap !== "boolean") return null
+  const tool = parseHatTool(rec.tool)
+  if (tool === null) return null
   const narrate = rec.narrate
   if (narrate !== undefined && (!narrate || typeof narrate !== "object" || Array.isArray(narrate))) return null
   const nRec = narrate as Record<string, unknown> | undefined
@@ -236,6 +301,8 @@ export const parseHatFile = (raw: string, fallbackName: string): Omit<Hat, "id">
     name,
     ...(rec.toolChoice !== undefined && { toolChoice: rec.toolChoice }),
     ...(rec.deliver === "tool" && { deliver: "tool" as const }),
+    ...(tool && { tool }),
+    ...(rec.wrap === true && { wrap: true }),
     ...(Object.keys(parsedNarrate).length > 0 && { narrate: parsedNarrate }),
     ...(revHead?.length && { review: { head: revHead } }),
   })
@@ -345,6 +412,7 @@ export interface RouteOption {
   value: string
   label: string
   glyph?: string
+  wrap?: boolean
 }
 export interface StaleOption extends RouteOption {
   reason: "removed" | "disabled"
@@ -360,7 +428,9 @@ export const modelOptions = (providers: readonly Provider[]): RouteOption[] =>
         glyph: m.id,
       })),
     )
-export const hatOptions = (hats: readonly Hat[]): RouteOption[] => hats.map((h) => ({ value: h.id, label: h.name }))
+/** The template menu's rows; a wrapping template's row carries the wrap mark (controls.tsx `WrapMark`). */
+export const hatOptions = (hats: readonly Hat[]): RouteOption[] =>
+  hats.map((h) => ({ value: h.id, label: h.name, ...(hatWraps(h) && { wrap: true }) }))
 /** A pair the menus cannot offer (its provider off, or it or its model gone) still shows what the row holds, marked;
  *  the next turn on it fails naming the provider, so the trigger must not look unset. */
 export const staleModelOption = (providers: readonly Provider[], pair: Pair | undefined): StaleOption | undefined => {
@@ -436,6 +506,26 @@ export const stageConflicts = (
   stage: RouteStage,
 ): HatConflict[] =>
   isHatStage(stage) ? hatConflicts(providers, hats, stagePair(route, stage), routedHatId(route, stage), stage) : []
+/** Under the main card while by stage is off: the main template's notes on narrate's connection (the main model). */
+export const mainNotes = (providers: readonly Provider[], hats: readonly Hat[], route: Routing): HatNote[] =>
+  route.stages ? [] : hatNotes(providers, hats, route.default, route.hat)
+/** Under one stage's card: its template's notes on its model (narrate alone has any). */
+export const stageNotes = (
+  providers: readonly Provider[],
+  hats: readonly Hat[],
+  route: Routing,
+  stage: RouteStage,
+): HatNote[] =>
+  isHatStage(stage) ? hatNotes(providers, hats, stagePair(route, stage), routedHatId(route, stage), stage) : []
+/** A note in words, read where it is drawn. */
+export const noteText = (n: HatNote): string => {
+  switch (n) {
+    case "wrap":
+      return t("settings.hatWrapNote")
+    case "gemini_unstreamed":
+      return t("settings.hatGeminiUnstreamed")
+  }
+}
 /** A conflict in words, read where it is drawn (a function, so it follows the locale). */
 export const conflictText = (c: HatConflict): string => {
   switch (c) {

@@ -169,8 +169,10 @@ export const totals = (calls: readonly Call[]): Totals => {
   return t
 }
 
-/** A row's matches of the query in its request. */
-export const requestHits = (r: Row, q: string): number => r.call.msgs.reduce((n, m) => n + count(textOf(m), q), 0)
+/** A row's matches of the query in its request: its messages, and the delivery tool's description (under the wrap the
+ *  story context is there, #220). */
+export const requestHits = (r: Row, q: string): number =>
+  r.call.msgs.reduce((n, m) => n + count(textOf(m), q), 0) + (r.call.tool ? count(r.call.tool.description, q) : 0)
 /** A row's matches of the query: its request's messages and its answer when that is prose (marked in the well too). */
 export const rowHits = (r: Row, q: string): number =>
   requestHits(r, q) + (typeof r.call.out === "string" ? count(r.call.out, q) : 0)

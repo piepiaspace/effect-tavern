@@ -133,9 +133,9 @@ const hostOf = (url: string) => {
 
 /** A request as content (body.ts, lines.ts `spoken` and `envelope`); a body no reading knows, or any trouble reading
  *  or laying it out, prints it exactly as it came: the log never loses a request. */
-const content = (body: string, n: number, p: Parameters<typeof spoken>[2]): string[] => {
+const content = (body: string, n: number, p: Parameters<typeof spoken>[2], tools = false): string[] => {
   try {
-    const read = readRequest(body)
+    const read = readRequest(body, { tools })
     if (read) return [...spoken(read.said, n, p), ...questionRows(read.questions ?? [], n, p), ...envelope(read, n, p)]
   } catch {
     // shown as it came, below
@@ -321,7 +321,9 @@ export const openLogbook = (
             requests.set(attempt, { url: x.url, ...(x.body !== undefined && { requestBody: x.body }) })
             sent[phase] = (sent[phase] ?? 0) + 1
             if (level === "full") {
-              say(["", ...head("→", [model, hostOf(x.url)]), ...(x.body === undefined ? [] : content(x.body, n, p))])
+              // narrate's one tool is its delivery tool: its description is what the model reads (all of it under wrap)
+              const body = x.body === undefined ? [] : content(x.body, n, p, phase === "narrate")
+              say(["", ...head("→", [model, hostOf(x.url)]), ...body])
             }
             return
           }

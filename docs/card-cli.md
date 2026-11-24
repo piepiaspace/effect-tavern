@@ -27,7 +27,7 @@ bun run tavern card test my-card.yaml scenario.yaml
 YAML/Schema 错误使用 `schema`，文件读取失败使用 `io`。
 
 `view` 支持 `--stage narrate|direct|record|lookup`、`--greeting N`、重复的 `--state k=v`、
-`--events a,b`、`--pin id`（卡片也接受 `card:id`，Pack 使用 `pack:<row>/<entry>`）、`--persona text` 和 `--json`。
+`--events a,b`、`--pin id`（卡片也接受 `card:id`，Pack 使用 `pack:<row>/<entry>`）、`--persona text`、`--hat file.hat.json`（佩戴导出的帽子；narrate 打印其交付工具，工具封装时打印承载上下文的工具说明）和 `--json`。
 状态按初值 → 开场 do → 覆盖值计算；输出条件的每个子句、路径当前值、槽位来源，以及实际
 `request()` 分段和缓存断点。事件按运行时语义用于 lore offer；fiction/action 的 when 不读取事件。
 `--pin` 是本轮主动选择已解锁且允许玩家访问的 lore，不绕过访问权限。
