@@ -16,13 +16,9 @@ export function decisionService(db: Database) {
   const secret: Secret | undefined = stored
     ? { ...JSON.parse(stored.json), id: stored.id, name: stored.name }
     : undefined
-  const proxy = config.proxy ?? installProxy(db) ?? undefined
-  return { config, secret, fetch: (input: RequestInfo | URL, init?: RequestInit) => outbound(input, init, proxy) }
-}
-
-/** The install-wide proxy setting (settings → 网络), null where the library predates it or none is set. */
-export function installProxy(db: Database): string | false | null {
   const network = db.query("select 1 from sqlite_master where type = 'table' and name = 'network'").get()
   const setting = network ? db.query<{ json: string }, []>("select json from network where id = 1").get() : null
-  return setting ? JSON.parse(setting.json) : null
+  const defaultProxy: string | false | null = setting ? JSON.parse(setting.json) : null
+  const proxy = config.proxy ?? defaultProxy ?? undefined
+  return { config, secret, fetch: (input: RequestInfo | URL, init?: RequestInit) => outbound(input, init, proxy) }
 }
