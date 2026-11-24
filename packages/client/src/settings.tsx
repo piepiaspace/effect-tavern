@@ -649,7 +649,8 @@ const Templates = (props: Pane) => {
                       </span>
                     )}
                   </Show>
-                  <Show when={h().deliver === "tool"}>
+                  {/* the wrap mark already says tool delivery: no second tag for it, and the count keeps its room */}
+                  <Show when={h().deliver === "tool" && !hatWraps(h())}>
                     <span class="tag">{t("settings.hatDeliverTool")}</span>
                   </Show>
                   <span class="tag mono">{SLOTS.reduce((n, s) => n + slotOf(h(), s).length, 0)}</span>
