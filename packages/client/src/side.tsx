@@ -15,7 +15,6 @@
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { createMemo, createSignal, For, Match, onSettled, Show, Switch } from "solid-js"
 import { read } from "./bridge.ts"
-import { openGallery, requestCardTab } from "./card.tsx"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
 import {
   Archive,
@@ -37,7 +36,7 @@ import {
 } from "./icons.tsx"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { openSettings } from "./settings-navigation.ts"
-import { browse, close, editCard, open, openStory, showCard, toHome } from "./pages.ts"
+import { browse, close, editCard, open, openGallery, openStory, requestCardTab, showCard, toHome } from "./pages.ts"
 import {
   admits,
   facetCounts,
@@ -155,10 +154,18 @@ export const Sidebar = (props: {
   const writing = createMemo(() => writingLine(view(), allLocals(), at()))
   // the player's filing words on this card: wrapping chips under the head (click a word to filter the shelf by `#word`,
   // × to remove, + to open the popover); each change is one PUT /cards/<id>/local over the last acknowledged local row (query.ts `withTags`)
-  const allTags = createMemo(() => tagsOfLocals(allLocals()))
-  const words = createMemo(() => allTags()[at() ?? ""] ?? [])
+  const sameStrings = (a: readonly string[], b: readonly string[]) =>
+    a.length === b.length && a.every((x, i) => x === b[i])
+  const allTags = createMemo(() => tagsOfLocals(allLocals()), {
+    equals: (a, b) => {
+      const ka = Object.keys(a)
+      const kb = Object.keys(b)
+      return ka.length === kb.length && ka.every((k) => k in b && sameStrings(a[k], b[k]))
+    },
+  })
+  const words = createMemo(() => allTags()[at() ?? ""] ?? [], { equals: sameStrings })
   const [tq, setTq] = createSignal("")
-  const offered = createMemo(() => spare(allTags(), at() ?? "", tq()))
+  const offered = createMemo(() => spare(allTags(), at() ?? "", tq()), { equals: sameStrings })
   const tagsOf = (f: (ws: readonly string[]) => readonly string[]) => {
     const c = at()
     if (c !== null) void putLocal(c, (l) => withTags(l, f))
@@ -210,7 +217,11 @@ export const Sidebar = (props: {
     const rest = listed.filter((c) => !isFreeChat(c))
     return [...free, ...rest]
   })
-  const shown = createMemo(() => visibleShelf().filter((c) => admits(c, terms(), wordsOn(c.id), picked())))
+  const shown = createMemo(() => visibleShelf().filter((c) => admits(c, terms(), wordsOn(c.id), picked())), {
+    equals: (a, b) =>
+      a.length === b.length &&
+      a.every((x, i) => x.id === b[i]?.id && x.title === b[i]?.title && x.summary === b[i]?.summary),
+  })
   // the facet panel (#130): a popover under the filter block while the box holds the focus and the query is only `#`
   // terms or ends in a `#…` being typed (query.ts `facetsWanted`; a plain word closes it, freeing the list under it).
   // System facets (squircle badges) and the player's tags (round pills) sit in separate groups, each with its hit count
@@ -273,7 +284,12 @@ export const Sidebar = (props: {
       })
     }, 200)
   }
-  const mine = createMemo(() => arranged(rows().filter((s) => s.card === at())).filter((s) => matches(s, sq(), hits())))
+  const mine = createMemo(
+    () => arranged(rows().filter((s) => s.card === at())).filter((s) => matches(s, sq(), hits())),
+    {
+      equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]),
+    },
+  )
   // a turn in flight anywhere on the shelf: the listing is read again every few seconds while a dot shows, so the
   // dots go out when the turns land (the open story's own stream refreshes it on its own)
   onSettled(() => {

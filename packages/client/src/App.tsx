@@ -297,7 +297,7 @@ const Latest = () => {
   onSettled(() => {
     const mainEl = document.querySelector("main")!
     let booted = false
-    let lastMainHeight = mainEl.offsetHeight
+    let lastMainHeight = 0
     const onScroll = () => {
       syncLift()
       const g = gap()
@@ -559,7 +559,15 @@ const Section = (props: { node: Node; n: number; last: boolean }) => {
   const edited = read(editing)
   const revised = read(revising)
   // versions that differ in the player's line are told apart by it; otherwise by the prose
-  const vs = createMemo(() => versions(all(), props.node))
+  const vs = createMemo(() => versions(all(), props.node), {
+    equals: (a, b) =>
+      a.index === b.index &&
+      a.varied === b.varied &&
+      a.list.length === b.list.length &&
+      a.list.every(
+        (s, i) => s.id === b.list[i]?.id && prose(s) === prose(b.list[i]) && lineOf(s) === lineOf(b.list[i]),
+      ),
+  })
   const siblings = () => vs().list
   const told = createMemo(() => apart(siblings().map((s) => plain(prose(s)))))
   const versionsPop = createPopoverController()
@@ -681,7 +689,7 @@ const Reader = () => {
   const shown = createMemo(() => drawn(line(), d()), {
     equals: (a, b) => a.length === b.length && a.every((n, i) => n === b[i]),
   })
-  const portraits = createMemo(activePortraits)
+  const portraits = activePortraits
   return (
     <div class="panel">
       <Show when={wide() && portraits().length}>

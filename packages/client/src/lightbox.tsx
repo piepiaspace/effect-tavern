@@ -21,6 +21,10 @@ export interface LightboxPayload {
 const viewer = createDialogController<LightboxPayload>()
 export const lightboxController = viewer
 
+// Tracks URLs that have decoded cleanly in this document so re-mounting cached images (e.g. Lightbox open,
+// Gallery `showAll` toggle, or branch switch) resolves `"ready"` in one pure pass with zero `[EFFECT_RELAY_TEAR]`.
+const decodedUrls = new Set<string>()
+
 export const openLightbox = (item: LightboxPayload): void => {
   void viewer.open({ payload: item })
 }
@@ -52,19 +56,16 @@ export interface MediaFrameProps {
 export const MediaFrame = (props: MediaFrameProps) => {
   let imgEl: HTMLImageElement | undefined
   const resolvedSrc = () => (props.masked ? undefined : (props.src ?? props.url))
-  const [status, setStatus] = createSignal<MediaStatus>(() => (resolvedSrc() ? "loading" : "error"))
+  const [status, setStatus] = createSignal<MediaStatus>(() => {
+    const u = resolvedSrc()
+    if (!u) return "error"
+    return decodedUrls.has(u) ? "ready" : "loading"
+  })
 
-  // Cached hits settle synchronously on the element without dispatching a fresh `load` event.
   createEffect(
-    () => resolvedSrc(),
-    (u) => {
-      if (u && imgEl && imgEl.complete && imgEl.naturalWidth > 0) setStatus("ready")
-    },
-  )
-  createEffect(
-    () => [status(), props.onStatusChange] as const,
-    ([st, onStatusChange]) => {
-      onStatusChange?.(st)
+    () => (props.onStatusChange ? ([status(), props.onStatusChange] as const) : null),
+    (pair) => {
+      pair?.[1](pair[0])
     },
   )
 
@@ -83,16 +84,35 @@ export const MediaFrame = (props: MediaFrameProps) => {
     <>
       <Show when={Boolean(resolvedSrc()) && status() !== "error"}>
         <img
-          ref={(el) => (imgEl = el)}
+          ref={(el) => {
+            imgEl = el
+            const u = resolvedSrc()
+            if (u && el.complete && el.naturalWidth > 0 && !decodedUrls.has(u)) {
+              decodedUrls.add(u)
+              queueMicrotask(() => {
+                if (imgEl === el && resolvedSrc() === u) setStatus("ready")
+              })
+            }
+          }}
           class="media-img"
           src={resolvedSrc()}
           alt={props.label}
           draggable="false"
           onLoad={(e) => {
-            if (e.currentTarget === imgEl && resolvedSrc()) setStatus("ready")
+            const el = e.currentTarget
+            const u = resolvedSrc()
+            if (u && el.getAttribute("src") === u) {
+              decodedUrls.add(u)
+              setStatus("ready")
+            }
           }}
           onError={(e) => {
-            if (e.currentTarget === imgEl) setStatus("error")
+            const el = e.currentTarget
+            const u = resolvedSrc()
+            if (u && el.getAttribute("src") === u) {
+              decodedUrls.delete(u)
+              setStatus("error")
+            }
           }}
         />
       </Show>
@@ -159,14 +179,11 @@ const LightboxBody = (props: { readonly payload: LightboxPayload | undefined }) 
   let imgEl: HTMLImageElement | undefined
   const src = () => props.payload?.src || undefined
   const label = () => props.payload?.label ?? ""
-  const [status, setStatus] = createSignal<MediaStatus>(() => (src() ? "loading" : "error"))
-
-  createEffect(
-    () => src(),
-    (u) => {
-      if (u && imgEl && imgEl.complete && imgEl.naturalWidth > 0) setStatus("ready")
-    },
-  )
+  const [status, setStatus] = createSignal<MediaStatus>(() => {
+    const u = src()
+    if (!u) return "error"
+    return decodedUrls.has(u) ? "ready" : "loading"
+  })
 
   return (
     <>
@@ -180,17 +197,36 @@ const LightboxBody = (props: { readonly payload: LightboxPayload | undefined }) 
           }
         >
           <img
-            ref={(el) => (imgEl = el)}
+            ref={(el) => {
+              imgEl = el
+              const u = src()
+              if (u && el.complete && el.naturalWidth > 0 && !decodedUrls.has(u)) {
+                decodedUrls.add(u)
+                queueMicrotask(() => {
+                  if (imgEl === el && src() === u) setStatus("ready")
+                })
+              }
+            }}
             class="lightbox-img"
             data-state={status()}
             src={src()}
             alt={label()}
             draggable="false"
             onLoad={(e) => {
-              if (e.currentTarget === imgEl && src()) setStatus("ready")
+              const el = e.currentTarget
+              const u = src()
+              if (u && el.getAttribute("src") === u) {
+                decodedUrls.add(u)
+                setStatus("ready")
+              }
             }}
             onError={(e) => {
-              if (e.currentTarget === imgEl) setStatus("error")
+              const el = e.currentTarget
+              const u = src()
+              if (u && el.getAttribute("src") === u) {
+                decodedUrls.delete(u)
+                setStatus("error")
+              }
             }}
           />
         </Show>

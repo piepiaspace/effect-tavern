@@ -207,10 +207,13 @@ export const Prose = (props: {
 }) => {
   const busy = read(working)
   const unresolved = () => props.node?.settlementStatus === "pending" || props.node?.settlementStatus === "failed"
-  const bs = createMemo(() => {
-    const bs = blocks(props.text)
-    return bs.length || !("tail" in props) ? bs : [""]
-  })
+  const bs = createMemo(
+    () => {
+      const bs = blocks(props.text)
+      return bs.length || !("tail" in props) ? bs : [""]
+    },
+    { equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) },
+  )
   const last = createMemo(() => bs().length - 1)
   const byParagraph = createMemo(
     () => (props.node ? resolveNodeIllustrations(props.node, props.view, bs().length) : undefined),

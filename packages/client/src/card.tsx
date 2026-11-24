@@ -20,30 +20,27 @@ import { activeStoryMatchesCard, galleryReadsEvent, resolveGallery } from "./med
 import { Prose } from "./prose.tsx"
 import { fillKnown } from "./pack.ts"
 import { openSettings } from "./settings-navigation.ts"
-import { backOf, close, newStory, open } from "./pages.ts"
-import { activeOf, card, focus, log, path, registry, routing, stories, tabs, working } from "./store.ts"
+import {
+  backOf,
+  cardTabReq,
+  clearCardTab,
+  close,
+  newStory,
+  open,
+  openCard,
+  openGallery,
+  peekCardTab,
+  requestCardTab,
+  type CardTab,
+} from "./pages.ts"
+import { activeOf, card, log, path, routing, stories, tabs, working } from "./store.ts"
 import type { CardView } from "./store.ts"
 import { turn } from "./turn.ts"
 import { fetchContext, fetchDetail } from "./wire.ts"
 import { t } from "./i18n.ts"
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 })
-export type CardTab = "opening" | "gallery"
-let pendingTab: { card: string; tab: CardTab } | null = null
-const [tabReq, setTabReq] = createSignal(0)
-
-export const requestCardTab = (next: CardTab, cardId?: string | null): void => {
-  pendingTab = { card: cardId ?? registry.get(focus) ?? registry.get(card)?.id ?? "*", tab: next }
-  setTabReq((n) => n + 1)
-}
-export const openCard = () => {
-  requestCardTab("opening")
-  open("card")
-}
-export const openGallery = () => {
-  requestCardTab("gallery")
-  open("card")
-}
+export { openCard, openGallery, requestCardTab, type CardTab }
 
 const catalogTitle = (c: CardView, catalogId: string): string => {
   const slot = c.media?.portraits?.find((s) => s.catalog === catalogId && s.label)
@@ -173,24 +170,24 @@ export const CardPage = () => {
   const cardHasGallery = createMemo(() => staticGallery().totalCount > 0)
   const cardNoOpenings = createMemo(() => (view()?.greetings.length ?? 0) === 0)
   const defaultTab = (): CardTab => (cardNoOpenings() && cardHasGallery() ? "gallery" : "opening")
+  const tabReq = read(cardTabReq)
   const [tab, setTab] = createSignal<CardTab>(() => {
     const cid = id()
     tabReq()
-    if (pendingTab !== null && (pendingTab.card === "*" || pendingTab.card === cid)) {
-      return pendingTab.tab === "gallery" && cardHasGallery() ? "gallery" : "opening"
+    const pending = peekCardTab()
+    if (pending !== null && (pending.card === "*" || pending.card === cid)) {
+      return pending.tab === "gallery" && cardHasGallery() ? "gallery" : "opening"
     }
     return defaultTab()
   })
   createEffect(
     () => [id(), tabReq()] as const,
     ([cid]) => {
-      if (cid !== undefined && pendingTab !== null && (pendingTab.card === "*" || pendingTab.card === cid)) {
-        pendingTab = null
-      }
+      if (cid !== undefined) clearCardTab(cid)
     },
   )
   onSettled(() => () => {
-    pendingTab = null
+    clearCardTab()
   })
   const activeTab = (): CardTab => (tab() === "gallery" && cardHasGallery() ? "gallery" : "opening")
   const showOpeningsList = () => activeTab() === "opening" && openings().length > 1

@@ -18,6 +18,7 @@ import {
   type PortraitSlot,
 } from "@effect-tavern/runtime/src/media.ts"
 import { rows, type Catalog, type Product, type TableShape } from "@effect-tavern/runtime/src/product.ts"
+import { createMemo, createRoot, runWithOwner, type Accessor } from "solid-js"
 import { blocks } from "./markdown.ts"
 import { card, path, stories, type CardView, type Id, type StoryRow } from "./store.ts"
 
@@ -401,17 +402,53 @@ export const samePortraits = (a: readonly ResolvedPortrait[], b: readonly Resolv
   )
 
 const emptyPortraits: readonly ResolvedPortrait[] = []
-let lastPortraits: readonly ResolvedPortrait[] = emptyPortraits
+let portraitsMemo: Accessor<readonly ResolvedPortrait[]> | undefined
 
-export const activePortraits = (): readonly ResolvedPortrait[] => {
-  const view = card()
-  if (!view || !activeStoryMatchesCard(view.id)) return emptyPortraits
-  const next = resolvePortraits(path().at(-1), view)
-  if (!next.length) return emptyPortraits
-  if (samePortraits(lastPortraits, next)) return lastPortraits
-  lastPortraits = next
-  return next
+const samePortraitHits = (
+  a: NonNullable<NodeMedia["portraits"]> | undefined,
+  b: NonNullable<NodeMedia["portraits"]> | undefined,
+): boolean =>
+  (a?.length ?? 0) === (b?.length ?? 0) &&
+  (a ?? []).every((p, i) => p.id === b?.[i]?.id && p.catalog === b?.[i]?.catalog && p.item === b?.[i]?.item)
+
+const ensurePortraitsMemo = (): Accessor<readonly ResolvedPortrait[]> => {
+  if (portraitsMemo) return portraitsMemo
+  portraitsMemo = runWithOwner(null, () =>
+    createRoot(() => {
+      const storyCardId = createMemo(() => {
+        const lib = stories()
+        return lib?.current == null ? undefined : lib.stories.find((s) => s.id === lib.current)?.card
+      })
+      const headHits = createMemo(() => path().at(-1)?.media?.portraits, { equals: samePortraitHits })
+      const cardMeta = createMemo(
+        () => {
+          const v = card()
+          return v ? { id: v.id, media: v.media, catalogs: v.catalogs } : null
+        },
+        {
+          equals: (a, b) =>
+            a?.id === b?.id &&
+            JSON.stringify(a?.media?.portraits ?? null) === JSON.stringify(b?.media?.portraits ?? null) &&
+            JSON.stringify(a?.catalogs ?? null) === JSON.stringify(b?.catalogs ?? null),
+        },
+      )
+      return createMemo(
+        () => {
+          const meta = cardMeta()
+          if (!meta?.id || storyCardId() !== meta.id) return emptyPortraits
+          const hits = headHits()
+          if (!hits?.length) return emptyPortraits
+          const next = resolvePortraits({ media: { portraits: hits } }, meta)
+          return next.length ? next : emptyPortraits
+        },
+        { equals: samePortraits },
+      )
+    }),
+  )
+  return portraitsMemo
 }
+
+export const activePortraits = (): readonly ResolvedPortrait[] => ensurePortraitsMemo()()
 
 export const condReadsEvent = (cond: Cond | undefined): boolean => {
   if (!cond) return false

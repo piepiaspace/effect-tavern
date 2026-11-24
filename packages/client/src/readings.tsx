@@ -734,7 +734,7 @@ const World = () => {
 }
 
 const StandingPortraits = () => {
-  const portraits = createMemo(activePortraits)
+  const portraits = activePortraits
   return (
     <Show when={portraits().length}>
       <section class="portraits">

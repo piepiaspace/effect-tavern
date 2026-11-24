@@ -78,7 +78,7 @@ export const Shell = (props: { children: JSX.Element }) => {
   const line = read(path)
   const strip = read(tabs)
   const marked = read(unread)
-  const portraits = createMemo(activePortraits)
+  const portraits = activePortraits
   // ── the sidebar's fold, float and width (fold.ts for the arithmetic) ──
   const wasFolded = stored(FOLDED) === "true"
   const [folded, setFolded] = createSignal(wasFolded)

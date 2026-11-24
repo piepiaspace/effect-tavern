@@ -9,6 +9,12 @@ import assert from "node:assert/strict"
 import { existsSync, rmSync } from "node:fs"
 import { dirname, extname, resolve } from "node:path"
 import { deflateSync } from "node:zlib"
+import { fake, type FakeCall } from "@effect-tavern/provider"
+import { player } from "@effect-tavern/runtime/support/rows.ts"
+import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
+import { open as openData } from "../../server/src/data.ts"
+import { app } from "../../server/src/serve.ts"
+import { tavern } from "../../server/src/tavern.ts"
 import { $ } from "bun"
 import type {
   FixtureResultPayload,
@@ -462,7 +468,254 @@ const fixtures: FixtureEntry[] = [
     () => "on a mouse the text selects as it always has, a sheet opens on its search, and a key is hit on its face",
     [FINE],
   ],
+  [
+    "test/media-ui.tsx",
+    (s) =>
+      `ferry media card imports, plays, holds, branches, reloads and deduplicates custom theater on desktop (${s.length} controls)`,
+    ["--window-size=1280,800", FINE],
+    createMediaUiHost,
+  ],
+  [
+    "test/media-ui.tsx",
+    (s) =>
+      `ferry media card imports, plays, holds, branches, reloads and deduplicates custom theater on mobile (${s.length} controls)`,
+    ["--window-size=390,844", COARSE],
+    createMediaUiHost,
+  ],
 ]
+
+type ScriptedTurnPlan = {
+  prose?: string
+  boat?: { aboard: boolean; moor: "岸边" | "江心" | "对岸" }
+  cg?: { afterParagraph: number; id: string }[]
+  score?: { id: string }[]
+  tide?: "rise" | "hold" | "ebb"
+  sky?: "clear" | "rain"
+  canned?: Record<string, unknown>
+  narrateDelay?: number
+  recordDelay?: number
+}
+
+const SKETCH_FERRY_YAML = `id: sketch_ferry
+title: 渡口速写
+summary: 验证自定义产品 ID 的按需插图小剧场去重与重选。
+version: "1.0"
+source: hand
+frame:
+  - id: setting
+    label: 江岸
+    text: 沧江北岸青石埠头。
+fiction:
+  - id: ferryman
+    label: 老艄公
+    text: 守渡三十年的老艄公。
+greetings:
+  - text: |-
+      北岸青石阶上风平浪静。
+
+      老艄公坐在船尾温着热茶。
+rules:
+  fields:
+    - { path: 潮位, label: 潮位, group: 江面, type: int, min: 0, max: 3, initial: 1 }
+  actions: []
+lore: []
+guard: []
+catalogs:
+  - id: sketch_scenes
+    kind: image
+    baseUrl: https://media.tavern.example/sketch/scenes
+    items:
+      - id: tide_sketch
+        label: 涨潮速写
+        when: { path: 潮位, op: gte, value: 2 }
+        variants: [tide-sketch-1.png]
+      - id: pier_sketch
+        label: 埠头速写
+        variants: [pier-sketch-1.png, pier-sketch-2.png]
+products:
+  - id: custom_sketch
+    role: theater
+    trigger: demand
+    label: 江岸速写
+    shape:
+      kind: table
+      max: 2
+      columns:
+        - { key: afterParagraph, type: int }
+        - { key: id, type: enum, catalog: sketch_scenes }
+    text: 按需为当前段落配一张江岸速写。
+  - id: aside_memo
+    role: theater
+    trigger: demand
+    label: 渡客随笔
+    shape:
+      kind: table
+      max: 2
+      columns:
+        - { key: speaker, type: text }
+        - { key: line, type: text }
+    text: 记一笔岸边随感。
+media:
+  illustrations: [{ product: custom_sketch }]
+  gallery: [sketch_scenes]
+`
+
+function createMediaUiHost(): FixtureHost {
+  const data = openData(":memory:")
+  const turnPlans: ScriptedTurnPlan[] = []
+  const demandPlans: Record<string, unknown>[] = []
+  let currentTurn: ScriptedTurnPlan | undefined
+
+  const answer = (o: FakeCall) => {
+    const doc = readStage(o)
+    if (doc.phase === "narrate") {
+      currentTurn = turnPlans.shift()
+      return {
+        text: currentTurn?.prose ?? "第一段江风吹拂青石阶。\n\n第二段远浦渔火微明。",
+        ...(currentTurn?.narrateDelay ? { delay: currentTurn.narrateDelay } : {}),
+      }
+    }
+    if (doc.phase === "record") {
+      if (!doc.tools.includes("finish_record")) {
+        const canned = demandPlans.shift() ?? {}
+        return defaultAnswer(doc, canned)
+      }
+      const plan = currentTurn
+      currentTurn = undefined
+      if (!plan) return defaultAnswer(doc)
+      const canned: Record<string, unknown> = {
+        ...plan.canned,
+        ...(plan.cg !== undefined && { ferry_cg: plan.cg }),
+        ...(plan.score !== undefined && { score: plan.score }),
+        ...((plan.tide !== undefined || plan.sky !== undefined) && {
+          answers: {
+            ...(plan.tide !== undefined && { tide: plan.tide }),
+            ...(plan.sky !== undefined && { sky: plan.sky }),
+          },
+        }),
+      }
+      const base = defaultAnswer(doc, canned)
+      const toolCalls = [
+        ...(plan.boat ? [{ name: "replace_boat", input: { value: plan.boat } }] : []),
+        ...(base.toolCalls ?? []),
+      ]
+      return {
+        ...base,
+        toolCalls,
+        ...(plan.recordDelay ? { delay: plan.recordDelay } : {}),
+      }
+    }
+    return defaultAnswer(doc)
+  }
+
+  const { handler } = tavern({
+    data,
+    overlay: player.harness,
+    model: () => fake(answer),
+    seed: { key: "sk-ant-fake" },
+    pinned: true,
+    scripted: true,
+    page: true,
+  })
+
+  return {
+    api: app(handler),
+    routes: {
+      "/__fixture/sketch-ferry.yaml": SKETCH_FERRY_YAML,
+      "/__fixture/model": async (req) => {
+        if (req.method === "POST") {
+          const body = (await req.json()) as {
+            clear?: boolean
+            turns?: ScriptedTurnPlan[]
+            demands?: Record<string, unknown>[]
+          }
+          if (body.clear) {
+            turnPlans.length = 0
+            demandPlans.length = 0
+            currentTurn = undefined
+          }
+          if (body.turns) turnPlans.push(...body.turns)
+          if (body.demands) demandPlans.push(...body.demands)
+        }
+        return Response.json(
+          { queuedTurns: turnPlans.length, queuedDemands: demandPlans.length },
+          { headers: { "cache-control": "no-store" } },
+        )
+      },
+    },
+    close: () => data.close(),
+  }
+}
+
+function parseWindowSize(flags: readonly string[]): { width: number; height: number } | undefined {
+  for (const flag of flags) {
+    const m = /^--window-size=(\d+),(\d+)$/.exec(flag)
+    if (m) return { width: Number(m[1]), height: Number(m[2]) }
+  }
+  return undefined
+}
+
+async function navigateWithViewport(
+  stderr: ReadableStream<Uint8Array>,
+  size: { width: number; height: number },
+  mobile: boolean,
+  targetUrl: string,
+): Promise<WebSocket> {
+  const reader = stderr.getReader()
+  const dec = new TextDecoder()
+  let buf = ""
+  let wsUrl = ""
+  while (!wsUrl) {
+    const { value, done } = await reader.read()
+    if (done) throw new Error("Chrome exited before DevTools ws URL")
+    buf += dec.decode(value, { stream: true })
+    const m = /DevTools listening on (ws:\/\/\S+)/.exec(buf)
+    if (m) wsUrl = m[1]
+  }
+  reader.releaseLock()
+  // Drain remaining stderr in background so pipe never blocks
+  void stderr.cancel().catch(() => {})
+
+  const ws = new WebSocket(wsUrl)
+  await new Promise<void>((resolve, reject) => {
+    ws.onopen = () => resolve()
+    ws.onerror = (e) => reject(e)
+  })
+  let msgId = 0
+  const pending = new Map<number, { resolve: (v: Record<string, unknown>) => void; reject: (e: Error) => void }>()
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(String(ev.data)) as {
+      id?: number
+      result?: Record<string, unknown>
+      error?: unknown
+    }
+    if (msg.id && pending.has(msg.id)) {
+      const p = pending.get(msg.id)!
+      pending.delete(msg.id)
+      if (msg.error) p.reject(new Error(JSON.stringify(msg.error)))
+      else p.resolve(msg.result ?? {})
+    }
+  }
+  const cdp = (method: string, params: Record<string, unknown> = {}, sessionId?: string) =>
+    new Promise<Record<string, unknown>>((resolve, reject) => {
+      const id = ++msgId
+      pending.set(id, { resolve, reject })
+      ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }))
+    })
+  const targets = (await cdp("Target.getTargets")) as { targetInfos: { type: string; targetId: string }[] }
+  const pageTarget = targets.targetInfos.find((t) => t.type === "page")
+  if (!pageTarget) throw new Error("no page target in headless Chrome")
+  const attached = (await cdp("Target.attachToTarget", { targetId: pageTarget.targetId, flatten: true })) as {
+    sessionId: string
+  }
+  await cdp(
+    "Emulation.setDeviceMetricsOverride",
+    { width: size.width, height: size.height, deviceScaleFactor: 1, mobile },
+    attached.sessionId,
+  )
+  await cdp("Page.navigate", { url: targetUrl }, attached.sessionId)
+  return ws
+}
 
 if (import.meta.main) {
   const chrome = process.env["CHROME"] ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -527,20 +780,29 @@ if (import.meta.main) {
         return new Response(Bun.file(page))
       },
     })
-    const browser = Bun.spawn(
-      [chrome, "--headless=new", "--disable-gpu", ...flags, `http://localhost:${server.port}/`],
-      {
-        stdout: "ignore",
-        stderr: "ignore",
-      },
-    )
-    const timer = setTimeout(() => result.reject(new Error(`${fixture} posted no result in 30s`)), 30_000)
+    const winSize = parseWindowSize(flags)
+    const targetUrl = `http://localhost:${server.port}/`
+    const browser = winSize
+      ? Bun.spawn([chrome, "--headless=new", "--disable-gpu", "--remote-debugging-port=0", ...flags, "about:blank"], {
+          stdout: "ignore",
+          stderr: "pipe",
+        })
+      : Bun.spawn([chrome, "--headless=new", "--disable-gpu", ...flags, targetUrl], {
+          stdout: "ignore",
+          stderr: "ignore",
+        })
+    let cdpWs: WebSocket | undefined
+    const timer = setTimeout(() => result.reject(new Error(`${fixture} posted no result in 45s`)), 45_000)
     try {
+      if (winSize && browser.stderr && typeof browser.stderr !== "number") {
+        cdpWs = await navigateWithViewport(browser.stderr, winSize, flags.includes(COARSE), targetUrl)
+      }
       const { failures, snapshot } = await result.promise
       assert.deepEqual(failures, [], fixture)
       console.log(`ui: ${passed(snapshot)}`)
     } finally {
       clearTimeout(timer)
+      cdpWs?.close()
       media.close()
       browser.kill()
       void server.stop(true)
