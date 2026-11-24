@@ -80,15 +80,25 @@ import { head as headOf, type Hat } from "./fragment.ts"
 import { policyFor, type Policy } from "./history.ts"
 import { split, splitter, textOf as proseOf, type Brief, type Input, type Turn as TurnOf } from "./journal.ts"
 import * as Log from "./log.ts"
-import { resolve, resolveWithTrace, shown, worldOf, type Resolved, type ResolvedTrace, type Rows } from "./layer.ts"
+import {
+  catalogsOf,
+  resolve,
+  resolveWithTrace,
+  shown,
+  worldOf,
+  type Resolved,
+  type ResolvedTrace,
+  type Rows,
+} from "./layer.ts"
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
+import { projectNodeMedia } from "./media.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
 import { prepareHat, prepareNarrate, stripTraceRawText } from "./preview.ts"
 import { request, worldBlock, type Ask, type Told } from "./request.ts"
 import type { MessageTrace, WireErrorInfo } from "./trace.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
-import { cap, shapeSchema, withCatalogs, askedAt, productAsks, type Product } from "./product.ts"
+import { cap, shapeSchema, withCatalogs, askedAt, productAsks, type Catalog, type Product } from "./product.ts"
 import { recordTransaction, worldValue, type RecordResult, type WorldState } from "./world.ts"
 
 export type Turn = TurnOf<Beat>
@@ -293,6 +303,7 @@ export type Facets = ReturnType<typeof facets>
  *  a client merges nothing. */
 export const cardView = (card: Card, rows: Rows = {}) => {
   const f = facets(card) // once: the shelf row's facets and the head size are the same reading
+  const catalogs = catalogsOf(card, rows)
   return {
     // its name and one line, the turn-heading reference, and its size as numbers. `input` is the card's default channel,
     // the one client-facing coordinate of participant vs author mode: on `act` the box is the player's line and a note or
@@ -316,7 +327,8 @@ export const cardView = (card: Card, rows: Rows = {}) => {
     rules: card.rules,
     // the fiction's modules without their text: id, shown name, and the state condition that makes one a variant
     fiction: card.fiction.map(({ id, label, when }) => ({ id, label, when })),
-    catalogs: card.catalogs, // attachments by id as declared: a gallery draws them, a reader resolves a node's id
+    catalogs: catalogs.length ? catalogs : card.catalogs, // attachments by id as declared: a gallery draws them, a reader resolves a node's id
+    ...(card.media !== undefined && { media: card.media }),
     layer: shown(resolve(card, rows)),
   }
 }
@@ -352,7 +364,13 @@ export const makeSession = ({
   /** Resolve one request's rows and card lore. Pack resources bypass the story disclosure
    *  engine, so a same-named Pack can never unlock card lore. Historical text lives on turns. */
   let now:
-    | { RT: ResolvedTrace; R: Resolved; I: Lore<Paths, readonly string[]>; packNames: Record<string, string> }
+    | {
+        RT: ResolvedTrace
+        R: Resolved
+        I: Lore<Paths, readonly string[]>
+        packNames: Record<string, string>
+        catalogs: readonly Catalog[]
+      }
     | undefined
   const currentResolved = () => {
     if (now) return now
@@ -361,11 +379,13 @@ export const makeSession = ({
     const R = RT.resolved
     const I = makeLore<Paths, readonly string[]>(namedLore(cardLore, R.names))
     const packNames = Object.fromEntries((rawRows.packs ?? []).map((p) => [p.id, p.name]))
-    return (now = { RT, R, I, packNames })
+    const catalogs = catalogsOf(card, rawRows)
+    return (now = { RT, R, I, packNames, catalogs })
   }
   const layer = () => currentResolved().R
   const layerTrace = () => currentResolved().RT
   const packNames = () => currentResolved().packNames
+  const catalogs = () => currentResolved().catalogs
   const L = () => currentResolved().I
   const fresh = () => void (now = undefined)
   /** The card's own text with the names in force: a hole nothing fills stays as written (names.ts). */
@@ -731,7 +751,7 @@ export const makeSession = ({
       view,
       pre,
       context,
-      picks: withCatalogs(picks, card.catalogs ?? [], context),
+      picks: withCatalogs(picks, catalogs(), context),
       theaters: products().filter(
         (p) =>
           p.role === "theater" && (p.stage ?? "record") === "record" && p.on && p.trigger !== "demand" && !p.unasked,
@@ -748,7 +768,7 @@ export const makeSession = ({
   ) =>
     Effect.gen(function* () {
       if (mode === "auto" && product.when && !holds(product.when, context)) return {}
-      const [p] = withCatalogs([product], card.catalogs ?? [], context)
+      const [p] = withCatalogs([product], catalogs(), context)
       if (!p) return {}
       const msgs = sceneRequest([p], context, view, scene, false, undefined, mode === "interval")
       const schema = Schema.Struct({ [p.id]: shapeSchema(p.shape) as Schema.Codec<unknown> })
@@ -1493,7 +1513,7 @@ export const makeSession = ({
             emit,
             withCatalogs(
               asked.filter((q) => q.role !== "theater"),
-              card.catalogs ?? [],
+              catalogs(),
               here.context(),
             ),
             here.context(),
@@ -1562,6 +1582,21 @@ export const makeSession = ({
     if (record) Deferred.doneUnsafe(record, Effect.void)
     return !!(record || theater)
   }
+
+  const toTimeline = (parents: readonly Turn[], n: Node): TimelineNode =>
+    timelineNode(
+      n,
+      derived.at(parents).state,
+      card.rules,
+      products(),
+      projectNodeMedia({
+        media: card.media,
+        products: products(),
+        catalogs: catalogs(),
+        turnProducts: n.turn.products,
+        context: () => derived.at([...parents, n.turn]).context(),
+      }),
+    )
 
   return {
     greet,
@@ -1641,19 +1676,19 @@ export const makeSession = ({
         ),
       }
     },
-    projectTimeline: (n: Node): TimelineNode =>
-      timelineNode(n, derived.at(chain(n.parent)).state, card.rules, products()),
+    projectTimeline: (n: Node): TimelineNode => toTimeline(chain(n.parent), n),
     timelineNode: (id: number): TimelineNode => {
       fresh()
-      const t = turnOf(id)
-      return timelineNode(derived.at(chain(id)).node(false), derived.at(chain(t.parent)).state, card.rules, products())
+      const path = chain(id)
+      return toTimeline(path.slice(0, -1), derived.at(path).node(false))
     },
     timeline: (): Log.Snapshot<TimelineNode> => {
       fresh()
       return {
-        nodes: [...held.log.nodes.values()].map((t) =>
-          timelineNode(derived.at(chain(t.id)).node(false), derived.at(chain(t.parent)).state, card.rules, products()),
-        ),
+        nodes: [...held.log.nodes.values()].map((t) => {
+          const path = chain(t.id)
+          return toTimeline(path.slice(0, -1), derived.at(path).node(false))
+        }),
         head: held.log.head,
         next: held.log.next,
       }

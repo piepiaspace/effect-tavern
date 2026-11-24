@@ -36,7 +36,19 @@ export const mechanical = (card: Card) => {
       sections: sections?.map(({ id }) => ({ id })),
     })),
     products: card.products?.map(({ text: _t, label: _l, initial: _i, ...wiring }) => wiring),
-    catalogs: card.catalogs?.map(({ id, items }) => ({ id, items: items.map(({ id, when }) => ({ id, when })) })),
+    catalogs: card.catalogs?.map(({ id, kind, items }) => ({
+      id,
+      ...(kind !== undefined && { kind }),
+      items: items.map(({ id, when }) => ({ id, when })),
+    })),
+    ...(card.media && {
+      media: {
+        ...card.media,
+        ...(card.media.portraits && {
+          portraits: card.media.portraits.map(({ label: _l, ...wiring }) => wiring),
+        }),
+      },
+    }),
   }
 }
 

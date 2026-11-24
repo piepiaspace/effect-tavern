@@ -8,7 +8,7 @@ import type { Message } from "@effect-tavern/provider"
 import { drawn, makeCard, type Card, type State } from "./card.ts"
 import { holds, lookup, reads, type Cond } from "./cond.ts"
 import { head, type Fragment } from "./fragment.ts"
-import { resolve, worldOf, type Rows } from "./layer.ts"
+import { catalogsOf, resolve, worldOf, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore } from "./lore.ts"
 import { lines, fill } from "./names.ts"
 import { request, type Ask } from "./request.ts"
@@ -176,9 +176,10 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
 
   // ───────── record ─────────
   // a 小剧场 is narrate's, not this record document's; a catalog with no survivor drops what reads it (session `record`)
+  const catalogs = catalogsOf(card, rows)
   const asked = withCatalogs(
     askedAt(R.products, "record", gated).filter((p) => p.role !== "theater"),
-    card.catalogs ?? [],
+    catalogs,
     gated,
   )
   const asks = productAsks(asked, gated)

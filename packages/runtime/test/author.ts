@@ -449,7 +449,20 @@ const detailed: Card = {
       initial: "PRIVATE INITIAL",
     },
   ],
-  catalogs: [{ id: "images", baseUrl: "PRIVATE URL", items: [{ id: "a", variants: ["PRIVATE FILE"] }] }],
+  catalogs: [
+    {
+      id: "images",
+      kind: "image",
+      baseUrl: "PRIVATE URL",
+      items: [{ id: "a", label: "PRIVATE ITEM LABEL", when: { path: "mode", is: "text" }, variants: ["PRIVATE FILE"] }],
+    },
+  ],
+  media: {
+    illustrations: [{ product: "memory" }],
+    portraits: [{ id: "hero", catalog: "images", label: "PRIVATE PORTRAIT LABEL" }],
+    gallery: ["images"],
+    bgm: { product: "memory" },
+  },
   lore: [
     {
       id: "dotted.id",
@@ -464,6 +477,15 @@ const projected = mechanical(detailed)
 assert.ok(!JSON.stringify(projected).includes("PRIVATE"))
 assert.deepEqual(projected.rules.fields[0].options, ["text"])
 assert.deepEqual(projected.lore[0].unlock, { path: "mode", is: "text" })
+assert.deepEqual(projected.catalogs, [
+  { id: "images", kind: "image", items: [{ id: "a", when: { path: "mode", is: "text" } }] },
+])
+assert.deepEqual(projected.media, {
+  illustrations: [{ product: "memory" }],
+  portraits: [{ id: "hero", catalog: "images" }],
+  gallery: ["images"],
+  bgm: { product: "memory" },
+})
 const revised = applyCompile(detailed, full)
 assert.equal(revised.rules.fields[0].start, true)
 assert.equal(revised.rules.fields[0].label, "PRIVATE LABEL")
@@ -473,6 +495,11 @@ assert.equal(revised.products![0].text, "PRIVATE QUESTION")
 assert.equal(revised.products![0].recall, "id")
 assert.deepEqual(revised.products![0].fold, { key: "id" })
 assert.deepEqual(revised.products![0].shape, full.products![0].shape)
+assert.deepEqual(revised.catalogs, detailed.catalogs)
+assert.deepEqual(revised.media, detailed.media)
+const sortedMedia = applySort(detailed, ["Sorted chapter."], [{ paragraphs: [0], to: "fiction.sorted" }])
+assert.deepEqual(sortedMedia.catalogs, detailed.catalogs)
+assert.deepEqual(sortedMedia.media, detailed.media)
 assert.equal(selectedText(detailed, "greetings[0]"), "PRIVATE OPENING")
 assert.equal(selectedText(detailed, "lore.dotted.id.layers[0]"), "PRIVATE LAYER")
 assert.deepEqual(
