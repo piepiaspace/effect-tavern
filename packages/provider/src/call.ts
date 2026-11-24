@@ -17,13 +17,30 @@ import {
 import { Cause, Effect, Queue, Schema, Stream } from "effect"
 import type { Capabilities } from "./capabilities.ts"
 import type { Observer } from "./exchange.ts"
+import {
+  NARRATIVE_PARAM_DESCRIPTION,
+  resolveDeliverTool,
+  toolNameProblem,
+  type DeliverTool,
+  type ResolvedDeliverTool,
+} from "./deliver.ts"
 import type { Fault } from "./fault.ts"
 import type { Format } from "./url.ts"
 
 export type Message = ModelMessage
 export type Part = TextStreamPart<Record<string, never>>
 
-export const NARRATIVE_TOOL = "narrative" as const
+export {
+  NARRATIVE_PARAM_DESCRIPTION,
+  NARRATIVE_TOOL,
+  NARRATIVE_TOOL_DESCRIPTION,
+  TOOL_NAME_RE,
+  isToolName,
+  resolveDeliverTool,
+  toolNameProblem,
+  type DeliverTool,
+  type ResolvedDeliverTool,
+} from "./deliver.ts"
 export type DeliverMode = "text" | "tool"
 
 export type Effort = "off" | "low" | "medium" | "high" | "max"
@@ -35,6 +52,9 @@ export interface CallOptions {
   deliver?: DeliverMode
   /** Narrative tool choice defaults to auto. */
   toolChoice?: "auto" | "force"
+  /** The delivery tool's name, description and `text` parameter description under `deliver: "tool"`; an absent or
+   *  blank field keeps the default. A name not every vendor accepts fails the call before it is sent. */
+  deliverTool?: DeliverTool
   /** Merged under the model's own provider key; use for anything the connection config does not name. */
   providerOptions?: Record<string, Record<string, unknown>>
 }
@@ -336,19 +356,24 @@ const structuredToolChoice = (
     ? ("auto" as const)
     : { type: "tool" as const, toolName }
 
-const NARRATIVE_SCHEMA = standard(
-  Schema.Struct({
-    text: Schema.String.annotate({ description: "The full reply, nothing omitted." }),
-  }),
-)
-const narrativeCall = (choice: CallOptions["toolChoice"]) => ({
+const narrativeSchema = (param: string) =>
+  standard(Schema.Struct({ text: Schema.String.annotate({ description: param }) }))
+const NARRATIVE_SCHEMA = narrativeSchema(NARRATIVE_PARAM_DESCRIPTION)
+/** The delivery tool this call sends, defaults filled; a name not every vendor accepts throws before any request. */
+const deliverToolOf = (o: CallOptions): ResolvedDeliverTool => {
+  const tool = resolveDeliverTool(o.deliverTool)
+  const problem = toolNameProblem(tool.name)
+  if (problem) throw new Error(problem)
+  return tool
+}
+const narrativeCall = (tool: ResolvedDeliverTool, choice: CallOptions["toolChoice"]) => ({
   tools: {
-    [NARRATIVE_TOOL]: {
-      description: "Deliver the complete scene narration.",
-      inputSchema: NARRATIVE_SCHEMA,
+    [tool.name]: {
+      description: tool.description,
+      inputSchema: tool.param === NARRATIVE_PARAM_DESCRIPTION ? NARRATIVE_SCHEMA : narrativeSchema(tool.param),
     },
   },
-  toolChoice: choice === "force" ? ({ type: "tool", toolName: NARRATIVE_TOOL } as const) : ("auto" as const),
+  toolChoice: choice === "force" ? ({ type: "tool", toolName: tool.name } as const) : ("auto" as const),
 })
 
 const HEX_CHARS = new Set("0123456789abcdefABCDEF".split(""))
@@ -902,13 +927,13 @@ const replyParts = (m: AssistantModelMessage | undefined): ReplyPart[] =>
       ? [{ type: "text", text: m.content }]
       : m.content.filter((p): p is ReplyPart => p.type === "text" || p.type === "reasoning")
 
-const narrativeReplyParts = (m: AssistantModelMessage | undefined, text: string): ReplyPart[] => {
+const narrativeReplyParts = (m: AssistantModelMessage | undefined, text: string, toolName: string): ReplyPart[] => {
   const reasoning = replyParts(m).filter((p): p is Extract<ReplyPart, { type: "reasoning" }> => p.type === "reasoning")
   // When Gemini attaches thoughtSignature to the functionCall part rather than the preceding thought part, preserve it
   // on the last reasoning part so `Reply.parts` stays strictly `reasoning + { type: "text", text }` with zero tool parts.
   if (reasoning.length > 0 && m && Array.isArray(m.content)) {
     const toolPart = m.content.find(
-      (p): p is Extract<typeof p, { type: "tool-call" }> => p.type === "tool-call" && p.toolName === NARRATIVE_TOOL,
+      (p): p is Extract<typeof p, { type: "tool-call" }> => p.type === "tool-call" && p.toolName === toolName,
     )
     const last = reasoning.at(-1)
     if (last && toolPart?.providerOptions && !last.providerOptions)
@@ -931,20 +956,21 @@ export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}
     const modelId = modelIdOf(m.model)
     const wired = wireForModel(m, messages)
     const toolDeliver = eff.deliver === "tool"
+    const tool = toolDeliver ? deliverToolOf(eff) : undefined
     const spy = toolDeliver ? spyGenerate(m.model) : undefined
     try {
       const r = await generateText({
         model: spy ? spy.model : m.model,
         messages: wired,
         abortSignal,
-        ...(toolDeliver && narrativeCall(eff.toolChoice)),
+        ...(tool && narrativeCall(tool, eff.toolChoice)),
         ...settings(m.format, eff, modelId),
       })
       const body = replyText(r.response.messages)
       const used = usage(r.usage)
       const assistant = r.response.messages.find((msg): msg is AssistantModelMessage => msg.role === "assistant")
-      if (toolDeliver) {
-        const narrativeCalls = r.toolCalls.filter((c) => c.toolName === NARRATIVE_TOOL)
+      if (tool) {
+        const narrativeCalls = r.toolCalls.filter((c) => c.toolName === tool.name)
         if (narrativeCalls.length > 0) {
           const invalidCall = r.finishReason !== "length" ? narrativeCalls.find((c) => c.invalid) : undefined
           if (invalidCall)
@@ -960,7 +986,7 @@ export const text = (m: Model, messages: readonly Message[], o: CallOptions = {}
           return {
             text: resolvedText,
             reasoning: r.reasoningText,
-            parts: narrativeReplyParts(assistant, resolvedText),
+            parts: narrativeReplyParts(assistant, resolvedText, tool.name),
             usage: used,
             finishReason: r.finishReason === "tool-calls" ? ("stop" as const) : r.finishReason,
             rawFinishReason: r.rawFinishReason,
@@ -1010,11 +1036,16 @@ export interface Reply {
  *  would crash the process. So the iterator is never cancelled: interruption aborts the signal and the drain runs on
  *  to the `abort` part ai-sdk then emits, which is dropped. */
 export const streamed = (m: Model, messages: readonly Message[], o: CallOptions = {}) =>
-  Effect.try({ try: () => wireForModel(m, messages), catch: modelError }).pipe(
-    Effect.map((wired) => {
+  Effect.try({
+    try: () => {
       const eff = effectiveOptions(m, o)
+      return { eff, tool: eff.deliver === "tool" ? deliverToolOf(eff) : undefined, wired: wireForModel(m, messages) }
+    },
+    catch: modelError,
+  }).pipe(
+    Effect.map(({ eff, tool, wired }) => {
       const modelId = modelIdOf(m.model)
-      const toolDeliver = eff.deliver === "tool"
+      const toolDeliver = tool !== undefined
       const ac = new AbortController()
       const r = streamText({
         model: m.model,
@@ -1024,7 +1055,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         // object, stack and all, to the console
         onError: () => {},
         includeRawChunks: !!m.exchange,
-        ...(toolDeliver && narrativeCall(eff.toolChoice)),
+        ...(tool && narrativeCall(tool, eff.toolChoice)),
         ...settings(m.format, eff, modelId),
       })
       let sawNarrativeCall = false
@@ -1070,9 +1101,9 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
                   ))
                 }
                 lastRaw = undefined
-                if (toolDeliver) {
+                if (tool) {
                   if (p.type === "tool-input-start") {
-                    if (p.toolName === NARRATIVE_TOOL) {
+                    if (p.toolName === tool.name) {
                       sawNarrativeCall = true
                       narrativeIds.add(p.id)
                       decoders.set(p.id, narrativeDecoder())
@@ -1100,7 +1131,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
                     continue
                   }
                   if (p.type === "tool-call") {
-                    if (p.toolName === NARRATIVE_TOOL && !narrativeIds.has(p.toolCallId)) {
+                    if (p.toolName === tool.name && !narrativeIds.has(p.toolCallId)) {
                       sawNarrativeCall = true
                       narrativeIds.add(p.toolCallId)
                       const chunk = extractNarrativeInputText(p.input)
@@ -1147,9 +1178,9 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
         ])
         const used = usage(rawUsage)
         const assistant = rawMessages.find((msg): msg is AssistantModelMessage => msg.role === "assistant")
-        if (toolDeliver) {
+        if (tool) {
           const calls = await r.toolCalls
-          const narrativeCalls = calls.filter((c) => c.toolName === NARRATIVE_TOOL)
+          const narrativeCalls = calls.filter((c) => c.toolName === tool.name)
           if (narrativeCalls.length > 0 || sawNarrativeCall) {
             const invalidCall = rawReason !== "length" ? narrativeCalls.find((c) => c.invalid) : undefined
             if (invalidCall) {
@@ -1178,7 +1209,7 @@ export const streamed = (m: Model, messages: readonly Message[], o: CallOptions 
             const resolvedText = textByCall.size ? [...textByCall.values()].join("") : decodedNarrative
             return {
               text: resolvedText,
-              parts: narrativeReplyParts(assistant, resolvedText),
+              parts: narrativeReplyParts(assistant, resolvedText, tool.name),
               usage: used,
               finishReason: resolveFinishReason(rawReason),
               rawFinishReason,

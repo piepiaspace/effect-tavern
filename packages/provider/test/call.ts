@@ -3,8 +3,13 @@
 import assert from "node:assert/strict"
 import { Cause, Effect, Exit, Schema, Stream } from "effect"
 import {
+  NARRATIVE_PARAM_DESCRIPTION,
   NARRATIVE_TOOL,
+  NARRATIVE_TOOL_DESCRIPTION,
   effortOptions,
+  isToolName,
+  resolveDeliverTool,
+  toolNameProblem,
   narrativeDecoder,
   object,
   streamed,
@@ -797,6 +802,127 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   const respEx = exchanges.find((e) => e.kind === "response")
   assert.equal(respEx?.status, 200)
   assert.match(respEx?.error ?? "", /PROHIBITED_CONTENT/)
+}
+
+// ───────── 6k. The delivery tool's meta (`deliverTool`): name, description, `text` parameter description ─────────
+{
+  const prose = '灯下无人。\n"再等等。"风从门缝里挤进来。'
+  const custom = { name: "actual_content", description: "交付本回合正文。", param: "完整正文，一字不漏。" }
+  type Sent = { name: string; description?: string; inputSchema: unknown }
+  const sentTools = (req: Parameters<Parameters<typeof fake>[0]>[0]): Sent[] =>
+    (req.tools ?? []).filter((t) => t.type === "function") as Sent[]
+
+  // Pure helpers: defaults byte-identical, blank fields fall back, the name check.
+  assert.equal(NARRATIVE_TOOL, "narrative")
+  assert.equal(NARRATIVE_TOOL_DESCRIPTION, "Deliver the complete scene narration.")
+  assert.equal(NARRATIVE_PARAM_DESCRIPTION, "The full reply, nothing omitted.")
+  assert.deepEqual(resolveDeliverTool(), {
+    name: NARRATIVE_TOOL,
+    description: NARRATIVE_TOOL_DESCRIPTION,
+    param: NARRATIVE_PARAM_DESCRIPTION,
+  })
+  assert.deepEqual(resolveDeliverTool({ name: "", description: "  ", param: undefined }), resolveDeliverTool())
+  for (const ok of ["narrative", "_x", "actual_content", "response-body", "a".repeat(64)]) assert.ok(isToolName(ok), ok)
+  for (const bad of ["9lives", "-x", "has space", "点", "a.b", "a".repeat(65)]) {
+    assert.ok(!isToolName(bad), bad)
+    assert.match(toolNameProblem(bad) ?? "", /must start with a letter or an underscore/)
+  }
+  assert.equal(toolNameProblem("narrative"), undefined)
+
+  // No meta and blank meta send exactly the tool today's call sends.
+  const seen: Sent[][] = []
+  const recording = fake((req) => {
+    seen.push(sentTools(req))
+    return { text: "", toolCalls: [{ name: NARRATIVE_TOOL, input: { text: prose } }] }
+  })
+  await Effect.runPromise(text(recording, msgs, { deliver: "tool" }))
+  await Effect.runPromise(text(recording, msgs, { deliver: "tool", deliverTool: { name: " ", description: "" } }))
+  assert.equal(seen[0][0].name, NARRATIVE_TOOL)
+  assert.equal(seen[0][0].description, NARRATIVE_TOOL_DESCRIPTION)
+  assert.equal(
+    (seen[0][0].inputSchema as { properties: { text: { description: string } } }).properties.text.description,
+    NARRATIVE_PARAM_DESCRIPTION,
+  )
+  assert.equal(JSON.stringify(seen[1]), JSON.stringify(seen[0]))
+
+  // Custom meta reaches the model in both text() and streamed(); a call under the custom name is the delivery, and a
+  // call under the old default name is not mistaken for it.
+  for (const choice of ["auto", "force"] as const) {
+    const customFake = fake((req) => {
+      const [tool, ...rest] = sentTools(req)
+      assert.equal(rest.length, 0)
+      assert.equal(tool.name, custom.name)
+      assert.equal(tool.description, custom.description)
+      assert.equal(
+        (tool.inputSchema as { properties: { text: { description: string } } }).properties.text.description,
+        custom.param,
+      )
+      assert.deepEqual(req.toolChoice, choice === "force" ? { type: "tool", toolName: custom.name } : { type: "auto" })
+      return {
+        text: "",
+        toolCalls: [
+          { name: NARRATIVE_TOOL, input: { text: "not this" } },
+          { name: custom.name, input: { text: prose } },
+        ],
+        rawFinishReason: "STOP",
+      }
+    })
+    const o = { deliver: "tool", toolChoice: choice, deliverTool: custom } as const
+    const whole = await Effect.runPromise(text(customFake, msgs, o))
+    assert.equal(whole.text, prose)
+    assert.deepEqual(whole.parts, [{ type: "text", text: prose }])
+    const streamedOut = await Effect.runPromise(
+      Effect.gen(function* () {
+        const s = yield* streamed(customFake, msgs, o)
+        const parts = yield* Stream.runCollect(s.parts)
+        return { parts, reply: yield* s.reply }
+      }),
+    )
+    const deltas = streamedOut.parts
+      .filter((p): p is Extract<typeof p, { type: "text-delta" }> => p.type === "text-delta")
+      .map((p) => p.text)
+    assert.ok(deltas.length > 1) // the fake streams eight-character deltas: the prefix decoder ran
+    assert.equal(deltas.join(""), prose)
+    assert.equal(streamedOut.reply.text, prose)
+    assert.equal(streamedOut.reply.finishReason, "stop")
+  }
+
+  // Under a custom name, a reply that only calls the old default name is not a delivery.
+  const oldNameOnly = fake(() => ({
+    text: "",
+    toolCalls: [{ name: NARRATIVE_TOOL, input: { text: "stray" } }],
+  }))
+  const strayWhole = await Effect.runPromise(text(oldNameOnly, msgs, { deliver: "tool", deliverTool: custom }))
+  assert.equal(strayWhole.text, "")
+  assert.equal(strayWhole.finishReason, "tool-calls")
+  const strayStream = await Effect.runPromise(
+    Effect.gen(function* () {
+      const s = yield* streamed(oldNameOnly, msgs, { deliver: "tool", deliverTool: custom })
+      const parts = yield* Stream.runCollect(s.parts)
+      return { parts, reply: yield* s.reply }
+    }),
+  )
+  assert.ok(!strayStream.parts.some((p) => p.type === "text-delta"))
+  assert.equal(strayStream.reply.text, "")
+
+  // An invalid name is refused before any request, in both text() and streamed().
+  let called = 0
+  const counting = fake(() => {
+    called++
+    return { text: "x" }
+  })
+  const badOpts = { deliver: "tool", deliverTool: { name: "scene narration" } } as const
+  const badWhole = await Effect.runPromiseExit(text(counting, msgs, badOpts))
+  assert.ok(Exit.isFailure(badWhole))
+  const badWholeErr = Cause.squash(badWhole.cause) as ModelError
+  assert.equal(badWholeErr._tag, "ModelError")
+  assert.match(badWholeErr.message, /"scene narration" is not one every model accepts/)
+  const badStream = await Effect.runPromiseExit(streamed(counting, msgs, badOpts))
+  assert.ok(Exit.isFailure(badStream))
+  assert.match((Cause.squash(badStream.cause) as ModelError).message, /must start with a letter or an underscore/)
+  assert.equal(called, 0)
+  // Without tool delivery the meta is not sent, so it is not checked either.
+  assert.equal((await Effect.runPromise(text(counting, msgs, { deliverTool: { name: "bad name" } }))).text, "x")
 }
 
 // ───────── openai-compatible object(): strict schema shape, json mode carries the schema ─────────
