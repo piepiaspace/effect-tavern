@@ -42,7 +42,9 @@ import {
   Import,
   Jump,
   Package,
+  Next,
   Plugs,
+  Restore,
   Send,
   Sliders,
   Snippets as Plus,
@@ -783,13 +785,14 @@ const Templates = (props: Pane) => {
                       <h3>{t("settings.hatDeliver")}</h3>
                       <Segment
                         label={t("settings.hatDeliver")}
-                        value={h().deliver === "tool" ? (h().toolChoice ?? "auto") : "text"}
+                        value={h().deliver === "tool" ? "tool" : "text"}
                         options={[
                           { value: "text", label: t("settings.hatDeliverText") },
-                          { value: "auto", label: t("settings.hatDeliverAuto") },
-                          { value: "force", label: t("settings.hatDeliverForce") },
+                          { value: "tool", label: t("settings.hatDeliverTool") },
                         ]}
-                        onPick={(v) => saveDelivery(withDeliver(h(), v))}
+                        onPick={(v) =>
+                          saveDelivery(withDeliver(h(), v === "tool" ? (h().toolChoice ?? "auto") : "text"))
+                        }
                       />
                     </div>
                     <Show when={h().deliver === "tool"}>
@@ -1031,99 +1034,139 @@ const Templates = (props: Pane) => {
 const harnessAsk = (rows: readonly { id: string; asks?: readonly { id: string; text: string }[] }[], id: string) =>
   rows.find((p) => p.id === "harness")?.asks?.find((a) => a.id === id)?.text ?? DEFAULT_ASKS.get(id) ?? ""
 
-/** Under tool delivery: the delivery tool's name and wording (#221) and the wrap (#220), whose explanation here is the
- *  feature's one. Text fields stage as typed and write on change (or by the page's `commitPending` before a tap
- *  elsewhere: touch WebKit fires no change then); a name no vendor accepts is shown with why and never staged. */
+/** Under tool delivery: the wrap (#220), then the delivery tool (#221) as the model receives it, a writable capsule
+ *  like the messages below, folded under its name: `name(text)`, its description, its parameter. Every field shows the wording in force as
+ *  text to edit, the default included; text equal to that default, or none, is stored blank (the default follows).
+ *  Fields stage as typed and write on change (or by the page's `commitPending` before a tap elsewhere: touch WebKit
+ *  fires no change then); a name no vendor accepts is shown with why and never staged. */
 export const DeliveryTool = (props: { hat: Hat; onStage: (next: Hat) => void; onSave: (next: Hat) => void }) => {
   const rows = read(packs)
-  const [badName, setBadName] = createSignal<{ id: string; raw: string } | null>(null)
-  const name = () => {
-    const bad = badName()
-    return bad && bad.id === props.hat.id ? bad.raw : (props.hat.tool?.name ?? "")
+  type Field = keyof NonNullable<Hat["tool"]>
+  // what is typed, held until written, so a field cleared mid-edit does not snap back to its default under the caret
+  const [typed, setTyped] = createSignal<{ id: string; field: Field; raw: string } | null>(null)
+  const fallback = (field: Field) =>
+    field === "name"
+      ? NARRATIVE_TOOL
+      : harnessAsk(rows(), field === "description" ? "narrate.deliver.tool" : "narrate.deliver.param")
+  const shown = (field: Field) => {
+    const cur = typed()
+    return cur && cur.id === props.hat.id && cur.field === field ? cur.raw : props.hat.tool?.[field] || fallback(field)
   }
-  const nameOk = () => toolNameOk(name())
+  const stored = (field: Field, raw: string) => withTool(props.hat, field, raw.trim() === fallback(field) ? "" : raw)
+  const nameOk = () => toolNameOk(shown("name"))
+  const custom = () => Boolean(props.hat.tool)
   const wraps = () => hatWraps(props.hat)
+  const text = (field: "description" | "param", label: string) => (
+    <textarea
+      ref={autosize(() => shown(field))}
+      class={{ "msg-text": true, "msg-subtext": field === "param" }}
+      rows="1"
+      aria-label={label}
+      value={shown(field)}
+      onKeyDown={leaveArea}
+      onInput={(e) => {
+        const raw = e.currentTarget.value
+        setTyped({ id: props.hat.id, field, raw })
+        props.onStage(stored(field, raw))
+      }}
+      onChange={(e) => {
+        setTyped(null)
+        props.onSave(stored(field, e.currentTarget.value))
+      }}
+    />
+  )
   return (
     <div class="hat-tool">
-      <div class="hat-tool-fields">
-        <label class="hat-tool-field hat-tool-name">
-          <span class="hat-field-label">{t("settings.toolName")}</span>
-          <input
-            type="text"
-            class={{ "hat-tool-input": true, mono: true, invalid: !nameOk() }}
-            placeholder={NARRATIVE_TOOL}
-            autocapitalize="none"
-            autocorrect="off"
-            spellcheck="false"
-            enterkeyhint="done"
-            aria-label={t("settings.toolName")}
-            aria-invalid={nameOk() ? undefined : "true"}
-            value={name()}
-            onKeyDown={leaveInput}
-            onInput={(e) => {
-              const raw = e.currentTarget.value
-              if (!toolNameOk(raw)) return setBadName({ id: props.hat.id, raw })
-              setBadName(null)
-              props.onStage(withTool(props.hat, "name", raw))
-            }}
-            onChange={(e) => {
-              const raw = e.currentTarget.value
-              if (!toolNameOk(raw)) return
-              setBadName(null)
-              props.onSave(withTool(props.hat, "name", raw))
-            }}
-          />
-          <Show when={!nameOk()}>
-            <span class="hat-tool-bad" role="alert">
-              {t("settings.hatToolNameBad")}
-            </span>
-          </Show>
-        </label>
-        <label class="hat-tool-field">
-          <span class="hat-field-label">{t("settings.hatToolDescription")}</span>
-          <textarea
-            ref={autosize(() => props.hat.tool?.description ?? "")}
-            class="hat-tool-input hat-tool-text"
-            rows="2"
-            aria-label={t("settings.hatToolDescription")}
-            placeholder={harnessAsk(rows(), "narrate.deliver.tool")}
-            value={props.hat.tool?.description ?? ""}
-            onKeyDown={leaveArea}
-            onInput={(e) => props.onStage(withTool(props.hat, "description", e.currentTarget.value))}
-            onChange={(e) => props.onSave(withTool(props.hat, "description", e.currentTarget.value))}
-          />
-        </label>
-        <label class="hat-tool-field">
-          <span class="hat-field-label">{t("settings.hatToolParam")}</span>
-          <textarea
-            ref={autosize(() => props.hat.tool?.param ?? "")}
-            class="hat-tool-input hat-tool-text"
-            rows="1"
-            aria-label={t("settings.hatToolParam")}
-            placeholder={harnessAsk(rows(), "narrate.deliver.param")}
-            value={props.hat.tool?.param ?? ""}
-            onKeyDown={leaveArea}
-            onInput={(e) => props.onStage(withTool(props.hat, "param", e.currentTarget.value))}
-            onChange={(e) => props.onSave(withTool(props.hat, "param", e.currentTarget.value))}
-          />
-        </label>
-        <p class="hat-tool-hint">{t("settings.hatToolHint", { tool: "{{tool}}", context: "{{context}}" })}</p>
+      <div class="hat-tool-choice">
+        <h3>{t("settings.hatToolChoice")}</h3>
+        <Segment
+          small
+          label={t("settings.hatToolChoice")}
+          value={props.hat.toolChoice ?? "auto"}
+          options={[
+            { value: "auto", label: t("settings.hatToolAuto") },
+            { value: "force", label: t("settings.hatToolForce") },
+          ]}
+          onPick={(v) => props.onSave(withDeliver(props.hat, v))}
+        />
       </div>
       <div class="hat-wrap">
-        <div class="hat-wrap-head">
-          <h3>{t("settings.hatWrap")}</h3>
-          <Show when={wraps()}>
-            <WrapMark />
-          </Show>
-          <span class="spacer" />
-          <Switch
-            on={wraps()}
-            label={t("settings.hatWrap")}
-            onFlip={() => props.onSave(withWrap(props.hat, !wraps()))}
-          />
+        <div class="hat-wrap-copy">
+          <div class="hat-wrap-title">
+            <h3>{t("settings.hatWrap")}</h3>
+            <Show when={wraps()}>
+              <WrapMark />
+            </Show>
+          </div>
+          <p class="hat-wrap-explain">{t("settings.hatWrapExplain")}</p>
         </div>
-        <p class="hat-wrap-explain">{t("settings.hatWrapExplain")}</p>
+        <Switch on={wraps()} label={t("settings.hatWrap")} onFlip={() => props.onSave(withWrap(props.hat, !wraps()))} />
       </div>
+      <details class="hat-tool-def">
+        <summary class="hat-tool-summary">
+          <Next class="hat-tool-chev" aria-hidden="true" />
+          <span class="hat-tool-def-label">{t("settings.hatToolDef")}</span>
+          <code class="hat-tool-pill mono">{hatToolName(props.hat) ?? NARRATIVE_TOOL}</code>
+        </summary>
+        <div class="hat-tool-body">
+          <div class={{ "msg-capsule": true, "hat-tool-card": true, conflict: !nameOk() }}>
+            <div class="msg-bar hat-tool-bar">
+              <input
+                type="text"
+                class="hat-tool-name mono"
+                autocapitalize="none"
+                autocorrect="off"
+                spellcheck="false"
+                enterkeyhint="done"
+                aria-label={t("settings.toolName")}
+                aria-invalid={nameOk() ? undefined : "true"}
+                value={shown("name")}
+                onKeyDown={leaveInput}
+                onInput={(e) => {
+                  const raw = e.currentTarget.value
+                  setTyped({ id: props.hat.id, field: "name", raw })
+                  if (toolNameOk(raw)) props.onStage(stored("name", raw))
+                }}
+                onChange={(e) => {
+                  const raw = e.currentTarget.value
+                  if (!toolNameOk(raw)) return
+                  setTyped(null)
+                  props.onSave(stored("name", raw))
+                }}
+              />
+              <span class="hat-tool-sig mono" aria-hidden="true">
+                (text)
+              </span>
+              <Show when={custom()}>
+                <button
+                  type="button"
+                  class="icon sm hat-tool-reset"
+                  aria-label={t("packs.restoreDefault")}
+                  onClick={() => {
+                    setTyped(null)
+                    const { tool: _, ...rest } = props.hat
+                    props.onSave(rest)
+                  }}
+                >
+                  <Restore />
+                </button>
+              </Show>
+            </div>
+            <Show when={!nameOk()}>
+              <span class="hat-tool-bad" role="alert">
+                {t("settings.hatToolNameBad")}
+              </span>
+            </Show>
+            {text("description", t("settings.hatToolDescription"))}
+            <div class="msg-sub">
+              <span class="msg-sublabel">
+                <span class="mono">text</span>
+              </span>
+              {text("param", t("settings.hatToolParam"))}
+            </div>
+          </div>
+        </div>
+      </details>
     </div>
   )
 }

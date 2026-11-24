@@ -52,6 +52,7 @@ export { default as Minus } from "~icons/ph/minus"
 export { default as Eye } from "~icons/ph/eye"
 export { default as EyeOff } from "~icons/ph/eye-slash"
 export { default as Sync } from "~icons/ph/arrows-clockwise"
+export { default as Restore } from "~icons/ph/arrow-counter-clockwise" // a field back to its default
 export { default as Caret } from "~icons/ph/caret-down"
 export { default as Fold } from "~icons/ph/caret-up-down"
 export { default as Key } from "~icons/ph/key"

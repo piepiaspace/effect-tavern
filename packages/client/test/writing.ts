@@ -32,7 +32,7 @@ import { chosen, moot, pressing, sentence, SWITCHES, takenBy, writingLine } from
 const askPairs = stageAskLabels()
 const personaIdx = askPairs.findIndex(([id]) => id === "narrate.persona")
 assert.ok(personaIdx >= 0 && askPairs[personaIdx + 1]?.[0] === "narrate.deliver")
-assert.equal(askPairs[personaIdx + 1]?.[1], "工具交付说明")
+assert.equal(askPairs[personaIdx + 1]?.[1], "工具交付指令")
 assert.deepEqual(
   new Set(askPairs.map(([id]) => id)),
   new Set(

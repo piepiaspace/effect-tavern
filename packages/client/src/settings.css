@@ -1222,7 +1222,8 @@
   padding: var(--space-3) var(--space-4);
 }
 .hat-deliver-bar h3,
-.hat-wrap-head h3,
+.hat-tool-choice h3,
+.hat-wrap-title h3,
 .hat-slot-empty h3 {
   font-size: var(--text-body);
   font-weight: 600;
@@ -1231,46 +1232,179 @@
   display: flex;
   flex-direction: column;
 }
-.hat-tool-fields,
+.hat-tool-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  min-height: 44px;
+  box-shadow: inset 0 var(--hairline) 0 var(--line);
+}
 .hat-wrap {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   box-shadow: inset 0 var(--hairline) 0 var(--line);
 }
-/* an identifier: a short field, the full width on a phone */
-.hat-tool-name {
-  max-width: 22rem;
+.hat-wrap-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-half);
+  min-width: 0;
 }
-.hat-tool-text {
-  font-family: inherit;
-}
-.hat-tool-input.invalid {
-  box-shadow: inset 0 0 0 1px var(--warn);
-}
-.hat-tool-bad {
-  color: var(--warn);
-  font-size: var(--text-caption);
-}
-.hat-tool-hint,
-.hat-wrap-explain {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: var(--text-caption);
-  line-height: var(--leading-body);
-}
-.hat-wrap-explain {
-  color: var(--ink-2);
-  font-size: var(--text-footnote);
-}
-.hat-wrap-head {
+.hat-wrap-title {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
-.hat-wrap-head .spacer {
+.hat-wrap-explain {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--text-caption);
+  line-height: var(--leading-tight);
+}
+/* the delivery tool, folded under its name; open, the name is in the capsule and leaves the summary */
+.hat-tool-def {
+  box-shadow: inset 0 var(--hairline) 0 var(--line);
+}
+.hat-tool-summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 40px;
+  padding: var(--space-2) var(--space-4);
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hat-tool-summary::-webkit-details-marker {
+  display: none;
+}
+.hat-tool-chev {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--ink-3);
+}
+.hat-tool-def[open] .hat-tool-chev {
+  rotate: 90deg;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hat-tool-chev {
+    transition: rotate var(--dur-2) var(--ease);
+  }
+}
+.hat-tool-def-label {
+  font-size: var(--text-footnote);
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.hat-tool-pill {
+  padding: var(--space-half) var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--alpha-1);
+  color: var(--ink-2);
+  font-size: var(--text-caption);
+}
+.hat-tool-def[open] .hat-tool-pill {
+  display: none;
+}
+.hat-tool-def::details-content {
+  interpolate-size: allow-keywords;
+  overflow: clip;
+  contain: layout;
+}
+.hat-tool-def:not([open])::details-content {
+  block-size: 0;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .hat-tool-def::details-content {
+    transition:
+      block-size var(--dur-2) var(--ease),
+      content-visibility var(--dur-2) allow-discrete;
+  }
+}
+.hat-tool-body {
+  padding: 0 var(--space-4) var(--space-3);
+}
+/* the tool as sent: `name(text)`, a compact writable signature panel nested inside the delivery card */
+.hat-tool-card {
+  background: var(--surface-1);
+  overflow: hidden;
+}
+.hat-tool-card .hat-tool-bar {
+  flex-wrap: nowrap;
+  gap: 0;
+  padding: var(--space-2) var(--space-3) var(--space-half);
+}
+.hat-tool-name {
+  min-width: 3ch;
+  max-width: 100%;
+  margin: 0 0 0 calc(var(--space-half) * -1);
+  padding: var(--space-half);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--text-footnote);
+  font-weight: 600;
+  line-height: var(--leading-tight);
+  field-sizing: content;
+  outline: none;
+  transition: background var(--dur-1) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .hat-tool-name:hover {
+    background: var(--ghost-hover);
+  }
+}
+.hat-tool-name:focus-visible {
+  background: var(--alpha-2);
+}
+.hat-tool-sig {
   flex: 1;
+  color: var(--ink-3);
+  font-size: var(--text-footnote);
+  line-height: var(--leading-tight);
+  user-select: none;
+  -webkit-user-select: none;
+}
+.hat-tool-bad {
+  padding: 0 var(--space-3) var(--space-1);
+  color: var(--warn);
+  font-size: var(--text-caption);
+}
+.hat-tool-card .msg-text {
+  min-height: 0;
+  padding: var(--space-half) var(--space-3) var(--space-2);
+  font-size: var(--text-footnote);
+  line-height: var(--leading-body);
+  color: var(--ink-2);
+}
+.hat-tool-card .msg-text:focus {
+  color: var(--ink);
+}
+.hat-tool-card .msg-sub {
+  flex-direction: row;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+.hat-tool-card .msg-sub > .msg-sublabel {
+  flex: none;
+  padding: 0;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+.hat-tool-card .msg-subtext {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
 }
 .hat-stack,
 .hat-inner {
@@ -1294,13 +1428,12 @@
   font-size: var(--text-caption);
 }
 @media (width < 32rem) {
-  .hat-tool-fields,
+  .hat-tool-body,
+  .hat-tool-summary,
+  .hat-tool-choice,
   .hat-wrap,
   .hat-deliver-bar {
     padding-inline: var(--space-3);
-  }
-  .hat-tool-name {
-    max-width: none;
   }
   .hat-inner.wrapped {
     padding: var(--space-2);

@@ -379,8 +379,12 @@ const run = async () => {
   check(delivered === "tool", `the segment's pick reached the app: ${delivered}`)
   check(flipped, "the switch's flip reached the app")
 
-  // the delivery tool: the wrap's switch is a part the agent reaches by its name, and its flip is written; the mark
-  // then shows beside it, as it shows in a menu naming a wrapping template (and only there)
+  // the delivery tool: tool choice and the wrap's switch are reached by their labels, and their flips are written; the
+  // mark then shows beside the wrap switch, as it shows in a menu naming a wrapping template (and only there)
+  check(labels.includes("调用方式"), `the tool choice segment is in the snapshot: ${labels.join(" | ")}`)
+  const forced = await agent.act({ steps: [{ ref: "调用方式", action: "setValue", args: ["强制"] }] })
+  await quiet()
+  check(forced.ok && waveSaved?.toolChoice === "force", `tool choice flip is written: ${forced.error?.message}`)
   check(labels.includes("工具封装"), `the wrap's switch is in the snapshot: ${labels.join(" | ")}`)
   const wrapped = await agent.act({ steps: [{ ref: "工具封装", action: "setChecked", args: [true] }] })
   await quiet()
@@ -391,8 +395,26 @@ const run = async () => {
     menuMarks.length === 1 && menuMarks[0]?.getAttribute("aria-label") === "叙事模板",
     `only the menu holding a wrapping template shows the mark: ${menuMarks.length}`,
   )
+  // the delivery tool starts folded under its name; open, it shows the wording in force as text to edit, the default
+  // included, with nothing to restore yet
+  const toolDef = document.querySelector<HTMLDetailsElement>(".hat-tool-def")!
+  check(
+    !toolDef.open && toolDef.querySelector(".hat-tool-pill")?.textContent === "narrative",
+    `the delivery tool starts folded under its name: open=${toolDef.open}`,
+  )
+  toolDef.querySelector<HTMLElement>("summary")!.click()
+  await quiet()
+  check(toolDef.open, "the delivery tool's summary opens it")
+  const toolCard = document.querySelector(".hat-tool-card")!
+  const nameBox = toolCard.querySelector<HTMLInputElement>("input.hat-tool-name")!
+  const [descBox] = toolCard.querySelectorAll("textarea")
+  check(
+    nameBox.value === "narrative" &&
+      descBox?.value === "Deliver the complete scene narration." &&
+      !toolCard.querySelector(".hat-tool-reset"),
+    `the default tool reads as editable text: ${nameBox.value} / ${descBox?.value}`,
+  )
   // a name no vendor takes: said why, never staged; a good one is written trimmed
-  const nameBox = document.querySelector<HTMLInputElement>(".hat-tool-name input")!
   nameBox.value = "1 bad"
   nameBox.dispatchEvent(new Event("input", { bubbles: true }))
   await quiet()
@@ -402,8 +424,17 @@ const run = async () => {
   nameBox.dispatchEvent(new Event("change", { bubbles: true }))
   await quiet()
   check(
-    !document.querySelector(".hat-tool-bad") && waveSaved?.tool?.name === "actual_content" && waveSaved.wrap === true,
+    !document.querySelector(".hat-tool-bad") &&
+      waveSaved?.tool?.name === "actual_content" &&
+      waveSaved.wrap === true &&
+      nameBox.value === "actual_content",
     `a good tool name is written with the wrap kept: ${JSON.stringify(waveSaved)}`,
+  )
+  toolCard.querySelector<HTMLButtonElement>(".hat-tool-reset")!.click()
+  await quiet()
+  check(
+    !waveSaved?.tool && waveSaved?.wrap === true && nameBox.value === "narrative",
+    `restoring the default drops the tool's own wording: ${JSON.stringify(waveSaved)}`,
   )
   const lockedEntry = agent.snapshot().find((e) => e.label === "锁定格式")
   check(
