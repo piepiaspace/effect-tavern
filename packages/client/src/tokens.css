@@ -46,6 +46,10 @@
   --scrim: light-dark(rgb(0 0 0 / 0.2), rgb(0 0 0 / 0.5)); /* behind a sheet */
   --sheet-backdrop: var(--scrim);
   --ring: var(--alpha-4); /* focus */
+  --media-dot: light-dark(rgb(20 20 20 / 0.28), rgb(255 255 255 / 0.26)); /* stochastic placeholder dot ink */
+  --media-reveal-dur: 560ms; /* dot-field / image shared-blur cross-fade */
+  --media-reveal-blur: 3px; /* shared blur radius crossed during reveal */
+  --media-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* one closed border per line of sight; borders are drawn with box-shadow so they stay out of the box model */
   --hairline: 1px;
@@ -205,5 +209,7 @@
     --dur-3: 120ms;
     --dur-4: 120ms;
     --dur-5: 120ms;
+    --media-reveal-dur: 0ms;
+    --media-reveal-blur: 0px;
   }
 }

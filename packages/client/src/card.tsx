@@ -40,6 +40,7 @@ import { fetchContext, fetchDetail } from "./wire.ts"
 import { t } from "./i18n.ts"
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 })
+const emptyPeeked: ReadonlySet<string> = new Set()
 export { openCard, openGallery, requestCardTab, type CardTab }
 
 const catalogTitle = (c: CardView, catalogId: string): string => {
@@ -95,6 +96,7 @@ export const CardPage = () => {
   const [searching, setSearching] = createSignal(false)
   const [starting, setStarting] = createSignal(false)
   const [showAll, setShowAll] = createSignal(() => (id(), false))
+  const [peeked, setPeeked] = createSignal<ReadonlySet<string>>(() => (id(), emptyPeeked))
   const openingsPop = createPopoverController()
   const inStory = () => all().nodes.size > 0
   const storyOpenForCard = createMemo(() => {
@@ -165,6 +167,7 @@ export const CardPage = () => {
       headContext: h ? { worldState: { ...h.context.worldState } } : null,
       headEvents: h?.events,
       showAll: showAll(),
+      peekedKeys: peeked(),
     })
   })
   const cardHasGallery = createMemo(() => staticGallery().totalCount > 0)
@@ -509,7 +512,15 @@ export const CardPage = () => {
                   <Show when={gallery().hasGated}>
                     <div class="gallery-reveal">
                       <span>{t("card.showAll")}</span>
-                      <Switch on={showAll()} label={t("card.showAll")} onFlip={() => setShowAll((v) => !v)} />
+                      <Switch
+                        on={showAll()}
+                        label={t("card.showAll")}
+                        onFlip={() => {
+                          const next = !showAll()
+                          setShowAll(next)
+                          if (!next) setPeeked(emptyPeeked)
+                        }}
+                      />
                     </div>
                   </Show>
                 </header>
@@ -534,12 +545,20 @@ export const CardPage = () => {
                                   masked={item().masked}
                                   src={item().masked ? undefined : item().url}
                                   label={item().masked ? t("card.spoiler") : item().label}
-                                  maskedLabel={t("card.spoiler")}
+                                  onUnmask={() =>
+                                    setPeeked((prev) => {
+                                      const k = item().key
+                                      if (prev.has(k)) return prev
+                                      const next = new Set(prev)
+                                      next.add(k)
+                                      return next
+                                    })
+                                  }
                                   lightbox={!item().masked}
                                 />
-                                <Show when={item().revealed}>
-                                  <figcaption class="gallery-caption">{item().label}</figcaption>
-                                </Show>
+                                <figcaption class="gallery-caption" aria-hidden={item().masked ? "true" : undefined}>
+                                  {item().revealed ? item().label : ""}
+                                </figcaption>
                               </figure>
                             )}
                           </For>

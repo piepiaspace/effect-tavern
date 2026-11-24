@@ -804,6 +804,21 @@ function testGalleryRules() {
     assert.ok(item.url?.startsWith("https://media.tavern.example/ferry/"))
   }
 
+  const peekedOne = resolveGallery(view, { peekedKeys: new Set(["crossings\0night_crossing"]) })
+  assert.equal(peekedOne.unlockedCount, 2)
+  assert.equal(peekedOne.revealedCount, 3)
+  for (const item of peekedOne.items) {
+    if (item.id === "night_crossing") {
+      assert.equal(item.unlocked, false)
+      assert.equal(item.revealed, true)
+      assert.equal(item.masked, false)
+      assert.equal(item.url, "https://media.tavern.example/ferry/crossings/night-crossing-1.webp")
+    } else if (item.gated) {
+      assert.equal(item.masked, true)
+      assert.equal(item.url, undefined)
+    }
+  }
+
   const twoParagraphs = "渡口。\n\n夜航。"
   const sunnyPath = [
     {

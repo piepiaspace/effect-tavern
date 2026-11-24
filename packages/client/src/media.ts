@@ -92,6 +92,7 @@ export interface ResolveGalleryOptions {
   readonly headContext?: { readonly worldState?: State } | null
   readonly headEvents?: readonly string[]
   readonly showAll?: boolean
+  readonly peekedKeys?: ReadonlySet<string>
 }
 
 export type MediaViewLike = {
@@ -467,7 +468,7 @@ export const resolveGallery = (
         !gated ||
         (storyOpen &&
           (pathRevealed.has(key) || (headState !== undefined && safeHolds(when, headState, options.headEvents))))
-      const revealed = unlocked || showAll
+      const revealed = unlocked || showAll || Boolean(options.peekedKeys?.has(key))
       const masked = !revealed
       if (unlocked) unlockedCount++
       if (revealed) revealedCount++

@@ -587,9 +587,16 @@
   gap: var(--space-1);
 }
 .manifest .gallery-caption {
+  min-height: calc(var(--text-footnote) * var(--leading-body));
   color: var(--ink-2);
   font-size: var(--text-footnote);
   line-height: var(--leading-body);
   white-space: normal;
   overflow-wrap: anywhere;
+  transition: opacity var(--dur-3) var(--ease);
+}
+.manifest .gallery-tile[data-state="masked"] > .gallery-caption {
+  opacity: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }

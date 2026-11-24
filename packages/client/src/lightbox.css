@@ -1,7 +1,8 @@
-/* Shared media frame (tinted aspect-ratio placeholder, calm broken-image alt fallback, optional Lightbox trigger)
-   and centered Lightbox dialog (@ui-sdk/solid/dialog, integrated with back.ts). */
+/* Shared media frame (stochastic phase-randomized dot placeholder + shared-blur reveal, calm broken-image fallback,
+   optional Lightbox trigger) and centered Lightbox dialog (@ui-sdk/solid/dialog, integrated with back.ts). */
 .media-frame {
   position: relative;
+  isolation: isolate;
   box-sizing: border-box;
   display: block;
   margin: 0;
@@ -15,28 +16,55 @@
   transition: box-shadow var(--dur-2) var(--ease);
 }
 
-.media-frame:has(> .media-hit:focus-visible) {
+.media-frame:has(> :is(.media-hit, .media-peek):focus-visible) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .media-frame:has(> .media-hit:hover) {
+  .media-frame:has(> :is(.media-hit, .media-peek):hover) {
     box-shadow: inset 0 0 0 var(--hairline) var(--line-strong);
   }
 }
 
+/* Stochastic dot field (`image-gen-placeholder`) and `.media-img` cross-fade through a shared blur on reveal/re-mask */
+.media-field {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  color: var(--media-dot);
+  opacity: 1;
+  filter: blur(0px);
+  transition:
+    opacity var(--media-reveal-dur) var(--media-reveal-ease),
+    filter var(--media-reveal-dur) var(--media-reveal-ease);
+}
+
+.media-frame:is([data-state="ready"], [data-state="error"]) > .media-field {
+  opacity: 0;
+  filter: blur(var(--media-reveal-blur));
+}
+
 .media-img {
+  position: relative;
+  z-index: 0;
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   opacity: 0;
+  filter: blur(var(--media-reveal-blur));
   pointer-events: none;
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
-  transition: opacity var(--dur-3) var(--ease);
+  transition:
+    opacity var(--media-reveal-dur) var(--media-reveal-ease),
+    filter var(--media-reveal-dur) var(--media-reveal-ease);
 }
 
 .media-frame[data-fit="contain"] > .media-img {
@@ -45,12 +73,13 @@
 
 .media-frame[data-state="ready"] > .media-img {
   opacity: 1;
+  filter: blur(0px);
 }
 
-.media-hit {
+.media-hit,
+.media-peek {
   position: absolute;
   inset: 0;
-  z-index: 1;
   width: 100%;
   height: 100%;
   margin: 0;
@@ -58,10 +87,20 @@
   border: 0;
   border-radius: inherit;
   background: none;
+}
+
+.media-hit {
+  z-index: 1;
   cursor: zoom-in;
 }
 
-.media-hit:focus-visible {
+.media-peek {
+  z-index: 3;
+  cursor: pointer;
+}
+
+.media-hit:focus-visible,
+.media-peek:focus-visible {
   outline: none;
 }
 
@@ -70,10 +109,14 @@
   scale: 1;
 }
 
-.media-fallback,
-.media-mask {
+.media-peek:active {
+  scale: 1;
+}
+
+.media-fallback {
   position: absolute;
   inset: 0;
+  z-index: 1;
   box-sizing: border-box;
   display: grid;
   place-items: center;
@@ -84,8 +127,73 @@
   line-height: var(--leading-body);
 }
 
+/* Bare centered eye glyph over the stochastic dot field: no pill, no text, crossing the same blur on reveal */
 .media-mask {
-  background: var(--alpha-1);
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  filter: blur(var(--media-reveal-blur));
+  visibility: hidden;
+  transition:
+    opacity var(--media-reveal-dur) var(--media-reveal-ease),
+    filter var(--media-reveal-dur) var(--media-reveal-ease),
+    scale var(--dur-1) var(--ease),
+    visibility 0s linear var(--media-reveal-dur);
+}
+
+.media-frame[data-state="masked"] > .media-mask {
+  opacity: 1;
+  filter: blur(0px);
+  visibility: visible;
+  transition:
+    opacity var(--media-reveal-dur) var(--media-reveal-ease),
+    filter var(--media-reveal-dur) var(--media-reveal-ease),
+    scale var(--dur-1) var(--ease),
+    visibility 0s;
+}
+
+.media-mask > svg {
+  grid-area: 1 / 1;
+  width: var(--icon);
+  height: var(--icon);
+}
+
+.media-mask > .eye-closed {
+  color: var(--ink-2);
+  opacity: 0.72;
+  scale: 1;
+  transition:
+    opacity var(--dur-3) var(--ease),
+    scale var(--dur-3) var(--ease),
+    color var(--dur-2) var(--ease);
+}
+
+.media-mask > .eye-open {
+  color: var(--ink);
+  opacity: 0;
+  scale: 0.86;
+  transition:
+    opacity var(--dur-3) var(--ease),
+    scale var(--dur-3) var(--ease);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .media-frame:has(> .media-peek:hover) .media-mask > .eye-closed {
+    opacity: 0;
+    scale: 0.86;
+  }
+  .media-frame:has(> .media-peek:hover) .media-mask > .eye-open {
+    opacity: 0.92;
+    scale: 1;
+  }
+}
+
+.media-frame:has(> .media-peek:active) > .media-mask {
+  scale: 0.92;
 }
 
 .media-alt {
@@ -97,8 +205,28 @@
   overflow-wrap: anywhere;
 }
 
-.media-frame > :not(.media-img, .media-hit, .media-fallback, .media-mask) {
-  z-index: 2;
+.media-frame > :not(.media-field, .media-img, .media-hit, .media-peek, .media-fallback, .media-mask) {
+  z-index: 4;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .lightbox-scrim {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-field,
+  .media-img,
+  .media-mask,
+  .media-frame[data-state="masked"] > .media-mask {
+    filter: none;
+    transition: none;
+  }
+  .media-frame:has(> .media-peek:active) > .media-mask {
+    scale: none;
+  }
 }
 
 .lightbox-scrim {

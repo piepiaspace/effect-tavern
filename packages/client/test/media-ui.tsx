@@ -286,7 +286,36 @@ const runPhaseOne = async (isDesktop: boolean) => {
     )
   }
 
-  // Manual `显示全部` toggle reveals & hides cleanly (twice, verifying cached `<img>` hits emit zero EFFECT_RELAY_TEAR!)
+  // Tap-to-peek on a single masked tile reveals only that item without requesting the other gated items!
+  galleryTile("crossings", "night_crossing")?.querySelector<HTMLButtonElement>(".media-peek")?.click()
+  check(
+    await until(
+      () =>
+        galleryTile("crossings", "night_crossing")?.dataset.state === "revealed" &&
+        galleryTile("crossings", "night_crossing")?.querySelector(".gallery-frame")?.getAttribute("data-state") ===
+          "ready",
+    ),
+    "tap-to-peek unmasks and decodes crossings/night_crossing",
+  )
+  check(
+    document.querySelector(".gallery-count")?.textContent?.trim() === "2 / 6",
+    "tap-to-peek keeps unlocked count at 2 / 6",
+  )
+  const afterPeekState = await mediaControl({ requests: true })
+  for (const [, item, slug] of gated) {
+    if (item === "night_crossing") continue
+    check(
+      galleryTile("crossings", item)?.dataset.state !== "revealed" &&
+        galleryTile("ferryman", item)?.dataset.state !== "revealed" &&
+        !afterPeekState.requests.some((r) => r.path.includes(slug)),
+      `tap-to-peek leaves ${slug} masked with zero /__media/* prefetch`,
+    )
+  }
+
+  // Manual `显示全部` toggle reveals & hides cleanly (twice, verifying kept-alive `<img>` hits emit zero EFFECT_RELAY_TEAR
+  // and zero duplicate network fetches on pass 2!)
+  let passOneImgs: (HTMLImageElement | null | undefined)[] = []
+  let passOneRequestCount = 0
   for (let pass = 0; pass < 2; pass++) {
     const flipOn = await agent.act({ steps: [{ ref: t("card.showAll"), action: "setChecked", args: [true] }] })
     check(flipOn.ok, `showAll ON pass ${pass + 1}: ${flipOn.error?.message}`)
@@ -302,6 +331,21 @@ const runPhaseOne = async (isDesktop: boolean) => {
       ),
       `showAll ON pass ${pass + 1} reveals & decodes all 4 gated items`,
     )
+    const imgsNow = gated.map(([cat, item]) => galleryTile(cat, item)?.querySelector("img"))
+    if (pass === 0) {
+      passOneImgs = imgsNow
+      passOneRequestCount = (await mediaControl({ requests: true })).count
+    } else {
+      const passTwoCount = (await mediaControl({ requests: true })).count
+      check(
+        passTwoCount === passOneRequestCount,
+        `showAll ON pass 2 makes zero extra /__media/* requests (${passTwoCount} vs ${passOneRequestCount})`,
+      )
+      check(
+        imgsNow.every((img, idx) => Boolean(img) && img === passOneImgs[idx]),
+        "showAll ON pass 2 reuses kept-alive <img> DOM nodes without remounting",
+      )
+    }
     check(
       document.querySelector(".gallery-count")?.textContent?.trim() === "2 / 6",
       "showAll keeps unlocked count at 2 / 6",
@@ -312,9 +356,15 @@ const runPhaseOne = async (isDesktop: boolean) => {
     check(
       gated.every(([cat, item]) => {
         const tile = galleryTile(cat, item)
-        return tile?.dataset.state === "masked" && !tile.querySelector("img")
+        const img = tile?.querySelector("img")
+        return (
+          tile?.dataset.state === "masked" &&
+          !tile.querySelector(".media-hit") &&
+          Boolean(tile.querySelector(".media-peek")) &&
+          img?.getAttribute("aria-hidden") === "true"
+        )
       }),
-      `showAll OFF pass ${pass + 1} re-masks all 4 gated items and removes <img>`,
+      `showAll OFF pass ${pass + 1} re-masks all 4 gated items (clearing peeked) while keeping decoded <img aria-hidden="true"> alive`,
     )
   }
 
