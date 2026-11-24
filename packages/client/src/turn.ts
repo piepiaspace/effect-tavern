@@ -23,6 +23,7 @@ import {
   inputOf,
   log,
   lost,
+  discardQueuedProse,
   composition,
   prose,
   registry,
@@ -119,8 +120,10 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
     before ??= registry.get(log) // none taken (a retry with no turn begun here): the timeline as it stands
     const failed = () => {
       if (mine !== era) return
-      if (registry.get(draft)) registry.set(lost, true)
-      else apply({ kind: "error", code: "connectionLost", message: "" })
+      if (registry.get(draft)) {
+        discardQueuedProse()
+        registry.set(lost, true)
+      } else apply({ kind: "error", code: "connectionLost", message: "" })
     }
     registry.set(lost, false)
     try {

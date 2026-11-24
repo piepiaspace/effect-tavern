@@ -300,6 +300,11 @@ const resetPlay = () => {
     ended: true,
   })
 }
+/** Discard prose left from a stream that can no longer be resumed. */
+export const discardQueuedProse = (): void => {
+  held = []
+  resetPlay()
+}
 const enqueue = (chunk: string) => {
   const chars = Array.from(segmenter.segment(chunk), (x) => x.segment)
   if (chars.length === 0) return
@@ -369,6 +374,13 @@ let held: Wire[] = []
 // A block's delta waits too: it is drawn under the prose, so it starts once the prose above it has played out.
 const flows = (e: Wire) => e.kind === "delta" && e.part.type !== "product-delta"
 export const apply = (e: Wire): void => {
+  // An attach is a full snapshot of server state. Anything queued before the disconnect is stale, including
+  // streamEnd and events held behind unplayed graphemes, so the snapshot must start a new playout immediately.
+  if (e.kind === "attach") {
+    held = []
+    applyNow(e)
+    return
+  }
   if (held.length || (play.queue.length && !flows(e))) held.push(e)
   else applyNow(e)
 }

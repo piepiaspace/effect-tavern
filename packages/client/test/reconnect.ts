@@ -149,6 +149,22 @@ assert.equal(sends(), 1)
 server = registry.get(log)
 reset()
 
+// (a2) a backgrounded frame leaves graphemes queued. The attach snapshot replaces them immediately, before it or
+// the queued streamEnd can be held behind the old prose.
+act("resume")
+last().emit(delta(" stale tail"))
+last().cut()
+await settled()
+last().emit({
+  kind: "attach",
+  phase: "narrate",
+  draft: { parent: 0, input: { text: "resume" }, text: "server snapshot" },
+})
+assert.equal(registry.get(draft)?.text, "server snapshot")
+playOut()
+assert.equal(registry.get(draft)?.text, "server snapshot")
+reset()
+
 // (b) cut while the page is in the background: nothing is asked until it is active again; the turn landed meanwhile
 // (204 on attach): its node shows, nothing is withdrawn
 act("away")
@@ -171,12 +187,15 @@ reset()
 // (c) the reading fails too (plain network loss, the page active): one try, then the "connection lost" line with the
 // draft held; no spin. The retry reads again, finds the turn still running and streams on.
 act("offline")
+last().emit(delta(" stale tail"))
 down = true
 last().cut()
 await settled()
 assert.equal(reads, 1)
 assert.equal(registry.get(lost), true)
 assert.deepEqual([registry.get(draft)?.text, registry.get(error), registry.get(working)], ["so far", null, true])
+playOut()
+assert.equal(registry.get(draft)?.text, "so far")
 assert.equal(registry.get(composition).text, "")
 await settled()
 assert.deepEqual([reads, attaches()], [1, 0]) // nothing more until asked
