@@ -80,6 +80,11 @@ body {
     scrollbar-color: var(--alpha-2) transparent;
   }
 }
+.scroll::after {
+  content: "";
+  display: block;
+  height: var(--selection-foot);
+}
 main {
   max-width: var(--measure);
   margin: 0 auto;

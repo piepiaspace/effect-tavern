@@ -493,7 +493,7 @@ assert.match(recordPrompts[0], /ferry_cg: 按段落挑出插图 \[misty_pier: �
 assert.match(recordPrompts[0], /score: 挑选本轮曲目 \[clear_water: 晴江远棹\]/)
 const n1 = t1Events.flatMap((e) => (e.kind === "change" && e.node ? [e.node] : [])).at(-1)!
 assert.deepEqual(S.projectTimeline(n1).media, {
-  illustrations: [{ catalog: "crossings", id: "misty_pier", afterParagraph: 2 }],
+  illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 2 }],
   portraits: [
     { id: "ferryman", catalog: "ferryman", item: "high_tide" },
     { id: "passenger", catalog: "passenger", item: "aboard_night" },
@@ -516,8 +516,8 @@ assert.match(recordPrompts.at(-1)!, /ferry_cg: 按段落挑出插图 \[night_cro
 const n2 = t2Events.flatMap((e) => (e.kind === "change" && e.node ? [e.node] : [])).at(-1)!
 assert.deepEqual(S.projectTimeline(n2).media, {
   illustrations: [
-    { catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
-    { catalog: "crossings", id: "misty_pier", afterParagraph: 2 },
+    { productId: "ferry_cg", catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
+    { productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 2 },
   ],
   portraits: [
     { id: "ferryman", catalog: "ferryman", item: "high_tide" },
@@ -532,9 +532,9 @@ sketchPlans.push([{ afterParagraph: 2, id: "night_crossing" }])
 const dEvents = await collect(S.demand(n2.id, "scene_sketch"))
 const n2AfterSketch = dEvents.flatMap((e) => (e.kind === "change" && e.node ? [e.node] : [])).at(-1)!
 assert.deepEqual(S.projectTimeline(n2AfterSketch).media?.illustrations, [
-  { catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
-  { catalog: "crossings", id: "misty_pier", afterParagraph: 2 },
-  { catalog: "crossings", id: "night_crossing", afterParagraph: 2 },
+  { productId: "ferry_cg", catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
+  { productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 2 },
+  { productId: "scene_sketch", catalog: "crossings", id: "night_crossing", afterParagraph: 2 },
 ])
 
 // Re-demand `scene_sketch` returning empty `[]`: `theater.scene_sketch` remains `[]`, while `media.illustrations` drops it.
@@ -543,8 +543,8 @@ const dEmptyEvents = await collect(S.demand(n2.id, "scene_sketch"))
 const n2Cleared = dEmptyEvents.flatMap((e) => (e.kind === "change" && e.node ? [e.node] : [])).at(-1)!
 assert.deepEqual(S.projectTimeline(n2Cleared).theater.scene_sketch, [])
 assert.deepEqual(S.projectTimeline(n2Cleared).media?.illustrations, [
-  { catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
-  { catalog: "crossings", id: "misty_pier", afterParagraph: 2 },
+  { productId: "ferry_cg", catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
+  { productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 2 },
 ])
 
 // Ancestor `setField` on root `g0`: set 潮位=0 and 天气=雨.
@@ -592,7 +592,7 @@ for (const change of ["filter", "remove"] as const) {
   assert.equal(replay.timelineNode(n1.id).media?.bgm, undefined)
   assert.equal(replay.timelineNode(n1.id).media?.illustrations, undefined)
   assert.deepEqual(replay.timelineNode(n2.id).media?.illustrations, [
-    { catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
+    { productId: "ferry_cg", catalog: "crossings", id: "night_crossing", afterParagraph: 1 },
   ])
 }
 // After the ancestor edit the weather is rainy, but the previously selected sunny track is still declared.

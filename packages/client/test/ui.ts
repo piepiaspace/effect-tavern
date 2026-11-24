@@ -468,6 +468,7 @@ const fixtures: FixtureEntry[] = [
     () => "on a mouse the text selects as it always has, a sheet opens on its search, and a key is hit on its face",
     [FINE],
   ],
+  ["test/gallery-dev.tsx", () => "gallery and lightbox open under Solid development checks", [], createMediaUiHost],
   [
     "test/media-ui.tsx",
     (s) =>
@@ -521,11 +522,11 @@ rules:
 lore: []
 guard: []
 catalogs:
-  - id: sketch_scenes
+  - id: crossings
     kind: image
     baseUrl: https://media.tavern.example/sketch/scenes
     items:
-      - id: tide_sketch
+      - id: misty_pier
         label: 涨潮速写
         when: { path: 潮位, op: gte, value: 2 }
         variants: [tide-sketch-1.png]
@@ -542,7 +543,7 @@ products:
       max: 2
       columns:
         - { key: afterParagraph, type: int }
-        - { key: id, type: enum, catalog: sketch_scenes }
+        - { key: id, type: enum, catalog: crossings }
     text: 按需为当前段落配一张江岸速写。
   - id: aside_memo
     role: theater
@@ -557,7 +558,7 @@ products:
     text: 记一笔岸边随感。
 media:
   illustrations: [{ product: custom_sketch }]
-  gallery: [sketch_scenes]
+  gallery: [crossings]
 `
 
 function createMediaUiHost(): FixtureHost {

@@ -10,7 +10,7 @@ const outDir = await mkdtemp(join(tmpdir(), "tavern-ui-"))
 await build({
   configFile: false,
   plugins: [
-    solid({ observe: true }),
+    solid(process.argv[2] === "test/gallery-dev.tsx" ? { dev: true } : { observe: true }),
     Icons({
       compiler: "solid",
       customCollections: {

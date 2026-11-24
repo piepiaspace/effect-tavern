@@ -635,7 +635,8 @@ const run = async () => {
   )
   const mediaHit = document.querySelector<HTMLButtonElement>("#media-ready-probe .media-hit")!
   mediaHit.focus()
-  mediaHit.click()
+  const openImage = await agent.act({ steps: [{ ref: "渡口薄雾", action: "press" }] })
+  check(openImage.ok, `opening Lightbox via agent: ${openImage.error?.message}`)
   await quiet()
   check(
     shows(".lightbox") && document.querySelector(".lightbox")?.getAttribute("data-presentation") === "dialog",

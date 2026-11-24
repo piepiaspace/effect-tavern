@@ -238,7 +238,9 @@ if (process.env.MEDIA_REACTIVE_SUBTEST === "1") {
       node: {
         ...pendingTurn,
         settlementStatus: "committed",
-        media: { illustrations: [{ catalog: "crossings", id: "misty_pier", afterParagraph: 1 }] },
+        media: {
+          illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 1 }],
+        },
       },
       head: 20,
     })
@@ -255,8 +257,8 @@ if (process.env.MEDIA_REACTIVE_SUBTEST === "1") {
         settlementStatus: "committed",
         media: {
           illustrations: [
-            { catalog: "crossings", id: "misty_pier", afterParagraph: 1 },
-            { catalog: "crossings", id: "night_crossing", afterParagraph: 2 },
+            { productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 1 },
+            { productId: "player_custom_sketch", catalog: "crossings", id: "night_crossing", afterParagraph: 2 },
           ],
         },
         theater: { player_custom_sketch: [{ afterParagraph: 2, id: "night_crossing" }] },
@@ -434,13 +436,13 @@ function testParagraphBucketing() {
     ...timelineNode(7, 1, complexProse),
     media: {
       illustrations: [
-        { catalog: "crossings", id: "night_crossing", afterParagraph: 0 },
-        { catalog: "crossings", id: "night_crossing", afterParagraph: 2 },
-        { catalog: "crossings", id: "unlabeled_cg", afterParagraph: 2 },
-        { catalog: "crossings", id: "unlabeled_cg", afterParagraph: 5 },
-        { catalog: "crossings", id: "unlabeled_cg", afterParagraph: 1.5 },
-        { catalog: "crossings", id: "unlabeled_cg", afterParagraph: -2 },
-        { catalog: "crossings", id: "unlabeled_cg", afterParagraph: 4 },
+        { productId: "ferry_cg", catalog: "crossings", id: "night_crossing", afterParagraph: 0 },
+        { productId: "ferry_cg", catalog: "crossings", id: "night_crossing", afterParagraph: 2 },
+        { productId: "ferry_cg", catalog: "crossings", id: "unlabeled_cg", afterParagraph: 2 },
+        { productId: "ferry_cg", catalog: "crossings", id: "unlabeled_cg", afterParagraph: 5 },
+        { productId: "ferry_cg", catalog: "crossings", id: "unlabeled_cg", afterParagraph: 1.5 },
+        { productId: "ferry_cg", catalog: "crossings", id: "unlabeled_cg", afterParagraph: -2 },
+        { productId: "ferry_cg", catalog: "crossings", id: "unlabeled_cg", afterParagraph: 4 },
       ],
     },
   }
@@ -642,25 +644,27 @@ function testTheaterAttributionAndDeduplication() {
   assert.equal(p1[1].occurrence, 1)
   assert.equal(resolved.get(2)?.[0]?.theaterProductId, undefined)
 
-  const reversedMedia = {
+  const sandwichMedia = {
     ...mediaDecl,
-    illustrations: [{ product: "player_custom_sketch" }, { product: "ferry_cg" }],
+    illustrations: [{ product: "ferry_cg" }, { product: "player_custom_sketch" }, { product: "other_cg" }],
   }
-  const reversedProjected = projectNodeMedia({
-    media: reversedMedia,
-    products: runtimeProducts,
+  const sandwichProjection = projectNodeMedia({
+    media: sandwichMedia,
+    products: [...runtimeProducts, { ...customSketch, id: "other_cg", role: "chronicle" }],
     catalogs: ferryProjection.catalogs!,
-    turnProducts,
+    turnProducts: { ...turnProducts, other_cg: turnProducts.ferry_cg },
     fields: { 潮位: 2, 天气: "晴" },
     events: [],
     context: () => ({ fields: { 潮位: 2, 天气: "晴" }, world: { boat: { aboard: false } }, lore: {} }),
   })!
-  const reversedResolved = resolveNodeIllustrations(
-    { ...nodeWithTheater, media: reversedProjected },
-    makeFullView({ media: reversedMedia, layer: { ...ferryProjection.layer, products: layerProducts } }),
+  const sandwichRows = resolveNodeIllustrations(
+    { ...nodeWithTheater, media: sandwichProjection },
+    makeFullView({ media: sandwichMedia, layer: { ...ferryProjection.layer, products: layerProducts } }),
   )
-  assert.equal(reversedResolved.get(1)?.[0]?.theaterProductId, "player_custom_sketch")
-  assert.equal(reversedResolved.get(1)?.[1]?.theaterProductId, undefined)
+  assert.deepEqual(
+    sandwichRows.get(1)?.map((ill) => ill.theaterProductId),
+    [undefined, "player_custom_sketch", undefined],
+  )
 }
 testTheaterAttributionAndDeduplication()
 
@@ -800,15 +804,18 @@ function testGalleryRules() {
     assert.ok(item.url?.startsWith("https://media.tavern.example/ferry/"))
   }
 
+  const twoParagraphs = "渡口。\n\n夜航。"
   const sunnyPath = [
     {
       id: 1,
+      prose: twoParagraphs,
       media: { portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }] },
     },
     {
       id: 2,
+      prose: twoParagraphs,
       media: {
-        illustrations: [{ catalog: "crossings", id: "misty_pier", afterParagraph: 1 }],
+        illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 1 }],
         portraits: [
           { id: "ferryman", catalog: "ferryman", item: "high_tide" },
           { id: "passenger", catalog: "passenger", item: "aboard_night" },
@@ -817,13 +824,15 @@ function testGalleryRules() {
     },
     {
       id: 7,
+      prose: twoParagraphs,
       media: {
-        illustrations: [{ catalog: "crossings", id: "night_crossing", afterParagraph: 2 }],
+        illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "night_crossing", afterParagraph: 2 }],
         portraits: [{ id: "ferryman", catalog: "ferryman", item: "high_tide" }],
       },
     },
     {
       id: 8,
+      prose: twoParagraphs,
       media: { portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }] },
     },
   ]
@@ -836,6 +845,12 @@ function testGalleryRules() {
     headContext: sunnyEbbedCtx,
   })
   const byKey = (g: ReturnType<typeof resolveGallery>) => new Map(g.items.map((i) => [`${i.catalog}/${i.id}`, i]))
+  const shortened = resolveGallery(view, {
+    storyOpen: true,
+    pathNodes: sunnyPath.map((n) => (n.id === 7 ? { ...n, prose: "渡口。" } : n)),
+    headContext: sunnyEbbedCtx,
+  })
+  assert.equal(byKey(shortened).get("crossings/night_crossing")?.masked, true)
   const sunnyMap = byKey(sunnyGal)
   assert.equal(sunnyGal.unlockedCount, 4)
   assert.equal(sunnyMap.get("crossings/night_crossing")?.unlocked, true)
@@ -856,11 +871,12 @@ function testGalleryRules() {
   assert.equal(sunnyMap.get("ferryman/rain_cape")?.url, undefined)
 
   const rainyPath = [
-    { id: 9, media: { portraits: [{ id: "ferryman", catalog: "ferryman", item: "rain_cape" }] } },
+    { id: 9, prose: twoParagraphs, media: { portraits: [{ id: "ferryman", catalog: "ferryman", item: "rain_cape" }] } },
     {
       id: 10,
+      prose: twoParagraphs,
       media: {
-        illustrations: [{ catalog: "crossings", id: "rain_lantern", afterParagraph: 2 }],
+        illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "rain_lantern", afterParagraph: 2 }],
         portraits: [{ id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
       },
     },
@@ -880,7 +896,13 @@ function testGalleryRules() {
 
   const rainyHighGal = resolveGallery(view, {
     storyOpen: true,
-    pathNodes: [{ id: 11, media: { portraits: [{ id: "ferryman", catalog: "ferryman", item: "high_tide" }] } }],
+    pathNodes: [
+      {
+        id: 11,
+        prose: twoParagraphs,
+        media: { portraits: [{ id: "ferryman", catalog: "ferryman", item: "high_tide" }] },
+      },
+    ],
     headContext: { worldState: { fields: { 潮位: 2, 天气: "雨" }, world: { boat: { aboard: true } }, lore: {} } },
   })
   assert.equal(rainyHighGal.unlockedCount, 6)

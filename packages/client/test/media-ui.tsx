@@ -20,7 +20,7 @@ import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import { createAgent } from "@ui-sdk/solid/agent"
 import { App } from "../src/App.tsx"
 import { flip, locale, t } from "../src/i18n.ts"
-import { boot } from "../src/pages.ts"
+import { boot, showCard, toReader } from "../src/pages.ts"
 import { openSettings } from "../src/settings-navigation.ts"
 import { log, page, path, registry, working } from "../src/store.ts"
 import { turn } from "../src/turn.ts"
@@ -505,6 +505,8 @@ const runPhaseOne = async (isDesktop: boolean) => {
   const sel = document.getSelection()!
   sel.removeAllRanges()
   sel.setBaseAndExtent(p2TextNode, 3, p2TextNode, 14)
+  const selectionTop = () => sel.getRangeAt(0).getBoundingClientRect().top
+  const topBefore = selectionTop()
   const selectedBefore = sel.toString()
   check(selectedBefore.length === 11, `created active prose Selection "${selectedBefore}"`)
 
@@ -553,17 +555,17 @@ const runPhaseOne = async (isDesktop: boolean) => {
   check(illustsNode2[0]?.getAttribute("data-state") === "loading", "held .illust stays in loading placeholder state")
   check(!illustsNode2[0]?.querySelector(".acts button"), "chronicle illustration omits theater re-roll button")
 
-  // Assert Selection AND scrollTop stayed intact across `settleRecord` DOM insertion while image is held!
+  // Assert the text selection and its viewport position stayed intact across `settleRecord` DOM insertion while image is held!
   check(
     document.getSelection()?.toString() === selectedBefore && document.getSelection()?.anchorNode === p2TextNode,
     `Selection intact while image held (got "${document.getSelection()?.toString()}")`,
   )
   check(
-    Math.abs(scroller.scrollTop - scrollTopBefore) <= 1,
-    `scrollTop intact while image held (before=${scrollTopBefore}, now=${scroller.scrollTop})`,
+    Math.abs(selectionTop() - topBefore) <= 1,
+    `selected text stays in place while image held (before=${topBefore}, now=${selectionTop()})`,
   )
 
-  // Now release `misty_pier` image and assert Selection AND scrollTop STILL stay intact after decode!
+  // Now release `misty_pier` image and assert the selected text stays in place after decode!
   await mediaControl({ release: true })
   check(
     await until(() => {
@@ -577,8 +579,8 @@ const runPhaseOne = async (isDesktop: boolean) => {
     `Selection intact after misty_pier decode (got "${document.getSelection()?.toString()}")`,
   )
   check(
-    Math.abs(scroller.scrollTop - scrollTopBefore) <= 1,
-    `scrollTop intact after misty_pier decode (before=${scrollTopBefore}, now=${scroller.scrollTop})`,
+    Math.abs(selectionTop() - topBefore) <= 1,
+    `selected text stays in place after misty_pier decode (before=${topBefore}, now=${selectionTop()})`,
   )
   sel.removeAllRanges()
 
@@ -591,7 +593,8 @@ const runPhaseOne = async (isDesktop: boolean) => {
   await quiet()
 
   // Shelf other-card isolation: browsing `sketch_ferry` (`0` stories) while `ferry` is open at `潮位 = 2`!
-  await pickShelfCard("渡口速写", isDesktop)
+  await mediaControl({ clear: "requests" })
+  await showCard("sketch_ferry")
   check(
     await until(() => registry.get(page) === "card"),
     "browsing 渡口速写 opens its CardPage over running ferry story",
@@ -607,11 +610,16 @@ const runPhaseOne = async (isDesktop: boolean) => {
   check(switchSketchGallery.ok, "switch 渡口速写 to Gallery")
   await quiet()
   check(
-    galleryTile("sketch_scenes", "tide_sketch")?.dataset.state === "masked",
-    "other-card tide_sketch (潮位 >= 2) stays masked despite background ferry story having 潮位=2",
+    galleryTile("crossings", "misty_pier")?.dataset.state === "masked",
+    "other-card misty_pier (潮位 >= 2) stays masked despite background ferry story having 潮位=2",
   )
-  // Return to `ferry` active story
-  await pickShelfCard("渡口", isDesktop)
+  const requests = (await mediaControl({})).requests
+  check(
+    !requests.some((r) => r.path.includes("tide-sketch")),
+    "hidden story never requests the browsed card's gated image",
+  )
+  // Restore this tab's story and its own catalogs.
+  toReader()
   check(await until(() => registry.get(page) === "reader"), "returning to 渡口 resumes Reader")
   await quiet()
 

@@ -16,7 +16,7 @@ import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { Phase } from "@effect-tavern/runtime/src/session.ts"
 import type { JSX } from "@solidjs/web"
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, onSettled, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, untrack, Errored, For, lazy, Loading, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
@@ -26,7 +26,7 @@ import { imeController } from "./ime.ts"
 import { Back, Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
 import { MediaFrame } from "./lightbox.tsx"
 import { blocks } from "./markdown.ts"
-import { activePortraits } from "./media.ts"
+import { activePortraits, activeStoryMatchesCard } from "./media.ts"
 import { plain, Prose } from "./prose.tsx"
 import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
 import { apart, lineOf, versions } from "./record.ts"
@@ -276,7 +276,7 @@ const Latest = () => {
         if (settledHead === null && curLog.head !== null) {
           settledHead = curLog.head
           if (follow.on && !hasSelection()) stick()
-        } else if (curLog.head !== null && d() === null) {
+        } else if (curLog.head !== null && untrack(d) === null) {
           settledHead = curLog.head
         }
         return
@@ -296,9 +296,44 @@ const Latest = () => {
   )
   onSettled(() => {
     const mainEl = document.querySelector("main")!
+    // Keep the selected text at its viewport position when a settled illustration is inserted above it.
+    // The main element can keep its min-height through the insertion, so ResizeObserver alone misses it.
+    let selection: { range: Range; top: number } | undefined
+    const rememberSelection = () => {
+      const sel = document.getSelection()
+      selection = undefined
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return
+      const range = sel.getRangeAt(0)
+      if (mainEl.contains(range.commonAncestorContainer)) selection = { range, top: range.getBoundingClientRect().top }
+    }
+    const mediaChanges = new MutationObserver((changes) => {
+      if (!selection || !mainEl.contains(selection.range.commonAncestorContainer)) return
+      const isIllustration = (node: globalThis.Node) => node instanceof Element && node.matches(".illust")
+      if (!changes.some((change) => [...change.addedNodes, ...change.removedNodes].some(isIllustration))) return
+      const delta = selection.range.getBoundingClientRect().top - selection.top
+      if (Math.abs(delta) <= 0.5) return
+      const scroll = scroller()
+      const top = scroll.scrollTop + delta
+      // A short last turn can still fit the viewport after the insertion. Give its selected line
+      // enough trailing space to reach its previous position before clamping scrollTop.
+      const missing = Math.ceil(top - (scroll.scrollHeight - scroll.clientHeight))
+      if (missing > 0) {
+        const reserve = Number.parseFloat(scroll.style.getPropertyValue("--selection-foot")) || 0
+        scroll.style.setProperty("--selection-foot", `${reserve + missing}px`)
+      }
+      scroll.scrollTop = top
+    })
+    const onSelectionChange = () => {
+      rememberSelection()
+      mediaChanges.disconnect()
+      if (!selection) scroller().style.removeProperty("--selection-foot")
+      if (selection) mediaChanges.observe(mainEl, { childList: true, subtree: true })
+    }
+    document.addEventListener("selectionchange", onSelectionChange)
     let booted = false
     let lastMainHeight = 0
     const onScroll = () => {
+      if (selection) rememberSelection()
       syncLift()
       const g = gap()
       setAway(hidden() > 120)
@@ -354,6 +389,8 @@ const Latest = () => {
     scroller().addEventListener("scroll", onScroll, { passive: true })
     for (const e of inputs) addEventListener(e, onInput, { passive: true })
     return () => {
+      document.removeEventListener("selectionchange", onSelectionChange)
+      mediaChanges.disconnect()
       ro.disconnect()
       boxRo.disconnect()
       scroller().removeEventListener("scroll", onScroll)
@@ -552,10 +589,9 @@ const Options = (props: { items: readonly string[] }) => (
   </div>
 )
 
-const Section = (props: { node: Node; n: number; last: boolean }) => {
+const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType<typeof card> }) => {
   const busy = read(working)
   const all = read(log)
-  const view = read(card)
   const edited = read(editing)
   const revised = read(revising)
   // versions that differ in the player's line are told apart by it; otherwise by the prose
@@ -598,7 +634,7 @@ const Section = (props: { node: Node; n: number; last: boolean }) => {
       />
       <Show
         when={edited() === props.node.id}
-        fallback={<Prose text={prose(props.node)} node={props.node} view={view()} />}
+        fallback={<Prose text={prose(props.node)} node={props.view ? props.node : undefined} view={props.view} />}
       >
         <Editor text={prose(props.node)} onDone={done} />
       </Show>
@@ -689,6 +725,10 @@ const Reader = () => {
   const shown = createMemo(() => drawn(line(), d()), {
     equals: (a, b) => a.length === b.length && a.every((n, i) => n === b[i]),
   })
+  const storyView = createMemo(() => {
+    const view = card()
+    return activeStoryMatchesCard(view?.id) ? view : null
+  })
   const portraits = activePortraits
   return (
     <div class="panel">
@@ -716,7 +756,9 @@ const Reader = () => {
         <main>
           {/* keyed by id: a snapshot read back (after a stop) refreshes each section in place instead of rebuilding them */}
           <For each={shown()} keyed={(n) => n.id}>
-            {(n, i) => <Section node={n()} n={i() + 1} last={!busy() && i() === shown().length - 1} />}
+            {(n, i) => (
+              <Section view={storyView()} node={n()} n={i() + 1} last={!busy() && i() === shown().length - 1} />
+            )}
           </For>
           <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>
         </main>

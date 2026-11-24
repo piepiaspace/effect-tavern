@@ -70,7 +70,9 @@ assert.deepEqual(sorted.media, ferry.media)
   })
   const turn1 = lastNode(await collect(S.act(root.id, { text: "上船歇脚。" })))
   const proj = S.projectTimeline(turn1)
-  assert.deepEqual(proj.media?.illustrations, [{ catalog: "crossings", id: "misty_pier", afterParagraph: 1 }])
+  assert.deepEqual(proj.media?.illustrations, [
+    { productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 1 },
+  ])
   assert.deepEqual(proj.media?.bgm, { catalog: "ferry_bgm", id: "clear_water" })
   assert.deepEqual(proj.media?.portraits, [{ id: "ferryman", catalog: "ferryman", item: "high_tide" }])
 }
@@ -147,7 +149,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const sunny1 = lastNode(await collect(S.act(sunny0.id, { text: "等潮水上来，请那位夜渡客一同登船。" })))
   assert.equal(recordCalls, 1) // chronicle CG + BGM ride the single main record pass!
   assert.deepEqual(S.projectTimeline(sunny1).media, {
-    illustrations: [{ catalog: "crossings", id: "misty_pier", afterParagraph: 1 }],
+    illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 1 }],
     portraits: [
       { id: "ferryman", catalog: "ferryman", item: "high_tide" },
       { id: "passenger", catalog: "passenger", item: "aboard_night" },
@@ -167,7 +169,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const sunny2 = lastNode(await collect(S.act(sunny1.id, { text: "解缆过江。" })))
   const sunny2Proj = S.projectTimeline(sunny2)
   assert.deepEqual(sunny2Proj.media, {
-    illustrations: [{ catalog: "crossings", id: "night_crossing", afterParagraph: 2 }],
+    illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "night_crossing", afterParagraph: 2 }],
     portraits: [
       { id: "ferryman", catalog: "ferryman", item: "high_tide" },
       { id: "passenger", catalog: "passenger", item: "aboard_night" },
@@ -217,7 +219,7 @@ assert.deepEqual(sorted.media, ferry.media)
   })
   const rainy1 = lastNode(await collect(S.act(rainy0.id, { text: "进船篷避雨喝茶。" })))
   assert.deepEqual(S.projectTimeline(rainy1).media, {
-    illustrations: [{ catalog: "crossings", id: "rain_lantern", afterParagraph: 2 }],
+    illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "rain_lantern", afterParagraph: 2 }],
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
     bgm: { catalog: "ferry_bgm", id: "night_rain" },
   })

@@ -88,7 +88,7 @@ export interface ResolvedGallery {
 
 export interface ResolveGalleryOptions {
   readonly storyOpen?: boolean
-  readonly pathNodes?: readonly { readonly id: number; readonly media?: NodeMedia }[]
+  readonly pathNodes?: readonly { readonly id: number; readonly prose: string; readonly media?: NodeMedia }[]
   readonly headContext?: { readonly worldState?: State } | null
   readonly headEvents?: readonly string[]
   readonly showAll?: boolean
@@ -137,9 +137,6 @@ type RawIllustrationRow = {
   readonly afterParagraph: number
 }
 
-const sameRawRow = (a: RawIllustrationRow, b: RawIllustrationRow): boolean =>
-  a.catalog === b.catalog && a.id === b.id && a.afterParagraph === b.afterParagraph
-
 const extractProductIllustrations = (
   product: Pick<Product, "shape">,
   value: unknown,
@@ -164,97 +161,6 @@ const extractProductIllustrations = (
     }
   }
   return out
-}
-
-const attributeTheaterProducts = (
-  ills: readonly RawIllustrationRow[],
-  view: MediaViewLike | null | undefined,
-  theaterValues: Readonly<Record<string, unknown>> | undefined,
-): (string | undefined)[] => {
-  const attributed = Array.from<string | undefined>({ length: ills.length })
-  const bindings = view?.media?.illustrations
-  if (!bindings?.length || !theaterValues || !ills.length) return attributed
-
-  const products = view?.layer?.products ?? []
-  type Step = { kind: "theater"; productId: string | undefined; rows: RawIllustrationRow[] } | { kind: "other" }
-  const steps: Step[] = []
-  let hasTheaterRows = false
-  for (const b of bindings) {
-    const p = products.find((x) => x.id === b.product)
-    if (p && p.role === "theater") {
-      const seg = extractProductIllustrations(p, theaterValues[p.id], view?.catalogs)
-      const enabledId = p.on !== false ? p.id : undefined
-      if (enabledId && seg.length) hasTheaterRows = true
-      steps.push({ kind: "theater", productId: enabledId, rows: seg })
-    } else {
-      if (steps.at(-1)?.kind !== "other") steps.push({ kind: "other" })
-    }
-  }
-  if (!hasTheaterRows) return attributed
-
-  // `projectNodeMedia` concatenates each bound product's rows in binding order; match contiguous theater slices
-  // around non-theater (`chronicle`) wildcard spans so duplicate rows across bindings keep exact provenance.
-  const failed = new Set<number>()
-  const matchExact = (sIdx: number, iIdx: number): boolean => {
-    if (sIdx === steps.length) return iIdx === ills.length
-    const memoKey = sIdx * (ills.length + 1) + iIdx
-    if (failed.has(memoKey)) return false
-    const step = steps[sIdx]
-    if (step.kind === "other") {
-      for (let end = ills.length; end >= iIdx; end--) {
-        if (matchExact(sIdx + 1, end)) return true
-      }
-      failed.add(memoKey)
-      return false
-    }
-    const len = step.rows.length
-    if (iIdx + len <= ills.length) {
-      let ok = true
-      for (let k = 0; k < len; k++) {
-        if (!sameRawRow(ills[iIdx + k], step.rows[k])) {
-          ok = false
-          break
-        }
-      }
-      if (ok && matchExact(sIdx + 1, iIdx + len)) {
-        for (let k = 0; k < len; k++) attributed[iIdx + k] = step.productId
-        return true
-      }
-    }
-    failed.add(memoKey)
-    return false
-  }
-  if (matchExact(0, 0)) return attributed
-
-  // Fallback for synthetic test nodes where `node.media.illustrations` was hand-built rather than projected whole.
-  const consumed = new Set<number>()
-  let cursor = 0
-  for (const step of steps) {
-    if (step.kind !== "theater") continue
-    for (const row of step.rows) {
-      let hit = -1
-      for (let i = cursor; i < ills.length; i++) {
-        if (!consumed.has(i) && sameRawRow(ills[i], row)) {
-          hit = i
-          break
-        }
-      }
-      if (hit < 0) {
-        for (let i = 0; i < cursor; i++) {
-          if (!consumed.has(i) && sameRawRow(ills[i], row)) {
-            hit = i
-            break
-          }
-        }
-      }
-      if (hit >= 0) {
-        consumed.add(hit)
-        attributed[hit] = step.productId
-        if (hit >= cursor) cursor = hit + 1
-      }
-    }
-  }
-  return attributed
 }
 
 const emptyIds: ReadonlySet<string> = new Set()
@@ -282,6 +188,19 @@ export const countEffectiveIllustrations = (
   return count
 }
 
+// The occurrence counts every projected row, including rows outside the current prose.
+function* visibleIllustrations(ills: NonNullable<NodeMedia["illustrations"]>, blockCount: number) {
+  const occurrences = new Map<string, number>()
+  for (const ill of ills) {
+    const key = `${ill.catalog}\0${ill.id}`
+    const occurrence = occurrences.get(key) ?? 0
+    occurrences.set(key, occurrence + 1)
+    if (Number.isInteger(ill.afterParagraph) && ill.afterParagraph >= 1 && ill.afterParagraph <= blockCount) {
+      yield { ill, occurrence }
+    }
+  }
+}
+
 const emptyIllustrations: ReadonlyMap<number, readonly ResolvedIllustration[]> = new Map()
 
 export const resolveNodeIllustrations = (
@@ -302,25 +221,8 @@ export const resolveNodeIllustrations = (
   const totalBlocks = blockCount ?? blocks(node.prose ?? "").length
   if (totalBlocks < 1) return emptyIllustrations
 
-  const attributed = attributeTheaterProducts(ills, view, node.theater)
-  const occurrences = new Map<string, number>()
   const buckets = new Map<number, ResolvedIllustration[]>()
-
-  for (let i = 0; i < ills.length; i++) {
-    const ill = ills[i]
-    const occKey = `${ill.catalog}\0${ill.id}`
-    const occurrence = occurrences.get(occKey) ?? 0
-    occurrences.set(occKey, occurrence + 1)
-
-    if (
-      typeof ill.afterParagraph !== "number" ||
-      !Number.isInteger(ill.afterParagraph) ||
-      ill.afterParagraph < 1 ||
-      ill.afterParagraph > totalBlocks
-    ) {
-      continue
-    }
-
+  for (const { ill, occurrence } of visibleIllustrations(ills, totalBlocks)) {
     const cat = view?.catalogs?.find((c) => c.id === ill.catalog)
     const entry = cat?.items.find((item) => item.id === ill.id)
     const label = entry?.label ?? ill.id
@@ -331,7 +233,8 @@ export const resolveNodeIllustrations = (
       item: ill.id,
       occurrence,
     })
-    const theaterProductId = attributed[i]
+    const producer = view?.layer?.products?.find((p) => p.id === ill.productId)
+    const theaterProductId = producer?.role === "theater" && producer.on !== false ? producer.id : undefined
     const resolved: ResolvedIllustration = {
       catalog: ill.catalog,
       id: ill.id,
@@ -514,18 +417,15 @@ export const resolveGallery = (
   if (storyOpen && options.pathNodes?.length) {
     for (const n of options.pathNodes) {
       if (n.media?.illustrations?.length) {
-        const occs = new Map<string, number>()
-        for (const ill of n.media.illustrations) {
+        for (const { ill, occurrence } of visibleIllustrations(n.media.illustrations, blocks(n.prose).length)) {
           const key = `${ill.catalog}\0${ill.id}`
-          const occ = occs.get(key) ?? 0
-          occs.set(key, occ + 1)
           pathRevealed.add(key)
           const url = safeCatalogUrl(view.catalogs, {
             kind: "illustration",
             nodeId: n.id,
             catalog: ill.catalog,
             item: ill.id,
-            occurrence: occ,
+            occurrence,
           })
           if (url !== undefined) pathUrls.set(key, url)
         }

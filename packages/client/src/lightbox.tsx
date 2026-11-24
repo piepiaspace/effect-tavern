@@ -8,6 +8,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@ui-sdk/solid/dialog"
+import { Button } from "@ui-sdk/solid/button"
 import { Close } from "./icons.tsx"
 import { t } from "./i18n.ts"
 
@@ -54,7 +55,6 @@ export interface MediaFrameProps {
 }
 
 export const MediaFrame = (props: MediaFrameProps) => {
-  let imgEl: HTMLImageElement | undefined
   const resolvedSrc = () => (props.masked ? undefined : (props.src ?? props.url))
   const [status, setStatus] = createSignal<MediaStatus>(() => {
     const u = resolvedSrc()
@@ -84,16 +84,6 @@ export const MediaFrame = (props: MediaFrameProps) => {
     <>
       <Show when={Boolean(resolvedSrc()) && status() !== "error"}>
         <img
-          ref={(el) => {
-            imgEl = el
-            const u = resolvedSrc()
-            if (u && el.complete && el.naturalWidth > 0 && !decodedUrls.has(u)) {
-              decodedUrls.add(u)
-              queueMicrotask(() => {
-                if (imgEl === el && resolvedSrc() === u) setStatus("ready")
-              })
-            }
-          }}
           class="media-img"
           src={resolvedSrc()}
           alt={props.label}
@@ -117,7 +107,7 @@ export const MediaFrame = (props: MediaFrameProps) => {
         />
       </Show>
       <Show when={interactive() && status() === "ready"}>
-        <button type="button" class="media-hit" aria-label={props.triggerLabel ?? props.label} onClick={activate} />
+        <Button type="button" class="media-hit" aria-label={props.triggerLabel ?? props.label} onClick={activate} />
       </Show>
       <Show when={props.masked}>
         <span class="media-mask">
@@ -176,7 +166,6 @@ export const MediaFrame = (props: MediaFrameProps) => {
 export const MediaImage = MediaFrame
 
 const LightboxBody = (props: { readonly payload: LightboxPayload | undefined }) => {
-  let imgEl: HTMLImageElement | undefined
   const src = () => props.payload?.src || undefined
   const label = () => props.payload?.label ?? ""
   const [status, setStatus] = createSignal<MediaStatus>(() => {
@@ -197,16 +186,6 @@ const LightboxBody = (props: { readonly payload: LightboxPayload | undefined }) 
           }
         >
           <img
-            ref={(el) => {
-              imgEl = el
-              const u = src()
-              if (u && el.complete && el.naturalWidth > 0 && !decodedUrls.has(u)) {
-                decodedUrls.add(u)
-                queueMicrotask(() => {
-                  if (imgEl === el && src() === u) setStatus("ready")
-                })
-              }
-            }}
             class="lightbox-img"
             data-state={status()}
             src={src()}
