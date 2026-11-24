@@ -2,8 +2,15 @@
 import type { Card, State } from "@effect-tavern/runtime/src/card.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Message } from "@effect-tavern/provider/src/call.ts"
-import type { MessageTrace, OmittedItem, SourceRef, Span } from "@effect-tavern/runtime/src/trace.ts"
-import type { PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
+import type {
+  DeliveryToolTrace,
+  MessageTrace,
+  OmittedItem,
+  SourceRef,
+  Span,
+  WrapTrace,
+} from "@effect-tavern/runtime/src/trace.ts"
+import type { PreviewDiagnostic, PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
 import type { PreviewRequest } from "./wire.ts"
 import { textOf } from "./inspect.ts"
 import {
@@ -19,6 +26,7 @@ import {
   tabs,
 } from "./store.ts"
 import { open } from "./pages.ts"
+import { t } from "./i18n.ts"
 
 export interface PromptTreeMemory {
   cardId: string | null
@@ -339,6 +347,52 @@ function shareJson<T>(prev: unknown, next: T): T {
   return (copy as T | undefined) ?? next
 }
 
+/** The wrapped messages as the tool's description carries them (#220): each section's body, with its trace. A message
+ *  with no section (its reasoning alone, which the description's text cannot carry) is not among them. */
+export const wrappedTexts = (
+  description: string,
+  wrap: Pick<WrapTrace, "traces" | "sections">,
+): { trace: MessageTrace; text: string }[] =>
+  wrap.sections.flatMap((s) => {
+    const trace = wrap.traces[s.trace]
+    return trace ? [{ trace, text: description.slice(s.body.start, s.body.end) }] : []
+  })
+
+/** The delivery tool as drawn: its fields, and under the wrap its description cut where the context sits (`before` and
+ *  `after` are the description's own wording around it). */
+export const toolParts = (
+  tool: Pick<DeliveryToolTrace, "name" | "description" | "param">,
+  wrap?: Pick<WrapTrace, "context">,
+) => {
+  const at = wrap ? wrap.context : { start: tool.description.length, end: tool.description.length }
+  return {
+    name: tool.name,
+    param: tool.param,
+    description: tool.description,
+    before: tool.description.slice(0, at.start),
+    context: tool.description.slice(at.start, at.end),
+    after: tool.description.slice(at.end),
+  }
+}
+
+/** A preview diagnostic in words, read where it is drawn; one with no words of ours shows the runtime's message. */
+export const diagnosticText = (d: PreviewDiagnostic, deliverTool: boolean): string => {
+  switch (d.code) {
+    case "deliver_needs_tools":
+      return t("promptTree.diagDeliverNeedsTools")
+    case "hat_needs_tools":
+      return t("promptTree.diagHatNeedsTools")
+    case "reasoning_unsigned":
+      return t("promptTree.diagReasoningUnsigned")
+    case "prefill_disallowed":
+      return deliverTool ? t("promptTree.diagDeliverNoPrefill") : t("promptTree.diagPrefillDisallowed")
+    case "wrap_needs_user":
+      return t("promptTree.diagWrapNeedsUser")
+    default:
+      return d.message
+  }
+}
+
 export const reusePreviewOutline = (
   previous: PreviewNarrateResult | undefined,
   next: PreviewNarrateResult,
@@ -350,6 +404,7 @@ export const reusePreviewOutline = (
         wiredMessages: shareJson(previous.wiredMessages, next.wiredMessages),
         traces: shareJson(previous.traces, next.traces),
         omitted: shareJson(previous.omitted, next.omitted),
+        ...(next.wrap && { wrap: shareJson(previous.wrap, next.wrap) }),
       }
     : next
 
@@ -364,10 +419,10 @@ export const scrubPlayPreview = (r: PreviewNarrateResult): PreviewNarrateResult 
     return rest as S
   }
 
-  let traces = r.traces
-  if (hidden.size > 0) {
+  const scrubTraces = (list: readonly MessageTrace[]): readonly MessageTrace[] => {
+    if (hidden.size === 0) return list
     let tracesChanged = false
-    const nextTraces = r.traces.map((tr) => {
+    const nextTraces = list.map((tr) => {
       const source = scrub(tr.source)
       let spansChanged = false
       const nextSpans = tr.spans.map((sp) => {
@@ -380,8 +435,10 @@ export const scrubPlayPreview = (r: PreviewNarrateResult): PreviewNarrateResult 
       tracesChanged = true
       return { ...tr, source, spans: spansChanged ? nextSpans : tr.spans }
     })
-    if (tracesChanged) traces = nextTraces
+    return tracesChanged ? nextTraces : list
   }
+  const traces = scrubTraces(r.traces)
+  const wrapTraces = r.wrap && scrubTraces(r.wrap.traces)
 
   let omitted = r.omitted
   if (hidden.size > 0) {
@@ -406,6 +463,7 @@ export const scrubPlayPreview = (r: PreviewNarrateResult): PreviewNarrateResult 
   return {
     ...r,
     traces,
+    ...(r.wrap && wrapTraces !== r.wrap.traces && { wrap: { ...r.wrap, traces: wrapTraces! } }),
     omitted,
     resources: r.resources
       .filter((res) => res.unlockedLayer > 0)

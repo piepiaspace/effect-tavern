@@ -336,6 +336,21 @@
   height: 10px;
 }
 
+/* the tool wrap's mark (controls.tsx WrapMark): one filled glyph at the row's text size, in the ink's second step, so it
+   reads by its shape beside the regular-weight icons; the same everywhere a template is named */
+.wrap-mark {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  color: var(--ink-2);
+  line-height: 0;
+}
+.wrap-mark svg,
+.popup-list .item .wrap-mark svg {
+  width: 14px;
+  height: 14px;
+}
+
 .tag {
   flex: none;
   display: inline-flex;

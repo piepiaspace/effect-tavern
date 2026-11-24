@@ -66,3 +66,4 @@ export { default as Pause } from "~icons/ph/pause"
 export { default as SoundOn } from "~icons/ph/speaker-high"
 export { default as SoundOff } from "~icons/ph/speaker-slash"
 export { default as Stack } from "~icons/ph/stack"
+export { default as Wrapped } from "~icons/ph/envelope-simple-fill" // a template that wraps its story context into the delivery tool (#220): sealed in, as a letter

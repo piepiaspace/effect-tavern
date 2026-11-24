@@ -16,11 +16,14 @@ import {
   hatLabel,
   hatOptions,
   mainConflicts,
+  mainNotes,
+  noteText,
   modelOptions,
   pairKey,
   pairLabel,
   pairOf,
   stageConflicts,
+  stageNotes,
   stageHatValue,
   staleHatOption,
   staleModelOption,
@@ -84,7 +87,9 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
   const pairs = createMemo(() => modelOptions(list()))
   // the template list is read again each time the settings open, mostly to the same rows: equal options are one value
   const hatChoices = createMemo(() => hatOptions(hatList()), {
-    equals: (a, b) => a.length === b.length && a.every((o, i) => o.value === b[i]?.value && o.label === b[i]?.label),
+    equals: (a, b) =>
+      a.length === b.length &&
+      a.every((o, i) => o.value === b[i]?.value && o.label === b[i]?.label && o.wrap === b[i]?.wrap),
   })
   const byStage = () => !!route().stages
   const freeChat = () => isFreeChat(shelf().find((c) => c.id === at()) ?? at(), shelf())
@@ -94,6 +99,8 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
   const narrateLabel = () => t("settings.stageNarrate")
   const conflicts = () =>
     byStage() ? stageConflicts(list(), hatList(), route(), "narrate") : mainConflicts(list(), hatList(), route())
+  const notes = () =>
+    byStage() ? stageNotes(list(), hatList(), route(), "narrate") : mainNotes(list(), hatList(), route())
   /** A way to a page: the sheet goes first, so the page is not opened under it. */
   const leave = (go: () => void) => {
     sheet.close()
@@ -195,6 +202,7 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
             />
           </div>
           <For each={conflicts()}>{(c) => <div class="warn">{conflictText(c)}</div>}</For>
+          <For each={notes()}>{(n) => <div class="note">{noteText(n)}</div>}</For>
         </div>
         <div class="play-story">
           <button type="button" class="play-row" disabled={busy() || at() === null} onClick={openPicker}>

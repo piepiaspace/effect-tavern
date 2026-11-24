@@ -395,6 +395,11 @@
   font-weight: 600;
   white-space: nowrap;
 }
+/* a call sent under a template's wrap (#220): its mark after the stage's name */
+.inspect .nm .wrap-mark {
+  margin-inline-start: var(--space-1);
+  vertical-align: -2px;
+}
 .inspect .ord {
   margin-inline-start: var(--space-1);
   color: var(--ink-3);

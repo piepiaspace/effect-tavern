@@ -28,7 +28,7 @@ import {
 } from "@ui-sdk/solid/number-input"
 import { Family } from "./family.tsx"
 import { copyText } from "./host.ts"
-import { Back, Caret, Check, Close, Expand, Minus, Plus } from "./icons.tsx"
+import { Back, Caret, Check, Close, Expand, Minus, Plus, Wrapped } from "./icons.tsx"
 import { names } from "./store.ts"
 import { type Key, t } from "./i18n.ts"
 
@@ -89,7 +89,16 @@ export interface Option<T extends string> {
   value: T
   label: string
   glyph?: string // a model id: its family glyph leads the row
+  wrap?: boolean // a template that wraps (#220): its mark follows the name
 }
+/** The mark of a template that wraps its story context into the delivery tool (#220 tool wrap), wherever a template
+ *  is named: derived from the template's own fields (`hatWraps`) or a recorded call's `wrapped`, so nothing hides it.
+ *  It carries its words only as its accessible name and title; the explanation lives once, in the template editor. */
+export const WrapMark = () => (
+  <span class="wrap-mark" role="img" aria-label={t("settings.wrapMark")} title={t("settings.wrapMark")}>
+    <Wrapped aria-hidden="true" />
+  </span>
+)
 /** A select without <select>, on @ui-sdk/solid/select: a trigger and its list, the pick lit (no check column), a bottom sheet on a
  *  small touch screen. With nothing to pick, or `disabled` (a turn in flight holds the reader's play sheet), the
  *  trigger is disabled and still names the pick it holds (a stale one too). */
@@ -120,6 +129,9 @@ export const Menu = <T extends string>(props: {
       <SelectTrigger class={{ select: true, sm: !!props.small }} aria-label={props.label}>
         <Show when={current()?.glyph}>{(g) => <Family id={g()} />}</Show>
         <span class="label">{current()?.label ?? props.placeholder ?? ""}</span>
+        <Show when={current()?.wrap}>
+          <WrapMark />
+        </Show>
         <Show when={reason()}>
           {(r) => <span class="tag warn">{r() === "removed" ? t("settings.removed") : t("settings.disabled")}</span>}
         </Show>
@@ -133,6 +145,9 @@ export const Menu = <T extends string>(props: {
                 <span class="name">
                   <Show when={o().glyph}>{(g) => <Family id={g()} />}</Show>
                   <span class="text">{o().label}</span>
+                  <Show when={o().wrap}>
+                    <WrapMark />
+                  </Show>
                 </span>
               </SelectItem>
             )}

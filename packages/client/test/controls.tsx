@@ -7,9 +7,11 @@ import { createAgent } from "@ui-sdk/solid/agent"
 import { createSignal, flush } from "solid-js"
 import { cardView } from "@effect-tavern/runtime/src/session.ts"
 import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers.ts"
+import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Composer } from "../src/composer.tsx"
 import { CardPage } from "../src/card.tsx"
 import { ModelDialog } from "../src/models.tsx"
+import { DeliveryTool } from "../src/settings.tsx"
 import { InstallKeys, Sidebar } from "../src/side.tsx"
 import { cards, composition, locals, personas, providers, stories, tabs } from "../src/store.ts"
 import {
@@ -124,6 +126,10 @@ let delivered = "text"
 let flipped = false
 let ticked = false
 let heldPicked = false
+// the template editor's delivery tool (#220, #221): what it stages as typed and what it writes
+const [wave, setWave] = createSignal<Hat>({ id: "h-wave", name: "浪潮", deliver: "tool", toolChoice: "auto" })
+let waveSaved: Hat | undefined
+let waveStaged: Hat | undefined
 const sheet = dialogHandle()
 const prompt = dialogHandle()
 const modal = dialogHandle()
@@ -195,6 +201,21 @@ render(
           { value: "tool", label: "工具调用" },
         ]}
         onPick={(v) => (setDeliver(v), (delivered = v))}
+      />
+      <DeliveryTool
+        hat={wave()}
+        onStage={(h) => (setWave(h), (waveStaged = h))}
+        onSave={(h) => (setWave(h), (waveSaved = h))}
+      />
+      {/* a template menu naming a wrapping template: the mark follows its name in the trigger */}
+      <Menu
+        label="叙事模板"
+        value="h-wave"
+        options={[
+          { value: "h-wave", label: "浪潮", wrap: true },
+          { value: "h-plain", label: "常规" },
+        ]}
+        onPick={() => {}}
       />
       <Switch label="流式输出" on={stream()} onFlip={() => (setStream((v) => !v), (flipped = !flipped))} />
       <Tick on={ticked} onFlip={() => (ticked = !ticked)}>
@@ -344,6 +365,33 @@ const run = async () => {
   check(picked === "gemini", `the select's pick reached the app: ${picked}`)
   check(delivered === "tool", `the segment's pick reached the app: ${delivered}`)
   check(flipped, "the switch's flip reached the app")
+
+  // the delivery tool: the wrap's switch is a part the agent reaches by its name, and its flip is written; the mark
+  // then shows beside it, as it shows in a menu naming a wrapping template (and only there)
+  check(labels.includes("工具封装"), `the wrap's switch is in the snapshot: ${labels.join(" | ")}`)
+  const wrapped = await agent.act({ steps: [{ ref: "工具封装", action: "setChecked", args: [true] }] })
+  await quiet()
+  check(wrapped.ok && waveSaved?.wrap === true, `the wrap's flip is written: ${wrapped.error?.message}`)
+  check(document.querySelector(".hat-wrap .wrap-mark[aria-label]"), "the wrap's mark shows beside its switch")
+  const menuMarks = [...document.querySelectorAll(".select")].filter((el) => el.querySelector(".wrap-mark"))
+  check(
+    menuMarks.length === 1 && menuMarks[0]?.getAttribute("aria-label") === "叙事模板",
+    `only the menu holding a wrapping template shows the mark: ${menuMarks.length}`,
+  )
+  // a name no vendor takes: said why, never staged; a good one is written trimmed
+  const nameBox = document.querySelector<HTMLInputElement>(".hat-tool-name input")!
+  nameBox.value = "1 bad"
+  nameBox.dispatchEvent(new Event("input", { bubbles: true }))
+  await quiet()
+  check(document.querySelector(".hat-tool-bad") && !waveStaged?.tool, "a bad tool name is refused as typed")
+  nameBox.value = "actual_content"
+  nameBox.dispatchEvent(new Event("input", { bubbles: true }))
+  nameBox.dispatchEvent(new Event("change", { bubbles: true }))
+  await quiet()
+  check(
+    !document.querySelector(".hat-tool-bad") && waveSaved?.tool?.name === "actual_content" && waveSaved.wrap === true,
+    `a good tool name is written with the wrap kept: ${JSON.stringify(waveSaved)}`,
+  )
   const lockedEntry = agent.snapshot().find((e) => e.label === "锁定格式")
   check(
     lockedEntry?.disabled && lockedEntry.actions.length === 0,

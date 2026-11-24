@@ -7,6 +7,15 @@ import type { Routing } from "../src/store.ts"
 import {
   applied,
   conflictText,
+  hatNotes,
+  hatTemplateNotes,
+  mainNotes,
+  noteText,
+  noticeLevel,
+  stageNotes,
+  toolNameOk,
+  withTool,
+  withWrap,
   flipByStage,
   HAT_NONE,
   hatLabel,
@@ -544,4 +553,97 @@ assert.deepEqual(
   ["handshake_tools"],
 )
 assert.equal(conflictText("handshake_tools"), "该模板包含工具握手消息，但当前模型不支持工具调用，请求将失败")
+
+// The delivery tool's wording (#221) and the wrap (#220) in a template file: kept on export and import, under tool
+// delivery only; a name no vendor accepts, a wrongly typed field, refuses the file
+const wrapHat: Hat = withWrap(
+  withTool(withTool(withDeliver({ id: "h-wrap", name: "Wave" }, "force"), "name", " actual_content "), "param", "All."),
+  true,
+)
+assert.deepEqual(wrapHat, {
+  id: "h-wrap",
+  name: "Wave",
+  deliver: "tool",
+  toolChoice: "force",
+  tool: { name: "actual_content", param: "All." },
+  wrap: true,
+})
+assert.deepEqual(parseHatFile(serializeHat(wrapHat), "Fallback"), {
+  name: "Wave",
+  deliver: "tool",
+  toolChoice: "force",
+  tool: { name: "actual_content", param: "All." },
+  wrap: true,
+})
+// the switch between auto and force keeps the tool and the wrap; text drops both, and coming back does not restore them
+assert.deepEqual(withDeliver(wrapHat, "auto"), { ...wrapHat, toolChoice: "auto" })
+assert.deepEqual(withDeliver(wrapHat, "text"), { id: "h-wrap", name: "Wave" })
+assert.equal(withWrap(withDeliver(wrapHat, "text"), true).wrap, undefined) // no tool to wrap into
+assert.equal(withWrap(wrapHat, false).wrap, undefined)
+// a blank field goes (the default or the ask applies), and the empty tool with it
+assert.deepEqual(withTool(withTool(wrapHat, "name", "  "), "param", "").tool, undefined)
+assert.deepEqual(withTool(wrapHat, "description", "Say it all. {{context}}").tool, {
+  name: "actual_content",
+  param: "All.",
+  description: "Say it all. {{context}}",
+})
+assert.equal(toolNameOk(""), true)
+assert.equal(toolNameOk("response_body"), true)
+assert.equal(toolNameOk("1st"), false)
+assert.equal(toolNameOk("has space"), false)
+assert.equal(toolNameOk("x".repeat(65)), false)
+assert.equal(parseHatFile('{"deliver":"tool","tool":{"name":"bad name"}}', "F"), null)
+assert.equal(parseHatFile('{"deliver":"tool","tool":{"name":1}}', "F"), null)
+assert.equal(parseHatFile('{"deliver":"tool","tool":"narrative"}', "F"), null)
+assert.equal(parseHatFile('{"deliver":"tool","wrap":"yes"}', "F"), null)
+// a file that is a template only by its tool or wrap is still read; under text delivery both are dropped
+assert.deepEqual(parseHatFile('{"wrap":true,"tool":{"name":"narrative"}}', "Plain"), { name: "Plain" })
+assert.deepEqual(parseHatFile('{"deliver":"tool","tool":{"name":"","description":"  "},"wrap":false}', "Bare"), {
+  name: "Bare",
+  deliver: "tool",
+  toolChoice: "auto",
+})
+
+// The notes: information, not conflicts. The wrap's facts wherever a wrapping template is worn on narrate; a
+// gemini-format connection under tool delivery (wrapped or not) delivers its reply whole
+const geminiProv: Provider = {
+  ...p,
+  id: "g",
+  defaultFormat: "gemini",
+  models: [{ id: "flash" }],
+  endpoints: { gemini: { url: "https://g.example" } },
+}
+const plainTool: Hat = { ...withDeliver(baseHat, "auto"), id: "h-plain-tool" }
+const onGemini = { provider: "g", model: "flash" }
+assert.deepEqual(hatNotes([geminiProv], [wrapHat], onGemini, wrapHat.id), ["wrap", "gemini_unstreamed"])
+assert.deepEqual(hatNotes([geminiProv], [plainTool], onGemini, plainTool.id), ["gemini_unstreamed"])
+assert.deepEqual(hatNotes([geminiProv], [baseHat], onGemini, baseHat.id), []) // text delivery streams
+assert.deepEqual(hatNotes([geminiProv], [wrapHat], onGemini, wrapHat.id, "check"), []) // review stages deliver no prose
+assert.deepEqual(hatNotes([conflictProv], [wrapHat], { provider: "p", model: "ok" }, wrapHat.id), ["wrap"])
+assert.deepEqual(hatTemplateNotes([geminiProv], {}, wrapHat), ["wrap"]) // unmounted: its own facts only
+assert.deepEqual(hatTemplateNotes([geminiProv], { default: onGemini, hat: wrapHat.id }, wrapHat), [
+  "wrap",
+  "gemini_unstreamed",
+])
+assert.deepEqual(mainNotes([geminiProv], [plainTool], { default: onGemini, hat: plainTool.id }), ["gemini_unstreamed"])
+assert.deepEqual(mainNotes([geminiProv], [plainTool], { default: onGemini, hat: plainTool.id, stages: {} }), [])
+assert.deepEqual(stageNotes([geminiProv], [wrapHat], { default: onGemini, hat: wrapHat.id, stages: {} }, "narrate"), [
+  "wrap",
+  "gemini_unstreamed",
+])
+assert.deepEqual(stageNotes([geminiProv], [wrapHat], { default: onGemini, hat: wrapHat.id, stages: {} }, "decide"), [])
+// the wrap still needs native tools: that stays a conflict, beside the note
+assert.deepEqual(hatConflicts([conflictProv], [wrapHat], { provider: "p", model: "no-tools" }, wrapHat.id), [
+  "deliver_tools",
+])
+assert.equal(noticeLevel("wrap"), "info")
+assert.equal(noticeLevel("gemini_unstreamed"), "info")
+assert.equal(noticeLevel("deliver_tools"), "problem")
+assert.ok(noteText("gemini_unstreamed").includes("Gemini"))
+assert.ok(noteText("wrap").includes("前缀缓存"))
+// a wrapping template's menu row carries the mark; an ordinary one does not
+assert.deepEqual(hatOptions([wrapHat, baseHat]), [
+  { value: "h-wrap", label: "Wave", wrap: true },
+  { value: "h1", label: "Base" },
+])
 console.log("connections ok")

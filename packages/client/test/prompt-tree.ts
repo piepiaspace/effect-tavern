@@ -1,10 +1,13 @@
 import assert from "node:assert/strict"
 import { previewNarrate } from "@effect-tavern/runtime/src/preview.ts"
-import type { Span } from "@effect-tavern/runtime/src/trace.ts"
+import type { SourceRef, Span } from "@effect-tavern/runtime/src/trace.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import {
   buildPreviewRequest,
   clearPromptTreeMemory,
+  diagnosticText,
+  toolParts,
+  wrappedTexts,
   forgetPreviewHat,
   getPromptTreeMemory,
   messageText,
@@ -369,4 +372,117 @@ assert.deepEqual(turnSrc && sourceDestination(turnSrc), {
   ok: true,
   target: { kind: "hat", hatId: "hat-structured" },
 })
+
+// The delivery tool and the wrap (#220, #221): the preview as the outline draws it. Unwrapped tool delivery shows the
+// tool in force with its sources; under the wrap the description holds the context, cut by `toolParts`, and the
+// wrapped messages are the description's own sections (`wrappedTexts`), in order, with no breakpoint anywhere
+const sandboxCard = {
+  id: "sandbox",
+  frame: [],
+  fiction: [{ id: "shore", text: "The shore at dawn." }],
+  rules: { fields: [], actions: [] },
+  greetings: [],
+  guard: [],
+  lore: [],
+}
+const toolOnly = previewNarrate({
+  mode: "sandbox",
+  card: sandboxCard,
+  hat: { id: "hat-tool", name: "Tool", deliver: "tool", toolChoice: "auto", tool: { name: "actual_content" } },
+  connection: { prefill: false, reasoningBack: false, tools: true },
+  rows: {},
+})
+const plainTool = toolOnly.connection.tool!
+assert.equal(plainTool.name, "actual_content")
+assert.equal(plainTool.sources.name.kind, "hat")
+assert.notEqual(plainTool.sources.description.kind, "hat") // the ask applies
+assert.equal(toolOnly.wrap, undefined)
+assert.deepEqual(toolParts(plainTool), {
+  name: "actual_content",
+  param: plainTool.param,
+  description: plainTool.description,
+  before: plainTool.description,
+  context: "",
+  after: "",
+})
+
+const wrapping: Hat = {
+  id: "hat-wave",
+  name: "Wave",
+  deliver: "tool",
+  toolChoice: "force",
+  wrap: true,
+  tool: { description: "Story so far:\n{{context}}\nCall {{tool}} once." },
+  narrate: {
+    lead: [{ role: "system", text: "Outer shell" }],
+    head: [{ role: "system", text: "Inside the tool" }],
+    tail: [{ role: "user", text: "Go on." }],
+  },
+}
+const wrapped = previewNarrate({
+  mode: "sandbox",
+  card: sandboxCard,
+  hat: wrapping,
+  connection: { prefill: false, reasoningBack: false, tools: true },
+  rows: {},
+})
+assert.equal(wrapped.connection.wrap, true)
+const wrapTool = wrapped.connection.tool!
+const wrap = wrapped.wrap!
+// the outer zone: the hat's lead and tail alone, and no cache breakpoint
+assert.deepEqual(
+  wrapped.traces.map((tr) => tr.subzone),
+  ["hat-lead", "hat-tail"],
+)
+assert.equal(
+  wrapped.traces.concat(wrap.traces).some((tr) => tr.breakpoint),
+  false,
+)
+assert.equal(wrap.prefixCache, "off")
+// the tool zone: the description's wording around the context, and the context's messages as sent
+const parts = toolParts(wrapTool, wrap)
+assert.equal(parts.before, "Story so far:\n")
+assert.equal(parts.after, "\nCall narrative once.")
+assert.equal(parts.before + parts.context + parts.after, wrapTool.description)
+const inner = wrappedTexts(wrapTool.description, wrap)
+assert.equal(inner.length, wrap.sections.length)
+assert.ok(inner.length > 1)
+assert.deepEqual(
+  inner.map((w) => w.text),
+  wrap.messages.map((m) => messageText(m)),
+)
+assert.ok(inner.some((w) => w.trace.subzone === "hat-head" && w.text === "Inside the tool"))
+assert.ok(inner.some((w) => w.text.includes("The shore at dawn.")))
+// a span of a wrapped trace is relative to its section's body: it slices the right words from the section's text
+for (const w of inner)
+  for (const sp of w.trace.spans) assert.equal(sliceSpanText(w.text, sp).length, Math.max(0, sp.end - sp.start))
+
+// no user message outside and the wrap's ask emptied: the refusal, in the interface's words
+const refused = previewNarrate({
+  mode: "sandbox",
+  card: sandboxCard,
+  hat: { ...wrapping, narrate: { head: wrapping.narrate!.head } },
+  connection: { prefill: false, reasoningBack: false, tools: true },
+  rows: {
+    packs: [{ id: "pack-quiet", name: "Quiet", asks: [{ id: "narrate.wrap", text: "" }] }],
+    local: { id: "local", name: "local", card: "sandbox", mounts: ["pack-quiet"] },
+  },
+})
+const needsUser = refused.diagnostics.find((d) => d.code === "wrap_needs_user")
+assert.equal(needsUser?.level, "error")
+assert.ok(diagnosticText(needsUser, true).includes("工具封装触发"))
+assert.equal(diagnosticText({ level: "warn", code: "layer_dropped", message: "raw" }, false), "raw")
+
+// entered from play: the wrapped traces lose a hidden field's condition as the outer ones do
+const hiddenWhen = {
+  kind: "card",
+  whenText: "secret",
+  whenDetails: [{ expr: "secret", path: "fields.secret", passed: true }],
+} as unknown as SourceRef
+const scrubbedWrap = scrubPlayPreview({
+  ...wrapped,
+  sandbox: { ...wrapped.sandbox, fields: [{ path: "fields.secret", hidden: true } as never] },
+  wrap: { ...wrap, traces: [{ ...wrap.traces[0], source: hiddenWhen }] },
+})
+assert.equal(scrubbedWrap.wrap?.traces[0]?.source?.whenText, undefined)
 console.log("prompt-tree ok")
