@@ -8,7 +8,7 @@
 // that opens a page closes it. While a turn runs the menus and the persona are held (the server reads the routing at
 // every stage call, so a change mid-turn would split it); the rest stays open to read. It is the phone's alone: the
 // shell mounts it only under 72rem, and nothing it imports is a page the app loads lazily.
-import { createMemo, For, onCleanup } from "solid-js"
+import { createMemo, For, onCleanup, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import {
   conflictText,
@@ -32,6 +32,8 @@ import {
 import { dialogHandle, type DialogHandle, Menu } from "./controls.tsx"
 import { openPicker } from "./dialogs.tsx"
 import { Jump, Probe, Settings, Stack, User, Write } from "./icons.tsx"
+import { MediaFrame } from "./lightbox.tsx"
+import { activePortraits } from "./media.ts"
 import { open } from "./pages.ts"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { Sheet } from "./readings.tsx"
@@ -81,6 +83,7 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
   const allLocals = read(locals)
   const shelf = read(cards)
   const pg = read(page)
+  const portraits = createMemo(activePortraits)
   const pairs = createMemo(() => modelOptions(list()))
   // the template list is read again each time the settings open, mostly to the same rows: equal options are one value
   const hatChoices = createMemo(() => hatOptions(hatList()), {
@@ -146,6 +149,30 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
       }
     >
       <div class="play scroller">
+        <Show when={portraits().length}>
+          <div class="play-portraits" role="region" aria-label={t("play.portraits")}>
+            <For each={portraits()} keyed={(p) => p.id}>
+              {(p) => (
+                <div class="play-portrait">
+                  <MediaFrame
+                    class="play-portrait-frame"
+                    src={p().url}
+                    label={p().label}
+                    triggerLabel={p().slotLabel ? `${p().slotLabel} · ${p().label}` : p().label}
+                    lightboxLabel={p().label}
+                    lightbox
+                  />
+                  <div class="play-portrait-meta">
+                    <span class="play-portrait-slot">{p().slotLabel || p().label}</span>
+                    <Show when={p().slotLabel && p().itemLabel && p().itemLabel !== p().slotLabel}>
+                      <span class="play-portrait-item">{p().itemLabel}</span>
+                    </Show>
+                  </div>
+                </div>
+              )}
+            </For>
+          </div>
+        </Show>
         <div class="play-route">
           <div class="play-field">
             <span class="lbl">{byStage() ? t("play.narrateModel") : t("settings.mainModel")}</span>

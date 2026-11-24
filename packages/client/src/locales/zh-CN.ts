@@ -237,6 +237,7 @@ const zh = {
     followMainModel: "跟随主模型（{model}）",
     narrateModel: "叙事模型",
     open: "调整模型、模板与人设：{card} › {story}",
+    portraits: "在场角色",
   },
   providers: {
     addAll: "添加全部",
@@ -327,6 +328,7 @@ const zh = {
     again: "再来一次",
     aside: "小剧场",
     none: "无",
+    portraits: "立绘",
     turnActions: "这一轮的动作",
     insert: "新增",
     patch: "更新",

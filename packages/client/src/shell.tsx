@@ -39,6 +39,8 @@ import {
 } from "./icons.tsx"
 import { Edge } from "./edge.tsx"
 import { remembered, SIDE } from "./fold.ts"
+import { Lightbox, MediaFrame } from "./lightbox.tsx"
+import { activePortraits } from "./media.ts"
 import { hasReadings } from "./readings.tsx"
 import { InstallKeys, Sidebar } from "./side.tsx"
 import { closePlaySheet, openPlaySheet, PlaySheet } from "./play-sheet.tsx"
@@ -49,6 +51,8 @@ import { t } from "./i18n.ts"
 
 const FOLDED = "side-folded"
 const WIDTH = "side-w"
+const grapheme = new Intl.Segmenter()
+const initialOf = (s: string): string => grapheme.segment(s.trim())[Symbol.iterator]().next().value?.segment ?? "?"
 const stored = (key: string): string | null => {
   try {
     return localStorage.getItem(key)
@@ -74,6 +78,7 @@ export const Shell = (props: { children: JSX.Element }) => {
   const line = read(path)
   const strip = read(tabs)
   const marked = read(unread)
+  const portraits = createMemo(activePortraits)
   // ── the sidebar's fold, float and width (fold.ts for the arithmetic) ──
   const wasFolded = stored(FOLDED) === "true"
   const [folded, setFolded] = createSignal(wasFolded)
@@ -355,14 +360,37 @@ export const Shell = (props: { children: JSX.Element }) => {
                 /* the phone's strip: the drawer, what is read (in the reader a key to the play sheet, elsewhere a
                   name), the reader's keys; a page covers it with its own head */
                 <header class="strip">
-                  <button
-                    type="button"
-                    class="icon"
-                    aria-label={t("side.navigation")}
-                    onClick={() => void drawer.open()}
-                  >
-                    <List />
-                  </button>
+                  <span class="strip-start">
+                    <button
+                      type="button"
+                      class="icon"
+                      aria-label={t("side.navigation")}
+                      onClick={() => void drawer.open()}
+                    >
+                      <List />
+                    </button>
+                    <Show when={pg() === "reader" && portraits().length > 0}>
+                      <button
+                        type="button"
+                        class="strip-portraits"
+                        aria-haspopup="dialog"
+                        aria-label={t("play.portraits")}
+                        onClick={openPlaySheet}
+                      >
+                        <For each={portraits().slice(0, 3)} keyed={(p) => p.id}>
+                          {(p) => (
+                            <MediaFrame
+                              as="span"
+                              class="strip-avatar"
+                              src={p().url}
+                              label={p().label}
+                              fallbackText={initialOf(p().slotLabel || p().label)}
+                            />
+                          )}
+                        </For>
+                      </button>
+                    </Show>
+                  </span>
                   {/* in the reader the names open the play sheet, a turn in flight or not (it is read there too) */}
                   <Show
                     when={pg() === "reader"}
@@ -431,6 +459,7 @@ export const Shell = (props: { children: JSX.Element }) => {
           closePlaySheet()
         }}
       />
+      <Lightbox />
     </>
   )
 }

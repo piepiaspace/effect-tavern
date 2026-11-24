@@ -238,6 +238,7 @@ const en: Dict = {
     followMainModel: "Follow main ({model})",
     narrateModel: "Narrate model",
     open: "Model, template and persona: {card} › {story}",
+    portraits: "Characters present",
   },
   providers: {
     addAll: "Add all",
@@ -328,6 +329,7 @@ const en: Dict = {
     again: "Once more",
     aside: "Theater",
     none: "None",
+    portraits: "Portraits",
     turnActions: "Actions on this turn",
     insert: "Added",
     patch: "Updated",

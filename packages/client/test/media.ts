@@ -31,8 +31,10 @@ if (process.env.MEDIA_REACTIVE_SUBTEST === "1") {
     { parseCard },
     { captureArtifact, expectNoDiagnostics },
     { createMemo, createRoot, flush },
-    { activePortraits },
-    { apply, card, draft, log, registry, stories },
+    { blocks },
+    { activePortraits, resolveNodeIllustrations },
+    { hasReadings },
+    { apply, card, draft, log, path, prose, registry, stories },
     { timelineNode },
   ] = await Promise.all([
     import("@effect-tavern/runtime/src/log.ts"),
@@ -41,7 +43,9 @@ if (process.env.MEDIA_REACTIVE_SUBTEST === "1") {
     import("@effect-tavern/runtime/support/author.ts"),
     import("@solidjs/diagnostics"),
     import("solid-js"),
+    import("../src/markdown.ts"),
     import("../src/media.ts"),
+    import("../src/record.ts"),
     import("../src/store.ts"),
     import("./fixtures.ts"),
   ])
@@ -156,6 +160,114 @@ if (process.env.MEDIA_REACTIVE_SUBTEST === "1") {
     assert.deepEqual(scope.readReader(), [])
 
     scope.dispose()
+
+    // `hasReadings(view)` gate: false with no visible fields/world/portraits, true when portraits are declared.
+    assert.equal(hasReadings(null), false)
+    assert.equal(hasReadings(undefined), false)
+    assert.equal(hasReadings(view), true)
+    const bareView = {
+      ...view,
+      rules: { fields: [{ path: "secret", type: "int" as const, initial: 0, hidden: true }], actions: [] },
+      layer: { ...view.layer, products: view.layer.products.filter((p) => p.role !== "world") },
+      media: undefined,
+    }
+    assert.equal(hasReadings(bareView), false)
+    assert.equal(
+      hasReadings({
+        ...bareView,
+        media: { portraits: [{ catalog: "ferryman", label: "船夫" }] },
+      }),
+      true,
+    )
+
+    // Late `record` / `demand` illustration amendment keeps block text memos untouched (selection stability).
+    const customSketch = {
+      id: "player_custom_sketch",
+      label: "玩家自定速写",
+      role: "theater" as const,
+      trigger: "demand" as const,
+      on: true,
+      text: "补画速写",
+      from: "card" as const,
+      shape: {
+        kind: "table" as const,
+        max: 2,
+        columns: [
+          { key: "afterParagraph", type: "int" as const },
+          { key: "id", type: "enum" as const, catalog: "crossings" },
+        ],
+      },
+    }
+    const sketchView = {
+      ...view,
+      media: { ...view.media, illustrations: [{ product: "ferry_cg" }, { product: "player_custom_sketch" }] },
+      layer: { ...view.layer, products: [...view.layer.products, customSketch] },
+    }
+    const pendingTurn = {
+      ...timelineNode(20, 1, "第一段渡口晚风。\n\n第二段芦苇摇晃。"),
+      settlementStatus: "pending" as const,
+    }
+    registry.set(card, sketchView)
+    registry.set(stories, { current: 10, stories: [storyRow(10, "ferry")] })
+    registry.set(log, L.of({ nodes: [n0, pendingTurn], head: 20 }))
+    flush()
+
+    let blockParses = 0
+    const proseScope = createRoot((dispose) => {
+      const nodeMemo = createMemo(() => path().at(-1)!)
+      const bs = createMemo(() => blocks(prose(nodeMemo())), {
+        equals: (a, b) => a.length === b.length && a.every((s, idx) => s === b[idx]),
+      })
+      const parsedBlocks = createMemo(() =>
+        bs().map((b) => {
+          blockParses++
+          return b
+        }),
+      )
+      const buckets = createMemo(() => resolveNodeIllustrations(nodeMemo(), sketchView, bs().length))
+      return { dispose, readBlocks: () => parsedBlocks(), readBuckets: () => buckets() }
+    })
+    flush()
+    assert.deepEqual(proseScope.readBlocks(), ["第一段渡口晚风。", "第二段芦苇摇晃。"])
+    assert.equal(blockParses, 2)
+    assert.equal(proseScope.readBuckets().size, 0)
+
+    // `settleRecord` amends node 20 with chronicle illustration; block text memo does NOT re-run!
+    apply({
+      kind: "change",
+      node: {
+        ...pendingTurn,
+        settlementStatus: "committed",
+        media: { illustrations: [{ catalog: "crossings", id: "misty_pier", afterParagraph: 1 }] },
+      },
+      head: 20,
+    })
+    flush()
+    assert.equal(blockParses, 2)
+    assert.equal(proseScope.readBuckets().get(1)?.[0]?.id, "misty_pier")
+    assert.equal(proseScope.readBuckets().get(1)?.[0]?.theaterProductId, undefined)
+
+    // Subsequent `demand` amends node 20 with custom theater illustration; block text memo STILL does NOT re-run!
+    apply({
+      kind: "change",
+      node: {
+        ...pendingTurn,
+        settlementStatus: "committed",
+        media: {
+          illustrations: [
+            { catalog: "crossings", id: "misty_pier", afterParagraph: 1 },
+            { catalog: "crossings", id: "night_crossing", afterParagraph: 2 },
+          ],
+        },
+        theater: { player_custom_sketch: [{ afterParagraph: 2, id: "night_crossing" }] },
+      },
+      head: 20,
+    })
+    flush()
+    assert.equal(blockParses, 2)
+    assert.equal(proseScope.readBuckets().get(2)?.[0]?.theaterProductId, "player_custom_sketch")
+
+    proseScope.dispose()
   }
 
   const { artifact } = await captureArtifact(runScenario, { scenario: "active-portraits-stability" })
@@ -188,6 +300,7 @@ const {
   safeCatalogUrl,
   safeMediaUrl,
 } = await import("../src/media.ts")
+const { demandable, hasReadings } = await import("../src/record.ts")
 const { timelineNode } = await import("./fixtures.ts")
 import type { Catalog, Product } from "@effect-tavern/runtime/src/product.ts"
 import type { CardView, StoryRow } from "../src/store.ts"
@@ -799,5 +912,156 @@ function testGalleryRules() {
   )
 }
 testGalleryRules()
+
+// ───────── 7. `demandable` effective-row deduplication & `hasReadings` portrait gate ─────────
+function testDemandableEffectiveRows() {
+  const fullView = makeFullView()
+  assert.equal(hasReadings(null), false)
+  assert.equal(hasReadings(undefined), false)
+  assert.equal(hasReadings(fullView), true)
+  const bareView = makeFullView({
+    rules: { fields: [{ path: "secret", type: "int", initial: 0, hidden: true }], actions: [] },
+    layer: { ...ferryProjection.layer, products: ferryProjection.layer.products.filter((p) => p.role !== "world") },
+    media: undefined,
+  })
+  assert.equal(hasReadings(bareView), false)
+  assert.equal(hasReadings({ ...bareView, media: { portraits: [{ catalog: "ferryman", label: "船夫" }] } }), true)
+
+  const customSketch: Product = {
+    id: "player_custom_sketch",
+    label: "玩家自定速写",
+    role: "theater",
+    trigger: "demand",
+    on: true,
+    text: "补画速写",
+    shape: {
+      kind: "table",
+      max: 2,
+      columns: [
+        { key: "afterParagraph", type: "int" },
+        { key: "id", type: "enum", catalog: "crossings" },
+      ],
+    },
+  }
+  const filteredSketch: Product = {
+    id: "filtered_cut",
+    label: "带过滤分镜",
+    role: "theater",
+    trigger: "demand",
+    on: true,
+    text: "过滤分镜",
+    shape: {
+      kind: "table",
+      max: 2,
+      filter: { path: "id", is: "night_crossing" },
+      columns: [
+        { key: "afterParagraph", type: "int" },
+        { key: "id", type: "enum", catalog: "crossings" },
+      ],
+    },
+  }
+  const disabledSketch: Product = {
+    ...customSketch,
+    id: "off_sketch",
+    label: "停用速写",
+    on: false,
+  }
+  const diary: Product = {
+    id: "diary",
+    label: "船夫手记",
+    role: "theater",
+    trigger: "demand",
+    on: true,
+    text: "手记",
+    shape: { kind: "text" },
+  }
+  const optionsProd: Product = {
+    id: "options",
+    label: "行动选项",
+    role: "theater",
+    on: true,
+    text: "选项",
+    shape: { kind: "list" },
+  }
+  const allProducts = [
+    ...ferryProjection.layer.products,
+    customSketch,
+    filteredSketch,
+    disabledSketch,
+    diary,
+    optionsProd,
+  ]
+  const mediaDecl = {
+    ...ferryProjection.media,
+    illustrations: [
+      { product: "ferry_cg" },
+      { product: "player_custom_sketch" },
+      { product: "filtered_cut" },
+      { product: "off_sketch" },
+    ],
+  }
+  const twoParaProse = "第一段江风。\n\n第二段夜潮。"
+
+  // Initial (`undefined`): custom illustration theaters + ordinary theater are demandable; chronicle, options, and off are excluded.
+  assert.deepEqual(demandable(allProducts, { prose: twoParaProse, theater: {} }, mediaDecl, ferryProjection.catalogs), [
+    { value: "player_custom_sketch", label: "玩家自定速写" },
+    { value: "filtered_cut", label: "带过滤分镜" },
+    { value: "diary", label: "船夫手记" },
+  ])
+
+  // Ordinary theater leaves once answered (`""` or `"..."`), while empty `[]` illustration table stays demandable!
+  assert.deepEqual(
+    demandable(
+      allProducts,
+      { prose: twoParaProse, theater: { diary: "今夜潮急。", player_custom_sketch: [], filtered_cut: [] } },
+      mediaDecl,
+      ferryProjection.catalogs,
+    ),
+    [
+      { value: "player_custom_sketch", label: "玩家自定速写" },
+      { value: "filtered_cut", label: "带过滤分镜" },
+    ],
+  )
+
+  // Out-of-range `afterParagraph` or filtered-out row (`0` effective rows) stays in `Demand` menu!
+  assert.deepEqual(
+    demandable(
+      allProducts,
+      {
+        prose: twoParaProse,
+        theater: {
+          diary: "今夜潮急。",
+          player_custom_sketch: [{ afterParagraph: 5, id: "misty_pier" }],
+          filtered_cut: [{ afterParagraph: 1, id: "misty_pier" }],
+        },
+      },
+      mediaDecl,
+      ferryProjection.catalogs,
+    ),
+    [
+      { value: "player_custom_sketch", label: "玩家自定速写" },
+      { value: "filtered_cut", label: "带过滤分镜" },
+    ],
+  )
+
+  // Once `>= 1` effective in-range row renders, the illustration theater leaves `Demand` (re-roll moves to `.illust` `<Die />`).
+  assert.deepEqual(
+    demandable(
+      allProducts,
+      {
+        prose: twoParaProse,
+        theater: {
+          diary: "今夜潮急。",
+          player_custom_sketch: [{ afterParagraph: 2, id: "misty_pier" }],
+          filtered_cut: [{ afterParagraph: 1, id: "night_crossing" }],
+        },
+      },
+      mediaDecl,
+      ferryProjection.catalogs,
+    ),
+    [],
+  )
+}
+testDemandableEffectiveRows()
 
 console.log("media ok")

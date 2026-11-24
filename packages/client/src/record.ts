@@ -12,9 +12,10 @@
 // the versions, the scene.
 import { drawn, type Check, type Field, type Rules, type State } from "@effect-tavern/runtime/src/card.ts"
 import type { Cond } from "@effect-tavern/runtime/src/cond.ts"
-import { kindOf, type Product, type Shape } from "@effect-tavern/runtime/src/product.ts"
+import { kindOf, type Catalog, type Product, type Shape } from "@effect-tavern/runtime/src/product.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { TimelineNode as Node, TurnDetail } from "@effect-tavern/runtime/src/projection.ts"
+import { countEffectiveIllustrations, illustrationTheaterIds, type Media } from "./media.ts"
 import type { CardView } from "./store.ts"
 
 export type Element =
@@ -93,14 +94,25 @@ export const theater = (products: readonly Declared[]) =>
   products.filter((p) => p.id !== "options" && kindOf(p) === "theater")
 
 /** The 小剧场 a node can still be asked for (the `demand` action): theater, enabled on this card (`on !== false`), and
- *  not on the node yet; one asked for leaves the list as it lands. */
+ *  not on the node yet; illustration-bound theater products stay demandable whenever they have 0 effective in-range
+ *  rows (`undefined`, empty `[]`, or out-of-range rows), moving re-roll to `.illust` once rendered. */
 export const demandable = (
   products: readonly Declared[],
-  node: Pick<Node, "theater">,
-): { value: string; label: string }[] =>
-  theater(products)
-    .filter((p) => p.on !== false && node.theater[p.id] === undefined)
+  node: { readonly prose?: string; readonly theater: Readonly<Record<string, unknown>> },
+  media?: Media | null,
+  catalogs?: readonly Catalog[],
+): { value: string; label: string }[] => {
+  const illustIds = illustrationTheaterIds(media)
+  return theater(products)
+    .filter((p) => {
+      if (p.on === false) return false
+      if (illustIds.has(p.id)) {
+        return countEffectiveIllustrations(p, { prose: node.prose ?? "", theater: node.theater }, catalogs) === 0
+      }
+      return node.theater[p.id] === undefined
+    })
     .map((p) => ({ value: p.id, label: p.label ?? p.id }))
+}
 
 /** A product's kind (docs/theater-brief.md §1): one definition, the server's export reads it too. */
 export { kindOf }
@@ -126,6 +138,14 @@ export const record = (
   }
   return out
 }
+
+/** Does the card have a 读数 page at all: a shown field, a world product, or declared portrait slots. Without one the
+ *  page's key is not drawn (shell.tsx `Keys`). */
+export const hasReadings = (view: CardView | null | undefined): boolean =>
+  !!view &&
+  (view.rules.fields.some((f) => !f.hidden) ||
+    view.layer.products.some((p) => kindOf(p) === "world") ||
+    Boolean(view.media?.portraits?.length))
 
 /** Is the ledger non-empty: the one rule for drawing a turn's Record pill. */
 export const marked = (node: Node): boolean => Object.values(node.changeSummary).some((n) => n > 0)
