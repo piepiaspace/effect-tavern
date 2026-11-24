@@ -766,8 +766,8 @@ const StandingPortraits = () => {
   )
 }
 
-/** 读数, a page over the reader: the world now, as one column: active portraits, Status, and the world products'
- *  folded values. A turn's change is its Record pill's (`RecordSheet`), not this page's. */
+/** 读数, a page over the reader: the world now, the active portraits beside Status and the world products' folded
+ *  values (one over the other on a narrow stage). A turn's change is its Record pill's (`RecordSheet`), not this page's. */
 export const StatusPage = () => (
   <div class="status-page">
     <header>
@@ -777,8 +777,8 @@ export const StatusPage = () => (
       <h1>{t("side.readings")}</h1>
     </header>
     <div class="status-body">
+      <StandingPortraits />
       <div class="still">
-        <StandingPortraits />
         <section class="status">
           <h2>{t("common.status")}</h2>
           <AsyncView>

@@ -865,9 +865,9 @@
 .shell-tab[aria-current="page"] .brand-glyph {
   opacity: 0.92;
 }
-/* ── 读数 (readings.tsx `StatusPage`): a page over the reader, the world's standing slice at the left (
-   Status), this turn's change at the right (its Record, 小剧场). Each column bounded to 22–26rem and scrolling on its
-   own; one column over the other when the stage card has no room for two ── */
+/* ── 读数 (readings.tsx `StatusPage`): a page over the reader, the standing portraits at the left, Status and the world
+   products at the right. Each column bounded to 26rem and scrolling on its own, the portrait sized to the column's
+   height; one column over the other, the page one scroller, when the stage card has no room for two ── */
 .status-page {
   position: absolute;
   inset: 0;
@@ -895,24 +895,75 @@
   font-size: var(--text-heading);
   font-weight: 600;
 }
-/* one bounded column, centred, scrolling inside */
+/* narrow: one bounded column, centred, the body the one scroller; the reader's thin hover-only bar, the foot fading
+   out over the padding (wide: over each column's) instead of cutting at the card's edge */
 .status-body {
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 26rem);
-  grid-template-rows: minmax(0, 1fr);
+  align-content: start;
   justify-content: center;
-  padding: 0 var(--space-5);
-}
-.status-body > div {
-  min-height: 0;
+  gap: var(--space-5);
+  padding: 0 var(--space-5) calc(var(--space-5) + var(--safe-bottom));
   overflow-y: auto;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade)), transparent);
+}
+.status-body,
+.status-body > * {
   overscroll-behavior: contain;
-  padding-bottom: calc(var(--space-5) + var(--safe-bottom));
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color var(--dur-3) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .status-body:hover,
+  .status-body > :hover {
+    scrollbar-color: var(--alpha-2) transparent;
+  }
+}
+.status-body > .still {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
+}
+/* wide: a column per child (the portraits, when any, and the rest), each its own scroller; the portraits' column is a
+   size container, so one portrait stands as tall as the column holds under its head and caption, never past it */
+@container stage (width >= 52rem) {
+  .status-body {
+    grid-template-columns: none;
+    grid-template-rows: minmax(0, 1fr);
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 26rem);
+    align-content: stretch;
+    column-gap: var(--space-6);
+    padding-bottom: 0;
+    overflow: hidden;
+    scrollbar-gutter: auto;
+  }
+  .status-body > * {
+    min-height: 0;
+    overflow-y: auto;
+    padding-bottom: calc(var(--space-5) + var(--safe-bottom));
+  }
+  .status-body > .portraits {
+    container-type: size;
+  }
+  .status-page .portrait-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  }
+  .status-page .portrait-card {
+    /* the column's height less the head (h2 + section gap) and the caption (gap, name, item) */
+    width: min(
+      100%,
+      (
+          100cqh - var(--control-sm) - var(--space-2) - var(--space-1) - var(--space-half) -
+            (var(--text-body) + var(--text-footnote)) * var(--leading-body)
+        ) *
+        3 / 4
+    );
+  }
 }
 /* Status with no row to show (no rules, or every field off by `when` this turn): no bare head over an empty table */
 .status-page .status:not(:has(.group)) {
