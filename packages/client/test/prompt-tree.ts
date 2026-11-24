@@ -438,7 +438,6 @@ assert.equal(
   wrapped.traces.concat(wrap.traces).some((tr) => tr.breakpoint),
   false,
 )
-assert.equal(wrap.prefixCache, "off")
 // the tool zone: the description's wording around the context, and the context's messages as sent
 const parts = toolParts(wrapTool, wrap)
 assert.equal(parts.before, "Story so far:\n")

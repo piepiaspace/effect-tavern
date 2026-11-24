@@ -738,6 +738,18 @@ assert.deepEqual(read("polish").targets, [["hit-1", "指节发白。"]])
     assert.equal(text(text0.messages[0]), "N.")
   }
 
+  // the context stands once: a second `{{context}}` is taken out, never sent as a literal
+  {
+    const twice = requestDetailed({ ...c0, deliverTool: "A {{context}} B {{ context }} C" }, bareAsk, {
+      hat: toolHat({ wrap: true }),
+    })
+    const d = twice.tool!.description
+    assert.ok(d.startsWith('A <message role="system">'))
+    assert.ok(d.endsWith("</message> B  C"))
+    assert.ok(!d.includes("{{"))
+    assert.equal(d.split("<message ").length - 1, twice.wrap?.sections.length)
+  }
+
   // wrap with only a lead: the lead stays, the fallback user message ends the shell, everything else is in the
   // description at its `{{context}}` hole, one role-marked section a message
   {
@@ -787,7 +799,6 @@ assert.deepEqual(read("polish").targets, [["hit-1", "指节发白。"]])
     // the prefix cache is off: no breakpoint on any message or trace
     assert.deepEqual(marks(r.messages), [])
     assert.ok([...r.traces, ...r.wrap.traces].every((t) => t.breakpoint === undefined))
-    assert.equal(r.wrap?.prefixCache, "off")
     assert.equal(r.wrapRefusal, undefined)
     // no hole: the context after the description's own wording and a blank line
     const appended = requestDetailed({ ...c0, deliverTool: "Desc." }, bareAsk, { hat: hatW })

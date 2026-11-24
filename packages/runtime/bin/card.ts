@@ -19,17 +19,43 @@ const load = (name: string) =>
     }),
   )
 
-/** A `.hat.json` file (the settings page's export: a hat without its id), in its one stored shape. */
+/** A `.hat.json` file (the settings page's export: a hat without its id), in its one stored shape. Each way it can
+ *  fail says which file, what is wrong with it and what a template file is: never the runtime's own error alone. */
 const loadHat = (name: string) =>
   Effect.flatMap(here(name), (path) =>
     Effect.tryPromise({
       try: async () => {
-        const raw: unknown = JSON.parse(await Bun.file(path).text())
-        const hat = normalizeHatDelivery(
-          Schema.decodeUnknownSync(Hat)({ name: basename(path, ".hat.json"), ...(raw as object), id: "file" }),
-        )
+        const said = (e: unknown) => (e instanceof Error ? e.message : String(e))
+        const file = Bun.file(path)
+        if (!(await file.exists()))
+          throw new Error(
+            `--hat ${name}: there is no file at ${path}. Give the path of a template exported from Settings (a .hat.json file).`,
+          )
+        let raw: unknown
+        try {
+          raw = JSON.parse(await file.text())
+        } catch (e) {
+          throw new Error(
+            `--hat ${name}: the file is not JSON (${said(e)}). A template file is the .hat.json that Settings exports.`,
+            { cause: e },
+          )
+        }
+        if (!raw || typeof raw !== "object" || Array.isArray(raw))
+          throw new Error(
+            `--hat ${name}: the file holds JSON but not a template: a template is an object with a name, a delivery and its message slots, as Settings exports it.`,
+          )
+        let decoded: Hat
+        try {
+          decoded = Schema.decodeUnknownSync(Hat)({ name: basename(path, ".hat.json"), ...raw, id: "file" })
+        } catch (e) {
+          throw new Error(
+            `--hat ${name}: this is not a template as Settings exports it (${said(e)}). Export it again, or correct that field.`,
+            { cause: e },
+          )
+        }
+        const hat = normalizeHatDelivery(decoded)
         const problem = hatToolProblem(hat)
-        if (problem) throw new Error(`${name}: ${problem}`)
+        if (problem) throw new Error(`--hat ${name}: ${problem}`)
         return hat
       },
       catch: (e) => (e as Error).message,

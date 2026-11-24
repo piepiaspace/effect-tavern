@@ -39,7 +39,7 @@ export const keepHoles = (names: Names, keys: readonly string[]): Names =>
 /** Only the given holes filled, every other left as written. */
 export const fillHoles = (text: string, values: Readonly<Record<string, string>>): string =>
   text.replace(HOLE, (hole, k: string) => (Object.hasOwn(values, k) ? values[k] : hole))
-/** Who wrote a text:`"card"` for the card's own; anything else (a row's `From`, `"hat"`) is a player's. */
+/** Who wrote a text: `"card"` for the card's own; anything else (a row's `From`, `"hat"`) is a player's. */
 export type Author = string
 /** The text with every known name filled. A hole nothing fills stays as written in the card's text; in a player's the
  *  whole text is undefined: that entry does not go out. */

@@ -11,7 +11,6 @@ import {
   hatTemplateNotes,
   mainNotes,
   noteText,
-  noticeLevel,
   stageNotes,
   toolNameOk,
   withTool,
@@ -620,11 +619,8 @@ assert.deepEqual(hatNotes([geminiProv], [plainTool], onGemini, plainTool.id), ["
 assert.deepEqual(hatNotes([geminiProv], [baseHat], onGemini, baseHat.id), []) // text delivery streams
 assert.deepEqual(hatNotes([geminiProv], [wrapHat], onGemini, wrapHat.id, "check"), []) // review stages deliver no prose
 assert.deepEqual(hatNotes([conflictProv], [wrapHat], { provider: "p", model: "ok" }, wrapHat.id), ["wrap"])
-assert.deepEqual(hatTemplateNotes([geminiProv], {}, wrapHat), ["wrap"]) // unmounted: its own facts only
-assert.deepEqual(hatTemplateNotes([geminiProv], { default: onGemini, hat: wrapHat.id }, wrapHat), [
-  "wrap",
-  "gemini_unstreamed",
-])
+assert.deepEqual(hatTemplateNotes([geminiProv], {}, wrapHat), []) // unmounted; the wrap's facts are the switch's explanation
+assert.deepEqual(hatTemplateNotes([geminiProv], { default: onGemini, hat: wrapHat.id }, wrapHat), ["gemini_unstreamed"])
 assert.deepEqual(mainNotes([geminiProv], [plainTool], { default: onGemini, hat: plainTool.id }), ["gemini_unstreamed"])
 assert.deepEqual(mainNotes([geminiProv], [plainTool], { default: onGemini, hat: plainTool.id, stages: {} }), [])
 assert.deepEqual(stageNotes([geminiProv], [wrapHat], { default: onGemini, hat: wrapHat.id, stages: {} }, "narrate"), [
@@ -636,9 +632,6 @@ assert.deepEqual(stageNotes([geminiProv], [wrapHat], { default: onGemini, hat: w
 assert.deepEqual(hatConflicts([conflictProv], [wrapHat], { provider: "p", model: "no-tools" }, wrapHat.id), [
   "deliver_tools",
 ])
-assert.equal(noticeLevel("wrap"), "info")
-assert.equal(noticeLevel("gemini_unstreamed"), "info")
-assert.equal(noticeLevel("deliver_tools"), "problem")
 assert.ok(noteText("gemini_unstreamed").includes("Gemini"))
 assert.ok(noteText("wrap").includes("前缀缓存"))
 // a wrapping template's menu row carries the mark; an ordinary one does not

@@ -152,8 +152,7 @@ export type Event =
       // under `deliver`: the delivery tool as sent (#221; absent on calls stored before it, which sent the defaults)
       tool?: { name: string; description: string; param: string }
       // under the hat's wrap (#220): `msgs` is the outer shell and `tool.description` holds the wrapped context;
-      // `wrap` maps it (its traces' spans and sections, raw templates stripped as in `trace`)
-      wrapped?: true
+      // `wrap`, present exactly then, maps it (its traces' spans and sections, raw templates stripped as in `trace`)
       wrap?: WrapTrace
     }
   | ({ kind: "change" } & Change) // the log moved: a node landed or was amended, nodes dropped, and where head is now
@@ -196,14 +195,13 @@ const failedCall = (
     ...(meta?.wireError && { wireError: meta.wireError }),
     ...(meta?.deliver && { deliver: meta.deliver }),
     ...(meta?.tool && { tool: meta.tool }),
-    ...(meta?.wrapped && { wrapped: meta.wrapped }),
     ...(meta?.wrap && { wrap: meta.wrap }),
     fault: readFault(e),
   } satisfies Event
 }
 
 /** What a narrate call under tool delivery reports beside its messages: the tool as sent, and the wrap when it wrapped. */
-type DeliveryMeta = Partial<Pick<Extract<Event, { kind: "call" }>, "deliver" | "tool" | "wrapped" | "wrap">>
+type DeliveryMeta = Partial<Pick<Extract<Event, { kind: "call" }>, "deliver" | "tool" | "wrap">>
 
 /** The call options a narrate request's hat asks for: the delivery tool as request.ts resolved it. */
 const narrativeDelivery = (hat: Hat | undefined, req: Pick<DetailedRequest, "tool">) =>
@@ -224,12 +222,10 @@ const deliveryMeta = (
     deliver: "tool",
     ...(delivery.deliverTool && { tool: delivery.deliverTool }),
     ...(req.wrap && {
-      wrapped: true as const,
       wrap: {
         traces: stripTraceRawText(req.wrap.traces),
         sections: req.wrap.sections,
         context: req.wrap.context,
-        prefixCache: req.wrap.prefixCache,
       },
     }),
   }

@@ -667,7 +667,6 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
       wrapPrev.messages.map((m) => m.role),
       ["system", "user"],
     )
-    assert.equal(wrapPrev.wrap?.prefixCache, "off")
     assert.ok((wrapPrev.wrap?.traces.length ?? 0) > 0)
     const candWrap = await fetch(`${base}/preview`, {
       method: "POST",

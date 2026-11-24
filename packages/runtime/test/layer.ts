@@ -4,6 +4,7 @@
 // storing only its difference. Then a session over a scripted model: what a row does to the documents, per request. The
 // migration of the old player row is the server's test/data.ts, the routes its test/serve.ts.
 import { fake, type Message } from "@effect-tavern/provider"
+import { NARRATIVE_PARAM_DESCRIPTION, NARRATIVE_TOOL_DESCRIPTION } from "@effect-tavern/provider/src/deliver.ts"
 import { Effect, Schema, Stream } from "effect"
 import assert from "node:assert/strict"
 import { readFileSync, writeFileSync } from "node:fs"
@@ -1308,8 +1309,9 @@ for (const povText of ["", "{{missing}}"]) {
 
   // the three asks: defaults the provider's own words; `{{tool}}` / `{{context}}` are the harness's, never a name
   const R = resolve(chat, {})
-  assert.equal(R.asks["narrate.deliver.tool"].text, "Deliver the complete scene narration.")
-  assert.equal(R.asks["narrate.deliver.param"].text, "The full reply, nothing omitted.")
+  // the two delivery asks and the provider's fallback for a call that names none are the same sentences
+  assert.equal(R.asks["narrate.deliver.tool"].text, NARRATIVE_TOOL_DESCRIPTION)
+  assert.equal(R.asks["narrate.deliver.param"].text, NARRATIVE_PARAM_DESCRIPTION)
   assert.equal(R.asks["narrate.wrap"].text, "Read the {{tool}} tool's description, then call it with your reply.")
   assert.match(R.asks["narrate.deliver"].text, /by calling the \{\{tool\}\} tool/)
   const overlay: Layer = {

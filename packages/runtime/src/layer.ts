@@ -20,7 +20,6 @@ import { ContextPolicy, checkContextPolicies } from "./lore.ts"
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
-import { NARRATIVE_PARAM_DESCRIPTION, NARRATIVE_TOOL_DESCRIPTION } from "@effect-tavern/provider/src/deliver.ts"
 import { expand, fillHoles, HARNESS_HOLES, keepHoles, nameOk, Names, unfilled } from "./names.ts"
 import { Entry as LexiconEntry } from "./polish.ts"
 import { decodeProducts, ProductPatch, validate, type Catalog, type Product } from "./product.ts"
@@ -116,8 +115,10 @@ const words: readonly Ask[] = [
   // The delivery tool's own wording (#221), sent as its description and its `text` parameter's description; a hat's
   // `tool.description` / `tool.param` overrides either. `{{tool}}` is the tool's name; under the hat's wrap (#220)
   // `{{context}}` in the description is where the story context goes (appended after a blank line when absent).
-  { id: "narrate.deliver.tool", text: NARRATIVE_TOOL_DESCRIPTION },
-  { id: "narrate.deliver.param", text: NARRATIVE_PARAM_DESCRIPTION },
+  // The same two sentences are the provider's fallback for a call that names none (provider deliver.ts); test/layer.ts
+  // holds the two copies equal.
+  { id: "narrate.deliver.tool", text: "Deliver the complete scene narration." },
+  { id: "narrate.deliver.param", text: "The full reply, nothing omitted." },
   // Under wrap, the one user message the harness adds when the hat's lead and tail hold none (request.ts).
   { id: "narrate.wrap", text: "Read the {{tool}} tool's description, then call it with your reply." },
   {

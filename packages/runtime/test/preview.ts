@@ -1200,7 +1200,6 @@ console.log("preview: ok")
   assert.ok(d.includes('<message role="assistant">\nEvening.\n</message>'))
   assert.ok(d.endsWith('<message role="user">\nLook.\n</message>'))
   assert.equal(pv.connection.tool!.sources.description.path, "tool.description")
-  assert.equal(pv.wrap?.prefixCache, "off")
   assert.deepEqual(
     pv.wrap?.traces.map((t) => t.subzone),
     ["lead", "frame", "hat-head", "history", "input"],
@@ -1260,7 +1259,7 @@ console.log("preview: ok")
   const call = events.find((e) => e.kind === "call" && e.phase === "narrate")
   assert.ok(call?.kind === "call")
   assert.equal(call.deliver, "tool")
-  assert.equal(call.wrapped, true)
+  assert.ok(call.wrap)
   assert.deepEqual(call.tool, { name: "actual_content", description: d, param: "Lin's whole reply." })
   assert.deepEqual(call.wrap?.sections, pv.wrap?.sections)
   assert.ok(call.wrap?.traces.every((t) => t.spans.every((sp) => sp.source.rawText === undefined)))

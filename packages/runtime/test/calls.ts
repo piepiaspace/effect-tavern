@@ -598,7 +598,7 @@ for (const [phase, demand] of [
     assert.ok(turnTool.description?.includes("by calling the actual_content tool"))
     assert.ok(!JSON.stringify(turnReq.prompt).includes("cacheControl"))
     const turnCall = calls(wrapTurn.events).find((c) => c.phase === "narrate")!
-    assert.equal(turnCall.wrapped, true)
+    assert.ok(turnCall.wrap)
     assert.equal(turnCall.tool?.description, turnTool.description)
     assert.deepEqual(
       turnCall.msgs.map((m) => m.content),
@@ -616,7 +616,7 @@ for (const [phase, demand] of [
       ["system", "user"],
     )
     const demandCall = calls(wrapDemand.events).find((c) => c.phase === "narrate")!
-    assert.equal(demandCall.wrapped, true)
+    assert.ok(demandCall.wrap)
     assert.ok(demandCall.wrap?.sections.length)
     // the outer shell ending on the assistant is refused before any request; so is a shell with no user message
     // once `narrate.wrap` is emptied
@@ -635,7 +635,7 @@ for (const [phase, demand] of [
     const refused = await collectEvents(silent.act(silentRoot.id, { text: "Hm." }))
     assert.ok(Exit.isFailure(refused.exit))
     assert.match(String(Cause.squash(refused.exit.cause)), /or restore the narrate\.wrap ask/)
-    assert.equal(calls(refused.events).find((c) => c.phase === "narrate")?.wrapped, true)
+    assert.ok(calls(refused.events).find((c) => c.phase === "narrate")?.wrap)
     assert.equal(seen.length, before)
   }
 

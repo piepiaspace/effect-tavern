@@ -628,9 +628,11 @@ const wrapNarrate = (
     sections.push({ trace: i, start, end: ctx.length, body: { start: bodyStart, end: bodyStart + body.length } })
   })
   const tpl = draft.template
+  // the context stands once, at the first hole; a further `{{context}}` is taken out, never sent as a literal
   const hole = CONTEXT_HOLE.exec(tpl)
+  const after = hole ? tpl.slice(hole.index + hole[0].length).replace(new RegExp(CONTEXT_HOLE.source, "g"), "") : ""
   const [description, at] = hole
-    ? [tpl.slice(0, hole.index) + ctx + tpl.slice(hole.index + hole[0].length), hole.index]
+    ? [tpl.slice(0, hole.index) + ctx + after, hole.index]
     : tpl.trim()
       ? [`${tpl}\n\n${ctx}`, tpl.length + 2]
       : [ctx, 0]
@@ -649,7 +651,6 @@ const wrapNarrate = (
         body: { start: s.body.start + at, end: s.body.end + at },
       })),
       context: { start: at, end: at + ctx.length },
-      prefixCache: "off",
     },
     ...(wrapRefusal && { wrapRefusal }),
   }

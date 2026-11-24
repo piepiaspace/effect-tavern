@@ -183,7 +183,6 @@ export interface WrapTrace {
   traces: readonly MessageTrace[]
   sections: readonly WrapSection[]
   context: { start: number; end: number }
-  prefixCache: "off"
 }
 
 export interface WireErrorInfo {

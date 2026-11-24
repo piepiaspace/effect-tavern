@@ -294,7 +294,7 @@ const Step = (props: {
           <span class="nm">
             {c().product ?? props.row.phase}
             <Show when={props.ord}>{(n) => <span class="ord">{n()}</span>}</Show>
-            <Show when={c().wrapped}>
+            <Show when={c().wrap}>
               <WrapMark />
             </Show>
           </span>
@@ -332,7 +332,7 @@ const Step = (props: {
                     messages={c().msgs}
                     traces={c().trace}
                     tool={c().tool}
-                    wrap={c().wrapped ? c().wrap : undefined}
+                    wrap={c().wrap}
                     wireError={c().wireError}
                     deliver={c().deliver}
                     q={props.q}

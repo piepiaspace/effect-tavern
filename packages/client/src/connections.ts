@@ -109,10 +109,6 @@ export type HatConflict = "prefill" | "deliver_prefill" | "deliver_tools" | "han
  *  loses part of itself). `wrap`: the wrap's facts (native tools, no prefix cache, a capped description may be
  *  refused); `gemini_unstreamed`: a tool-delivered reply on a gemini-format connection arrives whole, not streamed. */
 export type HatNote = "wrap" | "gemini_unstreamed"
-/** How a notice is drawn: a conflict is a problem (warn), a note is information (calmer). */
-export type NoticeLevel = "problem" | "info"
-export const noticeLevel = (c: HatConflict | HatNote): NoticeLevel =>
-  c === "wrap" || c === "gemini_unstreamed" ? "info" : "problem"
 /** Whether a Hat tool handshake's `toolInput` text is blank (defaulting to `{}`) or a valid JSON object. */
 export const validToolInput = (raw: string): boolean => {
   const trimmed = raw.trim()
@@ -207,14 +203,12 @@ export const hatNotes = (
   const gemini = !!p && !!m && formatOf(p, m) === "gemini"
   return [...(hatWraps(h) ? (["wrap"] as const) : []), ...(gemini ? (["gemini_unstreamed"] as const) : [])]
 }
-/** The notes while editing a template: the wrap's facts (mounted or not) and those of narrate's connection when it is
- *  mounted there. The editor draws the wrap's facts as its switch's explanation, so it shows the rest here. */
-export const hatTemplateNotes = (providers: readonly Provider[], route: Routing, hat: Hat): HatNote[] => {
-  const notes = new Set<HatNote>(hatWraps(hat) ? ["wrap"] : [])
-  if (routedHatId(route, "narrate") === hat.id)
-    for (const n of hatNotes(providers, [hat], stagePair(route, "narrate"), hat.id)) notes.add(n)
-  return [...notes]
-}
+/** The notes while editing a template: those of narrate's connection when it is mounted there, without the wrap's
+ *  facts, which the editor already says once as its switch's explanation. */
+export const hatTemplateNotes = (providers: readonly Provider[], route: Routing, hat: Hat): HatNote[] =>
+  routedHatId(route, "narrate") === hat.id
+    ? hatNotes(providers, [hat], stagePair(route, "narrate"), hat.id).filter((n) => n !== "wrap")
+    : []
 export const serializeHat = (h: Hat): string =>
   JSON.stringify({ ...normalizeHatDelivery(h), id: undefined }, null, 2) + "\n"
 const parseHatEntries = (v: unknown): HatEntry[] | null => {

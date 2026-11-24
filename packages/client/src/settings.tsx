@@ -7,6 +7,7 @@
 // four icons. Escape or Back returns to the page that opened it. The page holds only the nav, which section is open,
 // which record each section has picked, and the phone's pane; every edit is one write the server answers with the list
 // it changed (wire.ts), text committing on change (blur or Enter). The shared controls and shells are controls.tsx.
+import { NARRATIVE_TOOL } from "@effect-tavern/provider/src/deliver.ts"
 import { hatEntryActive, hatToolName, hatWraps, type Hat, type HatEntry } from "@effect-tavern/runtime/src/fragment.ts"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { Dynamic, type JSX } from "@solidjs/web"
@@ -699,8 +700,7 @@ const Templates = (props: Pane) => {
             const conflicts = createMemo(() => hatTemplateConflicts(providerList(), route(), h()), {
               equals: sameArray,
             })
-            // the wrap's facts are its switch's explanation here (DeliveryTool); the rest of the notes show above
-            const notes = createMemo(() => hatTemplateNotes(providerList(), route(), h()).filter((n) => n !== "wrap"), {
+            const notes = createMemo(() => hatTemplateNotes(providerList(), route(), h()), {
               equals: sameArray,
             })
             const tailConflictIdx = createMemo(() => {
@@ -1051,7 +1051,7 @@ export const DeliveryTool = (props: { hat: Hat; onStage: (next: Hat) => void; on
           <input
             type="text"
             class={{ "hat-tool-input": true, mono: true, invalid: !nameOk() }}
-            placeholder="narrative"
+            placeholder={NARRATIVE_TOOL}
             autocapitalize="none"
             autocorrect="off"
             spellcheck="false"
