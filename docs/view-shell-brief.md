@@ -153,17 +153,17 @@ export const ViewShellPatch = Schema.Struct({
 
 ### 4.1 预校验门禁（HTML / CSS 白名单净化）
 
-在服务端入库校验（`validateCard` / `decodeLayer`）与客户端模板编译（`packages/client/src/view-shell.tsx`）双端执行同一套纯函数校验器，违规模板在卡校验报错、在玩家层落入 `dropped`：
+卡片入库校验（`validateCard`）与运行时层决议（`resolveWithTrace`）在宿主侧共用 HTML/CSS 预编译器。卡片模板违规会产生入库错误，玩家层的违规补丁记入 `dropped`。客户端直接渲染层决议产出的 `EffectiveView.tree`。
 
 - **允许的 HTML 元素**：
   - 结构与排版：`div`, `span`, `p`, `section`, `article`, `header`, `footer`, `aside`, `h1`–`h6`, `ul`, `ol`, `li`, `dl`, `dt`, `dd`, `table`, `thead`, `tbody`, `tr`, `th`, `td`, `strong`, `em`, `b`, `i`, `small`, `sub`, `sup`, `code`, `pre`, `blockquote`, `hr`, `br`, `figure`, `figcaption`；
-  - 原生无脚本折叠与纯 CSS 页签：`details`, `summary`, `label`, 以及**仅限 `type="radio"` 或 `type="checkbox"`** 的 `<input>`（自动按 `(nodeId, viewId)` 命名空间隔离 `name` 与 `id`/`for`，防止多楼层 Radio 互相串台！）；
+  - 原生无脚本折叠与纯 CSS 页签：`details`, `summary`, `label`, 以及**仅限 `type="radio"` 或 `type="checkbox"`** 的 `<input>`（Radio 的 `name` 按节点、视图及循环行隔离。静态页签保留原始 ID，`data-each` 内配对的 `input[id]` 与 `label[for]` 使用行前缀，行内样式可用 class 选择器）；
   - 内联矢量装饰：`svg`, `g`, `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon`, `defs`, `linearGradient`, `radialGradient`, `stop`, `clipPath`。
 - **严禁的 HTML 与属性**：
   - 拒绝 `<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<link>`, `<meta>`, `<base>`, `<audio>`, `<video>`, `<a>`（或仅纯文本剥离 `href`），以及任何直接带 `src` / `href` / `xlink:href` 外链的元素（含裸 `<img src>`）；
   - 拒绝一切 `on*` 事件处理器属性、`contenteditable`、`tabindex` 劫持与原始内联 `style="..."` 属性（所有动态样式量统一走下方受控 `data-var-*`）。
 - **CSS 净化与样式表共享**：
-  - 拒绝 `@import` 规则及任何包含 `url(...)` 的声明（外部图像统一走 `data-media` 槽位，杜绝 CSS 外链信标探测与未授权资源加载）；
+  - 拒绝 `@import` 与外部 URL，仅允许 `url(#id)` 引用本地 SVG 片段（外部图像统一走 `data-media` 槽位，杜绝 CSS 外链信标探测与未授权资源加载）；
   - 客户端按 `(viewId, cssText)` 构建并缓存单一 `CSSStyleSheet` 实例，挂载至各楼层宿主元素的 `attachShadow({ mode: "open" }).adoptedStyleSheets`。宿主级设计 Token（`--ink`, `--ink-2`, `--ink-3`, `--surface-1`, `--surface-2`, `--surface-3`, `--alpha-1`, `--alpha-2`, `--line`, `--line-strong`, `--primary`, `--ok`, `--warn`, `--danger`, `--font-sans`, `--font-prose`, `--font-mono`, `--radius`, `--radius-card`）沿继承链自然穿透 Shadow 边界。
 
 ### 4.2 五个最小受控属性指令（零求值器、零 `eval`）
@@ -312,7 +312,7 @@ views:
    - 补齐横幅、方图、竖构图及焦点偏移的单测与浏览器验收。
 2. **Step 2 · 运行时视图契约、净化门禁与按需投影**
    - 落地 `Card.views`、`Layer.views`、`locked()` 跨层边界与产物接管唯一性校验；
-   - 实现双端共用的 HTML/CSS 白名单净化与模板 AST 解析器（覆盖全部非法标签、外链、`on*`、`@import`、`url()` 拦截单测）；
+   - 在宿主侧共用 HTML/CSS 白名单校验与模板 AST 解析器（覆盖全部非法标签、外链、`on*`、`@import`、`url()` 拦截单测）；
    - 落地 `NodeMedia.viewMedia` 状态求值、分支画廊同源解锁与 `latest` / `turn` 按需投影契约。
 3. **Step 3 · 客户端 Shadow DOM 视图壳、玩家开关与《渡口》端到端集成**
    - 实现 `adoptedStyleSheets` 样式表缓存、5 指令响应式 DOM 绑定器、Radio 命名空间隔离与 `MediaFrame` 灯箱委托；

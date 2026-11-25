@@ -58,7 +58,7 @@ function templateNode(n: Html.ChildNode): TemplateNode[] {
   ]
 }
 
-// Compile the same inert tree at import and render time. Never pass author markup to a live HTML parser.
+// Card validation and layer resolution compile the same inert tree on the host.
 export function compileView(v: Pick<ViewShell, "css" | "html">): TemplateNode[] {
   if (!v.html.trim()) fail("view html is empty")
   if (v.css) {
@@ -94,6 +94,7 @@ export function checkMediaBindings(
   catalogs: ReadonlyMap<string, Catalog>,
   shape?: Shape,
 ) {
+  const imageCatalogs = new Set<string>()
   const columns = new Map<string, string>()
   function index(s: Shape, path: string) {
     if (s.kind === "table") {
@@ -124,6 +125,7 @@ export function checkMediaBindings(
             columns.get(canonical(path)) !== catalog
           )
             fail("unknown image catalog column: " + binding)
+          imageCatalogs.add(catalog)
         } else {
           const [source, slot] = binding.split(".")
           const slots = source === "media" ? view.media : portraits
@@ -135,4 +137,5 @@ export function checkMediaBindings(
     }
   }
   visit(tree, new Map(shape?.kind === "record" ? shape.keys.map((k) => [k.key, "value." + k.key]) : []))
+  return imageCatalogs
 }

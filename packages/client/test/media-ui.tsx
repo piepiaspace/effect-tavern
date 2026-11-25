@@ -857,6 +857,8 @@ const runPhaseOne = async (isDesktop: boolean) => {
       2,
     "before setField, active path shows 2 portraits (ferryman/high_tide + passenger/aboard_night)",
   )
+  const beforeEdit = hud()!.querySelector("details")!
+  beforeEdit.open = false
   turn.setField(0, [{ path: "潮位", set: 0 }])
   check(
     await until(() => {
@@ -871,6 +873,8 @@ const runPhaseOne = async (isDesktop: boolean) => {
     "ancestor setField(sunny0, 潮位=0) invalidates sunny1..2, removing passenger and updating ferryman to calm!",
   )
   await quiet()
+
+  check(hud()?.querySelector("details") === beforeEdit && !beforeEdit.open, "setField preserves the folded HUD")
 
   // ── Pre-reload checks + arm controllable `404` broken image for (g) `location.reload()` ──
   visibleControlsHaveNames("pre-reload")

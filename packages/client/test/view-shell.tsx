@@ -24,7 +24,7 @@ async function run() {
     product: "inner",
     playerTemplate: true,
     css: ".panel { display:none } #next:checked ~ .panel { display:block }",
-    html: '<details data-open="latest" data-attr-weather="value.weather" data-var-level="value.level"><summary>Log</summary><ol data-each="value.rows" data-as="row"><li><b data-text="row.$num"></b><span data-text="row"></span></li></ol><label for="tab">Tab</label><input type="radio" name="tabs" id="tab" checked data-attr-weather="value.weather"><input type="radio" name="tabs" id="next"><em class="panel">Two</em><p data-if="fields.secret">private</p></details>',
+    html: '<details data-open="latest" data-attr-weather="value.weather" data-var-level="value.level"><summary>Log</summary><ol data-each="value.rows" data-as="row"><li><b data-text="row.$num"></b><span data-text="row"></span><input id="pick" type="checkbox"><label for="pick"></label></li></ol><label for="tab">Tab</label><input type="radio" name="tabs" id="tab" checked data-attr-weather="value.weather"><input type="radio" name="tabs" id="next"><em class="panel">Two</em><p data-if="fields.secret">private</p></details>',
   }
   const [view, setView] = createSignal<EffectiveView>({ ...source, tree: compileView(source) })
   const [latest, setLatest] = createSignal(true)
@@ -69,7 +69,13 @@ async function run() {
       details.style.getPropertyValue("--level") === "2", "initial bindings")
     require(details.querySelectorAll("li")[1]?.textContent === "2second" &&
       !details.querySelector("p"), "row scope and player lock")
-    require(details.querySelector("label")?.control === details.querySelector("input"), "namespaced radio and label")
+    require(details.querySelector<HTMLLabelElement>('label[for="tab"]')?.control ===
+      details.querySelector("#tab"), "namespaced radio and label")
+    const boxes = details.querySelectorAll<HTMLInputElement>("li input")
+    details.querySelectorAll<HTMLLabelElement>("li label")[1].click()
+    require(boxes[0].id !== boxes[1].id &&
+      !boxes[0].checked &&
+      boxes[1].checked, "second row label toggles only its checkbox")
     const next = details.querySelector<HTMLInputElement>("#next")!
     next.click()
     require(next.checked &&

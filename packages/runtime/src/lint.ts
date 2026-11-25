@@ -705,7 +705,8 @@ const rules: Rule[] = [
         const p = products.get(view.product ?? "")
         if (view.product && !theaterSurface(p, media.illustrations))
           throw new Error("expected an available theater product")
-        checkMediaBindings(tree, view, media.portraits ?? [], catalogs, p?.shape)
+        const bound = checkMediaBindings(tree, view, media.portraits ?? [], catalogs, p?.shape)
+        for (const catalog of bound) consumers.push({ catalog, expected: "image", path })
         for (const slot of view.media ?? []) {
           if (!catalogs.has(slot.catalog)) throw new Error("unknown view catalog " + slot.catalog)
           consumers.push({ catalog: slot.catalog, expected: "image", path })

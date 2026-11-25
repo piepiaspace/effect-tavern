@@ -1,4 +1,4 @@
-import { viewBindings, displayedImages } from "./view-bindings.ts"
+import { safeRows, viewBindings, displayedImages } from "./view-bindings.ts"
 // Browser-safe client media projections: node illustrations + theater attribution, portraits, and card gallery.
 import { activeView, residency } from "@effect-tavern/runtime/src/view-shell.ts"
 import { holds, type Cond, type State } from "@effect-tavern/runtime/src/cond.ts"
@@ -19,7 +19,7 @@ import {
   type NodeMedia,
   type PortraitSlot,
 } from "@effect-tavern/runtime/src/media.ts"
-import { rows, type Catalog, type Product, type TableShape } from "@effect-tavern/runtime/src/product.ts"
+import type { Catalog, Product } from "@effect-tavern/runtime/src/product.ts"
 import { createMemo, createRoot, runWithOwner, type Accessor } from "solid-js"
 import { blocks } from "./markdown.ts"
 import { card, path, stories, type CardView, type Id, type StoryRow } from "./store.ts"
@@ -146,14 +146,6 @@ export const safeCatalogUrl = (
     return resolveCatalogUrl(catalogs, target)
   } catch {
     return undefined
-  }
-}
-
-const safeRows = (shape: TableShape, value: unknown) => {
-  try {
-    return rows(shape, value)
-  } catch {
-    return []
   }
 }
 
@@ -472,9 +464,16 @@ export const resolveGallery = (
         if (shell.product && value === undefined) continue
         const shape = view.layer?.products?.find((p) => p.id === shell.product)?.shape
         const context = residency(shell) === "latest" && !shell.product ? options.headContext : undefined
-        const bindings = viewBindings(shell, n, shape, value, view.layer?.names, {
-          fields: context?.worldState?.fields,
-          world: context?.products,
+        const bindings = viewBindings({
+          view: shell,
+          node: n,
+          shape,
+          value,
+          names: view.layer?.names,
+          context: {
+            fields: context?.worldState?.fields,
+            world: context?.products,
+          },
         })
         for (const hit of displayedImages(shell.tree, bindings)) {
           const url = safeCatalogUrl(view.catalogs, hit)

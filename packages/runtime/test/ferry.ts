@@ -124,6 +124,36 @@ for (const binding of ["media.unknown", "portraits.missing", "crossings:value.fa
   )
 }
 
+// Only the view consumes these enum values as images.
+const photoView = {
+  id: "album",
+  product: "album",
+  html: '<ul data-each="value" data-as="post"><li data-media="photos:post.photo"></li></ul>',
+}
+const album = {
+  id: "album",
+  role: "theater",
+  text: "Album",
+  shape: { kind: "table", columns: [{ key: "photo", type: "enum", catalog: "photos" }] },
+}
+const photoCard = { ...ferry, views: [photoView], products: [...ferry.products!, album] }
+const validatePhotos = (catalog: object, views = [photoView]) =>
+  validateCard({ ...photoCard, views, catalogs: [...ferry.catalogs!, { id: "photos", ...catalog }] }).diagnostics
+const photos = { baseUrl: "https://example.org/photos", items: [{ id: "portrait", variants: ["portrait.png"] }] }
+assert.deepEqual(
+  validatePhotos(photos).filter((d) => d.level === "error"),
+  [],
+)
+for (const [catalog, rule] of [
+  [{ ...photos, baseUrl: "http://example.org/photos" }, "bad-media-url"],
+  [{ ...photos, items: [] }, "bad-media-variant"],
+  [{ ...photos, items: [{ id: "portrait", variants: ["../portrait.png"] }] }, "bad-media-variant"],
+] as const)
+  assert.ok(
+    validatePhotos(catalog).some((d) => d.rule === rule),
+    rule,
+  )
+assert.ok(!validatePhotos({ items: [{ id: "portrait" }] }, []).some((d) => d.rule.startsWith("bad-media")))
 assert.equal(ferry.id, "ferry")
 assert.deepEqual(checkValue(ferry).diagnostics, [])
 

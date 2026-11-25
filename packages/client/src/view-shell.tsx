@@ -1,4 +1,12 @@
-import { canonicalPath, readPath, viewBindings, visibleElement, type Scope } from "./view-bindings.ts"
+import {
+  contentDirective,
+  rowAliases,
+  rowScope,
+  readPath,
+  viewBindings,
+  visibleElement,
+  type Scope,
+} from "./view-bindings.ts"
 import {
   Dynamic,
   insert,
@@ -40,15 +48,16 @@ function viewSheet(view: EffectiveView) {
 
 export const ViewBlock = (props: Props) => {
   const bindings = createMemo(() =>
-    viewBindings(
-      props.view,
-      props.node,
-      props.card.layer.products.find((p) => p.id === props.view.product)?.shape,
-      props.value,
-      props.card.layer.names,
-      { fields: props.context?.worldState.fields, world: props.context?.products },
-    ),
+    viewBindings({
+      view: props.view,
+      node: props.node,
+      shape: props.card.layer.products.find((p) => p.id === props.view.product)?.shape,
+      value: props.value,
+      names: props.card.layer.names,
+      context: { fields: props.context?.worldState.fields, world: props.context?.products },
+    }),
   )
+  let loopSequence = 0
   function image(binding: string, aliases: Record<string, string>) {
     const target = bindings().image(binding, aliases)
     if (!target) return
@@ -65,11 +74,13 @@ export const ViewBlock = (props: Props) => {
     nodes: TemplateNode[],
     data: () => Scope,
     aliases: () => Record<string, string>,
-    prefix: () => string,
+    rowPrefix = "",
   ): JSX.Element {
     return nodes.map((n) => {
       if (typeof n === "string") return n
       const a = n.attrs
+      const directive = contentDirective(a)
+      const loop = directive === "each" ? ++loopSequence : 0
       const get = (key: string) => readPath(data(), a[key])
       const media = () => image(a["data-media"], aliases())
       const attributes = () => {
@@ -81,15 +92,18 @@ export const ViewBlock = (props: Props) => {
             if (typeof v === "number" && Number.isFinite(v)) style["--" + key.slice(9)] = String(v)
           } else if (key.startsWith("data-attr-")) out["data-" + key.slice(10)] = scalar(readPath(data(), value))
           else if (key === "checked") out.defaultChecked = true
-          else if (key === "name" && a.type === "radio") out.name = prefix() + value
+          else if (key === "name" && a.type === "radio")
+            out.name = String(props.node?.id ?? "draft") + "-" + props.view.id + "-" + rowPrefix + value
+          else if (rowPrefix && ((n.tag === "input" && key === "id") || (n.tag === "label" && key === "for")))
+            out[key] = rowPrefix + value
           else if (!key.startsWith("data-")) out[key] = key === "open" ? true : value
         }
         if (a["data-open"] === "latest") out.open = props.latest
         return { ...out, style }
       }
       const body = () => {
-        if ("data-text" in a) return scalar(get("data-text")) ?? ""
-        if ("data-media" in a)
+        if (directive === "text") return scalar(get("data-text")) ?? ""
+        if (directive === "media")
           return (
             <Show when={media()}>
               {(m) => (
@@ -102,24 +116,23 @@ export const ViewBlock = (props: Props) => {
               )}
             </Show>
           )
-        if ("data-each" in a) {
+        if (directive === "each") {
           const items = () => get("data-each")
           const alias = a["data-as"]
           return (
             <For each={Array.isArray(items()) ? (items() as unknown[]) : []} keyed={false}>
               {(item, i) => {
-                const source = () => canonicalPath(a["data-each"], aliases()) + "." + i
                 return branch(
                   n.children,
-                  () => ({ ...data(), [alias]: item(), [alias + ".$num"]: i + 1 }),
-                  () => ({ ...aliases(), [alias]: source() }),
-                  () => prefix() + i + "-",
+                  () => rowScope(data(), alias, item(), i),
+                  () => rowAliases(aliases(), alias, a["data-each"], i),
+                  "row-" + loop + "-" + i + "-",
                 )
               }}
             </For>
           )
         }
-        return branch(n.children, data, aliases, prefix)
+        return branch(n.children, data, aliases, rowPrefix)
       }
       return (
         <Show when={visibleElement(a, data()) && (!a["data-media"] || media())}>
@@ -150,7 +163,6 @@ export const ViewBlock = (props: Props) => {
       props.view.tree,
       () => bindings().scope,
       () => bindings().aliases,
-      () => String(props.node?.id ?? "draft") + "-" + props.view.id + "-",
     ),
   )
   insert(root, <>{contents()}</>)

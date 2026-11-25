@@ -63,7 +63,6 @@ import {
   settling,
   stage,
   stageNames,
-  demanded,
   type Draft as DraftState,
   type Failure,
   type Id,
@@ -730,7 +729,6 @@ const Reader = () => {
   const err = read(error)
   const gone = read(lost)
   const busy = read(working)
-  const asked = read(demanded)
   // the draft hangs under its parent: a sibling of a past turn cuts the line there while it is written
   // equal by its nodes: the draft changes every frame while prose streams, and a fresh but same slice must not
   // re-run every section ([UNSTABLE_MEMO_OUTPUT] under the diagnostics)
@@ -752,7 +750,7 @@ const Reader = () => {
                 view={storyView()}
                 node={n()}
                 n={i() + 1}
-                last={(!busy() || asked() !== null) && i() === shown().length - 1}
+                last={(!busy() || (d() === null && n().settlementStatus !== "pending")) && i() === shown().length - 1}
               />
             )}
           </For>
