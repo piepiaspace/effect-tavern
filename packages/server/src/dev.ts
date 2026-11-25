@@ -18,7 +18,6 @@ import {
   type FakeCall,
   type CompileOptions,
 } from "@effect-tavern/provider"
-import { player } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
@@ -61,7 +60,7 @@ const answer = (o: FakeCall) => {
         delay: demo ? 1000 : 0,
       }
     case "record": {
-      // canned rows for the harness's own products; a card's product is asked of the model alone and decodes to nothing here
+      // canned rows for the starter pack's products (runtime starter-pack.ts); any other product decodes to nothing here
       const canned: Record<string, unknown> = {
         notes: `第${n}幕：两人隔着一张桌子说话，各自试探对方的来意。`,
         options: [
@@ -110,7 +109,6 @@ const model = scriptedModel ? () => scriptedModel : await live()
 const key = await localAnthropicKey()
 const { handler: wire } = tavern({
   data,
-  overlay: player.harness,
   model,
   pinned: scripted, // MODEL=fake scripts every stage, whatever the routing says
   ...(key && { seed: { key } }), // a first start puts the local key in the vault (tavern.ts `seed`)

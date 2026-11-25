@@ -10,7 +10,7 @@ import { Database } from "bun:sqlite"
 import { join } from "node:path"
 import { blocked, compileDecision, decide, type Question } from "@effect-tavern/provider"
 import { checkQuestions, checkVerdict } from "@effect-tavern/runtime/src/decision.ts"
-import { harness, worldOf } from "@effect-tavern/runtime/src/layer.ts"
+import { worldOf } from "@effect-tavern/runtime/src/layer.ts"
 import { worldBlock } from "@effect-tavern/runtime/src/request.ts"
 import { expand } from "@effect-tavern/runtime/src/names.ts"
 import { readCard } from "@effect-tavern/runtime/support/author.ts"
@@ -33,7 +33,7 @@ const world = worldBlock(
 )
 const layers = card.lore.find((l) => l.id === "timeline")!.layers.map(named)
 
-/** The record stage's rule of evidence for readouts (layer.ts `record.readout`), in the card's language. */
+/** The record stage's rule of evidence for readouts (request.ts `RECORD_READOUT`), in the card's language. */
 const EVIDENCE = "只按这一幕里已经写定的事回答，不按它将要走向哪里；这一幕没有涉及的，选表示没有发生的那一项。"
 const ids = layers.map((_, i) => `L${i + 1}`)
 /** The readouts as `choice` questions, and the lore layers as check's fast pass asks them (runtime decision.ts
@@ -44,7 +44,6 @@ const questionsFor = (draft: string) => {
     draft,
     rules: [],
     open: layers.map((text, i) => ({ id: ids[i], text })),
-    wording: (id) => harness("act").asks!.find((a) => a.id === id)!.text,
   })
   const questions: Record<string, Question> = {
     ...Object.fromEntries(

@@ -1,7 +1,7 @@
 // The install's library: one SQLite file through `bun:sqlite` (built into Bun), used as a
 // document store: a row is an id and a JSON column, nothing is ever joined. The tables mirror the types. `pack`: the
-// player's rows (runtime layer.ts `Layer`): `harness` (the overlay, only what differs from the code's defaults) and each
-// writing pack, mounted per card by `local.mounts`. `local`: one row a card, the player on that card (`Local`).
+// player's writing packs (runtime layer.ts `Layer`), mounted per card by `local.mounts`; `pack_default`: one row or none,
+// the pack every card stands on below itself (layer.ts `Rows.defaultPack`). `local`: one row a card, the player on that card (`Local`).
 // `persona`: named frame fragments, the player's own (who they are in the fiction; a card still gives a
 // default in its frame; a story names the one in force on it, `story.persona`). `hat`: the player's hats (runtime fragment.ts `Hat`), worn where the routing puts it. `secret`:
 // the key vault (provider providers.ts `Secret`), the only table holding key material; `provider`: the player's model
@@ -39,6 +39,7 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { locked, type Layer, type Local } from "@effect-tavern/runtime/src/layer.ts"
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
+import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
 import type { Change, Id, Log, Noded, Snapshot, Store } from "@effect-tavern/runtime/src/log.ts"
 import type { Facets } from "@effect-tavern/runtime/src/session.ts"
 import { Database } from "bun:sqlite"
@@ -111,10 +112,12 @@ interface OldPlayer {
   snippets?: unknown[]
   format?: unknown[]
 }
-/** The old row as the new rows. Global → the harness overlay, per-card maps → a local row per card. What a default mode
- *  said is written on the fragment. The product toggles go on the overlay and on each local row: a toggle was the last
- *  word over a pack's 小剧场, and only a rank above the packs still is. */
-const fromPlayer = (p: OldPlayer): { overlay: Layer; locals: Local[] } => {
+/** A row as stored before #239: its questions to the model (`asks`) beside it. */
+type Asked = Partial<Layer> & { asks?: readonly { id: string; text?: string }[] }
+/** The old row as the new rows. Global → the harness overlay (`defaultPack` folds it into the default pack), per-card
+ *  maps → a local row per card. What a default mode said is written on the fragment. The product toggles go on the
+ *  overlay and on each local row: a toggle was the last word over a pack's 小剧场, and only a rank above the packs still is. */
+const fromPlayer = (p: OldPlayer): { overlay: Asked; locals: Local[] } => {
   const { lexicon, ...switches } = p.writing ?? {}
   const toggles = Object.entries(p.products ?? {}).map(([id, on]) => ({ id, on }))
   const moded = (fs: readonly { mode?: string }[] | undefined, mode: string | undefined) =>
@@ -151,7 +154,7 @@ const fromPlayer = (p: OldPlayer): { overlay: Layer; locals: Local[] } => {
 }
 /** A row folded into the overlay: each list the overlay's first, the row's copy standing on a shared key (it was the higher
  *  rank), a product patch merged field by field. */
-const foldIn = (o: Partial<Layer>, r: Partial<Layer>): Partial<Layer> => {
+const foldIn = (o: Asked, r: Asked): Asked => {
   const list = <T>(a: readonly T[] = [], b: readonly T[] = [], key: (x: T) => unknown) => [
     ...new Map([...a, ...b].map((x) => [key(x), x])).values(),
   ]
@@ -226,8 +229,49 @@ export class LibraryNewer extends Error {
 }
 // One baseline for all previously unversioned libraries, not a reconstruction of historical releases.
 const baseline = 1
-// Steps after the baseline, in order: step i takes a library from version baseline + i to the next.
-const steps = [
+/** A row's `product.<id>` asks as product patches (a text the row's own patch writes stands), its other asks gone: the
+ *  harness's wording is code now (#239). */
+const unasked = ({ asks, ...r }: Asked): Partial<Layer> => {
+  const products = new Map((r.products ?? []).map((p) => [p.id, p]))
+  for (const a of asks ?? []) {
+    const id = a.id.startsWith("product.") ? a.id.slice("product.".length) : undefined
+    if (id === undefined || a.text === undefined) continue
+    const p = products.get(id)
+    if (p?.text === undefined) products.set(id, { ...p, id, text: a.text })
+  }
+  return { ...r, ...set("products", [...products.values()]) }
+}
+/** #239: no harness row. Every row's asks go (`unasked`); the overlay folds over the first-party pack into an ordinary
+ *  pack the install stands on by default, or, with none, the first-party pack is seeded as that default. A fresh library
+ *  walks this once at creation, so a player who later deletes every pack is never given one again. */
+const defaultPack = (db: Database) => {
+  db.exec("create table if not exists pack_default (id integer primary key check (id = 1), pack text not null)")
+  for (const [table, key] of [
+    ["pack", "id"],
+    ["local", "card"],
+  ] as const)
+    for (const r of db
+      .query(`select ${key} as key, json from ${table} where json_extract(json, '$.asks') is not null`)
+      .all() as Row[])
+      db.query(`update ${table} set json = ? where ${key} = ?`).run(
+        JSON.stringify(unasked(parse<Asked>(r)!)),
+        r["key"] as string,
+      )
+  const ids = new Set((db.query("select id from pack").all() as Row[]).map((r) => r["id"] as string))
+  let id = "starter"
+  for (let i = 2; ids.has(id); i++) id = `starter-${i}`
+  const { id: _i, name, ...starter } = createStarterPack(id)
+  const overlay = parse<Partial<Layer>>(db.query("select json from pack where id = 'harness'").get() as Row | null)
+  db.query("insert into pack (id, name, json) values (?, ?, ?)").run(
+    id,
+    name,
+    JSON.stringify(overlay ? foldIn(starter, overlay) : starter),
+  )
+  db.query("delete from pack where id = 'harness'").run()
+  db.query("insert or replace into pack_default (id, pack) values (1, ?)").run(id)
+}
+// Steps after the baseline, in order: step i takes a library from version baseline + i to the next, in one transaction.
+const steps: readonly (string | ((db: Database) => void))[] = [
   // the decision model's connection (provider decision.ts), one row
   "create table if not exists decision (id integer primary key check (id = 1), json text not null)",
   // the install's default persona (a new story's when its card leaves the pick to it, library.ts `personaFor`), one row
@@ -242,6 +286,7 @@ const steps = [
   // the workshop's draft copies are gone (shelf.ts): it writes the card itself, so nothing reads this table
   "drop table if exists draft",
   "create table if not exists network (id integer primary key check (id = 1), json text not null)",
+  defaultPack,
 ]
 const latest = baseline + steps.length
 const upgrade = (db: Database) => {
@@ -249,8 +294,18 @@ const upgrade = (db: Database) => {
   if (version === latest) return
   if (version > latest) throw new LibraryNewer(version, latest)
   if (version < baseline) rebase(db)
-  for (let v = Math.max(version, baseline); v < latest; v++)
-    db.exec(`begin immediate; ${steps[v - baseline]}; pragma user_version = ${v + 1}; commit;`)
+  for (let v = Math.max(version, baseline); v < latest; v++) {
+    const step = steps[v - baseline]
+    db.exec("begin immediate")
+    try {
+      if (typeof step === "string") db.exec(step)
+      else step(db)
+      db.exec(`pragma user_version = ${v + 1}; commit`)
+    } catch (e) {
+      db.exec("rollback")
+      throw e
+    }
+  }
 }
 const rebase = (db: Database) => {
   // FK mode must change before BEGIN so rebuilding story cannot cascade-delete its nodes.
@@ -277,8 +332,8 @@ const rebase = (db: Database) => {
         alter table story_new rename to story;`)
     }
     /** `r` over the stored overlay; no row when nothing is in it. */
-    const intoOverlay = ({ id: _i, name: _n, ...r }: Partial<Layer>) => {
-      const had = parse<Partial<Layer>>(q("select json from pack where id = 'harness'").get() as Row | null)
+    const intoOverlay = ({ id: _i, name: _n, ...r }: Asked) => {
+      const had = parse<Asked>(q("select json from pack where id = 'harness'").get() as Row | null)
       const merged = foldIn(had ?? {}, r)
       if (Object.keys(merged).length)
         q("insert or replace into pack (id, name, json) values ('harness', '内置', ?)").run(JSON.stringify(merged))
@@ -305,7 +360,7 @@ const rebase = (db: Database) => {
     }
     // The `base` row, a rank of its own until #69 §十, once, into the overlay. It stood above the card, where a fragment with
     // no mode overrode; the overlay's default yields, so what it said is written down.
-    const base = parse<Partial<Layer>>(q("select json from pack where id = 'base'").get() as Row | null)
+    const base = parse<Asked>(q("select json from pack where id = 'base'").get() as Row | null)
     if (base) {
       intoOverlay({
         ...base,
@@ -442,7 +497,22 @@ export const openSqlite = (file: string, onClose?: () => void) => {
           : q("insert or replace into persona_default (id, persona) values (1, ?)").run(id)),
     },
     hats: named<Hat>("hat"),
-    packs: named<Layer>("pack"),
+    packs: {
+      ...named<Layer>("pack"),
+      del: (id: string) =>
+        tx(() => {
+          q("delete from pack where id = ?").run(id)
+          q("delete from pack_default where pack = ?").run(id)
+        }),
+      /** The pack marked the install's default, or none. */
+      default: (): string | null =>
+        ((q("select pack from pack_default where id = 1").get() as Row | null)?.["pack"] as string | undefined) ?? null,
+      /** Marked (`id`), or cleared (null). */
+      mark: (id: string | null) =>
+        void (id === null
+          ? q("delete from pack_default").run()
+          : q("insert or replace into pack_default (id, pack) values (1, ?)").run(id)),
+    },
     secrets: named<Secret>("secret"),
     providers: named<Provider>("provider"),
     /** Which (provider, model) runs each stage, one row; what it holds is decoded by the caller. */

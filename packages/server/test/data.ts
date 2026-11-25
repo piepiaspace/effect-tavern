@@ -9,6 +9,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Database } from "bun:sqlite"
 import { DatabaseSync } from "node:sqlite"
+import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
 import { open, traced } from "../src/data.ts"
 
 type Row = Record<string, unknown>
@@ -354,6 +355,7 @@ data.close()
 
 // The player row of a library from before layer.ts (docs/packs-brief.md §九 §4, §十 §3): once, on open, into the overlay and a local
 // row per card, a pack's `theaters` into its product patches; then the table is gone and a second open changes nothing.
+// The overlay then folds over the first-party pack (#239), the install's default; its asks go.
 {
   const dir = mkdtempSync(join(tmpdir(), "tavern-player-"))
   const file = join(dir, "tavern.db")
@@ -393,28 +395,35 @@ data.close()
     { id: "options", on: true },
     { id: "inner", on: false },
   ]
+  const s = createStarterPack()
   const check = (d: ReturnType<typeof open>) => {
     assert.deepEqual(
       d.packs
         .list()
         .map((p) => p.id)
         .sort(),
-      ["harness", "kit", "older"],
+      ["kit", "older", "starter"],
     )
-    const [overlay, kit, older] = ["harness", "kit", "older"].map((id) => d.packs.list().find((p) => p.id === id)!)
+    const [overlay, kit, older] = ["starter", "kit", "older"].map((id) => d.packs.list().find((p) => p.id === id)!)
+    assert.equal(d.packs.default(), "starter")
+    const [options, notes, inner] = s.products!
     assert.deepEqual(overlay, {
-      id: "harness",
-      name: "内置",
+      ...s,
       fragments: [
         { id: "language", text: "L", mode: "yield" }, // the old default written down
+        s.fragments![1],
         { id: "style", text: "S", mode: "override" }, // no Cond and no role below the card
       ],
-      switches: { pov: "second", echo: true, polish: false },
-      asks: [{ id: "lookup", text: "ASK" }],
-      products: [{ id: "town", label: "T", text: "gossip", on: true }, ...toggles],
-      lexicon: [{ pattern: "x", hint: "h" }],
-      snippets: [{ name: "q", text: "Q" }],
-      format: [{ label: "k", text: "K" }],
+      switches: { ...s.switches, pov: "second", echo: true, polish: false },
+      products: [
+        { ...options, on: true },
+        notes,
+        { ...inner, on: false },
+        { id: "town", label: "T", text: "gossip", on: true },
+      ],
+      lexicon: [...s.lexicon!, { pattern: "x", hint: "h" }],
+      snippets: [...s.snippets!, { name: "q", text: "Q" }],
+      format: [...s.format!, { label: "k", text: "K" }],
     })
     assert.deepEqual(kit, {
       id: "kit",
@@ -457,7 +466,8 @@ data.close()
 
 // The `base` row of a library from before §十: once, on open, into the overlay, then gone. Lists the overlay's first, the
 // base's copy standing on a shared key (it was the higher rank), switches and product patches by key with the base's on
-// top; a base fragment with no mode overrode the card, and says so now. With no overlay stored, it becomes one.
+// top; a base fragment with no mode overrode the card, and says so now. With no overlay stored, it becomes one. The
+// overlay then folds over the first-party pack the same way (#239), its asks gone.
 {
   const dir = mkdtempSync(join(tmpdir(), "tavern-base-"))
   const file = join(dir, "tavern.db")
@@ -497,27 +507,27 @@ data.close()
   })
   put(old, "kit", "Kit", {})
   old.close()
+  const s = createStarterPack()
+  const [options, notes, inner] = s.products!
   const merged = {
-    id: "harness",
-    name: "内置",
+    ...s,
     fragments: [
+      ...s.fragments!,
       { id: "a", text: "OVER-A" },
       { id: "s", text: "BASE-S", mode: "override" },
       { id: "b", text: "BASE-B", mode: "yield" },
     ],
-    switches: { pov: "third", verbosity: "concise" },
-    asks: [
-      { id: "lookup", text: "BASE" },
-      { id: "direct", text: "BASE-D" },
-    ],
-    products: [
-      { id: "notes", label: "OVER", text: "BASE", on: false },
-      { id: "town", text: "gossip" },
-    ],
+    switches: { ...s.switches, pov: "third", verbosity: "concise" },
+    products: [options, { ...notes, label: "OVER", text: "BASE", on: false }, inner, { id: "town", text: "gossip" }],
     entries: [{ id: "e", text: "E." }],
-    lexicon: [{ pattern: "o" }, { pattern: "shared", hint: "BASE", max: 3, enabled: false }, { pattern: "b" }],
-    snippets: [{ name: "q", text: "OVER" }],
-    format: [{ label: "k", text: "K" }],
+    lexicon: [
+      ...s.lexicon!,
+      { pattern: "o" },
+      { pattern: "shared", hint: "BASE", max: 3, enabled: false },
+      { pattern: "b" },
+    ],
+    snippets: [...s.snippets!, { name: "q", text: "OVER" }],
+    format: [...s.format!, { label: "k", text: "K" }],
     names: { place: "B" },
   }
   const ids = (d: ReturnType<typeof open>) =>
@@ -526,15 +536,15 @@ data.close()
       .map((p) => p.id)
       .sort()
   const first = open(file)
-  assert.deepEqual(ids(first), ["harness", "kit"])
+  assert.deepEqual(ids(first), ["kit", "starter"])
   assert.deepEqual(
-    first.packs.list().find((p) => p.id === "harness"),
+    first.packs.list().find((p) => p.id === "starter"),
     merged,
   )
   first.close()
   const second = open(file)
   assert.deepEqual(
-    second.packs.list().find((p) => p.id === "harness"),
+    second.packs.list().find((p) => p.id === "starter"),
     merged,
   ) // the second open changes nothing
   second.close()
@@ -545,7 +555,7 @@ data.close()
   put(had, "base", "全局基底", { names: { n: "N" } })
   had.close()
   const alone = open(lone)
-  assert.deepEqual(alone.packs.list(), [{ id: "harness", name: "内置", names: { n: "N" } }])
+  assert.deepEqual(alone.packs.list(), [{ ...s, names: { n: "N" } }])
   alone.close()
 
   const nil = join(dir, "nil.db")
@@ -554,7 +564,7 @@ data.close()
   put(none, "base", "全局基底", {})
   none.close()
   const blank = open(nil)
-  assert.deepEqual(blank.packs.list(), []) // nothing in it: no row
+  assert.deepEqual(blank.packs.list(), [s]) // nothing in it: no overlay, the first-party pack as it ships
   blank.close()
   rmSync(dir, { recursive: true, force: true })
 }
@@ -642,10 +652,10 @@ data.close()
   failed.close()
   const retried = open(file)
   assert.equal(retried.stories.get(7)!.persona, "friend")
-  assert.equal(retried.packs.list().find((p) => p.id === "harness")!.fragments![0].text, "Keep me")
+  assert.equal(retried.packs.list()[0].fragments!.find((f) => f.id === "style")!.text, "Keep me")
   retried.close()
   const upgraded = new DatabaseSync(file)
-  assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 8)
+  assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 9)
   assert.equal(upgraded.prepare("select name from sqlite_master where name = 'player'").get(), undefined)
   assert.equal(
     upgraded.prepare("select json_extract(json, '$.settlementStatus') as s from node where id = 0").get()!.s,
@@ -686,7 +696,7 @@ data.close()
   open(freshFile).close()
   const fresh = new DatabaseSync(freshFile)
   const prior = new DatabaseSync(file)
-  assert.equal((fresh.prepare("pragma user_version").get() as Row)["user_version"], 8)
+  assert.equal((fresh.prepare("pragma user_version").get() as Row)["user_version"], 9)
   assert.deepEqual(fresh.prepare("pragma table_info(story)").all(), prior.prepare("pragma table_info(story)").all())
   prior.close()
   // a library from before the workshop wrote the shelf itself: its draft table goes on open, its cards stay
@@ -703,11 +713,134 @@ data.close()
       stepped.prepare("select name from sqlite_master where name = 'draft'").get(),
       stepped.prepare("select title from card where id = 'kept'").get()!["title"],
     ],
-    [8, undefined, "留下"],
+    [9, undefined, "留下"],
   )
-  stepped.exec("pragma user_version = 9")
+  stepped.exec("pragma user_version = 10")
   stepped.close()
   assert.throws(() => open(freshFile), /newer than supported/)
+  rmSync(dir, { recursive: true, force: true })
+}
+
+// The default pack (#239). A fresh library is seeded with the first-party pack once, at creation, marked the default;
+// one whose player deleted every pack stays empty. A library from before: every pack and local row loses its asks, a
+// `product.<id>` ask becoming that product's text (a text the row's own patch writes stands); with no harness row the
+// first-party pack is seeded under a free id, with one the overlay folds over it (lists by key, a product patch over
+// the whole product, switches by key) and the harness row goes.
+{
+  const dir = mkdtempSync(join(tmpdir(), "tavern-default-pack-"))
+  const s = createStarterPack()
+  const fresh = join(dir, "fresh.db")
+  const made = open(fresh)
+  assert.deepEqual([made.packs.list(), made.packs.default()], [[s], "starter"])
+  made.packs.del("starter")
+  assert.equal(made.packs.default(), null)
+  made.close()
+  const reopened = open(fresh)
+  assert.deepEqual([reopened.packs.list(), reopened.packs.default()], [[], null])
+  reopened.close()
+
+  /** A library one step before: `pack_default` not there yet, the rows as given. */
+  const before = (name: string, packs: Record<string, unknown>, locals: Record<string, unknown> = {}) => {
+    const file = join(dir, name)
+    open(file).close()
+    const old = new DatabaseSync(file)
+    old.exec("delete from pack; drop table pack_default; pragma user_version = 8")
+    for (const [id, json] of Object.entries(packs))
+      old
+        .prepare("insert into pack (id, name, json) values (?, ?, ?)")
+        .run(id, id === "harness" ? "内置" : id, JSON.stringify(json))
+    for (const [card, json] of Object.entries(locals))
+      old.prepare("insert into local (card, json) values (?, ?)").run(card, JSON.stringify(json))
+    old.close()
+    return open(file)
+  }
+  const asks = [
+    { id: "product.notes", text: "ASKED-NOTES" },
+    { id: "product.town", text: "ASKED-TOWN" },
+    { id: "product.mine", text: "ASKED-MINE" },
+    { id: "lookup", text: "GONE" },
+  ]
+  const plain = before(
+    "plain.db",
+    {
+      starter: { fragments: [{ id: "style", text: "MINE" }] },
+      kit: {
+        products: [
+          { id: "town", text: "OWN" },
+          { id: "mine", on: true },
+        ],
+        asks,
+      },
+    },
+    { wuxia: { id: "local", name: "wuxia", card: "wuxia", asks } },
+  )
+  assert.deepEqual(
+    plain.packs.list().map((p) => p.id),
+    ["kit", "starter", "starter-2"],
+  )
+  assert.equal(plain.packs.default(), "starter-2") // the name was taken: the player's own pack kept
+  assert.deepEqual(plain.packs.list()[2], { ...s, id: "starter-2" })
+  assert.deepEqual(plain.packs.list()[0], {
+    id: "kit",
+    name: "kit",
+    products: [
+      { id: "town", text: "OWN" },
+      { id: "mine", on: true, text: "ASKED-MINE" },
+      { id: "notes", text: "ASKED-NOTES" },
+    ],
+  })
+  assert.deepEqual(plain.locals.get("wuxia"), {
+    id: "local",
+    name: "wuxia",
+    card: "wuxia",
+    products: [
+      { id: "notes", text: "ASKED-NOTES" },
+      { id: "town", text: "ASKED-TOWN" },
+      { id: "mine", text: "ASKED-MINE" },
+    ],
+  })
+  plain.close()
+
+  const [options, notes, inner] = s.products!
+  const custom = before("custom.db", {
+    harness: {
+      fragments: [
+        { id: "language", text: "L", mode: "override" },
+        { id: "voice", text: "V" },
+      ],
+      switches: { pov: "third", verbosity: "concise" },
+      products: [
+        { id: "options", on: false },
+        { id: "notes", on: true },
+      ],
+      asks: [
+        { id: "product.notes", text: "MY-NOTES" },
+        { id: "product.inner", text: "MY-INNER" },
+        { id: "narrate.role", text: "R" },
+      ],
+      lexicon: [{ pattern: "不是*而是", hint: "MINE" }, { pattern: "新词" }],
+      snippets: [{ name: "继续", text: "接着写。", note: true }],
+      names: { user: "阿青" },
+    },
+  })
+  assert.deepEqual([custom.packs.list().map((p) => p.id), custom.packs.default()], [["starter"], "starter"])
+  assert.deepEqual(custom.packs.list()[0], {
+    ...s,
+    fragments: [{ id: "language", text: "L", mode: "override" }, s.fragments![1], { id: "voice", text: "V" }],
+    switches: { ...s.switches, pov: "third", verbosity: "concise" },
+    products: [
+      { ...options, on: false },
+      { ...notes, on: true, text: "MY-NOTES" },
+      { ...inner, text: "MY-INNER" },
+    ],
+    lexicon: [
+      ...s.lexicon!.map((e) => (e.pattern === "不是*而是" ? { pattern: e.pattern, hint: "MINE" } : e)),
+      { pattern: "新词" },
+    ],
+    snippets: s.snippets!.map((x) => (x.name === "继续" ? { name: "继续", text: "接着写。", note: true } : x)),
+    names: { user: "阿青" },
+  })
+  custom.close()
   rmSync(dir, { recursive: true, force: true })
 }
 

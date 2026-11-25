@@ -53,7 +53,7 @@ const x: Exported = {
   },
   products: [
     { role: "chronicle", id: "notes", label: "事件摘要", shape: { kind: "text" }, fold: "append", feed: true },
-    { role: "theater", id: "options", label: "行动选项", shape: { kind: "list", max: 4 } },
+    { role: "theater", id: "options", label: "行动选项", shape: { kind: "list", max: 4 }, surface: "composer" },
     { role: "theater", id: "inner", label: "人物心声", shape: { kind: "text" } },
   ],
 }

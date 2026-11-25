@@ -70,6 +70,8 @@ const nodes = all(
 const packs = all("select id, name, json from pack").map(
   (r) => ({ ...json<object>(r), id: r["id"], name: r["name"] }) as Layer,
 )
+/** The pack the install stands on by default (server sqlite.ts `pack_default`). */
+const mark = db.query("select pack from pack_default where id = 1").get() as { pack: string } | null
 const personas = new Map(
   all("select id, name, json from persona").map((r) => [
     r["id"] as string,
@@ -78,8 +80,8 @@ const personas = new Map(
 )
 const layerOf = (card: Card, persona: string | null, yields: boolean): Resolved =>
   resolve(card, {
-    harness: packs.find((p) => p.id === "harness"),
-    packs: packs.filter((p) => p.id !== "harness"),
+    defaultPack: packs.find((p) => p.id === mark?.pack),
+    packs,
     local: json<Local>(db.query("select json from local where card = ?").get(card.id) as Row | null),
     persona: persona === null || !personas.has(persona) ? undefined : { ...personas.get(persona)!, yields },
   })
@@ -88,7 +90,7 @@ const worldText = (card: Card, layer: Resolved): string =>
   worldBlock(
     worldOf(card, layer.frame).flatMap((f) => (f.text ? [{ id: f.id, role: "system" as const, text: f.text }] : [])),
   )
-/** What the turn's check fast pass sends (runtime decision.ts `checkQuestions`, the asks the story's layer resolves):
+/** What the turn's check fast pass sends (runtime decision.ts `checkQuestions`):
  *  <world> + <draft>, one yes/no "does the draft break it" per guard line (`g0`, `g1`, …), filled as a turn fills
  *  them (names.ts `lines`), and one "conveyed?" per entry the node had open (`o0`, …; its stored `opportunities`). A card with no guard line gets one generic question instead, so the block rate and latency
  *  are measured on every prose. */
@@ -96,10 +98,9 @@ const asked = (
   world: string,
   guard: readonly string[],
   prose: string,
-  layer: Resolved | undefined,
   open: readonly { id: string; text: string }[] = [],
 ): { state: string; questions: Record<string, Question> } => {
-  const q = checkQuestions({ world, draft: prose, rules: guard, open, wording: (id) => layer!.asks[id].text })
+  const q = checkQuestions({ world, draft: prose, rules: guard, open })
   return guard.length || open.length
     ? q
     : { state: q.state, questions: { generic: { type: "boolean", instructions: GENERIC } } }
@@ -183,7 +184,7 @@ for (const x of nodes) {
   await ask(
     x.at,
     "turn",
-    asked(world, guard, x.prose, layer, open),
+    asked(world, guard, x.prose, open),
     expect,
     // a turn with no guard line and nothing open runs no check: the generic question is not a fast pass
     card && layer && (guard.length || open.length) ? { guard, n: x.n } : undefined,
@@ -191,7 +192,7 @@ for (const x of nodes) {
   const breach = CONTROLS[x.card]
   if (breach && guard.length && !controlled.has(x.card)) {
     controlled.add(x.card)
-    await ask(x.at, "control", asked(world, guard, x.prose + breach, layer), true)
+    await ask(x.at, "control", asked(world, guard, x.prose + breach), true)
   }
 }
 
