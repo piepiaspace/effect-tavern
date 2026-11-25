@@ -1,11 +1,17 @@
 // The persisted value of a Call is its JSON projection, as on the Inspector wire.
-import { hashUtf8, ObjectId } from "@effect-tavern/runtime/src/storage.ts"
+import {
+  hashBytes,
+  wellFormedText,
+  type ObjectId,
+  MIN_BLOB_BYTES,
+  TextBlobRef,
+  TextSlicesEnvelope,
+  EscapedObjectEnvelope,
+  StoredCallV1,
+} from "@effect-tavern/runtime/src/storage.ts"
 import { Schema } from "effect"
 import type { Call } from "./turn.ts"
 
-const TextRef = Schema.Struct({ $text: ObjectId })
-const StoredCallV1 = Schema.Struct({ $v: Schema.Literal(1), call: Schema.JsonObject })
-const MIN_BLOB_BYTES = 128
 const utf8 = new TextEncoder()
 const isRecord = (v: Schema.Json): v is Schema.JsonObject => v !== null && typeof v === "object" && !Array.isArray(v)
 const mapFields = (object: Schema.JsonObject, f: (v: Schema.Json, key: string) => Schema.Json): Schema.JsonObject =>
@@ -14,15 +20,17 @@ const mapFields = (object: Schema.JsonObject, f: (v: Schema.Json, key: string) =
 export function dehydrateCall(call: Call) {
   const json: Schema.JsonObject = JSON.parse(JSON.stringify(call))
   const objects = new Map<ObjectId, string>()
-  const text = (s: string): string | typeof TextRef.Type => {
+  const text = (s: string): string | typeof TextBlobRef.Type => {
     // A lone surrogate would be replaced by U+FFFD during UTF-8 encoding.
-    if (/\p{Surrogate}/u.test(s) || utf8.encode(s).length < MIN_BLOB_BYTES) return s
-    const id = hashUtf8(s)
+    if (!wellFormedText(s)) return s
+    const bytes = utf8.encode(s)
+    if (bytes.length < MIN_BLOB_BYTES) return s
+    const id = hashBytes(bytes)
     objects.set(id, s)
     return { $text: id }
   }
   const slices = (description: string, sections: NonNullable<Call["wrap"]>["sections"]) => {
-    const parts: (string | typeof TextRef.Type)[] = []
+    const parts: (string | typeof TextBlobRef.Type)[] = []
     let cursor = 0
     for (const {
       body: { start, end },
@@ -58,12 +66,12 @@ export function dehydrateCall(call: Call) {
 }
 
 /** Both SQL read paths supply the dictionary fetched for the selected rows. */
-export function hydrateCall(row: Schema.JsonObject, objects: ReadonlyMap<ObjectId, string>): Schema.Json {
+export function hydrateCall(row: Schema.JsonObject, objects: ReadonlyMap<ObjectId, string>): Schema.JsonObject {
   if (!Object.hasOwn(row, "$v") && row.kind === "call") return row
-  if (!Schema.is(StoredCallV1)(row)) throw new Error("Invalid stored call envelope")
+  if (!Schema.is(StoredCallV1)(row) || Object.keys(row).length !== 2) throw new Error("Invalid stored call envelope")
   function resolve(ref: Schema.Json): string {
     if (typeof ref === "string") return ref
-    if (!Schema.is(TextRef)(ref) || Object.keys(ref).length !== 1) throw new Error("Invalid stored text reference")
+    if (!Schema.is(TextBlobRef)(ref) || Object.keys(ref).length !== 1) throw new Error("Invalid stored text reference")
     const body = objects.get(ref.$text)
     if (body === undefined) throw new Error(`Missing stored text ${ref.$text}`)
     return body
@@ -73,15 +81,18 @@ export function hydrateCall(row: Schema.JsonObject, objects: ReadonlyMap<ObjectI
     if (!isRecord(value)) return value
     if (Object.hasOwn(value, "$text")) return resolve(value)
     if (Object.hasOwn(value, "$slices")) {
-      if (!Array.isArray(value.$slices) || Object.keys(value).length !== 1)
+      if (!Schema.is(TextSlicesEnvelope)(value) || Object.keys(value).length !== 1)
         throw new Error("Invalid stored text slices")
       return value.$slices.map(resolve).join("")
     }
     if (Object.hasOwn(value, "$esc")) {
-      if (!isRecord(value.$esc) || Object.keys(value).length !== 1) throw new Error("Invalid escaped object")
+      if (!Schema.is(EscapedObjectEnvelope)(value) || Object.keys(value).length !== 1)
+        throw new Error("Invalid escaped object")
       return mapFields(value.$esc, decode)
     }
     return mapFields(value, decode)
   }
-  return decode(row.call)
+  const call = decode(row.call)
+  if (!isRecord(call) || call.kind !== "call") throw new Error("Invalid stored call root")
+  return call
 }

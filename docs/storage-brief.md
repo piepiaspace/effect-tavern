@@ -23,8 +23,8 @@
    - 存量库当前 `PRAGMA auto_vacuum = 0`（`NONE`）。新库建表前直接启用 `PRAGMA auto_vacuum = INCREMENTAL`；存量库在迁移初始化或 `tavern doctor` 清理时配合一次 `VACUUM` 激活增量回收页头，日常 GC 仅按页数预算执行 `PRAGMA incremental_vacuum(pages)` 渐进归还空闲页。
 
 4. **稀疏默认覆盖、工坊乐观锁与上游 `origin.edited` 的正交边界**
-   - **稀疏覆盖资产（`harness` 与 `local`）**：[`packages/server/src/library.ts`](../packages/server/src/library.ts#L589-L599) 中 `pack` 表的 `harness` 行与有效角色卡下的 `local` 行仅代表**相对默认值的用户覆盖差集（Overlay Delta）**。“无覆盖”本身即为合法的天然初始基线（规范化为空对象 `"{}"`，对应共享哈希 `H_empty`，按需物化入 `blob`），与“所属角色卡已删除（`404 no-card`）”严格区分；回退到 `H_empty` 即清除覆盖、继续跟随当前内置或卡片默认值，绝不将当时的合并展示态固化为死配置。
-   - **本地快照状态与上游来源状态正交**：`CheckpointStanding`（`clean | drifted`）表达“当前工作态相对用户上次认可的本地快照是否偏离”；角色卡的 [`Origin.edited`](../packages/runtime/src/library.ts#L23-L29) 表达“本地卡片相对上游安装来源（如卡库版本）是否改过”。玩家在工坊改卡后点 `Pin`，相对快照变为 `clean`，相对上游卡库依然是 `edited: true`。
+   - **稀疏覆盖资产（`harness` 与 `local`）**：[`packages/server/src/library.ts`](../packages/server/src/library.ts#L589-L599) 中 `pack` 表的 `harness` 行与有效卡片下的 `local` 行仅代表**相对默认值的用户覆盖差集（Overlay Delta）**。“无覆盖”本身即为合法的天然初始基线（规范化为空对象 `"{}"`，对应共享哈希 `H_empty`，按需物化入 `blob`），与“所属卡片已删除（`404 no-card`）”严格区分；回退到 `H_empty` 即清除覆盖、继续跟随当前内置或卡片默认值，绝不将当时的合并展示态固化为死配置。
+   - **本地快照状态与上游来源状态正交**：`CheckpointStanding`（`clean | drifted`）表达“当前工作态相对用户上次认可的本地快照是否偏离”；卡片的 [`Origin.edited`](../packages/runtime/src/library.ts#L23-L29) 表达“本地卡片相对上游安装来源（如卡库版本）是否改过”。玩家在工坊改卡后点 `Pin`，相对快照变为 `clean`，相对上游卡库依然是 `edited: true`。
 
 > [!IMPORTANT]
 > **共同底座、独立写规则的设计原则**
@@ -209,116 +209,11 @@ erDiagram
 
 ## 五、Effect v4 (`4.1.4`) 核心 Schema 与编解码原型
 
-以下契约作为实现阶段 `packages/runtime/src/storage.ts`（跨前后端共享的状态与冲突契约）与 `packages/server/src/sqlite.ts`（CAS 与 `Call` 双向编解码器）的直接基准：
+可执行 Schema 见 [runtime/storage.ts](../packages/runtime/src/storage.ts)。资产先投影为实际落盘的 JSON 值，再递归排列对象键。对象中的 `undefined` 属性省略，数组空位与 `undefined` 元素落为 `null`。长文本的字节长度和 SHA-256 使用同一次 UTF-8 编码的结果。
 
-```typescript
-import { sha256 } from "@noble/hashes/sha2.js"
-import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js"
-import { Schema } from "effect"
+[server/checkpoint.ts](../packages/server/src/checkpoint.ts) 在两侧哈希及卡片必填的 `rev` 相符时决策，版本冲突返回最新状态与卡片当前的 `rev`。已经 clean 的 Pin 与 Revert 幂等完成。稀疏覆盖编码剥离身份与空的顶层集合，保留显式的 `persona: null`；解码由所属实体补回身份，空差集恢复为物理缺行。
 
-// ─── 1. 内容寻址原语 (地址仅取决于未压缩原始 UTF-8 字节) ─────────────────────
-
-/** 64 位小写 hex SHA-256 内容地址（SQLite blob 表与未来 #228 宿主旁路媒体 CAS 共用） */
-export const ObjectId = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)).pipe(Schema.brand("ObjectId"))
-export type ObjectId = typeof ObjectId.Type
-
-export const BlobEncoding = Schema.Literals(["utf8", "deflate-b64"])
-export type BlobEncoding = typeof BlobEncoding.Type
-
-/** 递归按 UTF-16 码元序排列普通对象键，消除键序差异造成的资产哈希漂移 */
-export const canonicalJson = (value: Schema.Json): string => {
-  if (Array.isArray(value)) return "[" + value.map(canonicalJson).join(",") + "]"
-  if (value === null || typeof value !== "object") return JSON.stringify(value)
-  const object = value as Schema.JsonObject
-  return "{" + Object.keys(object).sort().map(k => JSON.stringify(k) + ":" + canonicalJson(object[k])).join(",") + "}"
-}
-
-export const hashUtf8 = (utf8: string): ObjectId => ObjectId.make(bytesToHex(sha256(utf8ToBytes(utf8))))
-
-/** 稀疏覆盖项（harness / local）无任何用户覆盖时的天然基线对象地址 */
-export const EMPTY_OVERLAY_JSON = "{}"
-export const EMPTY_OVERLAY_HASH: ObjectId = hashUtf8(EMPTY_OVERLAY_JSON)
-
-// ─── 2. Layer 3 · 通用单层快照状态、请求与冲突契约 ───────────────────────────
-
-export const CheckpointKind = Schema.Literals(["hat", "pack", "card", "persona", "local"])
-export type CheckpointKind = typeof CheckpointKind.Type
-
-/** 二态快照投影（迁移一次性打底 + 稀疏项默认锚定 EMPTY_OVERLAY_HASH，无 Unanchored 态） */
-export const CheckpointStanding = Schema.Union([
-  Schema.Struct({
-    status: Schema.Literal("clean"),
-    hash: ObjectId,
-    updatedAt: Schema.NullOr(Schema.Int), // 隐式锚定 EMPTY_OVERLAY_HASH 且尚未显式落行时为 null
-  }),
-  Schema.Struct({
-    status: Schema.Literal("drifted"),
-    workingHash: ObjectId,
-    anchorHash: ObjectId,
-    updatedAt: Schema.NullOr(Schema.Int),
-  }),
-])
-export type CheckpointStanding = typeof CheckpointStanding.Type
-
-export const deriveStanding = (
-  workingHash: ObjectId,
-  anchor: { hash: ObjectId; updatedAt: number | null },
-): CheckpointStanding =>
-  workingHash === anchor.hash
-    ? { status: "clean", hash: anchor.hash, updatedAt: anchor.updatedAt }
-    : { status: "drifted", workingHash, anchorHash: anchor.hash, updatedAt: anchor.updatedAt }
-
-/** Pin 与 Revert 必须同时校验工作态与锚点双侧版本，防止跨标签页并发盲盖或回退目标漂移 */
-export const CheckpointMutation = Schema.Struct({
-  action: Schema.Literals(["pin", "revert"]),
-  expectedWorkingHash: ObjectId,
-  expectedAnchorHash: ObjectId,
-  rev: Schema.optionalKey(Schema.String), // card 工坊额外透传当前 rev 对齐既有乐观锁
-})
-export type CheckpointMutation = typeof CheckpointMutation.Type
-
-/** Revert 遇到外部环境冲突时拒绝静默改写，返回结构化冲突原因供前端明确提示 */
-export const CheckpointConflict = Schema.Union([
-  Schema.Struct({
-    reason: Schema.Literal("hat-name-taken"),
-    name: Schema.String,
-    takenByHatId: Schema.String,
-  }),
-  Schema.Struct({
-    reason: Schema.Literal("missing-references"),
-    missingPacks: Schema.Array(Schema.String),
-    missingPersona: Schema.NullOr(Schema.String),
-  }),
-])
-export type CheckpointConflict = typeof CheckpointConflict.Type
-
-// ─── 3. Layer 2 · Call 无损双射脱水信封契约（跨普通消息、Wrap 与 out 同址复用） ─
-
-/** 最小入池字节阈值：短文本保留内联，避免 64 字符哈希引用与索引行反超原文体积 */
-export const MIN_BLOB_BYTES = 128
-
-/** 指向 blob 表中纯 UTF-8 文本正文的引用 */
-export const TextBlobRef = Schema.Struct({ $text: ObjectId })
-export type TextBlobRef = typeof TextBlobRef.Type
-
-/** Tool Wrap 下 tool.description 的全区间有序原文片段（精确还原相邻 \n\n 与自定义模板文案） */
-export const TextSlicesEnvelope = Schema.Struct({
-  $slices: Schema.Array(Schema.Union([Schema.String, TextBlobRef])),
-})
-export type TextSlicesEnvelope = typeof TextSlicesEnvelope.Type
-
-/** 转义信封：当任意原始业务对象本身恰好含有 $text / $slices / $esc 键时原样包裹，保证全值域双射 */
-export const EscapedObjectEnvelope = Schema.Struct({
-  $esc: Schema.Record(Schema.String, Schema.Unknown),
-})
-
-/** 顶层版本化信封：与存量无 $v 键的内联 Call (`kind: "call"`) 在顶层严格互斥，零迁移兼容旧行 */
-export const StoredCallV1 = Schema.Struct({
-  $v: Schema.Literal(1),
-  call: Schema.Unknown,
-})
-export type StoredCallV1 = typeof StoredCallV1.Type
-```
+[server/stored-call.ts](../packages/server/src/stored-call.ts) 使用共享的 `TextBlobRef`、`TextSlicesEnvelope`、`EscapedObjectEnvelope` 与 `StoredCallV1`。顶层版本信封仅含 `$v` 和 `call`，解码后的根对象须有 `kind: "call"`。
 
 #### `tool.description` 按 `WrapSection.body` 切片与全结构双射准则
 
@@ -344,6 +239,10 @@ export type StoredCallV1 = typeof StoredCallV1.Type
 | **`call` 去重与跨桥** | 侵入 `runtime/session.ts`，或在 Go 宿主重写一套追踪去重逻辑 | **零 `runtime` 侵入、零 Go 业务耦合**：编解码封闭在 `sqlite.ts` `calls(story)` 内，`db.go` 仅加通用 `batch` 事务模式，探测 + 批量写入常数次跨桥 |
 | **体积诊断（`tavern doctor`）** | 仅统计数据目录文件总字节数 | 只读 SQL 聚合输出：`call` 逻辑字节 vs `blob` 物理字节、不可达孤儿 `blob` 数与字节、SQLite `freelist_count` 空闲页占比与 `auto_vacuum` 模式 |
 | **多宿主物理落盘约定** | 将大体积二进制媒体塞进 SQLite 阻塞移动端 `/__db` | **主库 `tavern.db`** 存结构化表与 UTF-8 安全文本 `blob`（CLI 与 Android 单文件直拷通用）；未来 `#228` 本地媒体缓存落 **`<UserData>/cas/sha256/<2-hex>/<hash>`** 旁路目录，共用 `ObjectId` 类型 |
+
+CLI 默认使用 `~/.tavern/tavern.db`，可用 `--data` 指定数据目录。Desktop 与 Android 将同一库格式的 `tavern.db` 存在各自的 `PathUserData`。
+
+资产导出仅含可交换的业务内容。故事的 `export.json` 是单故事逻辑备份，含卡片标识、故事元数据和完整分支树（含 head、next）。恢复整库的本地配置、快照与 Inspector 追踪需要一致的 SQLite 物理备份，例如正常关闭数据库并完成 WAL checkpoint 后复制主库。启用旁路媒体后，完整恢复离线媒体还需备份相应对象文件。
 
 ---
 
