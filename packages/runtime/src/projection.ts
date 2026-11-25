@@ -155,6 +155,7 @@ export const turnDetail = (n: Node, before: State, rules: Rules): TurnDetail => 
 })
 
 export interface Draft {
+  visibleViews?: readonly string[]
   parent: Id | null
   input: Input
   invocations?: readonly InvocationToken[]

@@ -156,6 +156,12 @@ const api = (): Plugin => ({
 const lobe = FileSystemIconLoader(resolve(import.meta.dirname, "node_modules/@lobehub/icons-static-svg/icons"))
 export default defineConfig({
   plugins: [solid(), Icons({ compiler: "solid", scale: 1, customCollections: { lobe } }), api()],
+  // The reader receives a checked tree. Authoring parsers only run when a host compiles a template.
+  build: {
+    rolldownOptions: {
+      treeshake: { moduleSideEffects: [{ test: /\/runtime\/src\/view-template\.ts$/, sideEffects: false }] },
+    },
+  },
   // one copy of the core in dev, shared by the app and @ui-sdk/solid
   optimizeDeps: { exclude: ["@ui-sdk/core"] },
 })

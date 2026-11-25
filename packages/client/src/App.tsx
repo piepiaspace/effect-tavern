@@ -63,6 +63,7 @@ import {
   settling,
   stage,
   stageNames,
+  demanded,
   type Draft as DraftState,
   type Failure,
   type Id,
@@ -470,7 +471,7 @@ export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failur
           </Show>
         </div>
       </div>
-      <Theater products={props.d.products ?? {}} />
+      <Theater visibleViews={props.d.visibleViews} products={props.d.products ?? {}} />
       <Show when={done() || rewriting()}>
         <footer class="actions">
           <TurnStatus kind={done() ? settleKind(props.phase) : "rewriting"} variant="pill" />
@@ -715,7 +716,7 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
         </Show>
         <Rewrite rerun={!!lineOf(props.node) || !!props.node.input.invoke?.length} node={props.node.id} />
       </footer>
-      <Show when={props.last && options()?.length}>
+      <Show when={props.last && !busy() && options()?.length}>
         <Options items={options()!} />
       </Show>
     </section>
@@ -729,6 +730,7 @@ const Reader = () => {
   const err = read(error)
   const gone = read(lost)
   const busy = read(working)
+  const asked = read(demanded)
   // the draft hangs under its parent: a sibling of a past turn cuts the line there while it is written
   // equal by its nodes: the draft changes every frame while prose streams, and a fresh but same slice must not
   // re-run every section ([UNSTABLE_MEMO_OUTPUT] under the diagnostics)
@@ -746,7 +748,12 @@ const Reader = () => {
           {/* keyed by id: a snapshot read back (after a stop) refreshes each section in place instead of rebuilding them */}
           <For each={shown()} keyed={(n) => n.id}>
             {(n, i) => (
-              <Section view={storyView()} node={n()} n={i() + 1} last={!busy() && i() === shown().length - 1} />
+              <Section
+                view={storyView()}
+                node={n()}
+                n={i() + 1}
+                last={(!busy() || asked() !== null) && i() === shown().length - 1}
+              />
             )}
           </For>
           <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>

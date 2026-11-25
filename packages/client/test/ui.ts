@@ -470,7 +470,7 @@ const fixtures: FixtureEntry[] = [
   ],
   [
     "test/view-shell.tsx",
-    () => "view shell bindings and natural image framing pass in development",
+    () => "view shells preserve input state and natural framing under reactive diagnostics",
     [],
     createMediaUiHost,
   ],
@@ -527,6 +527,9 @@ rules:
   actions: []
 lore: []
 guard: []
+views:
+  - id: gauge
+    html: '<details data-open="latest"><summary>江面</summary><span data-text="fields.潮位"></span></details>'
 catalogs:
   - id: crossings
     kind: image

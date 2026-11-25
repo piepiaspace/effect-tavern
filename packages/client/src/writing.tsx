@@ -127,6 +127,13 @@ export const WritingPage = () => {
   const freeChat = () => isFreeChat(view())
   const loc = () => view()?.local
   const layer = () => view()?.layer
+  const toggleViews = (ids: string[], on: boolean) =>
+    putLocalAndRefresh(cardId(), (l) => {
+      const patches = new Map(l.views?.map((v) => [v.id, v]))
+      for (const id of ids) patches.set(id, { ...patches.get(id), id, on })
+      return { ...l, views: [...patches.values()] }
+    })
+  const anyViewOn = () => !!layer()?.views?.some((v) => v.on !== false)
 
   const fromLabel = (from: string): string => {
     if (from === "harness") return t("writing.builtin")
@@ -234,27 +241,15 @@ export const WritingPage = () => {
               <h3>{t("writing.views")}</h3>
               <Switch
                 label={t("writing.enableViews")}
-                on={loc()?.viewsEnabled !== false}
-                onFlip={() =>
-                  void putLocalAndRefresh(cardId(), (l) => ({ ...l, viewsEnabled: l.viewsEnabled === false }))
-                }
+                on={anyViewOn()}
+                onFlip={() => void toggleViews(layer()?.views?.map((v) => v.id) ?? [], !anyViewOn())}
               />
               <For each={layer()?.views} keyed={(v) => v.id}>
                 {(v) => (
                   <Switch
                     label={v().label ?? v().id}
                     on={v().on !== false}
-                    onFlip={() => {
-                      const id = v().id,
-                        on = v().on === false
-                      void putLocalAndRefresh(cardId(), (l) => ({
-                        ...l,
-                        views: [
-                          ...(l.views ?? []).filter((x) => x.id !== id),
-                          { ...l.views?.find((x) => x.id === id), id, on },
-                        ],
-                      }))
-                    }}
+                    onFlip={() => void toggleViews([v().id], v().on === false)}
                   />
                 )}
               </For>

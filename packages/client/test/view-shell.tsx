@@ -1,3 +1,4 @@
+import { compileView } from "@effect-tavern/runtime/src/view-template.ts"
 import { render } from "@solidjs/web"
 import { For, createSignal } from "solid-js"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
@@ -18,18 +19,20 @@ async function run() {
   const diagnostics = installDiagnosticsBridge()
   diagnostics.begin()
   const [value, setValue] = createSignal({ rows: ["first", "second"], level: 2, weather: "rain" })
-  const view: EffectiveView = {
+  const source = {
     id: "letter",
     product: "inner",
     playerTemplate: true,
-    html: '<details data-open="latest" data-attr-weather="value.weather" data-var-level="value.level"><summary>Log</summary><ol data-each="value.rows" data-as="row"><li><b data-text="row.$num"></b><span data-text="row"></span></li></ol><label for="tab">Tab</label><input type="radio" name="tabs" id="tab"><p data-if="fields.secret">private</p></details>',
+    css: ".panel { display:none } #next:checked ~ .panel { display:block }",
+    html: '<details data-open="latest" data-attr-weather="value.weather" data-var-level="value.level"><summary>Log</summary><ol data-each="value.rows" data-as="row"><li><b data-text="row.$num"></b><span data-text="row"></span></li></ol><label for="tab">Tab</label><input type="radio" name="tabs" id="tab" checked data-attr-weather="value.weather"><input type="radio" name="tabs" id="next"><em class="panel">Two</em><p data-if="fields.secret">private</p></details>',
   }
+  const [view, setView] = createSignal<EffectiveView>({ ...source, tree: compileView(source) })
   const [latest, setLatest] = createSignal(true)
   const ratios = ["3 / 1", "1 / 1", "1 / 3"]
   const dispose = render(
     () => (
       <>
-        <ViewBlock card={cardView} view={view} latest={latest()} value={value()} />
+        <ViewBlock card={cardView} view={view()} latest={latest()} value={value()} />
         <For each={ratios}>
           {(aspect, i) => (
             <MediaFrame
@@ -67,12 +70,17 @@ async function run() {
     require(details.querySelectorAll("li")[1]?.textContent === "2second" &&
       !details.querySelector("p"), "row scope and player lock")
     require(details.querySelector("label")?.control === details.querySelector("input"), "namespaced radio and label")
+    const next = details.querySelector<HTMLInputElement>("#next")!
+    next.click()
+    require(next.checked &&
+      getComputedStyle(details.querySelector(".panel")!).display === "block", "author ID selector")
     details.open = false
     setValue({ rows: ["<b>literal</b>"], weather: "sun", level: NaN })
     await quiet()
     require(!details.open &&
       details.querySelector("li")?.textContent === "1<b>literal</b>" &&
       !details.style.getPropertyValue("--level"), "text, numeric validation and user fold persist")
+    require(next.checked, "manual selection survives data changes")
     details.open = true
     setLatest(false)
     await quiet()
@@ -88,6 +96,18 @@ async function run() {
         img.objectFit === "contain" &&
         img.objectPosition === "25% 20%", "natural composition " + i + " " + css.aspectRatio)
     }
+    const svg = {
+      ...source,
+      html: '<svg><defs><clipPath id="cut"><circle r="4"/></clipPath></defs><rect clip-path="url(#cut)"/></svg>',
+      css: "rect {clip-path:url(#cut)}",
+    }
+    setView({ ...svg, tree: compileView(svg) })
+    await quiet()
+    require(!root()?.querySelector("details") &&
+      root()?.querySelector("clipPath")?.namespaceURI === "http://www.w3.org/2000/svg" &&
+      getComputedStyle(root()!.querySelector("rect")!).clipPath.includes(
+        "#cut",
+      ), "same ID replaces HTML and SVG stylesheet")
     await postResult({ failures: diagnostics.end().diagnostics.map((d) => d.message) })
   } finally {
     dispose()

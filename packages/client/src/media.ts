@@ -1,5 +1,6 @@
+import { viewBindings, displayedImages } from "./view-bindings.ts"
 // Browser-safe client media projections: node illustrations + theater attribution, portraits, and card gallery.
-import { activeView } from "@effect-tavern/runtime/src/view-shell.ts"
+import { activeView, residency } from "@effect-tavern/runtime/src/view-shell.ts"
 import { holds, type Cond, type State } from "@effect-tavern/runtime/src/cond.ts"
 import {
   hashMediaTuple,
@@ -18,7 +19,7 @@ import {
   type NodeMedia,
   type PortraitSlot,
 } from "@effect-tavern/runtime/src/media.ts"
-import { rows, type Catalog, type Product, type Shape, type TableShape } from "@effect-tavern/runtime/src/product.ts"
+import { rows, type Catalog, type Product, type TableShape } from "@effect-tavern/runtime/src/product.ts"
 import { createMemo, createRoot, runWithOwner, type Accessor } from "solid-js"
 import { blocks } from "./markdown.ts"
 import { card, path, stories, type CardView, type Id, type StoryRow } from "./store.ts"
@@ -105,11 +106,13 @@ export interface ResolveGalleryOptions {
   readonly storyOpen?: boolean
   readonly pathNodes?: readonly {
     readonly id: number
+    readonly fields?: State
+    readonly visibleViews?: readonly string[]
     readonly prose: string
     readonly theater?: Readonly<Record<string, unknown>>
     readonly media?: NodeMedia
   }[]
-  readonly headContext?: { readonly worldState?: State } | null
+  readonly headContext?: { readonly worldState?: State; readonly products?: Record<string, unknown> } | null
   readonly headEvents?: readonly string[]
   readonly showAll?: boolean
   readonly peekedKeys?: ReadonlySet<string>
@@ -120,6 +123,7 @@ export type MediaViewLike = {
   readonly catalogs?: readonly Catalog[]
   readonly media?: Media
   readonly layer?: {
+    readonly names?: unknown
     readonly views?: CardView["layer"]["views"]
     readonly products?: readonly Pick<Product, "id" | "role" | "on" | "shape">[]
   }
@@ -143,27 +147,6 @@ export const safeCatalogUrl = (
   } catch {
     return undefined
   }
-}
-
-// Keep column provenance alongside the concrete path. A string elsewhere in a product cannot authorize an image.
-export function productImages(
-  shape: Shape,
-  value: unknown,
-  path = "value",
-): { catalog: string; item: string; path: string }[] {
-  if (!value || typeof value !== "object") return []
-  const refs = (row: Record<string, unknown>, columns: readonly { key: string; catalog?: string }[], prefix: string) =>
-    columns.flatMap((c) => {
-      const id = row[c.key]
-      return c.catalog && typeof id === "string" ? [{ catalog: c.catalog, item: id, path: prefix + "." + c.key }] : []
-    })
-  if (shape.kind === "table" && Array.isArray(value))
-    return safeRows(shape, value).flatMap(({ row, i }) => refs(row, shape.columns, path + "." + i))
-  if (shape.kind !== "record") return []
-  const row = value as Record<string, unknown>
-  return shape.keys.flatMap((k) =>
-    "shape" in k ? productImages(k.shape, row[k.key], path + "." + k.key) : refs(row, [k], path),
-  )
 }
 
 const safeRows = (shape: TableShape, value: unknown) => {
@@ -476,29 +459,27 @@ export const resolveGallery = (
           if (url !== undefined) pathUrls.set(key, url)
         }
       }
-      for (const hit of n.media?.viewMedia ?? []) {
-        if (!view.layer?.views?.some((v) => v.id === hit.viewId && activeView(v))) continue
-        const key = hit.catalog + "\0" + hit.item
-        pathRevealed.add(key)
-        const url = safeCatalogUrl(view.catalogs, { kind: "view", slot: hit.id, ...hit })
-        if (url) pathUrls.set(key, url)
-      }
-      for (const product of view.layer?.products ?? []) {
+      const latest = n === options.pathNodes.at(-1)
+      for (const shell of view.layer?.views ?? []) {
         if (
-          view.media?.illustrations?.some((i) => i.product === product.id) ||
-          product.role !== "theater" ||
-          n.theater?.[product.id] === undefined
+          !activeView(shell) ||
+          shell.playerTemplate ||
+          (residency(shell) === "latest" && !latest) ||
+          (shell.when && !n.visibleViews?.includes(shell.id))
         )
           continue
-        for (const ref of productImages(product.shape, n.theater[product.id])) {
-          const url = safeCatalogUrl(view.catalogs, {
-            kind: "illustration",
-            nodeId: n.id,
-            catalog: ref.catalog,
-            item: ref.item,
-          })
+        const value = shell.product ? n.theater?.[shell.product] : undefined
+        if (shell.product && value === undefined) continue
+        const shape = view.layer?.products?.find((p) => p.id === shell.product)?.shape
+        const context = residency(shell) === "latest" && !shell.product ? options.headContext : undefined
+        const bindings = viewBindings(shell, n, shape, value, view.layer?.names, {
+          fields: context?.worldState?.fields,
+          world: context?.products,
+        })
+        for (const hit of displayedImages(shell.tree, bindings)) {
+          const url = safeCatalogUrl(view.catalogs, hit)
           if (!url) continue
-          const key = ref.catalog + "\0" + ref.item
+          const key = hit.catalog + "\0" + hit.item
           pathRevealed.add(key)
           pathUrls.set(key, url)
         }

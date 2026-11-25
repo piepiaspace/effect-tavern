@@ -179,6 +179,9 @@ const sameIllustration = (a: ResolvedIllustration, b: ResolvedIllustration): boo
   a.occurrence === b.occurrence &&
   a.label === b.label &&
   a.url === b.url &&
+  a.aspect === b.aspect &&
+  a.focus?.[0] === b.focus?.[0] &&
+  a.focus?.[1] === b.focus?.[1] &&
   a.theaterProductId === b.theaterProductId
 
 const sameIllustrationBuckets = (

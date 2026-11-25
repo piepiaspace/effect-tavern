@@ -17,7 +17,8 @@
 // Names are filled per item by its `from` (names.ts `expand`): a player's entry with a hole nothing fills stays out, the
 // card's goes out with the literal `{{key}}`; `holes` lists what nothing fills, either way.
 import { ContextPolicy, checkContextPolicies } from "./lore.ts"
-import { ViewShellPatch, compileView, type EffectiveView } from "./view-shell.ts"
+import { compileView } from "./view-template.ts"
+import { ViewShellPatch, theaterSurface, type EffectiveView } from "./view-shell.ts"
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
@@ -53,7 +54,6 @@ export type Layer = typeof Layer.Type
  *  the install's default, server library.ts `personaFor`); a story's own pick is its row's. */
 export const Local = Schema.Struct({
   ...Layer.fields,
-  viewsEnabled: Schema.optionalKey(Schema.Boolean),
   card: Schema.String,
   mounts: Schema.optionalKey(Schema.Array(Schema.String)), // the packs on this card, in mount order
   persona: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -937,36 +937,47 @@ export const resolveWithTrace = (
     ...allSnippets.flatMap((s) => [s.text, s.after ?? ""]),
   ]
   const views = new Map<string, EffectiveView>()
+  // The menu keeps declaration order. Only an authored template changes the priority of a product takeover.
+  const authored = new Set<string>()
   for (const { from, row } of up) {
     for (const patch of row.views ?? []) {
       const prior = views.get(patch.id)
-      const view = {
-        ...prior,
-        ...patch,
-        playerTemplate: patch.html === undefined && prior ? prior.playerTemplate : row !== cardRow,
+      const { id, on, label, ...definition } = patch
+      const switches = { ...(on !== undefined && { on }), ...(label !== undefined && { label }) }
+      if (prior && !Object.keys(definition).length) {
+        views.set(id, { ...prior, ...switches })
+        continue
       }
-      const product = asked.find((p) => p.id === view.product)
       try {
+        const playerTemplate = row !== cardRow
+        if (playerTemplate && (prior ? !prior.product : !patch.product))
+          throw new Error("player templates require a theater product")
+        const view = { ...prior, ...patch, playerTemplate }
         if (!view.html) throw new Error("view requires html")
-        if (row !== cardRow && !prior && !view.product) throw new Error("player view requires a product")
         if (
           view.product &&
-          (product?.role !== "theater" ||
-            view.product === "options" ||
-            ("surface" in product && product.surface === "composer") ||
-            card.media?.illustrations?.some((i) => i.product === view.product))
+          !theaterSurface(
+            asked.find((p) => p.id === view.product),
+            card.media?.illustrations,
+          )
         )
           throw new Error("view requires an available theater surface")
-        compileView({ html: view.html, ...(view.css !== undefined && { css: view.css }) })
-        views.delete(view.id)
-        views.set(view.id, { ...view, html: view.html })
+        if (playerTemplate) {
+          delete view.when
+          delete view.media
+        }
+        const tree = compileView({ html: view.html, ...(view.css !== undefined && { css: view.css }) })
+        views.set(id, { ...view, html: view.html, tree })
+        authored.delete(id)
+        authored.add(id)
       } catch (error) {
-        dropped.push({ kind: "view", from, id: view.id, why: String(error) })
+        dropped.push({ kind: "view", from, id, why: String(error) })
       }
     }
   }
   const takenProducts = new Set<string>()
-  for (const view of [...views.values()].reverse()) {
+  for (const id of [...authored].reverse()) {
+    const view = views.get(id)!
     if (!view.product || view.on === false) continue
     if (takenProducts.has(view.product)) view.shadowed = true
     takenProducts.add(view.product)
@@ -980,7 +991,7 @@ export const resolveWithTrace = (
       asks: Object.fromEntries(asks),
       products: asked,
       ...(views.size && {
-        views: [...views.values()].map((v) => (local?.viewsEnabled === false ? { ...v, shadowed: true } : v)),
+        views: [...views.values()],
       }),
       entries,
       lexicon: menu(

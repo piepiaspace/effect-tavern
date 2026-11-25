@@ -1041,10 +1041,15 @@ const runPhaseTwo = async (isDesktop: boolean) => {
   }))
   await mount(true)
   await modelControl({ clear: true, turns: [{ prose: "雨灯仍在。" }] })
+  const gauge = () => sec1.querySelector("[data-view=gauge]")?.shadowRoot?.querySelector("details")
+  check(await until(() => !!gauge()?.open), "gauge opens on the current turn")
+  const folded = gauge()!
+  folded.open = false
   turn.demand(0, "postcard")
   const letter = () => sec1.querySelector("[data-view=letter]")?.shadowRoot
   check(await until(() => letter()?.textContent === "雨灯仍在。"), "pack view draws the settled letter")
-  await putLocal(cardId, (l) => ({ ...l, viewsEnabled: false }))
+  check(gauge() === folded && !folded.open, "demand keeps the same folded status view")
+  await putLocal(cardId, (l) => ({ ...l, views: [{ id: "letter", on: false }] }))
   await refreshActiveCard()
   await quiet()
   check(!letter() && sec1.textContent?.includes("雨灯仍在。"), "disabled shell restores the recorded answer in Shaped")
@@ -1056,7 +1061,7 @@ const runPhaseTwo = async (isDesktop: boolean) => {
   )
   await mount(false)
   check(!sec1.textContent?.includes("雨灯仍在。"), "unmounted pack stops presenting its product")
-  await putLocal(cardId, (l) => ({ ...l, viewsEnabled: true }))
+  await putLocal(cardId, (l) => ({ ...l, views: [{ id: "letter", on: true }] }))
   await mount(true)
   check(await until(() => letter()?.textContent === "雨灯仍在。"), "remount restores the historical letter")
 

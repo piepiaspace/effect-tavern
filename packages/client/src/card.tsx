@@ -164,7 +164,7 @@ export const CardPage = () => {
     return resolveGallery(view(), {
       storyOpen: openForCard,
       pathNodes: openForCard ? line() : [],
-      headContext: h ? { worldState: { ...h.context.worldState } } : null,
+      headContext: h ? { worldState: { ...h.context.worldState }, products: h.context.products } : null,
       headEvents: h?.events,
       showAll: showAll(),
       peekedKeys: peeked(),

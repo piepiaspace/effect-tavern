@@ -1,4 +1,5 @@
-import { compileView } from "./view-shell.ts"
+import { compileView, checkMediaBindings } from "./view-template.ts"
+import { theaterSurface } from "./view-shell.ts"
 // Card lint (issue #27): what a card author's type checker says about a card. Pure: a card in, facts and fixes out; no
 // I/O, no console. The throws in `makeCard` / `resolve` stay decode-time invariants; lint reports what decodes but is
 // wired wrong (topology: events, fields, bands, layers) or written where code should do the work (prose: numbers and
@@ -695,21 +696,16 @@ const rules: Rule[] = [
     for (const view of card.views ?? []) {
       const path = "views." + view.id
       try {
-        compileView(view)
+        const tree = compileView(view)
         if (
           dupes((card.views ?? []).map((v) => v.id)).includes(view.id) ||
           dupes((view.media ?? []).map((s) => s.id)).length
         )
           throw new Error("duplicate view or media slot")
         const p = products.get(view.product ?? "")
-        if (
-          view.product &&
-          (!p ||
-            (p.role ?? "theater") !== "theater" ||
-            view.product === "options" ||
-            media.illustrations?.some((i) => i.product === view.product))
-        )
+        if (view.product && !theaterSurface(p, media.illustrations))
           throw new Error("expected an available theater product")
+        checkMediaBindings(tree, view, media.portraits ?? [], catalogs, p?.shape)
         for (const slot of view.media ?? []) {
           if (!catalogs.has(slot.catalog)) throw new Error("unknown view catalog " + slot.catalog)
           consumers.push({ catalog: slot.catalog, expected: "image", path })

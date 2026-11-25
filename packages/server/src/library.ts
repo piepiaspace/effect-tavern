@@ -80,6 +80,7 @@ import {
   type Phase,
   type Pair,
   type Session,
+  type Change,
   type Turn as Logged,
 } from "@effect-tavern/runtime/src/session.ts"
 import { Effect, Schema, Stream } from "effect"
@@ -399,6 +400,11 @@ export const library = ({
     return opened
   }
   const session = (id: Id): Session => open(id).session
+  const timelineChange = (s: Session, { invalidated, node, ...change }: Change) => ({
+    ...change,
+    ...(node && { node: s.projectTimeline(node) }),
+    ...(invalidated?.length && { updated: invalidated.map((id) => s.timelineNode(id)) }),
+  })
   // Capture the session which produced the stream, even when its card is replaced before consumption.
   const events = (story: Id, s: Session, stream: Stream.Stream<Out>): Stream.Stream<PublicEvent> =>
     stream.pipe(
@@ -417,12 +423,7 @@ export const library = ({
           }
         }
         if (e.kind !== "change") return e
-        const { invalidated, node, ...change } = e
-        return {
-          ...change,
-          ...(node && { node: s.projectTimeline(node) }),
-          ...(invalidated?.length && { updated: invalidated.map((id) => s.timelineNode(id)) }),
-        }
+        return { kind: "change", ...timelineChange(s, e) }
       }),
     )
   return {
@@ -454,7 +455,10 @@ export const library = ({
       return at && { ...at, events: events(id, session, at.events) }
     },
     stop: (id: Id) => open(id).turn.stop(),
-    drop: (id: Id, node: Id) => open(id).turn.drop(node),
+    drop: (id: Id, node: Id) => {
+      const { session, turn } = open(id)
+      return timelineChange(session, turn.drop(node))
+    },
     trace: (id: Id, node: Id) => {
       if (!session(id).log.nodes.has(node)) throw new Error(`no node ${node}`)
       return data.calls(id).get(node) as Call[]

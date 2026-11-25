@@ -387,6 +387,16 @@ export const apply = (e: Wire): void => {
 const drain = () => {
   while (held.length && (play.queue.length === 0 || flows(held[0]))) applyNow(held.shift()!)
 }
+export const updateTimeline = (e: L.Change<Node> & { updated?: readonly Node[] }) => {
+  registry.update(log, (l) => {
+    const next = L.apply(l, e)
+    if (!e.updated?.length) return next
+    const nodes = new Map(next.nodes)
+    for (const n of e.updated) nodes.set(n.id, n)
+    return { ...next, nodes }
+  })
+}
+
 /** The open story's row in the listing as its stream says (a stage, or the turn over): the server writes `busy` too,
  *  but the client reads it again only at a stream's end or the sidebar's poll, and a tab's dot must not wait. A story
  *  left mid-turn keeps its row as it was until the next listing. */
@@ -420,6 +430,7 @@ const applyNow = (e: Wire): void => {
       // A narrate after check is a rewrite (first draft greys under it); a second narrate after narrate is a
       // truncation continuation (session.ts prefill resume) and appends to the prose already written.
       if (e.phase === "narrate") {
+        if (e.visibleViews) registry.update(draft, (d) => (d ? { ...d, visibleViews: e.visibleViews! } : d))
         if (prev === "check") {
           resetPlay()
           registry.update(draft, (d) =>
@@ -449,13 +460,7 @@ const applyNow = (e: Wire): void => {
       return
     case "change": {
       const amended = e.node !== undefined && registry.get(log).nodes.has(e.node.id)
-      registry.update(log, (l) => {
-        const next = L.apply(l, e)
-        if (!e.updated?.length) return next
-        const nodes = new Map(next.nodes)
-        for (const n of e.updated) nodes.set(n.id, n)
-        return { ...next, nodes }
-      })
+      updateTimeline(e)
       const id = e.node?.id
       if (id !== undefined || !registry.get(draft)) {
         // What waits behind this node is the same turn's (record's commit, a passage's node): `settle` clears the

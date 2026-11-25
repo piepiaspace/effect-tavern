@@ -7,7 +7,8 @@ import { resolve } from "node:path"
 import { fake } from "@effect-tavern/provider"
 import { Effect, Stream } from "effect"
 import { checkValue, validateCard } from "../src/author.ts"
-import { activeView, compileView } from "../src/view-shell.ts"
+import { compileView } from "../src/view-template.ts"
+import { activeView } from "../src/view-shell.ts"
 import { decodeLayer, resolve as resolveLayer } from "../src/layer.ts"
 import * as Log from "../src/log.ts"
 import { resolveCatalogUrl } from "../src/media.ts"
@@ -85,6 +86,44 @@ assert.ok(
 assert.ok(!resolveViews({ ...local, mounts: [] }).products.some((p) => p.id === "letter"))
 assert.ok(mounted.views?.find((v) => v.id === "stationery")?.playerTemplate)
 
+const toggled = resolveViews({ ...local, views: [{ id: "ferry_letter", on: true }] })
+assert.deepEqual(
+  toggled.views?.map((v) => v.id),
+  mounted.views?.map((v) => v.id),
+)
+assert.deepEqual(
+  toggled.views?.filter((v) => v.product === "inner" && activeView(v)).map((v) => v.id),
+  ["public"],
+)
+const intruding = decodeLayer({
+  id: "rewrite",
+  name: "rewrite",
+  views: [
+    { id: "ferry_hud", html: "<p></p>" },
+    { id: "ferry_letter", css: "p{color:red}" },
+  ],
+})
+const privateLetter = {
+  ...ferry,
+  views:
+    ferry.views?.map((v) =>
+      v.id === "ferry_letter"
+        ? { ...v, when: { path: "天气", is: "雨" }, media: [{ id: "private", catalog: "crossings" }] }
+        : v,
+    ) ?? [],
+}
+const locked = resolveLayer(privateLetter, { local: { ...local, mounts: [intruding.id] }, packs: [intruding] })
+assert.ok(locked.dropped.some((d) => d.id === "ferry_hud"))
+const replaced = locked.views?.find((v) => v.id === "ferry_letter")
+assert.ok(replaced?.playerTemplate && !replaced.when && !replaced.media)
+for (const binding of ["media.unknown", "portraits.missing", "crossings:value.fake", "absent:value"]) {
+  const check = validateCard({ ...ferry, views: [{ id: "broken", html: '<div data-media="' + binding + '"></div>' }] })
+  assert.ok(
+    check.diagnostics.some((d) => d.rule === "bad-view"),
+    binding,
+  )
+}
+
 assert.equal(ferry.id, "ferry")
 assert.deepEqual(checkValue(ferry).diagnostics, [])
 
@@ -125,13 +164,20 @@ assert.deepEqual(sorted.media, ferry.media)
     if (doc.phase === "narrate") return { text: "第一段江风。\n\n第二段渔火。" }
     return defaultAnswer(doc)
   })
-  const S = makeSession({ card: ferry, rows: () => ({}), model: () => genericFake })
+  const guardedCard = {
+    ...ferry,
+    views: ferry.views!.map((v) => (v.product === "inner" ? { ...v, when: { path: "天气", is: "晴" } } : v)),
+  }
+  const S = makeSession({ card: guardedCard, rows: () => ({}), model: () => genericFake })
   const root = S.greet(ferry.greetings[0]).node!
   assert.deepEqual(S.projectTimeline(root).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }],
     viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "calm" }],
   })
-  const turn1 = lastNode(await collect(S.act(root.id, { text: "上船歇脚。" })))
+  const events = await collect(S.act(root.id, { text: "上船歇脚。" }))
+  assert.ok(events.some((e) => e.kind === "stage" && e.phase === "narrate" && e.visibleViews?.includes("ferry_letter")))
+  const turn1 = lastNode(events)
+  assert.equal(S.timelineNode(root.id).media?.viewMedia, undefined)
   const proj = S.projectTimeline(turn1)
   assert.deepEqual(proj.media?.illustrations, [
     { productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 1 },

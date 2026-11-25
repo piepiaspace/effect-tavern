@@ -37,6 +37,15 @@ export interface NodeMedia {
   bgm?: { catalog: string; id: string }
 }
 
+export function nodeCondition(fields: State, events: readonly string[], context: () => State) {
+  const fieldState = { fields }
+  let fullState: State | undefined
+  return (when: NonNullable<Catalog["items"][number]["when"]>) => {
+    const needsContext = reads(when).some((p) => p.startsWith("world.") || p.startsWith("lore."))
+    return holds(when, needsContext ? (fullState ??= context()) : fieldState, events)
+  }
+}
+
 /** Project a node's semantic media view from declared card bindings, merged products, effective catalogs, and path context. */
 export const projectNodeMedia = ({
   media,
@@ -84,12 +93,7 @@ export const projectNodeMedia = ({
   const track = media?.bgm && picks(media.bgm.product)[0]
   const bgm = track && { catalog: track.catalog, id: track.id }
 
-  const fieldState = { fields }
-  let fullState: State | undefined
-  const matches = (when: NonNullable<Catalog["items"][number]["when"]>) => {
-    const needsContext = reads(when).some((p) => p.startsWith("world.") || p.startsWith("lore."))
-    return holds(when, needsContext ? (fullState ??= context()) : fieldState, events)
-  }
+  const matches = nodeCondition(fields, events, context)
   const select = (slot: PortraitSlot) => {
     const cat = catalogs.find((c) => c.id === slot.catalog)
     const matched = cat?.items.find((i) => !i.when || matches(i.when))

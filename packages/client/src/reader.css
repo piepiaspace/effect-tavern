@@ -260,7 +260,6 @@ main > section:last-of-type {
     z-index: 1;
   }
 }
-/* desktop reader portraits: out-of-flow bust medallions in the blank right margin below `.stage-keys` */
 .view-boundary {
   contain: layout paint;
   min-width: 0;

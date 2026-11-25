@@ -1,20 +1,20 @@
-import { Dynamic, render, type JSX } from "@solidjs/web"
-import { createEffect, createMemo, For, Show, onCleanup } from "solid-js"
-import { compileView, type EffectiveView, type TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
+import { canonicalPath, readPath, viewBindings, visibleElement, type Scope } from "./view-bindings.ts"
+import {
+  Dynamic,
+  insert,
+  getDelegatedRoot,
+  registerDelegatedContainer,
+  unregisterDelegatedContainer,
+  type JSX,
+} from "@solidjs/web"
+import { createEffect, createMemo, For, Show, onSettled } from "solid-js"
+import { type EffectiveView, type TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
 import type { TimelineNode, ActiveContextView } from "@effect-tavern/runtime/src/projection.ts"
 import type { CardView } from "./store.ts"
 import { MediaFrame } from "./lightbox.tsx"
-import { productImages, presentation, safeCatalogUrl } from "./media.ts"
+import { presentation, safeCatalogUrl } from "./media.ts"
 import frameCss from "./lightbox.css?inline"
 
-type Scope = Record<string, unknown>
-const readPath = (scope: Scope, path: string) => {
-  if (Object.hasOwn(scope, path)) return scope[path]
-  return path
-    .split(".")
-    .reduce<unknown>((v, k) => (v && typeof v === "object" && Object.hasOwn(v, k) ? (v as Scope)[k] : undefined), scope)
-}
-const truth = (v: unknown) => (Array.isArray(v) ? v.length > 0 : Boolean(v))
 const scalar = (v: unknown) => (["string", "boolean", "number"].includes(typeof v) ? String(v) : undefined)
 
 interface Props {
@@ -30,64 +30,28 @@ const stylesheet = (css: string) => {
   s.replaceSync(css)
   return s
 }
-const compiled = new WeakMap<EffectiveView, { tree: TemplateNode[]; sheet: CSSStyleSheet }>()
+const sheets = new WeakMap<EffectiveView, CSSStyleSheet>()
 let mediaSheet: CSSStyleSheet | undefined
-function template(view: EffectiveView) {
-  let result = compiled.get(view)
-  if (!result) {
-    result = { tree: compileView(view), sheet: stylesheet(view.css ?? "") }
-    compiled.set(view, result)
-  }
-  return result
+function viewSheet(view: EffectiveView) {
+  let sheet = sheets.get(view)
+  if (!sheet) sheets.set(view, (sheet = stylesheet(view.css ?? "")))
+  return sheet
 }
 
 export const ViewBlock = (props: Props) => {
-  const slots = (portrait: boolean) => {
-    const media = props.node?.media
-    return Object.fromEntries(
-      (portrait ? (media?.portraits ?? []) : (media?.viewMedia?.filter((m) => m.viewId === props.view.id) ?? [])).map(
-        (m) => [m.id, m],
-      ),
-    )
-  }
-  const scope = createMemo((): Scope => {
-    const common = { value: props.value, names: props.card.layer.names }
-    return props.view.playerTemplate
-      ? common
-      : {
-          ...common,
-          fields: props.context?.worldState.fields ?? props.node?.fields,
-          ...(props.view.product ? {} : { world: props.context?.products, theater: props.node?.theater }),
-          media: slots(false),
-          portraits: slots(true),
-        }
-  })
-  const refs = createMemo(() => {
-    const product = props.card.layer.products.find((p) => p.id === props.view.product)
-    return product ? productImages(product.shape, props.value) : []
-  })
+  const bindings = createMemo(() =>
+    viewBindings(
+      props.view,
+      props.node,
+      props.card.layer.products.find((p) => p.id === props.view.product)?.shape,
+      props.value,
+      props.card.layer.names,
+      { fields: props.context?.worldState.fields, world: props.context?.products },
+    ),
+  )
   function image(binding: string, aliases: Record<string, string>) {
-    let target
-    if (binding.includes(":")) {
-      const [catalog, path] = binding.split(":")
-      const [root, ...keys] = path.split(".")
-      const canonical = [Object.hasOwn(aliases, root) ? aliases[root] : root, ...keys].join(".")
-      const ref = refs().find((r) => r.path === canonical && r.catalog === catalog)
-      if (!ref || !props.node || props.view.playerTemplate) return
-      target = { kind: "illustration" as const, nodeId: props.node.id, catalog, item: ref.item }
-    } else {
-      if (props.view.playerTemplate) return
-      const [kind, slot] = binding.split(".")
-      const hit = slots(kind === "portraits")[slot]
-      if (!hit) return
-      target = {
-        kind: kind === "portraits" ? ("portrait" as const) : ("view" as const),
-        viewId: props.view.id,
-        slot,
-        catalog: hit.catalog,
-        item: hit.item,
-      }
-    }
+    const target = bindings().image(binding, aliases)
+    if (!target) return
     const entry = props.card.catalogs?.find((c) => c.id === target.catalog)?.items.find((i) => i.id === target.item)
     return (
       entry && {
@@ -109,20 +73,16 @@ export const ViewBlock = (props: Props) => {
       const get = (key: string) => readPath(data(), a[key])
       const media = () => image(a["data-media"], aliases())
       const attributes = () => {
-        const out: Record<string, unknown> = {}
+        const out: Record<string, unknown> = n.svg ? { xmlns: "http://www.w3.org/2000/svg" } : {}
         const style: Record<string, string> = {}
         for (const [key, value] of Object.entries(a)) {
           if (key.startsWith("data-var-")) {
             const v = readPath(data(), value)
             if (typeof v === "number" && Number.isFinite(v)) style["--" + key.slice(9)] = String(v)
           } else if (key.startsWith("data-attr-")) out["data-" + key.slice(10)] = scalar(readPath(data(), value))
-          else if (!key.startsWith("data-"))
-            out[key] =
-              (n.tag === "input" && ["id", "name"].includes(key)) || (n.tag === "label" && key === "for")
-                ? prefix() + value
-                : key === "open" || key === "checked"
-                  ? true
-                  : value
+          else if (key === "checked") out.defaultChecked = true
+          else if (key === "name" && a.type === "radio") out.name = prefix() + value
+          else if (!key.startsWith("data-")) out[key] = key === "open" ? true : value
         }
         if (a["data-open"] === "latest") out.open = props.latest
         return { ...out, style }
@@ -148,8 +108,7 @@ export const ViewBlock = (props: Props) => {
           return (
             <For each={Array.isArray(items()) ? (items() as unknown[]) : []} keyed={false}>
               {(item, i) => {
-                const parent = a["data-each"].split(".")
-                const source = () => [aliases()[parent[0]] ?? parent[0], ...parent.slice(1), i].join(".")
+                const source = () => canonicalPath(a["data-each"], aliases()) + "." + i
                 return branch(
                   n.children,
                   () => ({ ...data(), [alias]: item(), [alias + ".$num"]: i + 1 }),
@@ -163,13 +122,7 @@ export const ViewBlock = (props: Props) => {
         return branch(n.children, data, aliases, prefix)
       }
       return (
-        <Show
-          when={
-            (!a["data-if"] || truth(get("data-if"))) &&
-            (!a["data-unless"] || !truth(get("data-unless"))) &&
-            (!a["data-media"] || media())
-          }
-        >
+        <Show when={visibleElement(a, data()) && (!a["data-media"] || media())}>
           <Dynamic component={n.tag as "div"} {...attributes()}>
             {body()}
           </Dynamic>
@@ -180,9 +133,8 @@ export const ViewBlock = (props: Props) => {
   const host = document.createElement("div")
   host.className = "view-shell"
   const root = host.attachShadow({ mode: "open" })
-  const compiledView = createMemo(() => template(props.view))
   createEffect(
-    () => ({ sheet: compiledView().sheet, id: props.view.id, latest: props.latest }),
+    () => ({ sheet: viewSheet(props.view), id: props.view.id, latest: props.latest }),
     ({ sheet, id, latest }) => {
       host.dataset.view = id
       host.toggleAttribute("data-latest", latest)
@@ -192,19 +144,21 @@ export const ViewBlock = (props: Props) => {
       ]
     },
   )
-  const dispose = render(
-    () => (
-      <>
-        {branch(
-          compiledView().tree,
-          scope,
-          () => ({}),
-          () => String(props.node?.id ?? "draft") + "-" + props.view.id + "-",
-        )}
-      </>
+  // Keep the template's computations under the reader's Loading boundary.
+  const contents = createMemo(() =>
+    branch(
+      props.view.tree,
+      () => bindings().scope,
+      () => bindings().aliases,
+      () => String(props.node?.id ?? "draft") + "-" + props.view.id + "-",
     ),
-    root,
   )
-  onCleanup(dispose)
+  insert(root, <>{contents()}</>)
+  onSettled(() => {
+    const owner = getDelegatedRoot(host)
+    if (!owner) return
+    registerDelegatedContainer(root, owner)
+    return () => unregisterDelegatedContainer(root, owner)
+  })
   return <div class="view-boundary">{host}</div>
 }

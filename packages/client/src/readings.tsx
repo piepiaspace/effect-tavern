@@ -601,11 +601,11 @@ export const Demand = (props: { node: Node; n: number }) => {
  *  too while they stream (store.ts `Draft.products`): no node yet, so no key. */
 /** A streaming block's edges, as the landed one will have them (journal.ts `split` trims): no height jump when it lands. */
 const trimmed = (v: unknown) => (typeof v === "string" ? v.trim() : v)
-const eligible = (v: EffectiveView, node: Node | undefined, last: boolean) =>
-  activeView(v) && (residency(v) === "turn" || last) && (!v.when || !!node?.visibleViews?.includes(v.id))
+const eligible = (v: EffectiveView, visible: readonly string[] | undefined, last: boolean) =>
+  activeView(v) && (residency(v) === "turn" || last) && (!v.when || !!visible?.includes(v.id))
 export const StateViews = (props: { node: Node; last: boolean; view: CardView | null }) => {
   const views = createMemo(
-    () => props.view?.layer.views?.filter((v) => !v.product && eligible(v, props.node, props.last)) ?? [],
+    () => props.view?.layer.views?.filter((v) => !v.product && eligible(v, props.node.visibleViews, props.last)) ?? [],
     { equals: (a, b) => a.length === b.length && a.every((v, i) => v === b[i]) },
   )
   const current = createMemo(() => {
@@ -628,7 +628,12 @@ export const StateViews = (props: { node: Node; last: boolean; view: CardView | 
     </For>
   )
 }
-export const Theater = (props: { last?: boolean; products: Readonly<Record<string, unknown>>; node?: Node }) => {
+export const Theater = (props: {
+  visibleViews?: readonly string[] | undefined
+  last?: boolean
+  products: Readonly<Record<string, unknown>>
+  node?: Node
+}) => {
   const view = read(card)
   const busy = read(working)
   const unresolved = () => props.node?.settlementStatus === "pending" || props.node?.settlementStatus === "failed"
@@ -661,7 +666,9 @@ export const Theater = (props: { last?: boolean; products: Readonly<Record<strin
           </div>
           <Show
             when={view()?.layer.views?.find(
-              (v) => v.product === p().id && eligible(v, props.node, props.last ?? !props.node),
+              (v) =>
+                v.product === p().id &&
+                eligible(v, props.node?.visibleViews ?? props.visibleViews, props.last ?? !props.node),
             )}
             fallback={<Shaped shape={p().shape} value={trimmed(props.products[p().id])} />}
           >
