@@ -61,7 +61,7 @@ export type SpanKind =
   | "correction"
   | "block"
   | "tail"
-  | "wrap" // the `narrate.wrap` ask: the user message the harness adds under a hat's wrap (#220)
+  | "wrap" // `harness.narrate.wrap`: the user message the harness adds under a hat's wrap (#220)
 
 export interface Span {
   start: number
@@ -75,8 +75,9 @@ export type MessageZone = "head" | "history" | "input" | "turn" | "tail"
 export type MessageSubzone =
   | "hat-lead"
   | "lead"
-  | "frame"
+  | "world" // `<world>`: the frame's who and where, as the off-stage stages read it
   | "fiction"
+  | "guidelines" // `<writing_guidelines>`: the frame's writing slots and the player's head fragments
   | "hat-head"
   | "summary"
   | "history"

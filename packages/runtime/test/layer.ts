@@ -1085,8 +1085,8 @@ for (const povText of ["", "{{missing}}"]) {
   // the frame: the row's slot in the head, its tail fragment last in narrate alone
   const narrate = texts(asked(first, "narrate"))
   assert.ok(narrate.some((t) => t.includes("PACK-STYLE")))
-  assert.equal(narrate.at(-1), "PACK-TAIL")
-  assert.ok(!texts(asked(first, "record")).includes("PACK-TAIL"))
+  assert.match(narrate.at(-1)!, /^<writing_tail>\n.*\nPACK-TAIL\n<\/writing_tail>$/)
+  assert.ok(!texts(asked(first, "record")).some((t) => t.includes("PACK-TAIL")))
   const second = await collect(S.act(n1.id, { text: "two" }))
   const n2 = nodeOf(second)
   assert.ok(texts(asked(second, "narrate")).some((t) => t.includes("The first sentence. The rest of it.")))

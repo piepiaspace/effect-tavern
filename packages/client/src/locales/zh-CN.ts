@@ -823,8 +823,6 @@ const zh = {
     outerMessages: "外层消息",
     cacheOff: "前缀缓存关闭",
     cacheOffWhy: "工具说明每轮都在变，叙事请求不设缓存断点",
-    diagWrapNeedsUser:
-      "这个模板开启了工具封装，外层消息只有最前导与尾部预填，其中没有用户消息，而补这条消息的「工具封装触发」问法是空的。请在最前导或尾部预填里写一条用户消息，或恢复这条问法。",
     reasonNotWrapped: "思考未封装",
     resourcesTitle: "条目与模拟读取",
     resourcesEmpty: "当前卡片没有可检索条目",

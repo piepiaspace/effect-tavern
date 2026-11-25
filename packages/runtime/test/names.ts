@@ -228,7 +228,7 @@ assert.ok(has(doc(third, "narrate"), "HELD 玩家给的."))
   for (const [c, phase, seen] of [
     [{ frame: [{ id: "style", text: "F {{missing}}" }] }, "narrate", "F {{missing}}"],
     [{ fiction: [{ id: "f", text: "F {{missing}}" }] }, "narrate", "F {{missing}}"],
-    [{ guard: ["别替 {{user}} 说话"] }, "check", "Rule: 别替 {{user}} 说话"], // the guard line kept, the literal in it
+    [{ guard: ["别替 {{user}} 说话"] }, "check", "<rules>\n别替 {{user}} 说话"], // the guard line kept, the literal in it
     [
       {
         rules: {
@@ -306,7 +306,7 @@ assert.ok(has(doc(third, "narrate"), "HELD 玩家给的."))
   const guarded: Card = { ...card, lore: [], guard: ["RULE {{char}}"] }
   const G = makeSession({ card: guarded, rows: () => plain, model: () => violating })
   const es = await collect(G.act(null, { text: "hi" }))
-  assert.ok(has(doc(es, "check"), "Rule: RULE 依瑞丝"))
+  assert.ok(has(doc(es, "check"), "<rules>\nRULE 依瑞丝"))
   assert.deepEqual(nodeOf(es).turn.violated, ["RULE 依瑞丝"])
   const none = makeSession({
     card: { ...guarded, guard: [] },
