@@ -55,7 +55,7 @@ Effect Tavern 明确否定并拆解了传统酒馆生态中的若干常见抽象
 | **`Character Card`（角色卡 V2/V3）** | `Card`（`frame` + `fiction` + `participant` / `author` 坐标） | 单 NPC 固定字段（`description`、`personality`、`mes_example`、`post_history_instructions`）迫使群像、跑团与无主角世界卡把人物栏当脚本容器滥用。 |
 | **`Depth`（`@D` 深度插入）与作者注释** | `at: "head" \| "tail"` + `note`（`Channel`） | 按倒数第 `N` 层往历史对话插队会每轮改写消息前缀，直接击穿推理端点的 KV 前缀缓存并污染 `transcript`；当轮高权重信息一律进 `tail`。 |
 | **`Worldbook`（世界书 / 蓝绿灯关键词触发）** | `Lore`（`unlock`、`offer`、`sections`）+ `lookup`（`hook`）+ `ContextPolicy` | 对聊天文本做子串/正则扫描会因顺口提及而误触发、因同义换词而漏检，且无法表达随剧情单调解锁的真相深度。 |
-| **内联 `<status>` 状态栏、MVU 与正则脚本** | `decide` / `settle` + `record`（`Readout`、`Product`、`DomainChange`）+ `<<aside>>` | 让叙事模型一边写正文一边算数值、吐 JSON 尾块再用正则剥离，既损伤文笔又会在重抽/改文时导致状态漂移（静态检查 `inline-product` 直接拦截）。 |
+| **内联 `<status>` 状态栏、MVU 与正则脚本** | `decide` / `settle` + `record`（`Readout`、`Product`、`DomainChange`）+ `ViewShell` | 让叙事模型一边写正文一边算数值、吐 JSON 尾块再用正则剥离，既损伤文笔又会在重抽/改文时导致状态漂移（静态检查 `inline-product` 直接拦截）。 |
 | **`[OOC: ...]` 聊天括号旁白** | `note`（场外通道）与 `thought`（场内私密心声 `mark`） | 把场外指令塞进普通发言会永久污染历史转录稿，还会混淆“给导演的场外指示”与“角色未说出口的心声”。 |
 | **负向咒语墙（“严禁抢话 / 严禁写某词”）** | `switches.agency`（`pov` 槽）+ `Guard`（`check`）+ `Lexicon`（`polish`） | 往 `narrate` 提示词堆砌大量“不要……”会挤占注意力并诱发粉红大象效应；禁忌核查与套话除垢一律后置到事后阶段。 |
 | **有状态模板宏（`{{setvar}}`、`{{roll}}`）** | `Cond` + `Effect` + `Action.roll` + 单遍代称字典 `Names`（`{{key}}`） | 在字符串模板里夹带可变脚本会产生无法静态分析与回放的隐式状态（静态检查 `unsupported-macro` 拦截）。 |

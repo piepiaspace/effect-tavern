@@ -20,9 +20,7 @@ export const KIND_LABEL: Record<ProductKind, Key> = {
 /** A row's kind by its declaration; a patch, which declares nothing, is a 小剧场 as a new id is (layer.ts `patched`). */
 export const productKind = (p: Pick<ProductPatch, "role" | "surface">): ProductKind =>
   p.role === "chronicle" ? "chronicle" : p.surface === "composer" ? "composer" : "theater"
-/** The declaration a kind writes, every other structural key cleared (`withProductPatch` drops an undefined one): a
- *  chronicle is text folded into what the model is fed, a composer list four items asked at record, a 小剧场 text
- *  asked with the prose unless it already says otherwise, by turn or on demand. */
+/** Switching kinds replaces the structural fields of the product (`withProductPatch` drops undefined keys). */
 export const kindFields = (kind: ProductKind, trigger: "demand" | "turn"): Omit<ProductPatch, "id"> => {
   const none = { surface: undefined, fold: undefined, feed: undefined, trigger: undefined }
   if (kind === "chronicle") return { ...none, role: "chronicle", shape: { kind: "text" }, fold: "append", feed: true }

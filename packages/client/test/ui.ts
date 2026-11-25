@@ -588,6 +588,7 @@ function createMediaUiHost(): FixtureHost {
       if (!doc.tools.includes("finish_record")) {
         const index = demandPlans.findIndex((plan) => doc.asked.some((id) => Object.hasOwn(plan, id)))
         const [plan] = index >= 0 ? demandPlans.splice(index, 1) : []
+        if (typeof plan?.fail === "string") throw new Error(plan.fail)
         return { ...defaultAnswer(doc, plan), ...(typeof plan?.delay === "number" && { delay: plan.delay }) }
       }
       const plan = currentTurn

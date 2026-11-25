@@ -177,7 +177,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   ])
 
   // ───────── record ─────────
-  // a 小剧场 is narrate's, not this record document's; a catalog with no survivor drops what reads it (session `record`)
+  // Each theater has its own parallel record call. This document previews the main settlement.
   const catalogs = catalogsOf(card, rows)
   const asked = withCatalogs(
     askedAt(R.products, gated).filter((p) => p.role !== "theater"),

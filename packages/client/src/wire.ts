@@ -419,14 +419,8 @@ export const fetchSettings = (): Promise<unknown> =>
     fetchNames(),
   ])
 
-/** What a stream's caller hears besides its events. `lost`: the transport failed (the request got no answer, or the
- *  stream broke after it opened: the phone went to the background, the network dropped, the bytes stopped mid-frame),
- *  or the stream ended while its turn was still open, told whether any event had come down it; without `lost` that
- *  failure is an `error` like any other, and an early end only ends the stream. The server ends a turn's stream after
- *  an `error`, or a `change` that leaves no node pending (the record still to run is the same turn): ended before one,
- *  a web view suspended or a proxy's timeout closed it, and the turn may be running yet. `idle`: a 204, no turn in
- *  flight. A refusal the server answered, an `error` event it sent, bytes the decoder cannot read and a stream this
- *  client closed are never `lost`. */
+/** A transport failure or EOF before the server's end frame calls `lost` with whether a turn event arrived.
+ *  A server error also ends the turn. A 204 on attach calls `idle`. */
 export interface Ends {
   lost?: (heard: boolean) => void
   idle?: () => void
@@ -476,12 +470,12 @@ export const listen = (
   let opened = false
   let broken = false // the transport failed: the request, or a read of the open stream
   let heard = false
-  let running = true // the turn on this stream: no `error` and no `change` that leaves nothing pending heard on it yet
+  let finished = false // a confirmed end or a terminal error
   const closed = () => {
     if (!opened) return
     opened = false
     registry.update(openStreams, (count) => count - 1)
-    if (!ac.signal.aborted && !registry.get(openStreams)) emit({ kind: "streamEnd" })
+    if (finished && !ac.signal.aborted && !registry.get(openStreams)) emit({ kind: "streamEnd" })
   }
   ac.signal.addEventListener("abort", closed, { once: true })
   void (async () => {
@@ -502,32 +496,29 @@ export const listen = (
       }
       opened = true
       registry.update(openStreams, (count) => count + 1)
-      // only a caller that hears a lost stream has its reads watched: the bare stream otherwise, as it always was
-      if (ends.lost)
-        await readTurnEvents<Wire>(
-          watched(res.body, () => (broken = true)),
-          (e) => {
-            heard = true
-            if (e.kind === "error") running = false
-            else if (e.kind === "change") running = e.node?.settlementStatus === "pending"
-            emit(e)
-          },
-          ac.signal,
-        )
-      else await readTurnEvents<Wire>(res.body, emit, ac.signal)
+      const body = ends.lost ? watched(res.body, () => (broken = true)) : res.body
+      const ended = await readTurnEvents<Wire>(
+        body,
+        (e) => {
+          heard = true
+          if (e.kind === "error") finished = true
+          emit(e)
+        },
+        ac.signal,
+      )
       if (ac.signal.aborted) return
-      if (running && ends.lost) return ends.lost(heard) // ended mid-turn: read again by the caller, as a break is
+      if (!ended && !finished && ends.lost) return ends.lost(heard)
+      finished = true
       void fetchStories() // the open story's row: its size, its last line, its time
     } catch (e) {
-      if (ac.signal.aborted) return
-      if (e instanceof IncompleteStream) broken = true // the bytes stopped mid-frame: the transport's, not the decoder's
-      if (broken && ends.lost) ends.lost(heard)
-      else
-        emit({
-          kind: "error",
-          message: e instanceof Error ? e.message : String(e),
-          ...(e instanceof Error && "code" in e && typeof e.code === "string" ? { code: e.code } : {}),
-        })
+      if (ac.signal.aborted || finished) return
+      if ((broken || e instanceof IncompleteStream) && ends.lost) return ends.lost(heard)
+      finished = true
+      emit({
+        kind: "error",
+        message: e instanceof Error ? e.message : String(e),
+        ...(e instanceof Error && "code" in e && typeof e.code === "string" ? { code: e.code } : {}),
+      })
     } finally {
       closed()
     }

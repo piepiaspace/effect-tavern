@@ -145,7 +145,7 @@ const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     return new Response(
       fail
         ? 'event: error\ndata: {"message":"fixture failure"}\n\n'
-        : `event: change\ndata: ${JSON.stringify({ kind: "change", node: n, head: 1 })}\n\n`,
+        : `event: change\ndata: ${JSON.stringify({ kind: "change", node: n, head: 1 })}\n\nevent: end\n\n`,
       { headers: { "content-type": "text/event-stream" } },
     )
   }

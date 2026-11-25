@@ -142,7 +142,7 @@ export type Event =
       out: unknown
       usage: Usage
       ms: number
-      product?: string // one independently generated record-stage theater
+      product?: string // the theater product this call generates
       via?: "decision"
       model?: string
       fault?: Fault

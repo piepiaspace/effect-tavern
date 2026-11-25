@@ -415,7 +415,7 @@
   line-height: 1.45;
 }
 
-/* the outputs & in-stream views: compact cards in one unified two-column grid (`.prod-kind` stays for packs.tsx) */
+/* product cards in a two-column grid (`.prod-kind` stays for packs.tsx) */
 .prod-body {
   flex: 1;
   min-height: 0;

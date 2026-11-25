@@ -48,6 +48,7 @@ const sse = (text: string) =>
   text
     .trim()
     .split("\n\n")
+    .filter((block) => block.includes("\ndata: "))
     .map((block) => JSON.parse(block.split("\ndata: ")[1]))
 try {
   assert.equal((await http(remote, "/bun:info")).status, 404)

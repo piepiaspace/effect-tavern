@@ -309,7 +309,7 @@ const rules: Rule[] = [
                 rule: "unknown-product",
                 level: "error",
                 path: `passages[${i}].digest[${j}]`,
-                message: `${id}: digest requires a visible record product`,
+                message: `${id}: digest requires a product declared on the card`,
               },
             ],
       ),

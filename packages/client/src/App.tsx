@@ -50,7 +50,7 @@ import { gutter, wide } from "./viewport.ts"
 import {
   card,
   updateComposition,
-  demanded,
+  latestViewsReady,
   dismiss,
   draft,
   drawn,
@@ -638,11 +638,7 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
     }
     turn.checkout(siblings()[i].id)
   }
-  const demandNode = read(demanded)
-  const phase = read(stage)
-  const pendingDraft = read(draft)
-  // Field edits also open a stream. They update the mounted HUD without running a model stage.
-  const settled = () => !busy() || demandNode() !== null || (phase() === null && pendingDraft() === null)
+  const settled = read(latestViewsReady)
   const views = createMemo(() => eligibleNodeViews(props.view, props.node, props.last, settled()), {
     equals: sameViews,
   })

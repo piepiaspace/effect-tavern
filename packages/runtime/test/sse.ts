@@ -1,5 +1,5 @@
 import assert from "node:assert/strict"
-import { readTurnEvents, type TurnStreamEvent } from "../src/sse.ts"
+import { readTurnEvents, TURN_END_FRAME, type TurnStreamEvent } from "../src/sse.ts"
 
 const encoder = new TextEncoder()
 const byteByByte = (bytes: Uint8Array) =>
@@ -23,6 +23,17 @@ assert.deepEqual(received, [
   { kind: "delta", part: { type: "text-delta", id: "0", text: "山风掠过竹林" } },
   { kind: "error", phase: "narrate", message: "错误" },
 ])
+
+// The data-less end frame is transport metadata. A frame-boundary EOF alone cannot confirm completion.
+for (const [tail, expected] of [
+  ["", false],
+  [TURN_END_FRAME, true],
+] as const) {
+  const events: TurnStreamEvent[] = []
+  const ended = await readTurnEvents(byteByByte(encoder.encode(sample + tail)), (e) => events.push(e))
+  assert.equal(ended, expected)
+  assert.deepEqual(events, received)
+}
 
 // Multi-line data fields join with LF per the SSE spec.
 const multiline: TurnStreamEvent[] = []

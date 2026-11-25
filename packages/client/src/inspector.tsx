@@ -28,7 +28,6 @@ import {
   type Row,
   type Tray,
 } from "./inspect.ts"
-import type { Shape } from "@effect-tavern/runtime/src/product.ts"
 import { KeyValues, Reading, Shaped } from "./readings.tsx"
 import { WrapMark } from "./controls.tsx"
 import { RequestView } from "./request-view.tsx"
@@ -219,7 +218,6 @@ const Steps = (props: { call: Call; facts: Facts; cache: boolean }) => (
 
 /** One call: the head in the row's slots, opening to its result, its prompt or the stored call. */
 const Step = (props: {
-  shapeOf: (id: string) => Shape | undefined
   row: Row
   facts: Facts
   nth: number
@@ -231,6 +229,13 @@ const Step = (props: {
   onToggle: () => void
 }) => {
   const c = () => props.row.call
+  const shaped = () => {
+    const { product, out } = c()
+    if (!product || !out || typeof out !== "object") return
+    const value = (out as Record<string, unknown>)[product]
+    const shape = props.facts.shapeOf(product)
+    if (value !== undefined && shape) return { value, shape }
+  }
   const head = createMemo(() => digest(props.row, props.nth, props.facts))
   const hits = createMemo(() => rowHits(props.row, props.q))
   // the brief is the one answer that stays closed without `inspect`
@@ -436,11 +441,10 @@ const Step = (props: {
                     )}
                   </For>
                 </Match>
-                <Match when={c().product ? props.shapeOf(c().product!) : undefined}>
-                  {(shape) => (
-                    <Shaped shape={shape()} value={(c().out as Record<string, unknown> | undefined)?.[c().product!]} />
-                  )}
+                <Match when={c().out === undefined && c().fault}>
+                  {(fault) => <p class="ptext">{failureText(fault())}</p>}
                 </Match>
+                <Match when={shaped()}>{(result) => <Shaped shape={result().shape} value={result().value} />}</Match>
                 <Match when={true}>
                   <KeyValues of={(c().out ?? {}) as Record<string, unknown>} />
                 </Match>
@@ -524,12 +528,13 @@ const InspectBody = (props: { id: Id }) => {
     const x = node()
     return r && x ? fields(r, x, whens(view())) : []
   })
-  const shapeOf = (id: string) => view()?.layer?.products.find((p) => p.id === id)?.shape
+  const products = createMemo(() => new Map(view()?.layer?.products.map((p) => [p.id, p])))
   const facts = createMemo((): Facts => ({
     beats: node()?.beats ?? [],
     checks: node()?.checks ?? [],
     must: node()?.brief.must ?? [],
-    label: (id) => view()?.layer?.products.find((p) => p.id === id)?.label ?? id,
+    label: (id) => products().get(id)?.label ?? id,
+    shapeOf: (id) => products().get(id)?.shape,
     fields: (answers) => {
       const r = view()?.rules
       const paths = Object.entries(answers).flatMap(
@@ -544,7 +549,6 @@ const InspectBody = (props: { id: Id }) => {
   }))
   const One = (p: { row: Row }) => (
     <Step
-      shapeOf={shapeOf}
       row={p.row}
       facts={facts()}
       nth={nth(p.row)}
@@ -732,8 +736,10 @@ const InspectBody = (props: { id: Id }) => {
               <For each={Object.entries(x().products)} keyed={([k]) => k}>
                 {(e) => (
                   <div class="prod">
-                    <span class="pid">{facts().label(e()[0])}</span>
-                    <Show when={shapeOf(e()[0])} fallback={<KeyValues of={{ [e()[0]]: e()[1] }} />}>
+                    <span class="pid" title={e()[0]}>
+                      {facts().label(e()[0])}
+                    </span>
+                    <Show when={facts().shapeOf(e()[0])} fallback={<KeyValues of={{ [e()[0]]: e()[1] }} />}>
                       {(sh) => <Shaped shape={sh()} value={e()[1]} />}
                     </Show>
                   </div>

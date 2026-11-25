@@ -140,6 +140,7 @@
 // in-process or `node` mounts it on a listener.
 import { ProxySetting } from "@effect-tavern/provider/src/proxy.ts"
 import { DecisionConfig, Provider, Secret } from "@effect-tavern/provider"
+import { TURN_END_FRAME } from "@effect-tavern/runtime/src/sse.ts"
 import { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Effect, Fiber, Schema, Stream, Struct } from "effect"
 import { extname, join, resolve, sep } from "node:path"
@@ -230,6 +231,7 @@ const json = (status: number, v: unknown) => {
 }
 
 export const KEEPALIVE_MS = 15_000
+const END_FRAME = encoder.encode(TURN_END_FRAME)
 const KEEPALIVE_FRAME = encoder.encode(": keepalive\n\n")
 
 export interface HandleOptions {
@@ -561,6 +563,11 @@ const stream = (events: Stream.Stream<PublicEvent>, first?: [string, unknown], k
       }
       fiber = Effect.runFork(
         Stream.runForEach(events, (e) => Effect.sync(() => send(e.kind, e))).pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              if (!closed) c.enqueue(END_FRAME)
+            }),
+          ),
           Effect.ensuring(
             Effect.sync(() => {
               stopTimer()

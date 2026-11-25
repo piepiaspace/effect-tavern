@@ -4,12 +4,15 @@
 // ghost with its line back. One try, then the "connection lost" line and its retry; a failure the server sent is the
 // failed turn as ever; leaving the story calls a waiting reconnect off; nothing sends the action a second time.
 import * as L from "@effect-tavern/runtime/src/log.ts"
+import { TURN_END_FRAME } from "@effect-tavern/runtime/src/sse.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
 import assert from "node:assert/strict"
 import {
   card,
   composition,
+  demanded,
   draft,
+  latestViewsReady,
   error,
   log,
   stage,
@@ -63,7 +66,6 @@ const open = (action: Action | undefined, ends: Ends) => {
         apply(e)
       }),
     cut: () => {
-      apply({ kind: "streamEnd" })
       ends.lost?.(heard)
     },
   }
@@ -318,7 +320,9 @@ const drawless = (start: () => void, kind: Action["kind"]) => {
   })
 }
 await drawless(() => turn.demand(asideOn, "aside"), "demand")
+assert.equal(registry.get(demanded), asideOn)
 reset()
+assert.equal(registry.get(demanded), null)
 await drawless(() => turn.retryRecord(recordOn), "retryRecord")
 reset()
 // cut mid-stream, the server did nothing meanwhile (204, the timeline as it was): unfinished, in words
@@ -330,6 +334,13 @@ last().ends.idle?.()
 await settled()
 assert.deepEqual([registry.get(error)?.code, registry.get(lost), registry.get(working)], ["unfinished", false, false])
 assert.equal(failureText(registry.get(error)!), t("app.turnUnfinished"))
+assert.equal(registry.get(demanded), asideOn)
+// A dynamic greeting starts a new record phase after a failed demand.
+registry.set(card, { ...registry.get(card)!, greetings: [{ text: "opening" }] })
+turn.greet(0)
+assert.equal(last().action?.kind, "greet")
+last().emit({ kind: "stage", phase: "record" })
+assert.deepEqual([registry.get(demanded), registry.get(latestViewsReady)], [null, false])
 reset()
 turn.retryRecord(recordOn)
 last().emit({
@@ -356,6 +367,7 @@ last().ends.idle?.()
 await settled()
 assert.deepEqual([registry.get(error), registry.get(lost), registry.get(working)], [null, false, false])
 assert.deepEqual(registry.get(log).nodes.get(asideOn)?.theater, { aside: "a word" })
+assert.equal(registry.get(demanded), null)
 reset()
 turn.retryRecord(recordOn)
 last().emit({
@@ -375,8 +387,8 @@ reset()
 
 // (j) the real reader (wire.ts `listen`) under the turn: a stream the server's side ended before the turn's end, cleanly
 // at a frame's boundary or with the bytes stopping mid-frame, is lost and read again; a 204 then is the turn that did
-// not finish, in words, its line back. Ended after the node it is the turn's end, and closed by this client it is
-// nothing: neither reads anything again.
+// not finish, in words, its line back. A confirmed end closes the turn, and closing it locally does
+// nothing further.
 globalThis.fetch = (async () => Response.json({ current: null, stories: [] })) as unknown as typeof fetch
 const bytes = (text: string) => new TextEncoder().encode(text)
 const frame = (e: object) => bytes(`data: ${JSON.stringify(e)}\n\n`)
@@ -421,9 +433,29 @@ for (const end of [() => feed!.close(), () => (feed!.enqueue(bytes('data: {"kind
   real.abandon()
   reset()
 }
+// An already committed node can still receive a slower parallel theater after reconnect.
+await actReal("wait for theater")
+const partial = { ...node(fresh(), registry.get(draft)!.parent, "landed"), settlementStatus: "committed" as const }
+server = L.apply(server, { node: partial, head: partial.id })
+feed!.enqueue(frame({ kind: "stage", phase: "record" }))
+feed!.enqueue(frame({ kind: "change", node: partial, head: partial.id }))
+feed!.close()
+await until(() => attaches() === 1)
+assert.equal(attaches(), 1)
+assert.equal(registry.get(latestViewsReady), false)
+last().emit(
+  { kind: "attach", phase: "record", draft: null },
+  { kind: "change", node: { ...partial, theater: { inner: "late answer" } }, head: partial.id },
+  { kind: "streamEnd" },
+)
+assert.equal(registry.get(log).nodes.get(partial.id)?.theater.inner, "late answer")
+assert.equal(registry.get(latestViewsReady), true)
+real.abandon()
+reset()
 await actReal("whole")
 const whole = fresh()
 feed!.enqueue(frame({ kind: "change", node: node(whole, registry.get(draft)!.parent, "done", "whole"), head: whole }))
+feed!.enqueue(bytes(TURN_END_FRAME))
 feed!.close()
 await until(() => registry.get(draft) === null)
 await until(() => false) // time for a wrongful re-read to show

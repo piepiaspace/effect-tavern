@@ -396,7 +396,6 @@ const full = decodeCompile({
     {
       id: "memory",
       role: "chronicle",
-      stage: "record",
       fold: { key: "id" },
       on: true,
       trigger: "turn",

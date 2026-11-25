@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { TURN_END_FRAME } from "@effect-tavern/runtime/src/sse.ts"
 import { attach, listen, send } from "../src/wire.ts"
 import { clear, dismiss, error, openStreams, registry, stage, stories, type Wire } from "../src/store.ts"
 
@@ -292,16 +293,16 @@ const sample =
         },
       }),
     )
-  // the stream breaks after an event: lost, heard; the stream's end still told, no error
+  // An interrupted stream stays active until the caller reconciles it.
   let h = await run(async () => breaking('event: stage\ndata: {"kind":"stage","phase":"narrate"}\n\n'))
   assert.deepEqual(h.lost, [true])
   assert.deepEqual(
     h.got.map((e) => e.kind),
-    ["stage", "streamEnd"],
+    ["stage"],
   )
   // it breaks before any: lost, not heard
   h = await run(async () => breaking())
-  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[false], ["streamEnd"]])
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[false], []])
   // the request gets no answer at all: lost, not heard, nothing emitted
   h = await run(() => Promise.reject(new TypeError("Load failed")))
   assert.deepEqual([h.lost, h.got], [[false], []])
@@ -321,21 +322,28 @@ const sample =
   h = await run(
     async () => new Response(encoder.encode('event: stage\ndata: {"kind":"stage","phase":"narrate"}\n\ndata: {"ki')),
   )
-  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[true], ["stage", "streamEnd"]])
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[true], ["stage"]])
   // a clean end while the turn is open (a suspended web view, a proxy's timeout): lost, whether or not it had begun
   const sse = (...es: object[]) =>
     new Response(encoder.encode(es.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("")))
   h = await run(async () => sse({ kind: "stage", phase: "narrate" }))
-  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[true], ["stage", "streamEnd"]])
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[true], ["stage"]])
   h = await run(async () => sse())
-  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[false], ["streamEnd"]])
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[false], []])
   // a node that lands with its record still to run is the same turn: an end there is lost too
   const pending = { id: 1, parent: 0, settlementStatus: "pending" }
   h = await run(async () => sse({ kind: "change", node: pending, head: 1 }))
   assert.deepEqual(h.lost, [true])
-  // ended after what closes a turn (a change that leaves nothing pending, an error): the turn's end, nothing lost
-  h = await run(async () => sse({ kind: "change", node: pending, head: 1 }, { kind: "change", head: 1 }))
-  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[], ["change", "change", "streamEnd"]])
+  // Both an immediately committed node and a later commit can still have theater calls in flight.
+  const commit = { kind: "change", node: { ...pending, settlementStatus: "committed" }, head: 1 }
+  for (const prior of [[], [{ kind: "change", node: pending, head: 1 }]]) {
+    h = await run(async () => sse(...prior, commit))
+    assert.deepEqual(h.lost, [true])
+  }
+  h = await run(async () => new Response(`data: ${JSON.stringify(commit)}\n\n${TURN_END_FRAME}`))
+  assert.deepEqual([h.lost, h.got.map((e) => e.kind)], [[], ["change", "streamEnd"]])
+  h = await run(async () => new Response(TURN_END_FRAME))
+  assert.deepEqual([h.lost, h.got], [[], [{ kind: "streamEnd" }]])
   h = await run(async () => sse({ kind: "stage", phase: "record" }, { kind: "error", message: "no" }))
   assert.deepEqual(h.lost, [])
   assert.equal(registry.get(openStreams), 0)

@@ -59,7 +59,7 @@ const wired = (v: unknown) => JSON.parse(JSON.stringify(v)) as unknown // what J
 const sse = (text: string) =>
   text
     .split("\n\n")
-    .filter((block) => Boolean(block) && !block.startsWith(":"))
+    .filter((block) => block.includes("\ndata: "))
     .map((block) => {
       const [ev, data] = block.split("\n")
       return { event: ev.slice(7), data: JSON.parse(data.slice(6)) as Event & { message?: string; code?: string } }
@@ -1022,10 +1022,11 @@ const sse = (text: string) =>
     assert.equal(res.status, 200)
     const [forRaw, forEvents] = res.body!.tee()
     const parsedEvents: TurnStreamEvent[] = []
-    const [rawBytes] = await Promise.all([
+    const [rawBytes, ended] = await Promise.all([
       new Response(forRaw).text(),
       readTurnEvents(forEvents, (e) => parsedEvents.push(e)),
     ])
+    assert.equal(ended, true)
     assert.match(rawBytes, /(?:^|\n\n): keepalive\n\n/)
     assert.ok(parsedEvents.some((e) => e.kind === "change" && "node" in e && e.node !== undefined))
 

@@ -18,7 +18,7 @@ const canned = { notes: "N1", options: ["A", "B", "C", "D"], people: [], scene: 
 const sse = (text: string) =>
   text
     .split("\n\n")
-    .filter(Boolean)
+    .filter((block) => block.includes("\ndata: "))
     .map((block) => {
       const [ev, data] = block.split("\n")
       return {

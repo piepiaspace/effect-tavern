@@ -616,14 +616,7 @@ export const claimedNodeProducts = (
   view: CardView | null | undefined,
   node: Node,
   last: boolean,
-): ReadonlySet<string> =>
-  consumedProducts(
-    view?.views?.filter((v) => {
-      if (v.when && !node.visibleViews?.includes(v.id)) return false
-      if (residency(v) === "latest") return last
-      return !v.consumes?.length || v.consumes.some((id) => node.theater[id] !== undefined)
-    }) ?? [],
-  )
+): ReadonlySet<string> => consumedProducts(eligibleNodeViews(view, node, last, true))
 export const StateViews = (props: {
   views: readonly CompiledView[]
   view: CardView | null | undefined

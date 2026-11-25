@@ -9,7 +9,8 @@ import { flip, locale, t } from "../src/i18n.ts"
 import { boot, open, showCard } from "../src/pages.ts"
 import { ViewBlock } from "../src/view-shell.tsx"
 import { MediaFrame } from "../src/lightbox.tsx"
-import { apply, card, clear, log, openStreams, registry, working } from "../src/store.ts"
+import { turn } from "../src/turn.ts"
+import { apply, card, clear, demanded, error, log, openStreams, registry, working } from "../src/store.ts"
 import { importCard, fetchCardOf } from "../src/wire.ts"
 import type { CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import { until, quiet, touch, tracked } from "./settle.ts"
@@ -22,7 +23,7 @@ globalThis.fetch = tracked(rawFetch)
 
 const UNIFIED_HUD_YAML = `id: unified_hud_card
 title: 礼拜堂手记
-summary: 验证单壳聚合状态栏与流式小剧场接管、重抽与回退。
+summary: 验证状态栏汇总并行小剧场产物，并在重抽时原位刷新。
 version: "1.0"
 source: hand
 names:
@@ -362,16 +363,26 @@ async function run() {
       0, "re-rolled consumed inner still renders only inside ri_hud")
 
     require(mountedHud === node1HudHost(), "Demand preserves the HUD element")
+    require(registry.get(demanded) === null, "successful Demand releases its node")
+    await modelControl({ demands: [{ options: [], fail: "choices unavailable" }] })
+    turn.demand(1, "options")
+    require(await until(() => !!registry.get(error) && !registry.get(working)), "failed Demand finishes")
+    require(registry.get(demanded) === 1, "failed Demand keeps its node for the error")
     open({ inspect: 1 })
     const steps = () => [...document.querySelectorAll<HTMLDetailsElement>(".inspect .step")]
     const named = (name: string) => steps().filter((el) => el.querySelector(".nm")?.textContent?.trim() === name)
     require(await until(() => named("record · 理的心声2").length === 1), "Inspector numbers the second inner call")
-    const choices = named("record · 行动建议")[0]
+    const choices = named("record · 行动建议1")[0]
     require(choices?.querySelector(".digest .pill")?.textContent?.trim() === "2", "Inspector shows the list count")
     choices.querySelector("summary")!.click()
     require(await until(
       () => choices.querySelector(".items li")?.textContent === "递上热茶",
     ), "Inspector renders list items by shape")
+    const failed = named("record · 行动建议2")[0]
+    failed.querySelector("summary")!.click()
+    require(await until(
+      () => failed.querySelector(".wscroll")?.textContent?.includes("choices unavailable") === true,
+    ), "Inspector shows a product failure in Result")
     require([...document.querySelectorAll(".inspect .prod .pid")].some(
       (el) => el.textContent === "理的心声",
     ), "Inspector labels node products")

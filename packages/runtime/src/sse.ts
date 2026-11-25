@@ -3,6 +3,9 @@ import type { Attach, Failure, TimelineEvent } from "./projection.ts"
 
 export type TurnStreamEvent = TimelineEvent | ({ kind: "error" } & Failure) | Attach
 
+/** A data-less SSE frame after the last turn event, including for actions with no events. */
+export const TURN_END_FRAME = "event: end\n\n"
+
 /** EOF in the middle of a frame: the bytes stopped, not a frame the decoder could not read. */
 export class IncompleteStream extends Error {
   constructor() {
@@ -12,17 +15,17 @@ export class IncompleteStream extends Error {
 
 /** Decode a UTF-8 SSE byte stream into turn events. Handles LF and CRLF, multi-byte UTF-8 split across arbitrary
  *  chunks, and `attach` frames whose `kind` rides in the `event:` header; rejects when EOF leaves an unterminated
- *  frame or trailing bytes (unless `signal` was aborted). */
+ *  frame or trailing bytes (unless `signal` was aborted). Returns true when the server confirms the turn ended. */
 export const readTurnEvents = async <E = TurnStreamEvent>(
   body: ReadableStream<Uint8Array>,
   emit: (event: E) => void,
   signal?: AbortSignal,
-): Promise<void> => {
+): Promise<boolean> => {
   if (signal?.aborted) {
     try {
       await Promise.resolve(body.cancel()).catch(() => {})
     } catch {}
-    return
+    return false
   }
   const reader = body.getReader()
   let reading = false
@@ -44,6 +47,7 @@ export const readTurnEvents = async <E = TurnStreamEvent>(
   signal?.addEventListener("abort", onAbort, { once: true })
   const decoder = new TextDecoder()
   let buffer = ""
+  let ended = false
   let event = ""
   let data: string[] = []
   const flushLines = () => {
@@ -52,6 +56,10 @@ export const readTurnEvents = async <E = TurnStreamEvent>(
       const line = buffer.slice(0, end).replace(/\r$/, "")
       buffer = buffer.slice(end + 1)
       if (!line) {
+        if (event === "end") {
+          ended = true
+          return
+        }
         if (data.length) {
           const parsed: unknown = JSON.parse(data.join("\n"))
           const value =
@@ -74,19 +82,20 @@ export const readTurnEvents = async <E = TurnStreamEvent>(
       reading = true
       const { value, done } = await reader.read()
       reading = false
-      if (signal?.aborted) return
+      if (signal?.aborted) return false
       if (done) {
         eof = true
         break
       }
       buffer += decoder.decode(value, { stream: true })
       flushLines()
-      if (signal?.aborted) return
+      if (ended || signal?.aborted) return ended
     }
     buffer += decoder.decode()
     flushLines()
-    if (signal?.aborted) return
+    if (signal?.aborted) return false
     if (buffer.trim() || event || data.length) throw new IncompleteStream()
+    return false
   } finally {
     reading = false
     signal?.removeEventListener("abort", onAbort)

@@ -152,6 +152,7 @@ const facts: Facts = {
   beats: [{ next: "talk" }, { next: "steal", chance: 0.65 }],
   checks: [{ action: "steal", chance: 0.65, roll: 0.32, hit: true }],
   must: ["a", "b"],
+  shapeOf: () => undefined,
   label: (id) => ({ mood: "心情" })[id] ?? id,
   fields: (a) => (a["affinity"] ? ["好感度"] : []),
 }

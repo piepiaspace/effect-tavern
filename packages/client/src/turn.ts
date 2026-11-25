@@ -143,8 +143,10 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
       ;[before, asked] = [null, undefined] // the turn is over either way
       // a draft's turn: its node under the draft's parent; none: what its action does (one attached on landing that
       // had none is shown as the timeline now stands)
-      if (d ? grew(was, d.parent) : !a || answered(a, was)) settle(!!d)
-      else apply({ kind: "error", code: "unfinished", message: "" }) // the ghost and its line back, as a failed turn
+      if (d ? grew(was, d.parent) : !a || answered(a, was)) {
+        settle(!!d)
+        running(null)
+      } else apply({ kind: "error", code: "unfinished", message: "" }) // the ghost and its line back, as a failed turn
     }
     streams.push(attach({ lost: (heard) => (heard ? cut() : failed()), idle: () => void over() }))
   }
@@ -152,6 +154,7 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
     quiet() // this stream is the story's now: a reconnect for an older one would attach to it a second time
     before = registry.get(log)
     asked = action
+    registry.set(demanded, action.kind === "demand" ? action.node : null)
     streams.push(send(action, ends))
   }
   /** A draft under `parent`, then the action. `text`: an edit's draft is the player's prose, shown while check and
@@ -164,7 +167,6 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
     submitted?: DraftModel,
   ) => {
     registry.set(error, null)
-    registry.set(demanded, null)
     registry.set(draft, {
       parent,
       input,
@@ -241,13 +243,11 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
     },
     retryRecord: (id: Id): void => {
       registry.set(error, null)
-      registry.set(demanded, null)
       registry.set(stage, "record")
       go({ kind: "retryRecord", node: id })
     },
     skipRecord: (id: Id): void => {
       registry.set(error, null)
-      registry.set(demanded, null)
       go({ kind: "skipRecord", node: id })
     },
     setField: (id: Id, effects: Extract<Action, { kind: "setField" }>["effects"]): void =>
@@ -255,7 +255,6 @@ export const createTurn = ({ send, attach, stop, nodes = wire.fetchNodes, whenAc
     /** One product asked for over a node's scene: a record call, the answer kept on the node, no turn and no draft. */
     demand: (id: Id, product: string): void => {
       registry.set(error, null)
-      registry.set(demanded, id)
       go({ kind: "demand", node: id, product })
     },
     stop: async (): Promise<void> => {

@@ -6,6 +6,7 @@ import type { StageStep, StageEvent, StageBudget } from "@effect-tavern/provider
 // as one discarded thing. `regions` splits a request at its cache breakpoints: the head (byte-stable), the folded
 // summary, recent history, this turn's input; a request without breakpoints is all input. Token counts are per call
 // (what the provider reports); a region's size is its characters.
+import type { Shape } from "@effect-tavern/runtime/src/product.ts"
 import type { Turn } from "@effect-tavern/runtime/src/journal.ts"
 import type { Event, Phase } from "@effect-tavern/runtime/src/session.ts"
 
@@ -242,6 +243,7 @@ export interface Facts {
   checks: readonly { action: string; chance: number; roll: number; hit: boolean }[]
   must: readonly string[]
   label: (product: string) => string
+  shapeOf: (product: string) => Shape | undefined
   /** The labels of the fields the chosen readout options write (a readout's answer moves fields, not products). */
   fields: (answers: Readonly<Record<string, string>>) => string[]
 }

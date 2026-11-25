@@ -154,14 +154,17 @@ export const error = Atom.make<Failure | null>(null)
 /** The turn's stream broke (the phone went to the background, the network dropped) and reading the story again failed
  *  too (turn.ts `reconnect`): the draft stays as it was, held, under a "connection lost" line with a retry. */
 export const lost = Atom.make(false)
-/** The node whose 小剧场 was last asked for (`turn.demand`): a demand has no draft to carry its failure, so `error`
- *  shows in that node's row (readings.tsx `Demand`). A turn's action (`start`) clears it with the error. */
+/** The node of an active demand, kept on failure so its row can show the error. */
 export const demanded = Atom.make<Id | null>(null)
 /** A turn in flight: a draft that is not the ghost of a failed one, or any stage running (a demand runs one with no
  *  draft, and two streams would interleave into one `apply` queue). What holds the composer, the story and a new root. */
 export const openStreams = Atom.make(0)
 export const working = Atom.make(
   (get) => get(openStreams) > 0 || (get(draft) !== null && get(error) === null) || get(stage) !== null,
+)
+/** A demand or a field edit updates the mounted HUD in place. A new turn waits for all record calls. */
+export const latestViewsReady = Atom.make(
+  (get) => !get(working) || get(demanded) !== null || (get(stage) === null && get(draft) === null),
 )
 /** The page over the reader: none, the card page, the Timeline, the settings, the Writing page (writing.tsx) or the
  *  Inspect page on one node. The reader stays mounted under it, so a turn in flight keeps streaming. "home" is no page
@@ -379,7 +382,6 @@ const tick = () => {
 // error never overtake the prose on screen (a fast model ends narrate with a cushion still to play). Deltas flow while
 // nothing waits; behind a waiting event they wait too, in order.
 let held: Wire[] = []
-// A block's delta waits too: it is drawn under the prose, so it starts once the prose above it has played out.
 const flows = (e: Wire) => e.kind === "delta"
 export const apply = (e: Wire): void => {
   // An attach is a full snapshot of server state. Anything queued before the disconnect is stale, including
@@ -430,6 +432,7 @@ export const running = (phase: Phase | null): void =>
 const applyNow = (e: Wire): void => {
   switch (e.kind) {
     case "streamEnd":
+      if (!registry.get(error)) registry.set(demanded, null)
       registry.set(stage, null)
       running(null)
       return
@@ -474,16 +477,13 @@ const applyNow = (e: Wire): void => {
       updateTimeline(e)
       const id = e.node?.id
       if (id !== undefined || !registry.get(draft)) {
-        // What waits behind this node is the same turn's (record's commit, a passage's node): `settle` clears the
-        // queue for a turn that is over, and this one is not. Dropped, a record that finished while the prose was
-        // still playing out (a backgrounded tab) left the node pending and the turn running for good.
-        const activeStage = registry.get(stage)
-        const rest = held
-        settle(!amended) // an amend leaves a typed revision alone
-        held = rest
+        // Later record amendments can already be queued behind this node.
+        landDraft(!amended)
         if (e.node?.settlementStatus === "pending") registry.set(stage, "record")
-        else if (registry.get(openStreams)) registry.set(stage, activeStage)
-        else running(null)
+        else if (!registry.get(openStreams)) {
+          registry.set(stage, null)
+          running(null)
+        }
       }
       return
     }
@@ -503,22 +503,34 @@ const applyNow = (e: Wire): void => {
   }
 }
 
-/** The draft is over, landed or withdrawn: nothing plays, nothing waits. */
-export const clear = (): void => {
-  held = []
+const clearDraft = (): void => {
   resetPlay()
   registry.set(draft, null)
-  registry.set(stage, null)
   registry.set(lost, false)
 }
-/** A node landed: the draft, the revision it came from and the error it displaced are over. */
-export const settle = (revision = true): void => {
-  clear()
+const landDraft = (revision: boolean): void => {
+  clearDraft()
   if (revision) registry.set(revising, null)
   registry.set(error, null)
 }
+const clearTurn = (): void => {
+  held = []
+  registry.set(stage, null)
+  registry.set(demanded, null)
+}
+/** A withdrawn draft leaves its revision in the composer. */
+export const clear = (): void => {
+  clearTurn()
+  clearDraft()
+}
+/** The story was left or the server confirmed that its turn ended. */
+export const settle = (revision = true): void => {
+  clearTurn()
+  landDraft(revision)
+}
 /** The ghost of a failed turn put away. */
 export const dismiss = (): void => {
+  registry.set(demanded, null)
   registry.set(draft, null)
   registry.set(error, null)
 }
