@@ -249,19 +249,22 @@ const run = async () => {
       registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, deliver: "tool", toolChoice: "auto" } : h)),
     ),
   )
-  segItem("正文交付", "工具（自动）")?.click()
+  segItem("正文交付", "工具调用")?.click()
   await quiet()
   check(
-    hatWrites.at(-1)?.toolChoice === "auto" && segItem("正文交付", "工具（自动）")?.hasAttribute("data-checked"),
+    hatWrites.at(-1)?.deliver === "tool" &&
+      hatWrites.at(-1)?.toolChoice === "auto" &&
+      segItem("正文交付", "工具调用")?.hasAttribute("data-checked") &&
+      segItem("调用方式", "自动")?.hasAttribute("data-checked"),
     "tool delivery starts in auto",
   )
   hatResponse = Promise.resolve(
     Response.json(registry.get(hats).map((h) => (h.id === "hat-gemini" ? { ...h, toolChoice: "force" } : h))),
   )
-  segItem("正文交付", "工具（强制）")?.click()
+  segItem("调用方式", "强制")?.click()
   await quiet()
   check(
-    hatWrites.at(-1)?.toolChoice === "force" && segItem("正文交付", "工具（强制）")?.hasAttribute("data-checked"),
+    hatWrites.at(-1)?.toolChoice === "force" && segItem("调用方式", "强制")?.hasAttribute("data-checked"),
     "force choice saved",
   )
   check(hatWrites.at(-1)?.deliver === "tool", `expected deliver=tool written, got ${JSON.stringify(hatWrites.at(-1))}`)
@@ -291,8 +294,9 @@ const run = async () => {
   await quiet()
   check(
     !segItem("正文交付", "纯文本")?.hasAttribute("data-checked") &&
-      segItem("正文交付", "工具（自动）")?.hasAttribute("data-checked") &&
-      !segItem("正文交付", "工具（强制）")?.hasAttribute("data-checked"),
+      segItem("正文交付", "工具调用")?.hasAttribute("data-checked") &&
+      segItem("调用方式", "自动")?.hasAttribute("data-checked") &&
+      !segItem("调用方式", "强制")?.hasAttribute("data-checked"),
     "tool delivery without an explicit choice selects auto",
   )
   openSettings("templates", "hat-gemini")

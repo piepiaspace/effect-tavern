@@ -218,11 +218,32 @@ export const Prose = (props: {
     { equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) },
   )
   const last = createMemo(() => bs().length - 1)
+  const nodeId = createMemo(() => props.node?.id)
+  const illustrations = createMemo(() => props.node?.media?.illustrations)
+  const catalogs = createMemo(() => props.view?.catalogs, {
+    equals: (a, b) => a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b)),
+  })
+  const products = createMemo(() => props.view?.layer?.products, {
+    equals: (a, b) =>
+      a === b ||
+      (!!a &&
+        !!b &&
+        a.length === b.length &&
+        a.every((p, i) => p.id === b[i]?.id && p.role === b[i]?.role && p.on === b[i]?.on)),
+  })
   const byParagraph = createMemo(
-    () =>
-      props.node?.media?.illustrations?.length
-        ? resolveNodeIllustrations(props.node, props.view, bs().length)
-        : undefined,
+    () => {
+      const id = nodeId()
+      const ills = illustrations()
+      if (id === undefined || !ills?.length) return undefined
+      const cats = catalogs()
+      const prods = products()
+      return resolveNodeIllustrations(
+        { id, media: { illustrations: ills } },
+        cats || prods ? { catalogs: cats, layer: prods ? { products: prods } : undefined } : null,
+        last() + 1,
+      )
+    },
     { equals: sameIllustrationBuckets },
   )
   // `.md` scopes reader.css's block styles; display: contents, so the blocks stay the host's own flex children.
