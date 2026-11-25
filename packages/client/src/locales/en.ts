@@ -833,8 +833,6 @@ const en: Dict = {
     outerMessages: "Outer messages",
     cacheOff: "Prefix cache off",
     cacheOffWhy: "The tool description changes every turn, so narrate sends no cache breakpoint",
-    diagWrapNeedsUser:
-      "This template wraps the context into its tool, so the outer messages are only its initial lead and trailing prefill, and neither holds a user message; the “Tool wrap trigger” ask that would add one is empty. Write a user message in the lead or tail, or restore that ask.",
     reasonNotWrapped: "Reasoning not wrapped",
     resourcesTitle: "Resources & simulated reads",
     resourcesEmpty: "No lookup resources on this card",

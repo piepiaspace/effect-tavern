@@ -1,6 +1,6 @@
 // Shared `narrate` request preparation and design-time Prompt Tree preview (sandbox & story branch).
 // Both `session.ts` (real play) and `previewNarrate` assemble the narrate document through `prepareNarrate`,
-// guaranteeing identical head, fiction, hat, history, <context>, <turn>, blocks and tail output.
+// guaranteeing identical head (<world>, <fiction>, <writing_guidelines>), hat, history, turn, blocks and tail output.
 import { signedOnly, wire, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
 import { makeCard, shownGreeting, type Beat, type Card, type Field, type State } from "./card.ts"
@@ -32,7 +32,7 @@ import {
 } from "./fragment.ts"
 import { narratorHistory, policyFor, type Policy } from "./history.ts"
 import { type Input, type Turn as TurnOf } from "./journal.ts"
-import { resolveWithTrace, type ResolvedTrace, type Rows } from "./layer.ts"
+import { resolveWithTrace, worldOf, type ResolvedTrace, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
 import { expand, fill, keepHoles, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
@@ -769,7 +769,10 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   const common: Common = {
     cardId,
     frame: keptFrame,
-    world: [],
+    world: worldOf(
+      card,
+      keptFrame.filter((m): m is Slotted & { id: string } => m.id !== undefined),
+    ),
     tail: keptTail,
     input: o.input,
     productSources: RT.sources.products,

@@ -7,6 +7,7 @@ import assert from "node:assert/strict"
 import * as Log from "../src/log.ts"
 import type { Turn } from "../src/session.ts"
 import { prose, split, splitter } from "../src/journal.ts"
+import { CORRECTION, NOTE } from "../src/request.ts"
 import { cardView, makeSession, outcome, perform, type Event } from "../src/session.ts"
 import { chat, full, recordingPlayer as player } from "./cards/index.ts"
 import { defaultAnswer, lookupAnswer, readStage } from "../support/script.ts"
@@ -241,15 +242,18 @@ const program = Effect.gen(function* () {
   assert.equal(S.node(t3.id).state.bond, 8)
   assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 3), prompts("narrate").at(-2)!.slice(0, 3))
   const [frameTag, fictionTag] = ["persona", "setting"].map((id) => full.frame.find((f) => f.id === id)!.text!)
-  assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 2).map(msgText), [
+  assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 3).map(msgText), [
     [
-      `<persona>\n${frameTag}\n</persona>`,
-      `<setting>\n${fictionTag}\n</setting>`,
-      player.defaultPack!.fragments![0].text!,
-      full.frame.find((f) => f.id === "style")!.text!,
+      `<world>\n${NOTE.world}`,
+      `<persona role="player_character">\n${NOTE.persona}\n${frameTag}\n</persona>\n`,
+      `<setting>\n${fictionTag}\n</setting>\n</world>`,
+    ].join("\n"),
+    `<fiction>\n${NOTE.fiction}\n${full.fiction[0].text!}\n\n${full.fiction[1].text!}\n</fiction>`,
+    [
+      `<writing_guidelines>\n${NOTE.guidelines}\n${player.defaultPack!.fragments![0].text!}`,
+      `${full.frame.find((f) => f.id === "style")!.text!}\n</writing_guidelines>`,
     ].join("\n\n"),
-    `<fiction>\n${full.fiction[0].text!}\n\n${full.fiction[1].text!}\n</fiction>`,
-  ]) // frame (persona, setting tagged; player zone and style after) → fiction
+  ]) // <world> (persona, setting tagged) → <fiction> → <writing_guidelines> (the player's fragment, then style)
   assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record", "record"])
   assert.deepEqual(t3.brief, { must: [], may: [] }) // no beat event this turn, t2's readout emitted none: no window
   // Cache breakpoints: the head's last message and the last history message (t2's reply, what next turn resends
@@ -262,7 +266,7 @@ const program = Effect.gen(function* () {
     [
       marks.at(-1),
       marks.filter(Boolean).length,
-      at(marks.indexOf(true)).includes(full.fiction[1].text!),
+      at(marks.indexOf(true)).startsWith("<writing_guidelines>"), // the head's last message
       at(marks.lastIndexOf(true)),
     ],
     [false, 2, true, prose(t2)],
@@ -284,14 +288,16 @@ const program = Effect.gen(function* () {
   warmths.push("close")
   const t5 = yield* go(S.act(t3.id, { text: "finish him" }))
   assert.deepEqual(since(i), ["decide", "narrate", "check", "narrate", "check", "record", "record"])
-  assert.ok(str(prompts("narrate").at(-1)!).includes(`Previous draft broke: rule "${full.guard[0]}"`))
+  assert.ok(str(prompts("narrate").at(-1)!).includes(`${CORRECTION}\nrule "${full.guard[0]}"`))
   assert.deepEqual(t5.violated, [])
   // The band switched: bond reached 8 at t3's record, so t5's head reads the warm fragment and not the cool one.
   const v5 = str(lastNarr())
   assert.ok(v5.includes(full.fiction[2].text!) && !v5.includes(full.fiction[1].text!))
   // prefix intact: the frame message, and the fiction block's text up to the band
   assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 1), prompts("narrate").at(-3)!.slice(0, 1))
-  assert.ok(msgText(prompts("narrate").at(-1)![1]).startsWith(`<fiction>\n${full.fiction[0].text!}\n\n`))
+  assert.ok(
+    msgText(prompts("narrate").at(-1)![1]).startsWith(`<fiction>\n${NOTE.fiction}\n${full.fiction[0].text!}\n\n`),
+  )
   // A stop that fires while check runs (the client closed after the whole first draft): the rewrite halts before its
   // first character, the first draft stands as the stopped reply with its verdict, and no second check runs.
   i = calls().length
@@ -308,7 +314,7 @@ const program = Effect.gen(function* () {
     assert.ok(ex._tag === "Failure" && /empty input|nothing to edit/.test(String(Cause.squash(ex.cause))))
   i = calls().length
   const t6 = yield* go(S.act(t5.id, { text: "rest" }))
-  assert.ok(!str(lastNarr()).includes("Previous draft broke"))
+  assert.ok(!str(lastNarr()).includes(CORRECTION))
   // A readout option can emit an event. It shows in the ledger the structured stages read next turn, and it opens a
   // window on that next turn: t5's "close" is carried into t6's gate, li's third layer is offered, the director runs.
   // At four turns on the path the first block (t1, t2) folds, and t1's people row enters the lookup's Index.
@@ -343,13 +349,15 @@ const program = Effect.gen(function* () {
   assert.match(str(lastNarr()), /entityId=e_\w+, name=Li, note=N#2/)
   assert.ok(str(lastNarr()).includes("Summary:") && str(lastNarr()).includes(prose(t3)))
   // The ledger folds at the same boundary: decide gets the narrator's own Summary, then lines for the tail turns only.
-  const line = (p: readonly Message[], head: string) => p.map(msgText).find((t) => t.startsWith(head))
+  const block = (p: readonly Message[], name: string) =>
+    new RegExp(`<${name}>\\n[\\s\\S]*?\\n</${name}>`).exec(p.map(msgText).join("\n"))?.[0]
   const led = prompts("decide").at(-1)!
-  assert.ok(line(led, "Summary:") !== undefined && line(led, "Summary:") === line(lastNarr(), "Summary:"))
+  assert.ok(block(led, "story_summary")?.includes("Summary:"))
+  assert.equal(block(led, "story_summary"), block(lastNarr(), "story_summary"))
   assert.deepEqual(
-    line(led, "Ledger:")!
+    block(led, "ledger")!
       .split("\n")
-      .slice(1)
+      .slice(1, -1)
       .map((l) => l.split(" → ")[0]),
     [t3, t5, t6].map((t) => t.input.text),
   )
@@ -547,7 +555,10 @@ const program = Effect.gen(function* () {
     hat: (id) => (id === "h" ? { id, name: "h", narrate: { tail: [{ role: "user", text: "HAT-TAIL" }] } } : undefined),
   })
   yield* go(H.act(null, { text: "about li" }))
-  assert.deepEqual(lastNarr().slice(-2).map(msgText), ["TASTE-TAIL", "HAT-TAIL"])
+  assert.deepEqual(lastNarr().slice(-2).map(msgText), [
+    `<writing_tail>\n${NOTE.tail}\nTASTE-TAIL\n</writing_tail>`,
+    "HAT-TAIL",
+  ])
   assert.ok(!str(prompts("record").at(-1)!).includes("TAIL"))
 
   // ───────── Polish: code finds lexicon hits in the final prose, one call rewrites those sentences only ─────────

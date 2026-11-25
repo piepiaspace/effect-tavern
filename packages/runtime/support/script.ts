@@ -8,7 +8,7 @@ export interface StageDoc {
   phase: Phase
   subject: string // the unwrapped <input> / <draft> / <scene> text, or the last message's text on narrate
   open: string[] // Open: ids
-  rules: string[] // Rule: lines
+  rules: string[] // <rules> lines
   known: string[] // record's Known: items
   questions: { id: string; options: string[] }[] // record's readout questions, option ids
   asked: string[] // record's product asks
@@ -63,7 +63,7 @@ export const readStage = (o: FakeCall): StageDoc => {
   const msgs = o.prompt.map(fakeText)
   const last = msgs.at(-1) ?? ""
   const lines = msgs.flatMap((m) => m.split("\n"))
-  const facts = msgs.find((m) => m.startsWith("Known: "))?.split("\n") ?? []
+  const rules = /<rules>\n([\s\S]*?)\n<\/rules>/.exec(msgs.join("\n"))?.[1]?.split("\n") ?? []
   const recordTask = last.split("\n</scene>\n\n")[1]?.split("\nQuestions: ")[0]?.split("\n") ?? []
   const qs =
     msgs
@@ -91,8 +91,8 @@ export const readStage = (o: FakeCall): StageDoc => {
         ? "lookup"
         : (o.responseFormat?.type === "json" && o.responseFormat.name) || "narrate") as Phase,
     open: (after(lines, "Open: ")?.split(" | ") ?? []).map((e) => head(e, "=")),
-    rules: lines.filter((l) => l.startsWith("Rule: ")).map((l) => l.slice(6)),
-    known: after(facts, "Known: ")?.split("; ").filter(Boolean) ?? [],
+    rules,
+    known: after(lines, "Known: ")?.split("; ").filter(Boolean) ?? [],
     questions: qs.flatMap((l) => {
       const m = /^(\S+): .*\[(.*)\]$/.exec(l)
       return m ? [{ id: m[1], options: m[2].split(" | ").map((x) => head(x, ":")) }] : []
