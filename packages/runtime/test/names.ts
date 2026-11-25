@@ -76,9 +76,9 @@ const pack: Layer = {
 }
 const local = { id: "local", name: "local", card: card.id, mounts: ["pk"] }
 const player: Rows = {
-  harness: {
-    id: "harness",
-    name: "harness",
+  defaultPack: {
+    id: "base",
+    name: "base",
     fragments: [
       { id: "t", text: "TAIL {{char}}", at: "tail" },
       { id: "u", text: "TAIL-NO {{missing}}", at: "tail" },
@@ -283,7 +283,7 @@ assert.ok(has(doc(third, "narrate"), "HELD 玩家给的."))
     card: yandao,
     rows: () => ({
       ...plain,
-      harness: { ...plain.harness!, products: [{ id: "aside", text: "{{char}} 的旁白", on: true }] },
+      defaultPack: { id: "g", name: "G", products: [{ id: "aside", text: "{{char}} 的旁白", on: true }] },
       packs: [kit],
       local: { id: "local", name: "local", card: yandao.id, mounts: ["k"] },
     }),
@@ -333,33 +333,6 @@ assert.ok(has(doc(third, "narrate"), "HELD 玩家给的."))
   assert.deepEqual(nodeOf(es).turn.answers, { r: "a" })
 }
 
-// Asks: a question cannot be skipped, so the chain yields, player → card → the harness's own.
-{
-  const lore = [{ id: "l", layers: ["L."], unlock: { all: [] }, offer: { any: [] } }]
-  const lookup = async (cardAsks: Card["asks"], names?: Names) => {
-    const A = makeSession({
-      card: { ...chat, lore, ...(cardAsks && { asks: cardAsks }) },
-      rows: () => ({
-        ...plain,
-        local: {
-          id: "local",
-          name: "local",
-          card: chat.id,
-          asks: [{ id: "lookup", text: "PLAYER {{char}}" }],
-          ...(names && { names }),
-        },
-      }),
-      model: () => scripted,
-    })
-    return doc(await collect(A.act(null, { text: "hi" })), "lookup").join("\n")
-  }
-  const cardAsk = [{ id: "lookup", text: "CARD ASK" }]
-  assert.ok((await lookup(cardAsk)).includes("CARD ASK"))
-  const harness = await lookup(undefined)
-  assert.ok(harness.includes("Choose the context") && !harness.includes("PLAYER"))
-  assert.ok((await lookup(cardAsk, { char: "依瑞丝" })).includes("PLAYER 依瑞丝"))
-}
-
 // ───────── What a client reads: the holes nothing fills, derived from the text ─────────
 {
   const view = (c: Card, r: Rows = {}) => resolve(c, r).holes
@@ -390,19 +363,15 @@ assert.ok(has(doc(third, "narrate"), "HELD 玩家给的."))
   // a player's name fills it; a slot the player's fragment overrides does not go out, so its hole is not one
   const mine = { ...on, fragments: [{ id: "style", text: "plain" }], names: { b: "B" } }
   assert.deepEqual(view(shelf, { local: mine }), ["c", "d", "e", "f"])
-  // guard lines, readouts and the asks; a card's ask under a player's that expands never goes out, under one that does not it may
-  const worded = (text: string) =>
-    view(
-      {
-        ...chat,
-        guard: ["{{m}}"],
-        rules: { ...chat.rules, readouts: [{ id: "r", text: "{{n}}", options: [{ id: "a", text: "{{o}}", do: [] }] }] },
-        asks: [{ id: "lookup", text: "{{q}}" }],
-      },
-      { local: { ...on, asks: [{ id: "lookup", text }] } },
-    )
-  assert.deepEqual(worded("{{p}}"), ["m", "n", "o", "p", "q"])
-  assert.deepEqual(worded("plain"), ["m", "n", "o"])
+  // guard lines and readouts
+  assert.deepEqual(
+    view({
+      ...chat,
+      guard: ["{{m}}"],
+      rules: { ...chat.rules, readouts: [{ id: "r", text: "{{n}}", options: [{ id: "a", text: "{{o}}", do: [] }] }] },
+    }),
+    ["m", "n", "o"],
+  )
   // the persona's own text is scanned; its name fills `user`
   assert.deepEqual(
     view({ ...chat, frame: [], fiction: [], products: [] }, { persona: { name: "N", text: "{{z}} {{user}}" } }),

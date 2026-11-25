@@ -26,11 +26,9 @@ function script(o: FakeCall): FakeReply {
   switch (phase) {
     case "lookup":
       return lookupAnswer(o, /about (.+)/i.exec(want)?.[1])
-    case "decide": {
-      const k = doc.soFar.filter((e) => /strike/.test(e)).length
-      out = JSON.stringify({ next: /strike/.test(want) && k < 2 ? "strike" : "end", again: true }) // the script's "strike B" means twice
+    case "decide":
+      out = JSON.stringify({ next: /strike/.test(want) ? "strike" : "end" })
       break
-    }
     case "direct":
       out = JSON.stringify({ must: [], may: open, tone: `TONE#${n}` })
       break
@@ -112,17 +110,20 @@ const N = makeSession({ card: { ...full, input: "note" }, rows: () => player, mo
 assert.equal(N.meta.input, "note")
 assert.deepEqual(
   N.layer.snippets.map((s) => s.name),
-  ["继续", "推进剧情", "时间流逝", "详细描写"],
-) // author mode: no thought mark, no channel switch
+  ["心声", "继续", "推进剧情", "时间流逝", "详细描写"],
+) // author mode: no channel switch
 // its stripped copy: no actions, no lore, no guard; it takes a prefill, so a cut prose is continued (the `cut` turn)
 const C = makeSession({ card: chat, rows: () => player, model: () => ({ ...scripted, prefill: true }) })
 // every product off and no readouts: a turn is narrate alone, record has nothing to ask and makes no call
 const Q = makeSession({
   card: chat,
   rows: () => ({
-    harness: {
-      ...player.harness!,
-      products: ["notes", "options", "scene", "people"].map((id) => ({ id, on: false })),
+    defaultPack: {
+      ...player.defaultPack!,
+      products: [
+        ...player.defaultPack!.products!.map((p) => ({ ...p, on: false })),
+        ...["scene", "people"].map((id) => ({ id, on: false })),
+      ],
     },
   }),
   model,
@@ -173,7 +174,7 @@ const program = Effect.gen(function* () {
   assert.deepEqual(c0.products.options, ["O1", "O2", "O3", "O4"])
   assert.deepEqual(C.context(c0.id).world.scene, { place: "P#1", present: [{ name: "B", mood: "calm" }] })
   assert.ok(
-    /^notes: Notes are the record/m.test(str(prompts("record")[0])) &&
+    /^notes: One or two plain sentences/m.test(str(prompts("record")[0])) &&
       /^scene: 当前场景所在的位置/m.test(str(prompts("record")[0])),
   )
 
@@ -203,33 +204,26 @@ const program = Effect.gen(function* () {
   assert.equal(calls().length, beforePin)
 
   // Turn 2: no lookup: li#1 is on the path and t1's people row is not readable while t1 is in the unfolded tail (its
-  // prose is still verbatim in the transcript); strikes settle, window opens, director, reveal fired. The narrator gets the feed record as `Current:` after the outcome.
+  // prose is still verbatim in the transcript); one strike settles, window opens, director, reveal fired. The narrator gets the feed record as `Current:` after the outcome.
   i = calls().length
   narrations.push("fire")
   warmths.push("warm")
   const t2 = yield* go(S.act(t1.id, { text: "strike B", note: "NOTE#2" }))
   assert.deepEqual([t2.answers, S.node(t2.id).state.bond], [{ warmth: "warm" }, 4])
-  assert.deepEqual(since(i), ["lookup", "decide", "decide", "decide", "direct", "narrate", "check", "record", "record"])
+  assert.deepEqual(since(i), ["lookup", "decide", "direct", "narrate", "check", "record", "record"])
   assert.deepEqual(S.node(t2.id).playerCatalog, []) // the row's node is in the tail
   assert.deepEqual(t2.read, [])
   assert.ok(/^Current: scene=place: P#2; present: name=B, mood=calm$/m.test(str(lastNarr())))
   assert.ok(
     /^Current: scene=/m.test(str(prompts("record").at(-1)!)) && !/^Current/m.test(str(prompts("direct").at(-1)!)),
   )
-  assert.equal(t2.beats.length, 2)
-  assert.ok(S.node(t2.id).events.includes("strike:hit"))
+  assert.equal(t2.beats.length, 1) // one beat a turn, whatever the input's wording asks
+  assert.ok(S.node(t2.id).events.some((e) => e.startsWith("strike:")))
   assert.deepEqual([t2.brief.may, t2.fired], [["li"], [{ id: "li", layer: 2 }]])
   assert.ok(
     str(lastNarr()).includes(`MAY reveal: ${full.lore[0].layers[1]}`) &&
       str(lastNarr()).includes("NOTE#2") &&
       str(lastNarr()).includes(`Tone: TONE#`),
-  )
-  // The k-th decide saw the first k events.
-  const decides = prompts("decide").slice(-3).map(str)
-  assert.ok(
-    /So far: -/.test(decides[0]) &&
-      /So far: strike:\w+$/m.test(decides[1]) &&
-      /So far: strike:\w+,strike:\w+$/m.test(decides[2]),
   )
   // Director never saw prose; narrator never saw the ledger.
   assert.ok(!/PROSE#/.test(str(prompts("direct").at(-1)!)) && !/Ledger/.test(str(lastNarr())))
@@ -247,15 +241,15 @@ const program = Effect.gen(function* () {
   assert.equal(S.node(t3.id).state.bond, 8)
   assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 3), prompts("narrate").at(-2)!.slice(0, 3))
   const [frameTag, fictionTag] = ["persona", "setting"].map((id) => full.frame.find((f) => f.id === id)!.text!)
-  assert.deepEqual(prompts("narrate").at(-1)!.slice(1, 3).map(msgText), [
+  assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 2).map(msgText), [
     [
       `<persona>\n${frameTag}\n</persona>`,
       `<setting>\n${fictionTag}\n</setting>`,
-      player.harness!.fragments![0].text!,
+      player.defaultPack!.fragments![0].text!,
       full.frame.find((f) => f.id === "style")!.text!,
     ].join("\n\n"),
     `<fiction>\n${full.fiction[0].text!}\n\n${full.fiction[1].text!}\n</fiction>`,
-  ]) // narrate.role → frame (persona, setting tagged; player zone and style after) → fiction
+  ]) // frame (persona, setting tagged; player zone and style after) → fiction
   assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record", "record"])
   assert.deepEqual(t3.brief, { must: [], may: [] }) // no beat event this turn, t2's readout emitted none: no window
   // Cache breakpoints: the head's last message and the last history message (t2's reply, what next turn resends
@@ -295,9 +289,9 @@ const program = Effect.gen(function* () {
   // The band switched: bond reached 8 at t3's record, so t5's head reads the warm fragment and not the cool one.
   const v5 = str(lastNarr())
   assert.ok(v5.includes(full.fiction[2].text!) && !v5.includes(full.fiction[1].text!))
-  // prefix intact: the role and frame messages, and the fiction block's text up to the band
-  assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 2), prompts("narrate").at(-3)!.slice(0, 2))
-  assert.ok(msgText(prompts("narrate").at(-1)![2]).startsWith(`<fiction>\n${full.fiction[0].text!}\n\n`))
+  // prefix intact: the frame message, and the fiction block's text up to the band
+  assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 1), prompts("narrate").at(-3)!.slice(0, 1))
+  assert.ok(msgText(prompts("narrate").at(-1)![1]).startsWith(`<fiction>\n${full.fiction[0].text!}\n\n`))
   // A stop that fires while check runs (the client closed after the whole first draft): the rewrite halts before its
   // first character, the first draft stands as the stopped reply with its verdict, and no second check runs.
   i = calls().length
@@ -487,11 +481,6 @@ const program = Effect.gen(function* () {
   assert.equal(made().findLast((e) => e.phase === "narrate")!.out, prose(t12)) // the narrate call reports what was kept
   const t13 = yield* go(S.act(t12.id, { text: "", note: "继续。" }))
   assert.ok(str(lastNarr()).includes(prose(t12)) && t13.end === "end")
-  // A thought in the input: decide and narrate both hear what ⦅ ⦆ is; a turn without one carries no such line.
-  const thought = /not said, not done/
-  assert.ok(!thought.test(str(prompts("decide").at(-1)!)) && !thought.test(str(lastNarr())))
-  yield* go(S.act(t13.id, { text: "⦅wait⦆" }))
-  assert.ok(thought.test(str(prompts("decide").at(-1)!)) && thought.test(str(lastNarr())))
 
   // an option is sent as any typed input is (the client fills the box): a child of c0 with that text as its line; on
   // a note card the same send is a direction, never a line in the story
@@ -504,9 +493,9 @@ const program = Effect.gen(function* () {
   const q0 = yield* go(Q.act(null, { text: "hello" }))
   assert.deepEqual([since(i), q0.products], [["narrate"], {}])
 
-  // ───────── Derived lore counters in the window (§8 item 4), and a card's own ask ─────────
+  // ───────── Derived lore counters in the window (§8 item 4), and a card's patch on the player's notes ─────────
   // The counters themselves are test/derived.ts; here the window the gate opens reaches direct and check. The same card
-  // overrides one of the session's own asks by id; the rest keep their defaults.
+  // rewords the default pack's notes by id; the rest keep the pack's wording.
   const echo = {
     id: "echo",
     layers: ["E1", "E2", "E3"],
@@ -519,7 +508,11 @@ const program = Effect.gen(function* () {
     },
   } as const
   const E = makeSession({
-    card: { ...full, lore: [...full.lore, echo], asks: [{ id: "product.notes", text: "ASK#notes" }] },
+    card: {
+      ...full,
+      lore: [...full.lore, echo],
+      products: [...(full.products ?? []), { id: "notes", text: "ASK#notes" }],
+    },
     rows: () => player,
     model,
   })
@@ -527,7 +520,7 @@ const program = Effect.gen(function* () {
   const a = yield* go(E.act(null, { text: "wait" }))
   assert.deepEqual([a.brief.may, a.fired], [["echo"], [{ id: "echo", layer: 2 }]])
   assert.ok(/^notes: ASK#notes$/m.test(str(prompts("record").at(-1)!)))
-  assert.ok(/Notes are the record/.test(str(prompts("record").at(-2)!)))
+  assert.ok(/One or two plain sentences/.test(str(prompts("record").at(-2)!)))
 
   // ───────── Stages bound to connections: a named stage gets its model, the rest the default ─────────
   let light = 0
@@ -545,9 +538,9 @@ const program = Effect.gen(function* () {
   const H = makeSession({
     card: full,
     rows: () => ({
-      harness: {
-        ...player.harness!,
-        fragments: [...player.harness!.fragments!, { id: "taste", text: "TASTE-TAIL", at: "tail" }],
+      defaultPack: {
+        ...player.defaultPack!,
+        fragments: [...player.defaultPack!.fragments!, { id: "taste", text: "TASTE-TAIL", at: "tail" }],
       },
     }),
     model: () => ({ ...scripted, hat: "h" }),
@@ -579,7 +572,7 @@ const program = Effect.gen(function* () {
       !/went white/.test(str(prompts("record").at(-1)!)),
   )
   // The player's toggle off: no call, the prose stands.
-  polishing = { harness: { ...player.harness!, switches: { ...player.harness!.switches, polish: false } } }
+  polishing = { defaultPack: { ...player.defaultPack!, switches: { polish: false } } }
   i = calls().length
   narrations.push("slop")
   const p2 = yield* go(P.act(p1.id, { text: "hello" }))
@@ -606,7 +599,7 @@ const program = Effect.gen(function* () {
 
   // ───────── Narrate products: each `<<aside>> <id>` block is cut off the prose into products[id] ─────────
   // The fake streams eight characters a delta, so the nine-character delimiter always arrives split across two.
-  // `inner` is the harness's narrate product (switched on here), `diary` a card's; `stray` is declared by nobody.
+  // `inner` is the default pack's narrate product (switched on here), `diary` a card's; `stray` is declared by nobody.
   const diary = {
     role: "theater" as const,
     id: "diary",
@@ -618,7 +611,7 @@ const program = Effect.gen(function* () {
   const A = makeSession({
     card: { ...full, products: [...(full.products ?? []), diary] },
     rows: () => ({
-      harness: { ...player.harness!, products: [...player.harness!.products!, { id: "inner", on: true }] },
+      defaultPack: { ...player.defaultPack!, products: [...player.defaultPack!.products!, { id: "inner", on: true }] },
     }),
     model,
   })
@@ -681,9 +674,9 @@ const program = Effect.gen(function* () {
   const onDemandOnly = makeSession({
     card: full,
     rows: () => ({
-      harness: {
-        ...player.harness!,
-        products: [...player.harness!.products!, { id: "inner", on: true, trigger: "demand" }],
+      defaultPack: {
+        ...player.defaultPack!,
+        products: [...player.defaultPack!.products!, { id: "inner", on: true, trigger: "demand" }],
       },
     }),
     model,

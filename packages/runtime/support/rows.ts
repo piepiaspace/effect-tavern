@@ -1,38 +1,9 @@
 // The reference player rows the authoring tools, the hosts and the tests share: a card is linted, previewed and played
-// under a player, and these are the two the project uses. They are the harness's own words, never a card's.
+// under a player, and these are the two the project uses.
 import type { Rows } from "../src/layer.ts"
+import { createStarterPack } from "../src/starter-pack.ts"
 
 // The minimal player contributes no instructions or products.
-const language = { id: "language", text: "使用自然、舒展的现代中文写作。", mode: "yield" as const }
 export const plain: Rows = {}
-
-// The player's rows: language, and the writing switches every player sets once (fragment.ts `Writing`): the player is 你,
-// the narrator restates their line before the reaction and writes nothing they did not give. Without the last, Haiku
-// wrote the player's answer to the confession for them (docs/provider-reading.md §10). A card with no player in the
-// fiction (yandao) fills the `pov` slot itself and the compiled one yields to it (layer.ts). `options` is
-// this player's toggle: the dev and live sessions run with it, a card declares nothing about it. The lexicon is a sample
-// pack for the polish stage (src/polish.ts), a dozen stock phrases of Chinese web fiction; the runtime's own is empty.
-export const lexicon = [
-  { pattern: "指节*白", hint: "套路微表情" },
-  { pattern: "喉结*滚动", hint: "套路微表情" },
-  { pattern: "嘴角*勾起", hint: "套路微表情" },
-  { pattern: "眼底*闪过一丝", hint: "套路微表情" },
-  { pattern: "不易察觉", hint: "叙述者替读者察觉" },
-  { pattern: "深吸一口气", hint: "填充动作" },
-  { pattern: "绷紧的弦", hint: "陈词比喻" },
-  { pattern: "石子*湖", hint: "陈词比喻" },
-  { pattern: "空气*凝固", hint: "陈词比喻" },
-  { pattern: "漏了一拍", hint: "陈词比喻" },
-  { pattern: "仿佛*静止", hint: "陈词比喻" },
-  { pattern: "不是*而是", hint: "先否定再肯定的八股句式" },
-]
-export const player: Rows = {
-  harness: {
-    id: "harness",
-    name: "内置",
-    fragments: [language],
-    products: [{ id: "options", on: true }],
-    switches: { pov: "second", echo: true, agency: "strict" },
-    lexicon,
-  },
-}
+// The first-party writing pack as the install's default, what a new library starts with.
+export const starter: Rows = { defaultPack: createStarterPack() }

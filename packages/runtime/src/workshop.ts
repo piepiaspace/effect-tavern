@@ -15,7 +15,6 @@ export const mechanical = (card: Card) => {
     director: card.director,
     frame: card.frame.map(fragment),
     fiction: card.fiction.map(fragment),
-    asks: card.asks?.map(fragment),
     greetings: card.greetings.map((g) => ({ do: g.do })),
     ...(card.passages && { passages: card.passages.map(({ text: _text, note: _note, ...p }) => p) }),
     rules: {
@@ -137,7 +136,6 @@ export const CompileOutput = Schema.Struct({
   actions: optional(Schema.Array(Actions)),
   readouts: optional(Schema.Array(Readouts)),
   over: optional(Condition),
-  cap: optional(Schema.Int),
   bindings: Schema.Array(Binding),
   // Explicitly requested unwritten slots. No prose can travel through these declarations.
   slots: optional(
@@ -156,6 +154,7 @@ export const CompileOutput = Schema.Struct({
         trigger: Product.fields.trigger,
         feed: Product.fields.feed,
         recall: optional(Schema.Union([Schema.Literal(true), Token])),
+        surface: Product.fields.surface,
         // initial can contain arbitrary authored prose; it stays author-owned alongside text and label.
       }),
     ),
@@ -280,7 +279,6 @@ export const applyCompile = (card: Card, output: CompileOutput): Card => {
       actions: merge(card.rules.actions, actions, (x) => x.id),
       ...(output.readouts && { readouts: merge(card.rules.readouts ?? [], readouts, (x) => x.id) }),
       ...(output.over && { over: output.over }),
-      ...(output.cap !== undefined && { cap: output.cap }),
     },
     ...(output.products && {
       products: merge(

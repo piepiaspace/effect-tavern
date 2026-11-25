@@ -58,7 +58,6 @@ export type SpanKind =
   | "input"
   | "context"
   | "turn"
-  | "thought"
   | "correction"
   | "block"
   | "tail"
@@ -85,7 +84,6 @@ export type MessageSubzone =
   | "input"
   | "context"
   | "turn"
-  | "thought"
   | "correction"
   | "blocks"
   | "tail"
@@ -134,7 +132,6 @@ export type OmittedCategory =
   | "hat"
   | "persona"
   | "switch"
-  | "ask"
   | "turn"
   | "name"
   | "product"
@@ -153,9 +150,9 @@ export interface OmittedItem {
 }
 
 /** The narrate delivery tool in force under `deliver: "tool"` (#221), each field as sent, with where its wording came
- *  from: the hat's own `tool` override (`kind: "hat"`, `path: "tool.name" | "tool.description" | "tool.param"`), the
- *  ask as the layers resolved it (`asks.narrate.deliver.tool` / `asks.narrate.deliver.param`, any layer), or the
- *  harness's built-in default (`builtIn: true`; for the name, `narrative`). Under wrap `description` is the whole
+ *  from: the hat's own `tool` override (`kind: "hat"`, `path: "tool.name" | "tool.description" | "tool.param"`) or the
+ *  harness's built-in default (`builtIn: true`, `path: "harness.deliver.tool" | "harness.deliver.param"`; for the name,
+ *  `narrative`). Under wrap `description` is the whole
  *  description sent, the serialized context included; `sources.description` is its own wording's. */
 export interface DeliveryToolTrace {
   name: string
@@ -195,6 +192,6 @@ export interface WireErrorInfo {
 
 export const sourceKindFrom = (from: string, opts?: { persona?: boolean; builtIn?: boolean }): SourceKind => {
   if (opts?.persona) return "persona"
-  if (from === "card" || from === "harness" || from === "local") return from
+  if (from === "card" || from === "local") return from
   return "pack"
 }

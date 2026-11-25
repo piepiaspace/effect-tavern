@@ -12,7 +12,7 @@ import type { Hat } from "../src/fragment.ts"
 import { makeSession } from "../src/session.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 import { fields, openings, view } from "../src/view.ts"
-import { cardFile, cardNames, loadCard, player } from "./cards/index.ts"
+import { cardFile, cardNames, loadCard, starter as player } from "./cards/index.ts"
 import { runCard } from "./command.ts"
 
 // A real turn on 盐道 from its second greeting, with 局势 set on the greeting node: every call's messages kept.
@@ -57,11 +57,11 @@ const head = on.map((f) =>
     .map((l) => l.slice(4))
     .join("\n"),
 )
-assert.equal(head.length, 8) // language, pov, style; town, sides, now, tense (局势 ≥ 6), blood (起点 血案)
-// after narrate.role: the frame as one message (no persona or setting here to tag), the fiction as one <fiction>
+assert.equal(head.length, 9) // language, thought-syntax, pov, style; town, sides, now, tense (局势 ≥ 6), blood (起点 血案)
+// the frame as one message (no persona or setting here to tag), the fiction as one <fiction>
 assert.deepEqual(sent("narrate").slice(0, 2), [
-  head.slice(0, 3).join("\n\n"),
-  `<fiction>\n${head.slice(3).join("\n\n")}\n</fiction>`,
+  head.slice(0, 4).join("\n\n"),
+  `<fiction>\n${head.slice(4).join("\n\n")}\n</fiction>`,
 ])
 // lookup and record: preview has no path ledger; the final message is the session's note/prose (empty in preview).
 assert.deepEqual(

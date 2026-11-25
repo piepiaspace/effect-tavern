@@ -75,9 +75,9 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
   }
 
   const rows: Rows = {
-    harness: {
-      id: "harness",
-      name: "Harness",
+    defaultPack: {
+      id: "base",
+      name: "Base",
       switches: { pov: "third", verbosity: "medium" },
       fragments: [{ id: "voice", mode: "yield", text: "Should yield to card" }],
     },
@@ -307,7 +307,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     },
   }
   const rows: Rows = {
-    harness: { id: "harness", name: "H", switches: { verbosity: "concise" } },
+    defaultPack: { id: "base", name: "H", switches: { verbosity: "concise" } },
   }
   const sdkCaptured: FakeCall["prompt"][] = []
   const callEvents: Extract<Event, { kind: "call" }>[] = []
@@ -801,7 +801,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   const leadTrace = pv.traces[0]
   assert.equal(leadTrace.zone, "head")
   assert.equal(leadTrace.subzone, "lead")
-  const leadSpan = leadTrace.spans.find((s) => s.source.path === "asks.narrate.deliver")!
+  const leadSpan = leadTrace.spans.find((s) => s.source.path === "harness.narrate.deliver")!
   assert.ok(leadSpan)
   assert.equal(leadSpan.source.kind, "harness")
   assert.equal(leadSpan.source.builtIn, true)
@@ -873,7 +873,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.ok(unroutedPrefill.diagnostics.some((d) => d.code === "prefill_disallowed" && d.level === "error"))
 }
 
-// 8. Protocol-shell Hat: all 4 narrate slots, paired tool handshakes, assistant reasoning, Layer.asks attribution,
+// 8. Protocol-shell Hat: all 4 narrate slots, paired tool handshakes, assistant reasoning, the harness's blocks attribution,
 //    `hat_needs_tools` diagnostic, and 100% live `makeSession` parity across anthropic, gemini, and openai-compatible
 {
   const card: Card = {
@@ -901,19 +901,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     rules: { fields: [], actions: [] },
     names: { char: "Astra", user: "Leo" },
   }
-  const rows: Rows = {
-    packs: [
-      {
-        id: "pack-ask",
-        name: "Ask Pack",
-        asks: [
-          { id: "narrate.role", text: "Pack narrator for {{char}}." },
-          { id: "narrate.blocks", text: "Pack aside blocks:" },
-        ],
-      },
-    ],
-    local: { id: "local", name: "local", card: card.id, mounts: ["pack-ask"] },
-  }
+  const rows: Rows = {}
   const shellHat: Hat = {
     id: "shell-hat",
     name: "Full Protocol Hat",
@@ -946,24 +934,22 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     assert.equal(pv.wireError, undefined)
     assert.ok(!pv.diagnostics.some((d) => d.code === "hat_needs_tools"))
 
-    // `narrate.lead` is message 0, `lead` (with Layer.asks["narrate.role"] from pack-ask) is message 1
+    // `narrate.lead` is message 0, the frame message 1
     assert.equal(pv.traces[0]?.subzone, "hat-lead")
     assert.equal(pv.traces[0]?.source?.hatSlot, "lead")
     assert.equal(pv.messages[0]?.content, "Protocol lead for Astra.")
-    assert.equal(pv.traces[1]?.subzone, "lead")
-    const roleSpan = pv.traces[1].spans.find((sp) => sp.source.path === "asks.narrate.role")!
-    assert.equal(roleSpan.source.kind, "pack")
-    assert.equal(roleSpan.source.packId, "pack-ask")
-    assert.equal(roleSpan.source.rawText, "Pack narrator for {{char}}.")
-    assert.ok(
-      typeof pv.messages[1].content === "string" && pv.messages[1].content.startsWith("Pack narrator for Astra."),
-    )
+    assert.equal(pv.traces[1]?.subzone, "frame")
 
-    // `Layer.asks["narrate.blocks"]` provides `blocks` question with `kind: "pack"` source
+    // the blocks instruction is the harness's, built in
     const blocksTrace = pv.traces.find((t) => t.subzone === "blocks")!
-    assert.equal(blocksTrace.spans[0]?.source.kind, "pack")
+    assert.deepEqual(blocksTrace.spans[0]?.source, {
+      kind: "harness",
+      builtIn: true,
+      path: "harness.narrate.blocks",
+      label: "narrate.blocks",
+    })
     const blocksContent = pv.messages[blocksTrace.index].content
-    assert.ok(typeof blocksContent === "string" && blocksContent.startsWith("Pack aside blocks:\ninner:"))
+    assert.ok(typeof blocksContent === "string" && blocksContent.startsWith("After the prose,"))
 
     // `hat-turn` sits immediately before player `input`, and `wire()` rewrites `system` after `tool` on anthropic/gemini
     const hatTurnIdx = pv.traces.findIndex((t) => t.subzone === "hat-turn")
@@ -1212,19 +1198,6 @@ console.log("preview: ok")
     for (const sp of tr.spans) assert.ok(sp.end <= s.body.end - s.body.start)
   }
   assert.ok(!pv.diagnostics.some((x) => x.level === "error"), JSON.stringify(pv.diagnostics))
-
-  // the fallback disabled: a diagnostic in plain words with both fixes
-  const refused = previewNarrate({
-    card,
-    rows: { harness: { id: "harness", name: "内置", asks: [{ id: "narrate.wrap", text: "" }] } },
-    hat: wrapHat,
-    connection: { format: "anthropic", prefill: false, tools: true, reasoningBack: true },
-    mode: "sandbox",
-    input: { text: "Look." },
-  })
-  const diag = refused.diagnostics.find((x) => x.code === "wrap_needs_user")
-  assert.equal(diag?.level, "error")
-  assert.match(diag?.message ?? "", /user message in the hat's lead or tail, or restore the narrate\.wrap ask/)
 
   // parity: the session sends exactly the preview's outer messages and its tool, and the scripted model answers
   // through the tool under `force`; the call event records the tool and the wrap

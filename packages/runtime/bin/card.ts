@@ -8,7 +8,7 @@ import { checkCard, readCard, scaffold, templates } from "../support/author.ts"
 import { runScenario } from "../support/scenario.ts"
 import { Hat, hatToolProblem, normalizeHatDelivery } from "../src/fragment.ts"
 import { stages, view } from "../src/view.ts"
-import { player } from "../support/rows.ts"
+import { starter } from "../support/rows.ts"
 
 const card = Argument.String("card").pipe(Argument.withDescription("path to a .yaml card file"))
 const load = (name: string) =>
@@ -170,7 +170,7 @@ const show = Command.make(
         try: () =>
           view(
             c,
-            { ...player, ...(Option.isSome(persona) ? { persona: { name: "你", text: persona.value } } : {}) },
+            { ...starter, ...(Option.isSome(persona) ? { persona: { name: "你", text: persona.value } } : {}) },
             {
               state: Option.getOrUndefined(state),
               greeting: Option.getOrUndefined(greeting),

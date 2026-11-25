@@ -9,7 +9,7 @@ import { Effect, Stream } from "effect"
 import type { Card } from "../src/card.ts"
 import { prose } from "../src/journal.ts"
 import { makeSession, type Event } from "../src/session.ts"
-import { loadCard, player } from "./cards/index.ts"
+import { loadCard, starter as player } from "./cards/index.ts"
 
 const which = process.argv[2] ?? "wuxia"
 // Scripted lines for the linear cards (yandao, banxing, ri); wuxia branches off node 0.

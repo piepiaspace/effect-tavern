@@ -3,7 +3,7 @@
 // projections out. The in-process callers (test/loop.ts, test/live.ts) and the wire adapter cross the same seam.
 //
 // One turn, wiring §9/§10 (beats), §13 (brief, guardrail), §14 (layered lore), §17 (record, views), §18 (head).
-// Order: lookup → decide/settle loop → gate → direct → narrate → check → polish → record. The gate runs AFTER settlement
+// Order: lookup → decide/settle (one beat at most) → gate → direct → narrate → check → polish → record. The gate runs AFTER settlement
 // because a window can depend on what this turn produced (the sword cut exposes the tattoo). Polish (src/polish.ts) is
 // a call only when code found lexicon hits in the final prose; it rewrites those sentences alone, and its output is not
 // checked again (#63): a deliberate saving of one call, taken because the rewrite is confined to the hit sentences
@@ -95,7 +95,7 @@ import { projectNodeMedia } from "./media.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
 import { prepareHat, prepareNarrate, stripTraceRawText } from "./preview.ts"
-import { requestDetailed, worldBlock, type Ask, type DetailedRequest, type Told } from "./request.ts"
+import { DEMAND, requestDetailed, worldBlock, type Ask, type DetailedRequest, type Told } from "./request.ts"
 import type { MessageTrace, WireErrorInfo, WrapTrace } from "./trace.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
 import { cap, shapeSchema, withCatalogs, askedAt, productAsks, type Catalog, type Product } from "./product.ts"
@@ -230,16 +230,10 @@ const deliveryMeta = (
     }),
   }
 
-const checkDeliver = (
-  delivery: ReturnType<typeof narrativeDelivery>,
-  M: Model,
-  msgs: readonly Message[],
-  wrapRefusal?: string,
-) => {
+const checkDeliver = (delivery: ReturnType<typeof narrativeDelivery>, M: Model, msgs: readonly Message[]) => {
   if (!delivery) return undefined
   if (M.tools === false)
     return modelError(new Error("hat deliver: tool requires native tool calling on this connection"))
-  if (wrapRefusal) return modelError(new Error(wrapRefusal))
   if (msgs.at(-1)?.role === "assistant")
     return modelError(new Error("hat deliver: tool cannot end in an assistant prefill"))
   return undefined
@@ -442,7 +436,6 @@ export const makeSession = ({
   let policy: Policy | undefined // one read for a synchronous snapshot; never retained across requests
   const policyOf = () => (typeof P === "function" ? P() : P)
 
-  const wording = (id: string) => layer().asks[id].text
   const products = () => layer().products
   /** Narrate blocks under the declared product's cap; a block of an undeclared id is kept as written (the Inspector's). */
   const capped = (bs: Readonly<Record<string, string>>) =>
@@ -471,7 +464,7 @@ export const makeSession = ({
   })
 
   // ───────── The document each stage reads (src/request.ts) ─────────
-  /** A stage's document: the frame at this state, the input and what a thought in it is, then the stage's own ask. */
+  /** A stage's document: the frame at this state, the input, then the stage's own ask. */
   const asked = (state: Paths, input: Input, a: Ask) => {
     const M = modelFor(a.stage)
     const { frame, tail, names: N } = layer()
@@ -481,18 +474,8 @@ export const makeSession = ({
       {
         frame: headOf(frame, { state }),
         world: headOf(worldOf(card, frame), { state }),
-        role: wording("stage.role"),
-        narrator: wording("narrate.role"),
-        persona: wording("narrate.persona"),
-        deliver: wording("narrate.deliver"),
-        deliverTool: wording("narrate.deliver.tool"),
-        deliverParam: wording("narrate.deliver.param"),
-        wrapAsk: wording("narrate.wrap"),
-        contextLead: wording("narrate.context"),
-        directions: wording("narrate.turn"),
         tail: headOf(tail, { state }),
         input,
-        thought: wording("input.thought"),
       },
       a,
       {
@@ -647,8 +630,7 @@ export const makeSession = ({
         .filter((d) => scene.input.invoke?.includes(d.resourceId))
         .map(deliveryText),
       asks: productAsks(picks, context),
-      ...(settlement && { tools: wording("record.tools") }),
-      readout: qs ? wording("record.readout") : "",
+      ...(settlement && { tools: true }),
       questions: qs?.lines,
       prose: interval ? "" : proseOf(scene.reply),
       ...(interval && { history: derived.at(path).history() }),
@@ -700,7 +682,7 @@ export const makeSession = ({
       // the hat's wrap and delivery tool hold here as on the turn (#220): `asked` is the same narrate document
       const req = asked(
         here.context(state),
-        { text: "", note: wording("narrate.demand") },
+        { text: "", note: DEMAND },
         {
           stage: "narrate",
           fiction: fictionAt(here.context(state)),
@@ -711,7 +693,7 @@ export const makeSession = ({
           current: here.known().current,
           must: [],
           may: [],
-          blocks: { question: wording("narrate.blocks"), asks: [`${p.id}: ${p.text}`] },
+          blocks: { asks: [`${p.id}: ${p.text}`] },
         },
       )
       const msgs = req.messages
@@ -724,7 +706,7 @@ export const makeSession = ({
       const marked = deliveryMeta(delivery, req)
       let callMeta: ({ out?: unknown; usage?: Usage } & DeliveryMeta) | undefined = marked
       const demanded = yield* Effect.gen(function* () {
-        const invalid = checkDeliver(delivery, M, msgs, req.wrapRefusal)
+        const invalid = checkDeliver(delivery, M, msgs)
         if (invalid) return yield* Effect.fail(invalid)
         const r = yield* whole(M, msgs, {
           name: "narrate",
@@ -931,8 +913,7 @@ export const makeSession = ({
         if (lookup.readable().length) {
           const view = lookup.catalog(input.text || input.note || "")
           const units = view.complete ? view.units : undefined
-          const q =
-            units && lookupQuestions({ scene: path.length ? proseOf(path.at(-1)!.reply) : "", input, units, wording })
+          const q = units && lookupQuestions({ scene: path.length ? proseOf(path.at(-1)!.reply) : "", input, units })
           const settled =
             units && q
               ? yield* decisionPass(emit, "lookup", q.state, q.questions, (answers) => {
@@ -950,7 +931,6 @@ export const makeSession = ({
               ask(here.context(s0), input, {
                 stage: "lookup",
                 ledger: here.ledger(),
-                question: wording("lookup"),
                 // lookup's own reading: an entry's unread sections listed under it; narrate's `told` stays bare
                 context: latest([...resident, ...deliveries]).map(lookup.told),
                 current: here.known().current,
@@ -967,48 +947,24 @@ export const makeSession = ({
           looked.push(...lookup.disclosures)
         }
       }
-      // decide → settle, looping; the k-th decide sees the first k events
+      // decide → settle: one beat at most, the input's one action
       const beats: Beat[] = from !== "lookup" ? [...base!.beats] : []
       let end: Turn["end"] = from !== "lookup" ? base!.end : "end"
       if (hasInput && card.rules.actions.length && from === "lookup") {
-        for (;;) {
-          const { s, events } = rpg.fold(s0, beats, here.context(s0))
-          if (rpg.over(s, here.context(s))) {
-            end = "over"
-            break
-          }
-          if (beats.length >= rpg.cap) {
-            end = "cap"
-            break
-          }
-          // Two different questions. The first reads the input: which action, and does its wording ask for more
-          // (`again`). Only an input that asked for more enters the per-beat loop, where each later question sees the
-          // outcomes so far (§10.2) and continues by default. Verified on Haiku: one question for both roles answers
-          // the input again every time, whichever way it is worded.
-          const q = wording(beats.length ? "decide.again" : "decide.first")
+        if (rpg.over(s0, here.context(s0))) end = "over"
+        else {
           const d = yield* obj(
             emit,
             "decide",
-            rpg.decideSchema(s, here.context(s)),
-            ask(here.context(s), input, {
+            rpg.decideSchema(s0, here.context(s0)),
+            ask(here.context(s0), input, {
               stage: "decide",
               ledger: here.ledger(),
-              question: q,
-              state: JSON.stringify(s),
-              menu: rpg.menu(s, here.context(s)),
-              soFar: events,
+              state: JSON.stringify(s0),
+              menu: rpg.menu(s0, here.context(s0)),
             }),
           )
-          if (d.next === "end") {
-            end = "end"
-            break
-          }
-          const first = beats.length === 0
-          beats.push({ next: d.next, chance: (d as { chance?: number }).chance, seed: ++seeds })
-          if (first && !d.again) {
-            end = "end"
-            break
-          }
+          if (d.next !== "end") beats.push({ next: d.next, chance: (d as { chance?: number }).chance, seed: ++seeds })
         }
       }
       const { s: s1, events } = rpg.fold(s0, beats, here.context(s0))
@@ -1034,7 +990,6 @@ export const makeSession = ({
                 BriefOf(openIds),
                 ask(here.context(s1), input, {
                   stage: "direct",
-                  question: wording("direct"),
                   ledger: here.ledger(),
                   rules: guard,
                   open: told(open),
@@ -1079,7 +1034,7 @@ export const makeSession = ({
         msgs: Message[],
         live: ReturnType<typeof splitter>,
         delivery: ReturnType<typeof narrativeDelivery>,
-        req: Pick<DetailedRequest, "wrap" | "wrapRefusal">,
+        req: Pick<DetailedRequest, "wrap">,
         meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
         priorParts: readonly { type: "text" | "reasoning"; text: string }[] = [],
         allowAsideOnlyForCheck = false,
@@ -1096,27 +1051,15 @@ export const makeSession = ({
                 usage?: Usage
               } & DeliveryMeta)
             | undefined = { ...meta, ...marked }
-          return yield* writing(
-            msgs,
-            live,
-            t0,
-            delivery,
-            req,
-            marked,
-            meta,
-            priorParts,
-            allowAsideOnlyForCheck,
-            (extra) => {
-              callMeta = { ...meta, ...marked, ...extra }
-            },
-          ).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
+          return yield* writing(msgs, live, t0, delivery, marked, meta, priorParts, allowAsideOnlyForCheck, (extra) => {
+            callMeta = { ...meta, ...marked, ...extra }
+          }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
         })
       const writing = (
         msgs: Message[],
         live: ReturnType<typeof splitter>,
         t0: number,
         delivery: ReturnType<typeof narrativeDelivery>,
-        req: Pick<DetailedRequest, "wrapRefusal">,
         marked: DeliveryMeta | undefined,
         meta: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo } | undefined,
         priorParts: readonly { type: "text" | "reasoning"; text: string }[],
@@ -1124,7 +1067,7 @@ export const makeSession = ({
         onReply: (extra: { out?: unknown; usage?: Usage }) => void,
       ) =>
         Effect.gen(function* () {
-          const invalid = checkDeliver(delivery, M, msgs, req.wrapRefusal)
+          const invalid = checkDeliver(delivery, M, msgs)
           if (invalid) return yield* Effect.fail(invalid)
           const { parts, reply } = yield* streamed(M, msgs, {
             ...opts,
@@ -1219,7 +1162,6 @@ export const makeSession = ({
             input,
             correction,
             blocks: {
-              question: wording("narrate.blocks"),
               asks: penned.map((p) => `${p.id}: ${p.text}`),
               sources: penned.map((p) => layerTrace().sources.products[p.id]),
             },
@@ -1266,7 +1208,6 @@ export const makeSession = ({
             draft: text,
             rules: guard,
             open,
-            wording,
           })
           return decisionPass(emit, "check", state, questions, (answers) => {
             const v = checkVerdict(answers, guard, openIds, brief.must)
@@ -1283,7 +1224,6 @@ export const makeSession = ({
             Check(openIds, guard),
             ask(here.context(s1), input, {
               stage: "check",
-              question: wording("check"),
               rules: guard,
               open: told(open),
               must: brief.must,
@@ -1301,7 +1241,7 @@ export const makeSession = ({
         // the player's own prose (an edit) is never rewritten: its verdict is recorded and stands
         if (from !== "check" && (c.violated.length || missed.length)) {
           const again = yield* narrate(
-            `${wording("narrate.correction")} ${[...c.violated.map((r) => `rule "${r}"`), ...missed.map((m) => `missed MUST ${m}`)].join("; ")}`,
+            `${[...c.violated.map((r) => `rule "${r}"`), ...missed.map((m) => `missed MUST ${m}`)].join("; ")}`,
           )
           // A stop that fired while check ran halts the rewrite before its first character: the first draft stands,
           // stopped, with its verdict (the halted rewrite once became an empty stopped node).
@@ -1331,7 +1271,6 @@ export const makeSession = ({
           Schema.Struct(Object.fromEntries(targets.map((t) => [t.id, Schema.String]))),
           ask(here.context(s1), input, {
             stage: "polish",
-            question: wording("polish"),
             hints: targets.flatMap((t) => (t.hints.length ? [`${t.id}: ${t.hints.join("; ")}`] : [])),
             prose: marked(text, targets),
           }),

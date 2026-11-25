@@ -4,8 +4,10 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { decodeCard, rollOf, type Card } from "../src/card.ts"
 import type { Rows } from "../src/layer.ts"
+import { createStarterPack } from "../src/starter-pack.ts"
 import { view } from "../src/view.ts"
 import { checkCard, scaffold, templates } from "../support/author.ts"
+import { starter } from "../support/rows.ts"
 import { runScenario } from "../support/scenario.ts"
 import { runCard } from "./command.ts"
 
@@ -73,10 +75,10 @@ try {
   await runScenario(
     {
       ...decodeCard(Bun.YAML.parse(original)),
-      products: [
-        { id: "notes", on: true },
-        { id: "options", on: true },
-      ],
+      // the starter pack's notes and options declared whole on the card, both on
+      products: createStarterPack()
+        .products!.filter((p) => p.id !== "inner")
+        .map((p) => ({ ...p, on: true })),
     },
     {
       steps: [
@@ -123,7 +125,7 @@ try {
     steps: [
       {
         text: "win",
-        replies: { decide: [{ next: "win", again: true }], check: [{ fired: ["secret"], violated: [] }] },
+        replies: { decide: [{ next: "win" }], check: [{ fired: ["secret"], violated: [] }] },
         expect: {
           state: { hp: 2 },
           events: ["won"],
@@ -228,7 +230,7 @@ try {
     },
     products: [{ id: "options", on: true, when }],
   }
-  const gates = view(gated, {}).sections.find((s) => s.name === "gates")!.text
+  const gates = view(gated, starter).sections.find((s) => s.name === "gates")!.text
   for (const path of [
     "frame.style.when",
     "tail.tail.when",
@@ -324,7 +326,6 @@ const emptyEverywhere = {
   ...candidate,
   frame: [{ id: "voice", text: " " }],
   fiction: [{ id: "new", text: "" }],
-  asks: [{ id: "ask", text: "" }],
   greetings: [{ text: "" }],
   guard: [""],
   lore: [{ id: "l", layers: [""], unlock: { all: [] }, offer: { any: [] } }],
@@ -333,7 +334,7 @@ const emptyEverywhere = {
 }
 assert.equal(
   checkCard(Bun.YAML.stringify(emptyEverywhere)).diagnostics.filter((d) => d.rule === "empty-text").length,
-  11,
+  10,
 )
 // Every binding family and every newly created rubric stays on the mechanical side.
 const layered = {
@@ -401,6 +402,7 @@ const full = decodeCompile({
       trigger: "turn",
       feed: true,
       recall: "id",
+      surface: "theater",
       when: { all: [] },
       text: "MODEL PROSE",
       label: "MODEL LABEL",

@@ -8,7 +8,6 @@ export interface StageDoc {
   phase: Phase
   subject: string // the unwrapped <input> / <draft> / <scene> text, or the last message's text on narrate
   open: string[] // Open: ids
-  soFar: string[] // decide's So far: events
   rules: string[] // Rule: lines
   known: string[] // record's Known: items
   questions: { id: string; options: string[] }[] // record's readout questions, option ids
@@ -92,10 +91,6 @@ export const readStage = (o: FakeCall): StageDoc => {
         ? "lookup"
         : (o.responseFormat?.type === "json" && o.responseFormat.name) || "narrate") as Phase,
     open: (after(lines, "Open: ")?.split(" | ") ?? []).map((e) => head(e, "=")),
-    soFar:
-      after(lines, "So far: ")
-        ?.split(",")
-        .filter((e) => e !== "-") ?? [],
     rules: lines.filter((l) => l.startsWith("Rule: ")).map((l) => l.slice(6)),
     known: after(facts, "Known: ")?.split("; ").filter(Boolean) ?? [],
     questions: qs.flatMap((l) => {

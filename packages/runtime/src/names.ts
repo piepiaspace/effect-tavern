@@ -6,7 +6,7 @@
 //
 // THE RULE for a hole nothing fills (#170), stated here and nowhere else (`expand`): the card's own text keeps it as the
 // literal `{{key}}` and goes out, so nothing of the card's is dropped or refused for it (the player sees the literal and
-// may name it); a player's text (the overlay, a pack, the local row, a hat) with one does not go out. Every caller says
+// may name it); a player's text (a pack, the local row, a hat) with one does not go out. Every caller says
 // whose text it expands.
 import { Schema } from "effect"
 
@@ -23,17 +23,10 @@ export const HOLE = /\{\{\s*([A-Za-z_]\w*)\s*\}\}/g
 export const holes = (text: string): string[] => [...new Set(Array.from(text.matchAll(HOLE), (m) => m[1]))]
 /** The holes the table has no value for (own keys only: `{{constructor}}` is a hole like any other). */
 export const unfilled = (text: string, names: Names): string[] => holes(text).filter((k) => !Object.hasOwn(names, k))
-/** The holes the harness fills itself, never from the table (#220, #221), by the ask that may hold them: `{{tool}}` the
- *  delivery tool's name in force, `{{context}}` the wrapped story context (only in the tool's description, only under
- *  wrap). The same two in a hat's `tool.description` / `tool.param` (and `{{tool}}` in its narrate entries) under tool
- *  delivery: request.ts and preview.ts `prepareHat` fill them; there they win over a Names key of the same spelling. */
-export const HARNESS_HOLES: Readonly<Record<string, readonly string[]>> = {
-  "narrate.deliver": ["tool"],
-  "narrate.deliver.tool": ["tool", "context"],
-  "narrate.deliver.param": ["tool"],
-  "narrate.wrap": ["tool"],
-}
-/** The table with each of `keys` standing for itself: a text expanded through it keeps those holes for the harness. */
+/** The table with each of `keys` standing for itself: a text expanded through it keeps those holes for the harness. The
+ *  harness fills two itself in a hat under tool delivery (#220, #221): `{{tool}}` the delivery tool's name in force,
+ *  `{{context}}` the wrapped story context (only in the tool's description, only under wrap); request.ts and preview.ts
+ *  `prepareHat` fill them, and there they win over a Names key of the same spelling. */
 export const keepHoles = (names: Names, keys: readonly string[]): Names =>
   keys.length ? { ...names, ...Object.fromEntries(keys.map((k) => [k, `{{${k}}}`])) } : names
 /** Only the given holes filled, every other left as written. */
