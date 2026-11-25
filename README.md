@@ -109,7 +109,7 @@ go tool mygo build -platform linux/amd64   # runs bun web/build.ts, then package
 
 ### Prerequisites
 
-- **Bun** `>= 1.4.4`
+- **Bun** `>= 1.4.5`
 - **Vite+** (`vp` CLI; Bun installs the packages)
 
 ```sh

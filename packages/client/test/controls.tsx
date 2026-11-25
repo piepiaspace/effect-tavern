@@ -65,6 +65,10 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
     savedModels = next.models
     return Response.json([next])
   }
+  if (init?.method === "PUT" && url.includes("/cards/fixture/local")) {
+    return Response.json(JSON.parse(typeof init.body === "string" ? init.body : "{}"))
+  }
+  if (url.endsWith("/cards/fixture")) return Response.json(registry.get(card))
   if (url.endsWith("/routing")) return Response.json({})
   // a story's export, named by the server as the real one is
   if (url.includes("/export."))
@@ -118,6 +122,7 @@ const agent = createAgent({ allow: (step) => !step.confirm || approve })
 const [format, setFormat] = createSignal<"openai" | "anthropic" | "gemini">("openai")
 const [deliver, setDeliver] = createSignal<"text" | "tool">("text")
 const [stream, setStream] = createSignal(false)
+const [tickOn, setTickOn] = createSignal(false)
 const [warmth, setWarmth] = createSignal(15)
 let stepped = 15
 let deleted = 0
@@ -219,7 +224,7 @@ render(
         onPick={() => {}}
       />
       <Switch label="流式输出" on={stream()} onFlip={() => (setStream((v) => !v), (flipped = !flipped))} />
-      <Tick on={ticked} onFlip={() => (ticked = !ticked)}>
+      <Tick on={tickOn()} onFlip={() => (setTickOn((v) => !v), (ticked = !ticked))}>
         模拟模型读取
       </Tick>
       <Stepper label="好感度" value={warmth()} min={-100} max={100} onChange={(n) => (setWarmth(n), (stepped = n))} />
@@ -452,6 +457,8 @@ const run = async () => {
   check(tick.ok && ticked, `checkbox: ${tick.error?.message} ${ticked}`)
 
   // the persona picker: a listbox named by its sheet's question; an agent's pick closes the sheet
+  const prevTabs = registry.get(tabs)
+  registry.set(tabs, { active: 1, list: [{ id: 1, story: null, card: "fixture", page: "card", under: ["home"] }] })
   registry.set(personas, [{ id: "persona-a", name: "阿青", text: "" }] as never)
   openPicker()
   await quiet()
@@ -464,6 +471,7 @@ const run = async () => {
   await quiet()
   check(pickPersona.ok, `persona picker: ${pickPersona.error?.message}`)
   check(!document.querySelector(".picker"), "a pick closes the persona picker")
+  registry.set(tabs, prevTabs)
   const step = await agent.act({ steps: [{ ref: "好感度", action: "setValue", args: [16] }] })
   check(step.ok && stepped === 16, `stepper: ${step.error?.message} ${stepped}`)
 
@@ -600,11 +608,11 @@ const run = async () => {
     `a press on a snippet fills the line: ${registry.get(composition).text}`,
   )
 
-  // the stage's edge. An agent sets a width inside the band; a key steps it
+  // the stage's edge. An agent sets a width inside the band; a clamped request reports what it took; a key steps it
   const widen = await agent.act({ steps: [{ ref: "侧栏宽度", action: "setWidth", args: [900] }] })
   await quiet()
   check(
-    widen.ok && side.width === SIDE.max,
+    !widen.ok && side.width === SIDE.max,
     `an agent's width stays in the band: ${widen.error?.message} (${side.width})`,
   )
   document.querySelector(".resizer")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }))

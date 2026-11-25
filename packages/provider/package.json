@@ -18,11 +18,11 @@
     "@ai-sdk/openai-compatible": "3.0.90",
     "@ai-sdk/typesafe-ai": "3.0.38",
     "ai": "7.0.170",
-    "effect": "4.1.4"
+    "effect": "4.1.5"
   },
   "devDependencies": {
     "@copilotkit/aimock": "1.48.0",
-    "@types/bun": "1.4.4",
+    "@types/bun": "1.4.5",
     "typescript": "^7.0.2"
   }
 }

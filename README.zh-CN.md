@@ -101,7 +101,7 @@ go tool mygo build -platform linux/amd64   # 先运行 bun web/build.ts，再打
 
 ### 环境要求
 
-- **Bun** `>= 1.4.4`
+- **Bun** `>= 1.4.5`
 - **Vite+**（`vp` CLI；依赖由 Bun 安装）
 
 ```sh

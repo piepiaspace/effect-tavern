@@ -26,7 +26,7 @@ jobs:
       - uses: useblacksmith/checkout@v1
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - id: targets
         run: echo "matrix=$(bun release/targets.ts matrix)" >> "$GITHUB_OUTPUT"
 
@@ -41,7 +41,7 @@ jobs:
           cache-dependency-path: packages/app/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - run: bun install --frozen-lockfile
       - run: bun test/install.ts && bun test/release.ts && (cd packages/app && bun run verify)
 
@@ -56,7 +56,7 @@ jobs:
       - uses: useblacksmith/checkout@v1
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - run: bun install --frozen-lockfile
       - name: Build the page
         working-directory: packages/client
@@ -116,7 +116,7 @@ jobs:
           cache-dependency-path: packages/app/go.sum
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - run: bun install --frozen-lockfile
       # web/build.ts runs vp in packages/client
       - run: echo "$GITHUB_WORKSPACE/node_modules/.bin" >> "$GITHUB_PATH"
@@ -214,7 +214,7 @@ jobs:
           filter: blob:none
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.4.4
+          bun-version: 1.4.5
       - uses: actions/download-artifact@v8
         with:
           path: dist
