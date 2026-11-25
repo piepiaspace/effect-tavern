@@ -34,10 +34,10 @@ import {
 } from "./connections.ts"
 import { dialogHandle, type DialogHandle, Menu } from "./controls.tsx"
 import { openPicker } from "./dialogs.tsx"
-import { Card as CardGlyph, Jump, Probe, Settings, Stack, User, Write } from "./icons.tsx"
+import { Jump, Probe, Settings, Stack, User, Write } from "./icons.tsx"
 import { MediaFrame } from "./lightbox.tsx"
 import { activePortraits } from "./media.ts"
-import { open, openGallery } from "./pages.ts"
+import { open } from "./pages.ts"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { Sheet } from "./readings.tsx"
 import { openSettings } from "./settings-navigation.ts"
@@ -96,8 +96,6 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
   })
   const byStage = () => !!route().stages
   const freeChat = () => isFreeChat(shelf().find((c) => c.id === at()) ?? at(), shelf())
-  const hasGallery = () =>
-    !freeChat() && (view()?.id === undefined || view()?.id === at()) && (view()?.media?.gallery?.length ?? 0) > 0
   // what following the main model or template resolves to, named in the follow row and so on its trigger
   const mainModel = () => pairLabel(list(), route().default) ?? t("settings.unset")
   const mainHat = () => hatLabel(hatList(), route().hat) ?? t("settings.noHat")
@@ -256,21 +254,6 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
             </span>
             <span class="val">{writingLine(view(), allLocals(), at())}</span>
           </button>
-          <Show when={hasGallery()}>
-            <button
-              type="button"
-              class="play-row"
-              disabled={at() === null}
-              aria-label={t("card.gallery")}
-              onClick={() => leave(openGallery)}
-            >
-              <span class="lbl">
-                <CardGlyph aria-hidden="true" />
-                <span>{t("card.gallery")}</span>
-              </span>
-              <span class="val">{t("card.galleryHint")}</span>
-            </button>
-          </Show>
         </div>
       </div>
     </Sheet>

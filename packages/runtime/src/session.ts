@@ -1028,7 +1028,7 @@ export const makeSession = ({
       // the narrate products on this turn: one ask line each in narrate's tail, each block cut off the reply
       const narrationState = here.context(s1)
       const penned = askedAt(products(), "narrate", narrationState)
-      const guarded = layer().views?.filter((v) => activeView(v) && v.product && v.when)
+      const guarded = layer().views?.filter((v) => activeView(v) && v.when)
       const visibility = guarded?.length
         ? {
             visibleViews: guarded
@@ -1630,7 +1630,7 @@ export const makeSession = ({
     })
     const node = timelineNode(n, derived.at(parents).state, card.rules, products(), media)
     const applicable = views.filter((v) => !v.when || matches(v.when))
-    const turnFields = views.some((v) => !v.product && residency(v) === "turn")
+    const turnFields = views.some((v) => !v.playerTemplate && residency(v) === "turn")
     if (turnFields) node.fields = n.state
     const latestContext = {
       fields: n.state,
@@ -1643,22 +1643,27 @@ export const makeSession = ({
     const gallery = card.media?.gallery
     const viewImages = gallery?.length
       ? applicable.flatMap((view) => {
-          const value = view.product ? node.theater[view.product] : undefined
-          if (view.playerTemplate || (view.product && value === undefined)) return []
+          if (
+            view.playerTemplate ||
+            (residency(view) === "turn" &&
+              view.consumes?.length &&
+              view.consumes.every((id) => node.theater[id] === undefined))
+          )
+            return []
           const bindings = viewBindings({
             view,
             node,
-            value,
+            products: products(),
+            theater: node.theater,
             names: layer().names,
-            shape: products().find((p) => p.id === view.product)?.shape,
-            ...(!view.product && residency(view) === "latest" && { context: latestContext }),
+            ...(!view.playerTemplate && residency(view) === "latest" && { context: latestContext }),
           })
           return displayedImages(view.tree, bindings).filter((hit) => gallery.includes(hit.catalog))
         })
       : []
     const head = n.id === held.log.head
     const rendered = applicable.filter((v) => head || residency(v) === "turn")
-    if (rendered.some((v) => !v.product && residency(v) === "latest"))
+    if (rendered.some((v) => !v.playerTemplate && residency(v) === "latest"))
       node.latestContext = { fields: n.state, world: latestContext.world }
     if (views.some((v) => v.when)) node.visibleViews = rendered.filter((v) => v.when).map((v) => v.id)
     if (!head && media?.viewMedia) {

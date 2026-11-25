@@ -5,7 +5,7 @@ description: Author, revise, test, or remaster cards for Effect Tavern. Trigger 
 
 # Card Author
 
-Use canonical naming from `GLOSSARY.md` (`stage`, `turn`, `slot`, `band`, `readout`, `passage`, `boundary`, `lore`, `section`, `ContextPolicy`, `product`, `role`, `fold`, `catalog`). Never substitute legacy tavern terms (`worldbook`, `keyword trigger`, `preset`, `character card`, `depth`, `author's note`, `memory system`).
+Use canonical naming from `GLOSSARY.md` (`stage`, `turn`, `slot`, `band`, `readout`, `passage`, `boundary`, `lore`, `section`, `ContextPolicy`, `product`, `role`, `fold`, `catalog`, `ViewShell`). Never substitute legacy tavern terms (`worldbook`, `keyword trigger`, `preset`, `character card`, `depth`, `author's note`, `memory system`).
 
 ## 1. Core Model
 
@@ -23,7 +23,7 @@ Turn spine assembled in `packages/runtime/src/request.ts`:
 - **Negative constraints against legacy tavern patterns:**
   - **No preset / protocol instructions inside cards:** Never explain turn stages, XML/JSON output formats, CoT `<thinking>` tags, or continuation prefills inside card prose (`request.ts` and `Hat` own protocol framing).
   - **No chat-depth (`@D`) or sticky `Author's Note` thinking:** Prompt assembly has only `head` (`frame` + `fiction`) and `tail` (turn context). Never write prompts expecting mid-transcript injection.
-  - **No inline status bars, MVU blocks, or option footers in prose:** Never ask `narrate` to print stats, inventories, or choice lists (`inline-product` and `field-in-prose` lints); declare `rules.fields`, `products` (`world` / `chronicle` / `theater`), or `<<aside>>` (`stage: "narrate"` `theater`) instead.
+  - **No inline status bars, MVU blocks, or option footers in prose:** Never ask `narrate` to print stats, inventories, or choice lists (`inline-product` and `field-in-prose` lints); declare `rules.fields`, `products` (`world` / `chronicle` / `theater`), `<<aside>>` (`stage: "narrate"` `theater`), and optional in-stream `views` (`ViewShell`) instead.
   - **No keyword-trigger worldbooks or stateful macros:** Gate `lore` via `Cond` (`unlock` floors + `offer` windows) and concise first-sentence `hooks` for `lookup`; never use `{{setvar}}` / `{{roll}}` macros (`unsupported-macro` lint).
   - **No negative prohibition walls in `narrate`:** Put post-prose rules in `guard` (`check`), slop patterns in `lexicon` (`polish`), and agency boundaries on `switches.agency` / `pov`.
 
@@ -33,7 +33,7 @@ Turn spine assembled in `packages/runtime/src/request.ts`:
    - Keep prose to one-line placeholders.
    - Choose the two coordinates (`persona` slot + `input`).
    - Declare `rules.fields` (bounds, `initial`, `start`, `hidden`, `view`), decide which fields move via `actions` (mechanical) vs. `readouts` (prose-driven), and wire `effects` / `events` / `over`.
-   - Lay out `lore` (`unlock` floors, `offer` windows, `sections`, `ContextPolicy`), `fiction` band `when` conditions, `greetings` (`do` effects, optional dynamic `note`), optional post-record `passages` (`when`, `do`, `digest`, `end`), `products`, and `catalogs`.
+   - Lay out `lore` (`unlock` floors, `offer` windows, `sections`, `ContextPolicy`), `fiction` band `when` conditions, `greetings` (`do` effects, optional dynamic `note`), optional post-record `passages` (`when`, `do`, `digest`, `end`), `products`, `catalogs`, `media`, and `views` (`consumes`, `residency`, `when`, `media`, `html`, `css`, `on`).
    - Validate with `card check <card> --json` until zero errors and expected field/greeting lines, then lock behavior with `card test <card> [scenario.yaml]`.
 2. **Hat 2 — Novelist (Prose & Voice)**
    - Freeze the mechanism. Write `frame` slots, `fiction` bands, `lore` layers/sections, `greetings`, `passages`, `guard`, and `lexicon`.
@@ -66,6 +66,6 @@ Everything is one command, `tavern` (`bun run tavern` from source); it exposes f
 
 Load **only** the reference file required by your current task:
 
-- **[references/schema.md](references/schema.md)** — Read when mapping concepts to `Card` fields (`frame` slots, `fiction` bands, `greetings`, `rules`, `drawn` gauge/scale heuristics, `lore` + `sections` + `ContextPolicy`, `products` `world`/`chronicle`/`theater`, `catalogs`, `Cond`, `names`, and static `lint` codes).
+- **[references/schema.md](references/schema.md)** — Read when mapping concepts to `Card` fields (`frame` slots, `fiction` bands, `greetings`, `rules`, `drawn` gauge/scale heuristics, `lore` + `sections` + `ContextPolicy`, `products` `world`/`chronicle`/`theater`, `catalogs`, `media`, `views` + `data-*` directives, `Cond`, `names`, and static `lint` codes).
 - **[references/pitfalls.md](references/pitfalls.md)** — Read before designing `readouts`, multi-opening state, `frame` vs. `fiction` placement, or inspecting the four fixture cards (`packages/runtime/test/cards/*.yaml`).
 - **[references/workshop-and-testing.md](references/workshop-and-testing.md)** — Read when porting/remastering SillyTavern cards with `unroll`, running `tavern card compile|sort|review`, or writing `scenario.yaml` assertions.

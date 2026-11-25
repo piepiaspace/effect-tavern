@@ -1,6 +1,8 @@
-// End-to-end verification of `samples/ferry/ferry.yaml` («渡口») against the PR 1 media contract (#228):
+// End-to-end verification of `samples/ferry/ferry.yaml` («渡口») and unified `ViewShell` (`consumes`) contracts (#228, #243):
 // 0 lint errors/warnings, YAML & mechanical workshop roundtrips, generic MODEL=fake enum-table fallback,
-// sunny/rainy branches, dual portraits (field + world.boat.aboard), empty-table BGM inheritance, and setField invalidation.
+// sunny/rainy branches, dual portraits (field + world.boat.aboard), empty-table BGM inheritance, setField invalidation,
+// unified `consumes` + `{ fields, world, theater }` scope, composer consumption, multi-product shadowing,
+// CSS `line:col` diagnostics + expanded SVG/CSS whitelist, and `ri.yaml` unified parchment HUD.
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
@@ -8,7 +10,8 @@ import { fake } from "@effect-tavern/provider"
 import { Effect, Stream } from "effect"
 import { checkValue, validateCard } from "../src/author.ts"
 import { compileView } from "../src/view-template.ts"
-import { activeView, theaterSurface } from "../src/view-shell.ts"
+import { activeView, consumableSurface, residency, theaterSurface } from "../src/view-shell.ts"
+import { readPath, viewBindings } from "../src/view-bindings.ts"
 import { decodeLayer, resolve as resolveLayer } from "../src/layer.ts"
 import * as Log from "../src/log.ts"
 import { resolveCatalogUrl } from "../src/media.ts"
@@ -16,6 +19,7 @@ import { cardView, makeSession, type Event, type Turn } from "../src/session.ts"
 import { applyCompile, applySort, mechanical } from "../src/workshop.ts"
 import { parseCard, printCard } from "../support/author.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
+import { loadCard } from "./cards/index.ts"
 
 const collect = (s: Stream.Stream<Event, unknown>) =>
   Effect.runPromise(Stream.runCollect(s)).then((c) => [...c] as Event[])
@@ -37,8 +41,34 @@ for (const html of [
   "<svg><use href='x'/></svg>",
 ])
   assert.throws(() => compileView({ html }))
-for (const css of ["@import 'other.css';", "p {background:url(x)}", "p {background:image-set('x' 1x)}"])
-  assert.throws(() => compileView({ html: "<p></p>", css }))
+
+// CSS rejection preserves `"unsupported view CSS"` prefix and reports exact construct + line:col.
+assert.throws(
+  () => compileView({ html: "<p></p>", css: "@import 'other.css';" }),
+  /^Error: unsupported view CSS: @import at 1:1$/,
+)
+assert.throws(
+  () => compileView({ html: "<p></p>", css: "p {\n  background: url(https://evil.example/x.png);\n}" }),
+  /^Error: unsupported view CSS: url\(https:\/\/evil\.example\/x\.png\) at 2:15$/,
+)
+assert.throws(
+  () => compileView({ html: "<p></p>", css: "p {\n  background: image-set('x' 1x);\n}" }),
+  /^Error: unsupported view CSS: function image-set\(\) at 2:15$/,
+)
+
+// Safe SVG presentation attributes and CSS transform/filter functions compile cleanly.
+assert.doesNotThrow(() =>
+  compileView({
+    html: '<svg viewBox="0 0 24 24" opacity="0.9"><path d="M2 2L22 22" stroke="var(--ink-2)" fill="var(--paper)" stroke-linecap="round" stroke-linejoin="bevel" stroke-dasharray="4 2" stroke-dashoffset="1" stroke-miterlimit="4" stroke-opacity="0.8" fill-opacity="0.5" fill-rule="evenodd" clip-rule="evenodd" vector-effect="non-scaling-stroke"/></svg>',
+    css: ".x { transform: translate3d(0, 1px, 0) scaleX(1.02) scaleY(0.98) scale3d(1, 1, 1) skew(2deg) skewX(1deg) skewY(-1deg); filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2)); }",
+  }),
+)
+
+assert.equal(residency({}), "latest")
+assert.equal(residency({ consumes: [] }), "latest")
+assert.equal(residency({ consumes: ["inner"] }), "turn")
+assert.equal(residency({ consumes: ["inner"], residency: "latest" }), "latest")
+
 for (const hint of [{ focus: [1.1, 0] }, { aspect: "1 / 0" }, { aspect: "100/1" }, { aspect: "wide" }])
   assert.ok(
     validateCard({
@@ -46,6 +76,17 @@ for (const hint of [{ focus: [1.1, 0] }, { aspect: "1 / 0" }, { aspect: "100/1" 
       catalogs: [{ id: "test", items: [{ id: "item", ...hint }] }, ...ferry.catalogs!],
     }).diagnostics.some((d) => d.level === "error"),
   )
+
+// Reject empty strings and duplicate IDs in `consumes` on both Card validation and Layer resolution.
+for (const badConsumes of [[""], ["  "], ["inner", "inner"]]) {
+  assert.ok(
+    validateCard({
+      ...ferry,
+      views: [{ id: "bad_consumes", consumes: badConsumes, html: "<p></p>" }],
+    }).diagnostics.some((d) => d.rule === "bad-view" && d.level === "error"),
+  )
+}
+
 const letterPack = decodeLayer({
   id: "stationery",
   name: "信纸",
@@ -53,15 +94,18 @@ const letterPack = decodeLayer({
   views: [
     {
       id: "stationery",
-      product: "letter",
+      consumes: ["letter"],
       html: "<p data-text='value'></p>",
       when: { event: "unused" },
       media: [{ id: "a", catalog: "passenger" }],
     },
-    { id: "public", product: "inner", html: "<em data-text='value'></em>" },
+    { id: "public", consumes: ["inner"], html: "<em data-text='value'></em>" },
     { id: "bad", html: "<p></p>" },
-    { id: "spoiler", product: "notes", html: "<p></p>" },
-    { id: "invalid", product: "inner", html: "<img>" },
+    { id: "empty_list", consumes: [], html: "<p></p>" },
+    { id: "blank_id", consumes: [""], html: "<p></p>" },
+    { id: "dupe_id", consumes: ["inner", "inner"], html: "<p></p>" },
+    { id: "spoiler", consumes: ["notes"], html: "<p></p>" },
+    { id: "invalid", consumes: ["inner"], html: "<img>" },
   ],
 })
 assert.equal(letterPack.views?.[0]?.media, undefined)
@@ -72,10 +116,10 @@ const resolveViews = (l: typeof local & { views?: { id: string; on: boolean }[] 
 const mounted = resolveViews(local)
 assert.deepEqual(
   mounted.dropped.filter((d) => d.kind === "view").map((d) => d.id),
-  ["bad", "spoiler", "invalid"],
+  ["bad", "empty_list", "blank_id", "dupe_id", "spoiler", "invalid"],
 )
 assert.deepEqual(
-  mounted.views?.filter((v) => activeView(v) && v.product === "inner").map((v) => v.id),
+  mounted.views?.filter((v) => activeView(v) && v.consumes?.includes("inner")).map((v) => v.id),
   ["public"],
 )
 assert.ok(
@@ -89,9 +133,51 @@ assert.ok(mounted.views?.find((v) => v.id === "stationery")?.playerTemplate)
 assert.ok(
   !resolveViews({ ...local, mounts: [], views: [{ id: "public", on: false }] }).dropped.some((d) => d.id === "public"),
 )
-assert.doesNotThrow(() => compileView({ html: '<svg><path stroke="var(--ink-2)" fill="var(--paper)"/></svg>' }))
 assert.ok(theaterSurface({ id: "options", role: "theater" }))
 assert.ok(!theaterSurface({ id: "new-suggestions", surface: "composer" }))
+assert.ok(consumableSurface({ id: "new-suggestions", surface: "composer" }, undefined, true))
+assert.ok(!consumableSurface({ id: "ferry_cg", role: "theater" }, [{ product: "ferry_cg" }], true))
+
+// Card views can consume `composer` products; player templates cannot. Multi-product shadowing does not leak unclaimed IDs.
+{
+  const composerCard = validateCard({
+    ...ferry,
+    products: [
+      ...ferry.products!,
+      { id: "choices", role: "theater", surface: "composer", shape: { kind: "list" }, text: "建议行动" },
+      { id: "aside_b", role: "theater", shape: { kind: "text" }, text: "旁白注记" },
+    ],
+    views: [
+      { id: "low_b", consumes: ["aside_b"], html: "<p data-text='value'></p>" },
+      { id: "mid_ab", consumes: ["inner", "aside_b"], html: "<p data-text='theater.aside_b'></p>" },
+      { id: "high_a", consumes: ["inner"], html: "<p data-text='value'></p>" },
+      {
+        id: "card_deck",
+        consumes: ["choices"],
+        html: "<ul data-each='value' data-as='c'><li data-text='c'></li></ul>",
+      },
+    ],
+  })
+  assert.deepEqual(composerCard.diagnostics, [])
+  const stealComposer = decodeLayer({
+    id: "steal",
+    name: "steal",
+    views: [{ id: "steal_choices", consumes: ["choices"], html: "<p></p>" }],
+  })
+  const merged = resolveLayer(composerCard.card!, {
+    local: { id: "local", name: "local", card: ferry.id, mounts: ["steal"] },
+    packs: [stealComposer],
+  })
+  assert.deepEqual(
+    merged.dropped.map((d) => d.id),
+    ["steal_choices"],
+  )
+  assert.deepEqual(
+    merged.views?.filter(activeView).map((v) => v.id),
+    ["low_b", "high_a", "card_deck"],
+  )
+  assert.equal(merged.views?.find((v) => v.id === "mid_ab")?.shadowed, true)
+}
 
 const toggled = resolveViews({ ...local, views: [{ id: "ferry_letter", on: true }] })
 assert.deepEqual(
@@ -99,7 +185,7 @@ assert.deepEqual(
   mounted.views?.map((v) => v.id),
 )
 assert.deepEqual(
-  toggled.views?.filter((v) => v.product === "inner" && activeView(v)).map((v) => v.id),
+  toggled.views?.filter((v) => v.consumes?.includes("inner") && activeView(v)).map((v) => v.id),
   ["public"],
 )
 const intruding = decodeLayer({
@@ -123,6 +209,23 @@ const locked = resolveLayer(privateLetter, { local: { ...local, mounts: [intrudi
 assert.ok(locked.dropped.some((d) => d.id === "ferry_hud"))
 const replaced = locked.views?.find((v) => v.id === "ferry_letter")
 assert.ok(replaced?.playerTemplate && !replaced.when && !replaced.media)
+
+// Player templates only see `names`, their consumed `theater` slice, and single-product `value` (never `fields` or `world`).
+{
+  const bound = viewBindings({
+    view: replaced,
+    node: { id: 1, fields: { 潮位: 2 }, theater: { inner: "心声", secret: "不该见" } },
+    products: locked.products,
+    names: { char: "老艄公" },
+    context: { fields: { 潮位: 2 }, world: { boat: { moor: "江心" } } },
+  })
+  assert.equal(readPath(bound.scope, "value"), "心声")
+  assert.equal(readPath(bound.scope, "theater.inner"), "心声")
+  assert.equal(readPath(bound.scope, "theater.secret"), undefined)
+  assert.equal(readPath(bound.scope, "fields.潮位"), undefined)
+  assert.equal(readPath(bound.scope, "world.boat.moor"), undefined)
+}
+
 for (const binding of ["media.unknown", "portraits.missing", "crossings:value.fake", "absent:value"]) {
   const check = validateCard({ ...ferry, views: [{ id: "broken", html: '<div data-media="' + binding + '"></div>' }] })
   assert.ok(
@@ -131,10 +234,10 @@ for (const binding of ["media.unknown", "portraits.missing", "crossings:value.fa
   )
 }
 
-// Only the view consumes these enum values as images.
+// Catalog media columns work through both `value.<col>` (when `consumes.length === 1`) and `theater.<productId>.<col>`.
 const photoView = {
   id: "album",
-  product: "album",
+  consumes: ["album"],
   html: '<ul data-each="value" data-as="post"><li data-media="photos:post.photo"></li></ul>',
 }
 const album = {
@@ -144,7 +247,7 @@ const album = {
   shape: { kind: "table", columns: [{ key: "photo", type: "enum", catalog: "photos" }] },
 }
 const photoCard = { ...ferry, views: [photoView], products: [...ferry.products!, album] }
-const validatePhotos = (catalog: object, views = [photoView]) =>
+const validatePhotos = (catalog: object, views: object[] = [photoView]) =>
   validateCard({ ...photoCard, views, catalogs: [...ferry.catalogs!, { id: "photos", ...catalog }] }).diagnostics
 const photos = { baseUrl: "https://example.org/photos", items: [{ id: "portrait", variants: ["portrait.png"] }] }
 {
@@ -155,6 +258,11 @@ const photos = { baseUrl: "https://example.org/photos", items: [{ id: "portrait"
         ...photoView,
         html: '<ul data-each="value" data-as="post"><li data-if="post.show" data-media="photos:post.photo"></li></ul>',
       },
+      {
+        id: "hud_feed",
+        residency: "latest",
+        html: '<ul data-each="theater.album" data-as="post"><li data-if="post.show" data-media="photos:post.photo"></li></ul>',
+      },
     ],
     media: { gallery: ["photos"] },
     catalogs: [...ferry.catalogs!, { id: "photos", ...photos }],
@@ -163,7 +271,9 @@ const photos = { baseUrl: "https://example.org/photos", items: [{ id: "portrait"
       { ...album, shape: { kind: "table", columns: [...album.shape.columns, { key: "show", type: "boolean" }] } },
     ],
   }
-  const card = validateCard(rawAlbum).card!
+  const validated = validateCard(rawAlbum)
+  assert.deepEqual(validated.diagnostics, [])
+  const card = validated.card!
   const S = makeSession({ card, rows: () => ({}), model: () => fake(() => ({ text: "" })) })
   const root = S.greet(card.greetings[0]).node!
   for (const show of [true, false]) {
@@ -173,7 +283,12 @@ const photos = { baseUrl: "https://example.org/photos", items: [{ id: "portrait"
     })
     assert.deepEqual(
       projected.media?.viewImages ?? [],
-      show ? [{ kind: "illustration", nodeId: root.id, catalog: "photos", item: "portrait" }] : [],
+      show
+        ? [
+            { kind: "illustration", nodeId: root.id, catalog: "photos", item: "portrait" },
+            { kind: "illustration", nodeId: root.id, catalog: "photos", item: "portrait" },
+          ]
+        : [],
     )
   }
 }
@@ -193,6 +308,35 @@ for (const [catalog, rule] of [
 assert.ok(!validatePhotos({ items: [{ id: "portrait" }] }, []).some((d) => d.rule.startsWith("bad-media")))
 assert.equal(ferry.id, "ferry")
 assert.deepEqual(checkValue(ferry).diagnostics, [])
+
+// `ri.yaml` uses ONE unified parchment HUD (`ri_hud`, `residency: "latest"`, `consumes: ["inner"]`) with full state + theater bindings.
+{
+  const ri = await loadCard("ri")
+  assert.deepEqual(
+    validateCard(ri).diagnostics.filter((d) => d.level === "error"),
+    [],
+  )
+  assert.deepEqual(
+    ri.views?.map((v) => ({ id: v.id, label: v.label, residency: v.residency, consumes: v.consumes })),
+    [{ id: "ri_hud", label: "圣女手记", residency: "latest", consumes: ["inner"] }],
+  )
+  const S = makeSession({ card: ri, rows: () => ({}), model: () => fake(() => ({ text: "" })) })
+  const root = S.greet(ri.greetings[0]).node!
+  const headNode = S.timelineNode(root.id)
+  assert.deepEqual(headNode.latestContext, { fields: root.state, world: {} })
+  const riView = S.layer.views![0]
+  const bound = viewBindings({
+    view: riView,
+    node: { ...headNode, theater: { inner: "牧师先生今天也很温柔呢。" } },
+    products: S.layer.products,
+    names: S.layer.names,
+    context: headNode.latestContext,
+  })
+  assert.equal(readPath(bound.scope, "fields.好感度"), 15)
+  assert.equal(readPath(bound.scope, "names.char"), "理")
+  assert.equal(readPath(bound.scope, "theater.inner"), "牧师先生今天也很温柔呢。")
+  assert.equal(readPath(bound.scope, "value"), "牧师先生今天也很温柔呢。")
+}
 
 // YAML print -> parse roundtrip & CardView exposure.
 const reparsed = validateCard(parseCard(printCard(ferry)))
@@ -233,7 +377,7 @@ assert.deepEqual(sorted.media, ferry.media)
   })
   const guardedCard = {
     ...ferry,
-    views: ferry.views!.map((v) => (v.product === "inner" ? { ...v, when: { path: "天气", is: "晴" } } : v)),
+    views: ferry.views!.map((v) => (v.consumes?.includes("inner") ? { ...v, when: { path: "天气", is: "晴" } } : v)),
   }
   const S = makeSession({ card: guardedCard, rows: () => ({}), model: () => genericFake })
   const root = S.greet(ferry.greetings[0]).node!
@@ -246,6 +390,7 @@ assert.deepEqual(sorted.media, ferry.media)
     fields: root.state,
     world: S.activeContext(root.id).products,
   })
+  assert.deepEqual(S.timelineNode(root.id).fields, root.state) // card turn view (`ferry_letter`) exposes `node.fields`
   const events = await collect(S.act(root.id, { text: "上船歇脚。" }))
   assert.ok(events.some((e) => e.kind === "stage" && e.phase === "narrate" && e.visibleViews?.includes("ferry_letter")))
   const turn1 = lastNode(events)

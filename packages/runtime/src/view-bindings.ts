@@ -1,6 +1,6 @@
 import type { EffectiveView, TemplateNode } from "./view-shell.ts"
 import type { NodeMedia, MediaVariantTarget } from "./media.ts"
-import { rows, type Shape, type TableShape } from "./product.ts"
+import { rows, type Product, type Shape, type TableShape } from "./product.ts"
 export type Scope = Record<string, unknown>
 export const readPath = (scope: Scope, path: string) => {
   if (Object.hasOwn(scope, path)) return scope[path]
@@ -41,38 +41,71 @@ function productImages(
 export function viewBindings({
   view,
   node,
-  shape,
-  value,
+  products,
+  theater,
   names,
   context,
 }: {
   view: EffectiveView
   node: { id: number; media?: NodeMedia; fields?: Scope; theater?: Readonly<Scope> } | undefined
-  shape: Shape | undefined
-  value: unknown
+  products?: readonly Pick<Product, "id" | "shape">[]
+  theater?: Readonly<Scope>
   names: unknown
   context?: { fields?: unknown; world?: unknown }
 }) {
-  const record = shape?.kind === "record" && value && typeof value === "object" ? (value as Scope) : {}
-  const aliases = Object.fromEntries(Object.keys(record).map((k) => [k, "value." + k]))
+  const allTheater = theater ?? node?.theater ?? {}
+  const consumed = view.consumes ?? []
+  const scope: Scope = {}
+  let aliases: Record<string, string> = {}
+  let primaryShape: Shape | undefined
+  let primaryValue: unknown
+  if (consumed.length === 1) {
+    const primaryId = consumed[0]
+    primaryShape = products?.find((p) => p.id === primaryId)?.shape
+    primaryValue = allTheater[primaryId]
+    if (
+      primaryShape?.kind === "record" &&
+      primaryValue &&
+      typeof primaryValue === "object" &&
+      !Array.isArray(primaryValue)
+    ) {
+      const record = primaryValue as Scope
+      Object.assign(scope, record)
+      aliases = Object.fromEntries(
+        Object.keys(record)
+          .filter((k) => k !== "theater" && k !== "value")
+          .map((k) => [k, "value." + k]),
+      )
+    }
+    scope.value = primaryValue
+  }
+  scope.names = names
   const hits = node?.media?.viewMedia?.filter((m) => m.viewId === view.id) ?? []
-  const scope: Scope = { ...record, value, names }
   if (!view.playerTemplate) {
     scope.media = Object.fromEntries(hits.map((m) => [m.id, m]))
     scope.fields = context?.fields ?? node?.fields
-    if (!view.product) {
-      Object.defineProperty(scope, "world", { enumerable: true, configurable: true, get: () => context?.world })
-      scope.theater = node?.theater
-    }
+    Object.defineProperty(scope, "world", { enumerable: true, configurable: true, get: () => context?.world })
+    scope.theater = allTheater
+  } else {
+    scope.theater = Object.fromEntries(
+      consumed.flatMap((id) => (Object.hasOwn(allTheater, id) ? [[id, allTheater[id]]] : [])),
+    )
   }
   let refs: ReturnType<typeof productImages> | undefined
+  const collectRefs = () => {
+    const out: ReturnType<typeof productImages> = []
+    if (primaryShape) out.push(...productImages(primaryShape, primaryValue, "value"))
+    for (const p of products ?? []) {
+      if (Object.hasOwn(allTheater, p.id)) out.push(...productImages(p.shape, allTheater[p.id], "theater." + p.id))
+    }
+    return out
+  }
   function image(binding: string, locals: Record<string, string>): MediaVariantTarget | undefined {
     if (view.playerTemplate || !node) return
     if (binding.includes(":")) {
-      if (!shape) return
       const [catalog, path] = binding.split(":")
       const key = canonicalPath(path, locals)
-      const ref = (refs ??= productImages(shape, value)).find((r) => r.path === key && r.catalog === catalog)
+      const ref = (refs ??= collectRefs()).find((r) => r.path === key && r.catalog === catalog)
       if (ref) return { kind: "illustration", nodeId: node.id, catalog, item: ref.item }
     } else {
       const [source, slot] = binding.split(".")

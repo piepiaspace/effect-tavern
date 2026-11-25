@@ -29,8 +29,10 @@ interface Props {
   view: EffectiveView
   card: CardView
   node?: TimelineNode
+  draft?: boolean
   latest: boolean
-  value?: unknown
+  theater?: Readonly<Scope>
+  context?: TimelineNode["latestContext"]
 }
 const stylesheet = (css: string) => {
   const s = new CSSStyleSheet()
@@ -46,18 +48,20 @@ function viewSheet(view: EffectiveView) {
 }
 
 export const ViewBlock = (props: Props) => {
-  const bindings = createMemo(() =>
-    viewBindings({
+  const bindings = createMemo(() => {
+    const context =
+      !props.view.playerTemplate && residency(props.view) === "latest"
+        ? (props.context ?? props.node?.latestContext)
+        : undefined
+    return viewBindings({
       view: props.view,
       node: props.node,
-      shape: props.card.layer.products.find((p) => p.id === props.view.product)?.shape,
-      value: props.value,
+      products: props.card.layer.products,
+      theater: props.theater ?? props.node?.theater,
       names: props.card.layer.names,
-      ...(!props.view.product &&
-        residency(props.view) === "latest" &&
-        props.node?.latestContext && { context: props.node.latestContext }),
-    }),
-  )
+      ...(context && { context }),
+    })
+  })
   let loopSequence = 0
   function image(binding: string, aliases: Record<string, string>) {
     const target = bindings().image(binding, aliases)
@@ -94,7 +98,13 @@ export const ViewBlock = (props: Props) => {
           } else if (key.startsWith("data-attr-")) out["data-" + key.slice(10)] = scalar(readPath(data(), value))
           else if (key === "checked") out.defaultChecked = true
           else if (key === "name" && a.type === "radio")
-            out.name = String(props.node?.id ?? "draft") + "-" + props.view.id + "-" + rowPrefix + value
+            out.name =
+              String(props.draft ? "draft" : (props.node?.id ?? "draft")) +
+              "-" +
+              props.view.id +
+              "-" +
+              rowPrefix +
+              value
           else if (rowPrefix && ((n.tag === "input" && key === "id") || (n.tag === "label" && key === "for")))
             out[key] = rowPrefix + value
           else if (!key.startsWith("data-")) out[key] = key === "open" ? true : value

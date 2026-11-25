@@ -550,13 +550,14 @@ export const Rewrite = (props: {
  *  nothing to ask for, no button. Not a sibling action (the demand runs no narrate). A failed demand has no draft to
  *  carry its ghost: the reason shows after the menu in the row of the node that asked (store.ts `demanded`, set by the
  *  menu and by a theater block's dice alike), until the next action clears it. */
-export const Demand = (props: { node: Node; n: number }) => {
+export const Demand = (props: { node: Node; n: number; consumedIds?: ReadonlySet<string> }) => {
   const view = read(card)
   const busy = read(working)
   const failed = read(error)
   const asked = read(demanded)
   const unresolved = () => props.node.settlementStatus === "pending" || props.node.settlementStatus === "failed"
-  const demands = () => demandable(view()?.layer?.products ?? [], props.node, view()?.media, view()?.catalogs)
+  const demands = () =>
+    demandable(view()?.layer?.products ?? [], props.node, view()?.media, view()?.catalogs, props.consumedIds)
   return (
     <>
       <Show when={demands().length}>
@@ -595,29 +596,111 @@ export const Demand = (props: { node: Node; n: number }) => {
   )
 }
 
-/** A turn's 小剧场 between its prose and its row: each theater product the node has an answer for (on by default, or
- *  demanded), drawn by its shape, with one key that asks for it again (the same id demanded: history.ts replaces it in
- *  place). The key shows the way the row's own keys do (reader.css `.acts`). The draft draws its narrate blocks here
- *  too while they stream (store.ts `Draft.products`): no node yet, so no key. */
+/** A turn's 小剧场 between its prose and its row: each unconsumed theater product the node has an answer for (on by
+ *  default, or demanded), drawn by its shape, with one key that asks for it again (the same id demanded: history.ts
+ *  replaces it in place). Custom `ViewShell`s render bare in the column via `StateViews` without this `.product.theater`
+ *  wrapper, while their consumed products are skipped here and re-rollable via `Demand`. */
 /** A streaming block's edges, as the landed one will have them (journal.ts `split` trims): no height jump when it lands. */
 const trimmed = (v: unknown) => (typeof v === "string" ? v.trim() : v)
-const eligible = (v: EffectiveView, visible: readonly string[] | undefined, last: boolean) =>
-  activeView(v) && (residency(v) === "turn" || last) && (!v.when || !!visible?.includes(v.id))
-export const StateViews = (props: { node: Node; last: boolean; view: CardView | null }) => {
-  const views = createMemo(
-    () => props.view?.layer.views?.filter((v) => !v.product && eligible(v, props.node.visibleViews, props.last)) ?? [],
-    { equals: (a, b) => a.length === b.length && a.every((v, i) => v === b[i]) },
-  )
-  return (
-    <For each={views()} keyed={(v) => v.id}>
-      {(v) => <ViewBlock view={v()} card={props.view!} node={props.node} latest={props.last} />}
-    </For>
-  )
+const emptyTheater: Readonly<Record<string, unknown>> = {}
+const emptyConsumed: ReadonlySet<string> = new Set()
+
+export const sameViews = (a: readonly EffectiveView[], b: readonly EffectiveView[]) =>
+  a.length === b.length && a.every((v, i) => v === b[i])
+export const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
+  a.size === b.size && [...a].every((id) => b.has(id))
+export const sameTheater = (a: Readonly<Record<string, unknown>>, b: Readonly<Record<string, unknown>>) => {
+  const ak = Object.keys(a)
+  const bk = Object.keys(b)
+  return ak.length === bk.length && ak.every((k) => a[k] === b[k])
 }
+export const trimmedTheater = (
+  raw: Readonly<Record<string, unknown>> | undefined,
+): Readonly<Record<string, unknown>> => {
+  if (!raw) return emptyTheater
+  const out: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(raw)) out[k] = trimmed(v)
+  return out
+}
+export const consumedProducts = (views: readonly EffectiveView[]): ReadonlySet<string> => {
+  const ids = new Set<string>()
+  for (const v of views) {
+    for (const id of v.consumes ?? []) ids.add(id)
+  }
+  return ids.size ? ids : emptyConsumed
+}
+export const eligibleNodeViews = (
+  view: CardView | null | undefined,
+  node: Node,
+  last: boolean,
+  settled: boolean,
+): EffectiveView[] =>
+  view?.layer.views?.filter((v) => {
+    if (!activeView(v) || (v.when && !node.visibleViews?.includes(v.id))) return false
+    if (residency(v) === "latest") return last && settled
+    return !v.consumes?.length || v.consumes.some((id) => node.theater[id] !== undefined)
+  }) ?? []
+/** Products claimed on a landed node, including `latest` views holding until `record` settles so `.theater` never flashes. */
+export const claimedNodeProducts = (
+  view: CardView | null | undefined,
+  node: Node,
+  last: boolean,
+): ReadonlySet<string> =>
+  consumedProducts(
+    view?.layer.views?.filter((v) => {
+      if (!activeView(v) || (v.when && !node.visibleViews?.includes(v.id))) return false
+      if (residency(v) === "latest") return last
+      return !v.consumes?.length || v.consumes.some((id) => node.theater[id] !== undefined)
+    }) ?? [],
+  )
+export const eligibleDraftViews = (
+  view: CardView | null | undefined,
+  visibleViews: readonly string[] | undefined,
+  draftTheater: Readonly<Record<string, unknown>>,
+): EffectiveView[] =>
+  view?.layer.views?.filter(
+    (v) =>
+      activeView(v) &&
+      residency(v) === "turn" &&
+      (!v.when || !!visibleViews?.includes(v.id)) &&
+      Boolean(v.consumes?.some((id) => draftTheater[id] !== undefined)),
+  ) ?? []
+/** Products claimed during `<Draft>`, including `latest` views that will mount once the turn settles. */
+export const claimedDraftProducts = (
+  view: CardView | null | undefined,
+  visibleViews: readonly string[] | undefined,
+): ReadonlySet<string> =>
+  consumedProducts(view?.layer.views?.filter((v) => activeView(v) && (!v.when || !!visibleViews?.includes(v.id))) ?? [])
+export const StateViews = (props: {
+  views: readonly EffectiveView[]
+  view: CardView | null | undefined
+  node?: Node
+  draft?: boolean
+  latest: boolean
+  theater?: Readonly<Record<string, unknown>>
+  context?: Node["latestContext"]
+}) => (
+  <Show when={props.view}>
+    {(cardView) => (
+      <For each={props.views} keyed={(v) => v.id}>
+        {(v) => (
+          <ViewBlock
+            view={v()}
+            card={cardView()}
+            node={props.node}
+            draft={props.draft}
+            latest={props.latest}
+            theater={props.theater}
+            context={props.context}
+          />
+        )}
+      </For>
+    )}
+  </Show>
+)
 export const Theater = (props: {
-  visibleViews?: readonly string[] | undefined
-  last?: boolean
   products: Readonly<Record<string, unknown>>
+  consumedIds?: ReadonlySet<string>
   node?: Node
 }) => {
   const view = read(card)
@@ -625,8 +708,9 @@ export const Theater = (props: {
   const unresolved = () => props.node?.settlementStatus === "pending" || props.node?.settlementStatus === "failed"
   const answered = () => {
     const illustIds = illustrationTheaterIds(view()?.media)
+    const skip = props.consumedIds
     return theater(view()?.layer?.products ?? []).filter(
-      (p) => !illustIds.has(p.id) && props.products[p.id] !== undefined,
+      (p) => !illustIds.has(p.id) && !skip?.has(p.id) && props.products[p.id] !== undefined,
     )
   }
   return (
@@ -650,24 +734,7 @@ export const Theater = (props: {
               )}
             </Show>
           </div>
-          <Show
-            when={view()?.layer.views?.find(
-              (v) =>
-                v.product === p().id &&
-                eligible(v, props.node?.visibleViews ?? props.visibleViews, props.last ?? !props.node),
-            )}
-            fallback={<Shaped shape={p().shape} value={trimmed(props.products[p().id])} />}
-          >
-            {(v) => (
-              <ViewBlock
-                view={v()}
-                card={view()!}
-                node={props.node}
-                latest={props.last ?? !props.node}
-                value={trimmed(props.products[p().id])}
-              />
-            )}
-          </Show>
+          <Shaped shape={p().shape} value={trimmed(props.products[p().id])} />
         </div>
       )}
     </For>

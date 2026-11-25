@@ -476,6 +476,10 @@
         {
           "role": "user",
           "content": "我看了看四周。⦅小心⦆"
+        },
+        {
+          "role": "system",
+          "content": "<aside_blocks>\nAfter the prose, append each requested block starting on a new line with `<<aside>> <id>`, followed by its text. One block per id, in any order, never inside the prose.\ninner: 这一幕里理藏在心底、没有说出口的真实想法与细微情绪，简短一两句，保持她温柔又容易害羞的口吻。\n</aside_blocks>"
         }
       ]
     },
@@ -546,7 +550,7 @@
         },
         {
           "role": "system",
-          "content": "<aside_blocks>\nAfter the prose, append each requested block starting on a new line with `<<aside>> <id>`, followed by its text. One block per id, in any order, never inside the prose.\ninner: What the character thought this scene but did not say, one short paragraph.\n</aside_blocks>"
+          "content": "<aside_blocks>\nAfter the prose, append each requested block starting on a new line with `<<aside>> <id>`, followed by its text. One block per id, in any order, never inside the prose.\ninner: 这一幕里理藏在心底、没有说出口的真实想法与细微情绪，简短一两句，保持她温柔又容易害羞的口吻。\n</aside_blocks>"
         }
       ]
     }

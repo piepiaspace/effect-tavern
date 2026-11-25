@@ -20,7 +20,13 @@
 // card's goes out with the literal `{{key}}`; `holes` lists what nothing fills, either way.
 import { ContextPolicy, checkContextPolicies } from "./lore.ts"
 import { compileView } from "./view-template.ts"
-import { ViewShellPatch, theaterSurface, type EffectiveView } from "./view-shell.ts"
+import {
+  ViewShellPatch,
+  checkConsumesIds,
+  consumableSurface,
+  theaterSurface,
+  type EffectiveView,
+} from "./view-shell.ts"
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
@@ -691,21 +697,33 @@ export const resolveWithTrace = (
       }
       try {
         const playerTemplate = row !== cardRow
-        if (playerTemplate && (prior ? !prior.product : !patch.product))
-          throw new Error("player templates require a theater product")
         const view = { ...prior, ...patch, playerTemplate }
         if (!view.html) throw new Error("view requires html")
-        if (
-          view.product &&
-          !theaterSurface(
-            asked.find((p) => p.id === view.product),
-            card.media?.illustrations,
-          )
-        )
-          throw new Error("view requires an available theater surface")
+        checkConsumesIds(view.consumes)
         if (playerTemplate) {
+          if (!view.consumes?.length) throw new Error("player templates require a theater product")
+          for (const cid of view.consumes) {
+            if (
+              !theaterSurface(
+                asked.find((p) => p.id === cid),
+                card.media?.illustrations,
+              )
+            )
+              throw new Error("view requires an available theater surface")
+          }
           delete view.when
           delete view.media
+        } else {
+          for (const cid of view.consumes ?? []) {
+            if (
+              !consumableSurface(
+                asked.find((p) => p.id === cid),
+                card.media?.illustrations,
+                true,
+              )
+            )
+              throw new Error("view requires an available consumable surface")
+          }
         }
         const tree = compileView({ html: view.html, ...(view.css !== undefined && { css: view.css }) })
         views.set(id, { ...view, html: view.html, tree })
@@ -719,9 +737,9 @@ export const resolveWithTrace = (
   const takenProducts = new Set<string>()
   for (const id of [...authored].reverse()) {
     const view = views.get(id)!
-    if (!view.product || view.on === false) continue
-    if (takenProducts.has(view.product)) view.shadowed = true
-    takenProducts.add(view.product)
+    if (view.on === false || !view.consumes?.length) continue
+    if (view.consumes.some((cid) => takenProducts.has(cid))) view.shadowed = true
+    else for (const cid of view.consumes) takenProducts.add(cid)
   }
   const frameEntries = filledTracked.filter((x) => x.item.at !== "tail")
   const tailEntries = filledTracked.filter((x) => x.item.at === "tail")

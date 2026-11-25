@@ -1,6 +1,6 @@
 # Card Schema & Placement Reference
 
-Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore.ts`, `context.ts`, `product.ts`, `world.ts`, and `lint.ts`.
+Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore.ts`, `context.ts`, `product.ts`, `world.ts`, `media.ts`, `view-shell.ts`, `view-template.ts`, `view-bindings.ts`, and `lint.ts`.
 
 ## Stage Visibility Matrix
 
@@ -16,6 +16,7 @@ Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore
 | `lexicon`                               | `polish` only (rewrites matched sentences outside dialogue)                                                                                   |
 | `greetings`                             | Node `0` (`do` settles initial state/events; `note` triggers dynamic narration)                                                               |
 | `passages`                              | Post-`record` transition child node (`when` first-match-wins; `do`, optional `digest` epoch `boundary`, optional `end`)                       |
+| `media` + `views`                       | Host media/template validation & client Shadow DOM / `MediaFrame` rendering only (never sent to any model)                                    |
 | `title`, `summary`, `version`, `source` | Card page / metadata only (never sent to any model)                                                                                           |
 
 ---
@@ -92,7 +93,26 @@ Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore
   - Referenced by an `enum` column (`catalog: "<id>"` instead of `options`) on `chronicle` or `theater` products (never `world`).
   - At `record`, pickable enum values are dynamically restricted to items whose `when` holds (if none hold, that table/key is omitted for the turn; zero prompt bloat). Readers resolve `variants` under `baseUrl` by node seed.
 
-### 7. `Cond`, `names`, `guard`, `lexicon` & `heading`
+### 7. `media` & `views`: Media Bindings & In-Stream `ViewShell`
+
+- **`media`**: `{ illustrations?: [{ product }], portraits?: [{ id?, label?, catalog }], gallery?: string[], bgm?: { product } }`.
+  - `catalogs` items bound to media require `https://` `baseUrl` and relative `variants` (`focus?: [x, y]` in `[0, 1]`, `aspect?: "W / H"` in `[0.25, 4]`).
+- **`views` (`ViewShell`)**: `[{ id, label?, consumes?: string[], residency?: "latest" | "turn", when?: Cond, media?: [{ id, catalog, label? }], html, css?, on?: boolean }]`.
+  - **`consumes`**: Optional array of `theater` (or `surface: "composer"` on `Card.views`) product IDs claimed by this shell (`consumableSurface`; products bound in `media.illustrations`, empty strings, and duplicate IDs are rejected). Claimed products are suppressed from default `<Theater>` / `<Options>` chrome so they never render twice; if multiple active views across layers overlap on `consumes`, the highest-rank view wins and lower-rank overlapping views are marked `shadowed`. Combine a status HUD and character inner thoughts into a single shell via `residency: "latest"` + `consumes: ["inner"]` rather than stacking fragmented widgets.
+  - **`residency`**: Defaults to `"turn"` when `consumes` is non-empty, and `"latest"` otherwise. `"latest"` mounts on the active branch head (carrying `latestContext: { fields, world }`); `"turn"` stays on every turn (skipping turns where all `consumes` products are `undefined`).
+  - **Data scope (`viewBindings`)**:
+    - On `Card.views` (`!playerTemplate`): always exposes `fields`, `world` (`worldValue` records/tables), `theater` (all turn theater outputs), `media` (`views[].media` hits), and `names`—plus `value` (and spread record keys) when `consumes.length === 1`.
+    - On player layers (`Pack` / `Local`): `when` and `media` are stripped, `consumes` must be non-empty over non-composer `theater` products (`theaterSurface`), and scope exposes only `names`, consumed `theater` keys, and single-product `value` / record keys.
+  - **Five controlled `data-*` directives** (scriptless Shadow DOM + `adoptedStyleSheets`; zero `eval`, zero external URLs):
+    1. **Text (`data-text="<path>"`)** — Writes pure `textContent` (`null` / `undefined` → `""`).
+    2. **Conditionals (`data-if="<path>"`, `data-unless="<path>"`)** — Unmounts subtree when falsy (`false`, `0`, `""`, `null`, `undefined`, or `[]`).
+    3. **Iteration (`data-each="<path>" data-as="<item>"`)** — Iterates arrays/tables, binding `<item>` and 1-based `<item>.$num` (radio `name` and paired `input[id]` / `label[for]` are automatically row-scoped).
+    4. **Controlled media (`data-media="<source>"`, optional `data-fit="cover|contain|natural"`, `data-lightbox`)** — Mounts `MediaFrame` from `media.<slotId>`, `portraits.<slotId>`, or `<catalogId>:<path>` (supporting both `theater.<productId>.<col>` and single-product `value.<col>` / `<col>` on catalog-backed columns).
+    5. **Attributes & CSS numbers (`data-attr-<k>="<path>"`, `data-var-<k>="<path>"`)** — `data-attr-<k>` sets scalar `data-<k>` for CSS attribute selectors; `data-var-<k>` sets `--<k>` strictly when the value is a finite `number`.
+  - **Host state markers**: Shadow host carries `[data-latest]` on the latest landed turn (`:host([data-latest])` in CSS); `<details data-open="latest">` opens on the latest turn and collapses on historical turns.
+  - **HTML/CSS whitelist (`compileView`, lint `bad-view`)**: Allows semantic HTML, `<details>`/`<summary>`, `radio`/`checkbox` `<input>` + `<label>`, inline `<svg>` + presentation attributes (`stroke-linecap`, `stroke-dasharray`, `fill-opacity`, `vector-effect`, etc.), local `url(#id)` references, `@media`/`@supports`/`@container`/`@keyframes`, and safe CSS functions (`var`, `calc`, `min`/`max`/`clamp`, colors, gradients, 2D/3D transforms, `drop-shadow`, shapes); rejects `<script>`, `<img>`, `<a href>`, `on*`, inline `style=""`, CSS escapes, `@import`, external `url()`, and unknown functions with `line:column` diagnostics.
+
+### 8. `Cond`, `names`, `guard`, `lexicon` & `heading`
 
 - **`Cond` grammar:** `{ path, is }`, `{ path, op: "lt" | "lte" | "gt" | "gte", value }`, `{ all: Cond[] }`, `{ any: Cond[] }`, `{ not: Cond }`, `{ event: string }`.
   - Paths: `<field>` (or `fields.<field>`), `world.<product>.<key>`, `lore.<id>.since | shown`. Field names `fields`, `world`, `lore` are reserved (`reserved-path`).
@@ -106,4 +126,4 @@ Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore
 ## Static Checks (`card check`) — Do Not Hand-Verify
 
 Schema & decode enforce structural invariants automatically. Static `lint` (`packages/runtime/src/lint.ts`) checks:
-`unknown-frame-slot`, `unknown-path`, `reserved-path`, `orphan-event`, `dead-field`, `prose-cannot-move`, `band-gap`, `unreachable-layer`, `hook-length`, `field-in-prose`, `inline-product`, `unfilled-name`, `unsupported-macro`, `unknown-catalog`, `duplicate-catalog-item`, `bad-section`, `bad-identifier`, `unknown-product`, `empty-greeting`, and `empty-text` (error—blocks install).
+`unknown-frame-slot`, `unknown-path`, `reserved-path`, `orphan-event`, `dead-field`, `prose-cannot-move`, `band-gap`, `unreachable-layer`, `hook-length`, `field-in-prose`, `inline-product`, `unfilled-name`, `unsupported-macro`, `unknown-catalog`, `duplicate-catalog-item`, `bad-view`, `bad-media-product`, `bad-media-slot`, `bad-media-url`, `bad-media-variant`, `media-focus`, `media-aspect`, `media-kind-mismatch`, `duplicate-media-binding`, `duplicate-media-slot`, `bad-section`, `bad-identifier`, `unknown-product`, `empty-greeting`, and `empty-text` (error—blocks install).

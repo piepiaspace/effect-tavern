@@ -175,24 +175,34 @@ const pickShelfCard = async (title: string, isDesktop: boolean) => {
 const openMidStoryGallery = async (isDesktop: boolean, via: "playsheet" | "drawer" = "playsheet") => {
   if (isDesktop) {
     const side = document.querySelector<HTMLElement>("aside.side")!
-    await press(t("card.gallery"), side)
-  } else if (via === "playsheet") {
-    document.querySelector<HTMLButtonElement>(".strip button.crumb")?.click()
-    check(await until(() => Boolean(document.querySelector(".sheet.fit[data-open]"))), "PlaySheet opens from crumb")
-    await quiet()
-    const sheet = document.querySelector<HTMLElement>(".sheet.fit")!
-    const galleryRow = sheet.querySelector<HTMLButtonElement>(`.play-story button[aria-label="${t("card.gallery")}"]`)
-    check(galleryRow, "PlaySheet .play-story renders mid-story Gallery row")
-    galleryRow?.click()
+    check(!findButton(t("card.gallery"), side), "Sidebar .workspace-tools omits top-level Gallery row")
+    await press(t("side.newStory"), side)
   } else {
+    if (via === "playsheet") {
+      document.querySelector<HTMLButtonElement>(".strip button.crumb")?.click()
+      check(await until(() => Boolean(document.querySelector(".sheet.fit[data-open]"))), "PlaySheet opens from crumb")
+      await quiet()
+      const sheet = document.querySelector<HTMLElement>(".sheet.fit")!
+      check(
+        !sheet.querySelector(`.play-story button[aria-label="${t("card.gallery")}"]`),
+        "PlaySheet .play-story omits top-level Gallery row",
+      )
+      await systemBack(1)
+      check(await until(() => !document.querySelector(".sheet.fit")), "PlaySheet closes before opening drawer")
+      await quiet()
+    }
     await openDrawerIfMobile(false)
     const drawer = document.querySelector<HTMLElement>(".drawer")!
-    await press(t("card.gallery"), drawer)
+    check(!findButton(t("card.gallery"), drawer), "Drawer .workspace-tools omits top-level Gallery row")
+    await press(t("side.newStory"), drawer)
   }
-  check(
-    await until(() => registry.get(page) === "card" && Boolean(document.querySelector(".manifest .gallery"))),
-    "CardPage opens directly on Gallery tab",
-  )
+  check(await until(() => registry.get(page) === "card"), "CardPage opens from workspace")
+  await quiet()
+  const switchTab = await agent.act({
+    steps: [{ ref: t("common.view"), action: "setValue", args: [t("card.gallery")] }],
+  })
+  check(switchTab.ok, `CardPage Segment switches to Gallery: ${switchTab.error?.message}`)
+  check(await until(() => Boolean(document.querySelector(".manifest .gallery"))), "CardPage opens Gallery tab")
   await quiet()
 }
 
@@ -1121,7 +1131,7 @@ const runPhaseTwo = async (isDesktop: boolean) => {
     ...p,
     name: "心声信纸",
     products: [{ id: "postcard", label: "信纸", text: "写一封短信", trigger: "demand" }],
-    views: [{ id: "letter", product: "postcard", html: "<blockquote data-text='value'></blockquote>" }],
+    views: [{ id: "letter", consumes: ["postcard"], html: "<blockquote data-text='value'></blockquote>" }],
   }))
   await mount(true)
   await modelControl({ clear: true, turns: [{ prose: "雨灯仍在。" }] })

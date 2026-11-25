@@ -1,27 +1,139 @@
+import "../src/theme.ts"
 import { compileView } from "@effect-tavern/runtime/src/view-template.ts"
 import { render } from "@solidjs/web"
 import { For, createSignal } from "solid-js"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
+import { createAgent } from "@ui-sdk/solid/agent"
+import { App } from "../src/App.tsx"
+import { flip, locale, t } from "../src/i18n.ts"
+import { boot, showCard } from "../src/pages.ts"
 import { ViewBlock } from "../src/view-shell.tsx"
 import { MediaFrame } from "../src/lightbox.tsx"
-import { card, registry } from "../src/store.ts"
-import { importCard, fetchCardOf } from "../src/wire.ts"
+import { apply, card, clear, log, openStreams, registry, working } from "../src/store.ts"
+import { importCard, fetchCardOf, putLocal, refreshActiveCard } from "../src/wire.ts"
 import type { EffectiveView } from "@effect-tavern/runtime/src/view-shell.ts"
-import { until, quiet } from "./settle.ts"
+import { until, quiet, touch, tracked } from "./settle.ts"
 import { postResult } from "./media-transport.ts"
 import "../src/app.css"
 
+const rawFetch = globalThis.fetch.bind(globalThis)
+globalThis.fetch = tracked(rawFetch)
+
+const UNIFIED_HUD_YAML = `id: unified_hud_card
+title: 礼拜堂手记
+summary: 验证单壳聚合状态栏与流式小剧场接管、重抽与回退。
+version: "1.0"
+source: hand
+names:
+  char: 理
+frame:
+  - id: setting
+    label: 礼拜堂
+    text: 石砌礼拜堂与花园长廊。
+fiction:
+  - id: saint
+    label: 圣女理
+    text: 温柔照看礼拜堂的圣女。
+greetings:
+  - text: 午后阳光透过彩窗洒在礼拜堂石阶上。
+rules:
+  fields:
+    - { path: 好感度, label: 好感度, type: int, min: -30, max: 100, initial: 15 }
+  actions: []
+  readouts:
+    - id: affinity
+      text: 亲疏变化
+      options:
+        - { id: flat, text: 寻常往来, do: [] }
+        - { id: warm, text: 亲切欣喜, do: [{ path: 好感度, add: 8 }] }
+lore: []
+guard: []
+products:
+  - id: place
+    role: world
+    label: 所在之处
+    initial: { spot: 石砌礼拜堂 }
+    shape:
+      kind: record
+      keys:
+        - { key: spot, type: text }
+    text: 记录当前所在地点。
+  - id: inner
+    role: theater
+    surface: theater
+    label: 理的心声
+    shape: { kind: text }
+    stage: narrate
+    on: true
+    text: 写一段{{char}}此刻未说出口的心声。
+  - id: note_slip
+    role: theater
+    surface: theater
+    label: 祭坛便签
+    shape: { kind: text }
+    stage: narrate
+    on: true
+    text: 写一张简短便签。
+  - id: options
+    role: theater
+    surface: composer
+    label: 行动建议
+    shape: { kind: list, max: 3 }
+    on: true
+    text: 给出两条下一步行动建议。
+views:
+  - id: ri_hud
+    label: 圣女手记
+    residency: latest
+    consumes: [inner, options]
+    css: |
+      :host { display: block; }
+      .parchment { padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line); }
+    html: |
+      <div class="parchment" data-var-aff="fields.好感度">
+        <span class="char" data-text="names.char"></span>
+        <span class="aff" data-text="fields.好感度"></span>
+        <span class="spot" data-text="world.place.spot"></span>
+        <input type="radio" name="hudtab" id="hudtab1" checked>
+        <div class="inner-thought" data-if="theater.inner" data-text="theater.inner"></div>
+        <ul class="hud-next" data-if="theater.options" data-each="theater.options" data-as="opt">
+          <li data-text="opt"></li>
+        </ul>
+      </div>
+  - id: slip_view
+    label: 祭坛便签壳
+    residency: turn
+    consumes: [note_slip]
+    html: |
+      <aside class="slip">
+        <input type="radio" name="sliptab" id="sliptab1" checked>
+        <span class="slip-body" data-text="value"></span>
+      </aside>
+`
+
+async function modelControl(body: Record<string, unknown>) {
+  const res = await rawFetch("/__fixture/model", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(`/__fixture/model failed: HTTP ${res.status}`)
+}
+
 async function run() {
-  const yaml = await fetch("/__fixture/ferry.yaml").then((r) => r.text())
+  if (locale() !== "zh-CN") flip()
+  touch()
+  const agent = createAgent({ allow: () => true })
+  const yaml = await rawFetch("/__fixture/ferry.yaml").then((r) => r.text())
   const installed = await importCard(yaml)
   await fetchCardOf(installed.id)
   const cardView = registry.get(card)!
   const diagnostics = installDiagnosticsBridge()
-  diagnostics.begin()
+  diagnostics.begin({ attribution: { fallbackFlashes: false } })
   const [value, setValue] = createSignal({ rows: ["first", "second"], level: 2, weather: "rain" })
   const source = {
     id: "letter",
-    product: "inner",
+    consumes: ["inner"],
     playerTemplate: true,
     css: ".panel { display:none } #next:checked ~ .panel { display:block }",
     html: '<details data-open="latest" data-attr-weather="value.weather" data-var-level="value.level"><summary>Log</summary><ol data-each="value.rows" data-as="row"><li><b data-text="row.$num"></b><span data-text="row"></span><input id="pick" type="checkbox"><label for="pick"></label></li></ol><label for="tab">Tab</label><input type="radio" name="tabs" id="tab" checked data-attr-weather="value.weather"><input type="radio" name="tabs" id="next"><em class="panel">Two</em><p data-if="fields.secret">private</p></details>',
@@ -29,10 +141,11 @@ async function run() {
   const [view, setView] = createSignal<EffectiveView>({ ...source, tree: compileView(source) })
   const [latest, setLatest] = createSignal(true)
   const ratios = ["3 / 1", "1 / 1", "1 / 3"]
+  const mountRoot = document.getElementById("root")!
   const dispose = render(
     () => (
       <>
-        <ViewBlock card={cardView} view={view()} latest={latest()} value={value()} />
+        <ViewBlock card={cardView} view={view()} latest={latest()} theater={{ inner: value() }} />
         <For each={ratios}>
           {(aspect, i) => (
             <MediaFrame
@@ -55,13 +168,13 @@ async function run() {
         </For>
       </>
     ),
-    document.getElementById("root")!,
+    mountRoot,
   )
+  const require = (ok: unknown, message: string) => {
+    if (!ok) throw new Error(message)
+  }
   try {
     const root = () => document.querySelector(".view-shell")?.shadowRoot
-    const require = (ok: unknown, message: string) => {
-      if (!ok) throw new Error(message)
-    }
     require(await until(() => root()?.querySelectorAll("li").length === 2), "rows render")
     const details = root()!.querySelector("details")!
     require(details.open &&
@@ -114,9 +227,168 @@ async function run() {
       getComputedStyle(root()!.querySelector("rect")!).clipPath.includes(
         "#cut",
       ), "same ID replaces HTML and SVG stylesheet")
-    await postResult({ failures: diagnostics.end().diagnostics.map((d) => d.message) })
   } finally {
     dispose()
   }
+
+  // ── Reader integration: unified HUD (`residency: "latest"`, `consumes: ["inner", "next"]`) ──
+  const unifiedInstalled = await importCard(UNIFIED_HUD_YAML)
+  await boot()
+  await showCard(unifiedInstalled.id)
+  const disposeApp = render(() => <App />, mountRoot)
+  try {
+    require(await until(() => Boolean(document.querySelector(".manifest button.begin"))), "CardPage renders begin")
+    document.querySelector<HTMLButtonElement>(".manifest button.begin")!.click()
+    require(await until(
+      () => Boolean(document.getElementById("node-0")) && !registry.get(working),
+    ), "Greeting #node-0 settles")
+    await quiet()
+
+    const node0HudHost = () => document.querySelector<HTMLElement>("#node-0 .view-shell[data-view=ri_hud]")
+    const node0Hud = () => node0HudHost()?.shadowRoot
+    require(Boolean(node0Hud()), "Greeting mounts unified ri_hud")
+    require(!node0HudHost()!.closest(".product.theater"), "ri_hud is bare without .product.theater wrapper")
+    require(document.querySelectorAll(".product.theater").length === 0, "no duplicate .product.theater on greeting")
+    require(node0Hud()?.querySelector(".char")?.textContent === "理" &&
+      node0Hud()?.querySelector(".aff")?.textContent === "15" &&
+      node0Hud()?.querySelector(".spot")?.textContent === "石砌礼拜堂" &&
+      !node0Hud()?.querySelector(".inner-thought"), "ri_hud reads { names, fields, world } simultaneously on greeting")
+    require(node0Hud()?.querySelector<HTMLInputElement>("#hudtab1")?.name ===
+      "0-ri_hud-hudtab", "landed node scopes radio name to node ID")
+
+    // 1. `<Draft>` streaming: `latest` HUD stays retired (no stale snapshot), while `turn` view mounts only once its product streams
+    registry.set(openStreams, 1)
+    apply({
+      kind: "attach",
+      phase: "narrate",
+      draft: { parent: 0, input: { text: "走近祭坛" }, text: "她抬起深海色的眼眸。" },
+    })
+    const draftHudHost = () => document.querySelector<HTMLElement>(".draft .view-shell[data-view=ri_hud]")
+    const draftSlipHost = () => document.querySelector<HTMLElement>(".draft .view-shell[data-view=slip_view]")
+    const draftSlip = () => draftSlipHost()?.shadowRoot
+    require(await until(() => Boolean(document.querySelector(".draft"))), "Draft section mounts")
+    await quiet()
+    require(!document.querySelector("#node-0 .view-shell"), "parent node retires latest HUD during Draft")
+    require(!draftHudHost(), "latest HUD does not mount stale snapshot under Draft")
+    require(!draftSlipHost(), "turn view does not mount before its aside streams")
+
+    apply({
+      kind: "delta",
+      part: { type: "product-delta", id: "inner", text: "  牧师先生今天真温柔……  " },
+    })
+    await quiet()
+    require(!draftHudHost(), "latest HUD stays retired even after consumed inner streams on Draft")
+    require(document.querySelectorAll(".draft .product.theater").length ===
+      0, "Draft suppresses fallback Theater for inner claimed by latest HUD")
+
+    apply({
+      kind: "delta",
+      part: { type: "product-delta", id: "note_slip", text: "  早课诗篇第七页  " },
+    })
+    require(await until(
+      () => draftSlip()?.querySelector(".slip-body")?.textContent === "早课诗篇第七页",
+    ), "turn view mounts and streams trimmed value once its aside arrives")
+    require(!draftSlipHost()!.closest(".product.theater"), "Draft slip_view has no .product.theater frame")
+    require(draftSlip()?.querySelector<HTMLInputElement>("#sliptab1")?.name ===
+      "draft-slip_view-sliptab", "Draft scopes radio input name to draft")
+    require(document.querySelectorAll(".draft .product.theater").length ===
+      0, "Draft suppresses fallback Theater for all claimed products")
+
+    clear()
+    registry.set(openStreams, 0)
+    await quiet()
+
+    // 2. Real turn: `latest` HUD stays retired during pending `record` (zero stale snapshot & zero grey-box flash), then mounts once committed
+    await modelControl({
+      clear: true,
+      turns: [
+        {
+          prose: "她笑。\n\n<<aside>>inner\n他居然注意到了我的发箍……",
+          canned: {
+            place: { spot: "花园长廊" },
+            answers: { affinity: "warm" },
+          },
+          recordDelay: 750,
+        },
+      ],
+      demands: [{ options: ["递上热茶", "询问礼拜日程"] }],
+    })
+    const box = document.querySelector<HTMLTextAreaElement>(".composer textarea:not(.note)")!
+    box.focus()
+    box.value = "向她问好"
+    box.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    const sendBtn = () =>
+      [...document.querySelectorAll<HTMLButtonElement>("button")].find(
+        (b) => b.getAttribute("aria-label") === t("composer.send"),
+      )
+    require(await until(() => !sendBtn()?.disabled), "composer send button enabled")
+    sendBtn()!.click()
+
+    const node1HudHost = () => document.querySelector<HTMLElement>("#node-1 .view-shell[data-view=ri_hud]")
+    const node1Hud = () => node1HudHost()?.shadowRoot
+    require(await until(
+      () => registry.get(log).nodes.get(1)?.settlementStatus === "pending",
+      5000,
+    ), "Turn 1 lands with pending record settlement")
+    require(!node1HudHost(), "latest ri_hud waits until record settlement commits")
+    require(document.querySelectorAll("#node-1 .product.theater").length ===
+      0, "landed Turn 1 suppresses fallback .product.theater while pending")
+
+    require(await until(
+      () => registry.get(log).nodes.get(1)?.settlementStatus === "committed" && !registry.get(working),
+      5000,
+    ), "Turn 1 record settlement commits")
+    await quiet()
+    require(Boolean(node1HudHost()), "ri_hud mounts cleanly once record settlement commits")
+    require(!node1HudHost()!.closest(".product.theater"), "landed ri_hud has no .product.theater wrapper")
+    require(node1Hud()?.querySelector(".inner-thought")?.textContent === "他居然注意到了我的发箍……" &&
+      node1Hud()?.querySelector<HTMLInputElement>("#hudtab1")?.name ===
+        "1-ri_hud-hudtab", "committed Turn 1 HUD holds inner thought and node-scoped radio name")
+    require(node1Hud()?.querySelector(".aff")?.textContent === "23" &&
+      node1Hud()?.querySelector(".spot")?.textContent === "花园长廊" &&
+      node1Hud()?.querySelectorAll(".hud-next li").length === 2 &&
+      node1Hud()?.querySelector(".hud-next li")?.textContent ===
+        "递上热茶", `ri_hud renders freshly settled scalar fields, world record and consumed composer list: ${JSON.stringify(registry.get(log).nodes.get(1))}`)
+    require(!document.querySelector("#node-1 .options"), "consumed composer product is skipped in default Options")
+    require(document.querySelectorAll("#node-1 .product.theater").length ===
+      0, "committed Turn 1 has zero .product.theater wrappers")
+
+    // 3. Consumed theater product remains re-rollable via footer `<Demand>` (`小剧场`)
+    await modelControl({
+      clear: true,
+      turns: [{ prose: "重抽后的心声：但愿他喜欢刚烤好的司康饼。" }],
+    })
+    const demandLabel = t("readings.asideOf", { n: 2 })
+    const askInner = await agent.act({ steps: [{ ref: demandLabel, action: "press", args: ["理的心声"] }] })
+    require(askInner.ok, `Demand re-roll 理的心声: ${askInner.error?.message}`)
+    require(await until(
+      () =>
+        !registry.get(working) &&
+        node1Hud()?.querySelector(".inner-thought")?.textContent === "重抽后的心声：但愿他喜欢刚烤好的司康饼。",
+      5000,
+    ), "re-rolling consumed inner via Demand updates ri_hud in place")
+    await quiet()
+    require(document.querySelectorAll("#node-1 .product.theater").length ===
+      0, "re-rolled consumed inner still renders only inside ri_hud")
+
+    // 4. Turning `ri_hud` `on: false` restores default `.product.theater` `<Shaped>` + `<Options>` fallback
+    await putLocal(unifiedInstalled.id, (l) => ({ ...l, views: [{ id: "ri_hud", on: false }] }))
+    await refreshActiveCard()
+    await quiet()
+    require(!node1HudHost(), "turning ri_hud off unmounts the custom view")
+    const fallbackTheater = document.querySelector<HTMLElement>("#node-1 .product.theater")
+    require(Boolean(fallbackTheater) &&
+      fallbackTheater?.querySelector(".plabel")?.textContent === "理的心声" &&
+      fallbackTheater?.textContent?.includes("重抽后的心声：但愿他喜欢刚烤好的司康饼。") &&
+      Boolean(
+        fallbackTheater?.querySelector(".acts button"),
+      ), "turning ri_hud off restores default .product.theater Shaped rendering with reroll button")
+    require(document.querySelectorAll("#node-1 .options .option").length ===
+      2, "turning ri_hud off restores default Options fallback for consumed composer product")
+
+    await postResult({ failures: diagnostics.end().diagnostics.map((d) => d.message) })
+  } finally {
+    disposeApp()
+  }
 }
-void run().catch((e) => postResult({ failures: [String(e)] }))
+void run().catch((e) => postResult({ failures: [e instanceof Error ? (e.stack ?? e.message) : String(e)] }))

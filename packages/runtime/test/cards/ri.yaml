@@ -314,13 +314,16 @@ products:
       这一幕里{{char}}藏在心底、没有说出口的真实想法与细微情绪，简短一两句，保持她温柔又容易害羞的口吻。
 views:
   - id: ri_hud
-    label: 圣女手记·状态栏
+    label: 圣女手记
     residency: latest
+    consumes: [inner]
     css: |
       :host {
         display: block;
         --ri-paper: #fcf7eb;
         --ri-paper-2: #f4ead4;
+        --ri-note-bg: #fffaf0;
+        --ri-note-bg2: #f6ecd7;
         --ri-ink: #352c24;
         --ri-ink-soft: #756454;
         --ri-blue: #2f4b78;
@@ -329,6 +332,8 @@ views:
         --ri-gold-soft: rgba(198, 154, 75, 0.24);
         --ri-rose: #d47483;
         --ri-rose-soft: #fae9ec;
+        --ri-wax: #c86472;
+        --ri-wax-deep: #9c4350;
         --ri-line: rgba(168, 130, 68, 0.34);
         font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
         color: var(--ri-ink);
@@ -345,8 +350,13 @@ views:
         100% { background-position: 0% 50%; }
       }
 
-      @keyframes ri-unfold {
-        from { opacity: 0; transform: translateY(-4px); }
+      @keyframes ri-wax-pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(200, 100, 114, 0.28); }
+        50% { transform: scale(1.06); box-shadow: 0 0 0 5px rgba(200, 100, 114, 0); }
+      }
+
+      @keyframes ri-fade-in {
+        from { opacity: 0; transform: translateY(-3px); }
         to { opacity: 1; transform: translateY(0); }
       }
 
@@ -378,20 +388,12 @@ views:
       .c-bl { bottom: 6px; left: 6px; transform: rotate(-90deg); }
       .c-br { bottom: 6px; right: 6px; transform: rotate(180deg); }
 
-      summary {
-        list-style: none;
-        cursor: pointer;
+      .hud-head {
         display: flex;
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        padding: 11px 16px;
-        user-select: none;
-        transition: background-color 180ms ease;
-      }
-      summary::-webkit-details-marker { display: none; }
-      summary:hover {
-        background: rgba(198, 154, 75, 0.07);
+        padding: 12px 16px 8px;
       }
 
       .id-group {
@@ -503,6 +505,7 @@ views:
       }
 
       .glass-fill {
+        display: block;
         height: 100%;
         width: calc((var(--aff, 0) + 30) / 130 * 100%);
         border-radius: 999px;
@@ -512,27 +515,15 @@ views:
         transition: width 320ms ease;
       }
 
-      .chevron {
-        width: 15px;
-        height: 15px;
-        color: var(--ri-gold);
-        transition: transform 220ms ease;
-        flex: none;
-      }
-      details[open] .chevron {
-        transform: rotate(180deg);
-      }
-
       .panel {
-        padding: 4px 16px 14px;
-        animation: ri-unfold 220ms ease;
+        padding: 0 16px 13px;
       }
 
       .divider {
         display: flex;
         align-items: center;
         gap: 8px;
-        margin-bottom: 11px;
+        margin-bottom: 10px;
         color: var(--ri-gold);
       }
       .divider-line {
@@ -542,7 +533,7 @@ views:
       }
 
       .scale-wrap {
-        padding: 10px 12px 12px;
+        padding: 10px 12px 11px;
         border-radius: 10px;
         background: rgba(255, 253, 248, 0.72);
         border: 1px solid rgba(198, 154, 75, 0.22);
@@ -552,7 +543,7 @@ views:
         display: flex;
         justify-content: space-between;
         align-items: baseline;
-        margin-bottom: 10px;
+        margin-bottom: 9px;
         font-family: var(--font-sans);
         font-size: 11.5px;
         color: var(--ri-ink-soft);
@@ -612,6 +603,119 @@ views:
         color: #7c5920;
       }
 
+      .letter {
+        margin-top: 10px;
+        border-radius: 10px;
+        background: linear-gradient(180deg, var(--ri-note-bg) 0%, var(--ri-note-bg2) 100%);
+        border: 1px solid rgba(198, 154, 75, 0.34);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.82);
+        overflow: hidden;
+      }
+
+      .letter-head {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 8px 12px;
+        user-select: none;
+        transition: background-color 180ms ease;
+      }
+      .letter-head::-webkit-details-marker { display: none; }
+      .letter-head:hover {
+        background: rgba(200, 100, 114, 0.05);
+      }
+
+      .seal-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+      }
+
+      .wax {
+        width: 22px;
+        height: 22px;
+        flex: none;
+        border-radius: 50%;
+        background: radial-gradient(circle at 32% 30%, #e0828f, var(--ri-wax) 62%, var(--ri-wax-deep) 100%);
+        border: 1px solid rgba(255, 232, 224, 0.55);
+        display: grid;
+        place-items: center;
+        color: #fff3f0;
+        animation: ri-wax-pulse 3s ease-in-out infinite;
+      }
+
+      .letter[open] .wax {
+        animation: none;
+      }
+
+      .label-text {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ri-blue);
+        letter-spacing: 0.04em;
+      }
+
+      .sub-hint {
+        font-family: var(--font-sans);
+        font-size: 11px;
+        color: var(--ri-ink-soft);
+      }
+
+      .caret {
+        width: 14px;
+        height: 14px;
+        flex: none;
+        color: var(--ri-gold);
+        transition: transform 220ms ease;
+      }
+      .letter[open] .caret {
+        transform: rotate(180deg);
+      }
+
+      .sheet {
+        padding: 10px 14px 12px;
+        border-top: 1px dashed rgba(198, 154, 75, 0.36);
+        background:
+          repeating-linear-gradient(
+            180deg,
+            transparent 0px,
+            transparent 26px,
+            rgba(198, 154, 75, 0.12) 26px,
+            rgba(198, 154, 75, 0.12) 27px
+          ),
+          rgba(255, 253, 248, 0.78);
+        animation: ri-fade-in 200ms ease;
+      }
+
+      .quote {
+        margin: 0;
+        font-size: 13px;
+        line-height: 27px;
+        color: var(--ri-ink);
+        white-space: pre-wrap;
+        font-style: italic;
+      }
+
+      .quote::before {
+        content: "“";
+        color: var(--ri-wax);
+        font-style: normal;
+        font-size: 15px;
+        margin-right: 3px;
+      }
+
+      .quote::after {
+        content: "”";
+        color: var(--ri-wax);
+        font-style: normal;
+        font-size: 15px;
+        margin-left: 2px;
+      }
+
       .footnote {
         margin-top: 9px;
         text-align: center;
@@ -621,7 +725,7 @@ views:
         opacity: 0.85;
       }
     html: |
-      <details class="parchment" data-var-aff="fields.好感度">
+      <section class="parchment" data-var-aff="fields.好感度">
         <svg class="corner c-tl" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M2 14V5a3 3 0 0 1 3-3h9" fill="none" stroke="currentColor" stroke-width="1.3"/>
           <circle cx="5" cy="5" r="1.4" fill="currentColor"/>
@@ -639,7 +743,7 @@ views:
           <circle cx="5" cy="5" r="1.4" fill="currentColor"/>
         </svg>
 
-        <summary>
+        <header class="hud-head">
           <span class="id-group">
             <span class="crest" aria-hidden="true">
               <svg class="crest-star" width="16" height="16" viewBox="0 0 24 24">
@@ -665,17 +769,14 @@ views:
             <span class="glass-track" aria-hidden="true">
               <span class="glass-fill"></span>
             </span>
-            <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            </svg>
           </span>
-        </summary>
+        </header>
 
         <div class="panel">
           <div class="divider" aria-hidden="true">
             <span class="divider-line"></span>
             <svg width="14" height="14" viewBox="0 0 16 16">
-              <path d="M8 1v14M3 6h10" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M8 1v14M3 6h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
               <circle cx="8" cy="6" r="1.6" fill="currentColor"/>
             </svg>
             <span class="divider-line"></span>
@@ -712,188 +813,26 @@ views:
             <span>她把心事轻轻折好，决定往后以兄妹之礼陪伴在你身侧。</span>
           </div>
 
+          <details class="letter" data-if="theater.inner" open>
+            <summary class="letter-head">
+              <span class="seal-head">
+                <span class="wax" aria-hidden="true">
+                  <svg width="11" height="11" viewBox="0 0 20 20">
+                    <path d="M10 17s-6.2-3.9-6.2-8.5A3.6 3.6 0 0 1 10 6a3.6 3.6 0 0 1 6.2 2.5C16.2 13.1 10 17 10 17z" fill="currentColor"/>
+                  </svg>
+                </span>
+                <span class="label-text"><span data-text="names.char"></span>的心声</span>
+                <span class="sub-hint">蜡封私语</span>
+              </span>
+              <svg class="caret" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </summary>
+            <div class="sheet">
+              <p class="quote" data-text="theater.inner"></p>
+            </div>
+          </details>
+
           <div class="footnote">✦ 祈祷 · 草药茶 · 刚出炉的司康饼 ✦</div>
         </div>
-      </details>
-
-  - id: ri_inner
-    label: 理的心声·蜡封信笺
-    product: inner
-    css: |
-      :host {
-        display: block;
-        --ri-note-bg: #fffaf0;
-        --ri-note-bg2: #f6ecd7;
-        --ri-ink: #3c3128;
-        --ri-ink-soft: #7b6958;
-        --ri-blue: #324e7a;
-        --ri-gold: #c69a4b;
-        --ri-wax: #c86472;
-        --ri-wax-deep: #9c4350;
-        font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
-        color: var(--ri-ink);
-      }
-
-      @keyframes ri-wax-pulse {
-        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(200, 100, 114, 0.28); }
-        50% { transform: scale(1.06); box-shadow: 0 0 0 5px rgba(200, 100, 114, 0); }
-      }
-
-      @keyframes ri-twinkle {
-        0%, 100% { opacity: 0.35; }
-        50% { opacity: 1; }
-      }
-
-      @keyframes ri-fade-in {
-        from { opacity: 0; transform: translateY(-3px); }
-        to { opacity: 1; transform: translateY(0); }
-      }
-
-      .letter {
-        border-radius: 13px;
-        background: linear-gradient(180deg, var(--ri-note-bg) 0%, var(--ri-note-bg2) 100%);
-        border: 1px solid rgba(198, 154, 75, 0.36);
-        box-shadow:
-          0 2px 8px rgba(72, 50, 24, 0.06),
-          inset 0 1px 0 rgba(255, 255, 255, 0.85);
-        overflow: hidden;
-      }
-
-      summary {
-        list-style: none;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 10px;
-        padding: 9px 14px;
-        user-select: none;
-        transition: background-color 180ms ease;
-      }
-      summary::-webkit-details-marker { display: none; }
-      summary:hover {
-        background: rgba(200, 100, 114, 0.05);
-      }
-
-      .seal-head {
-        display: flex;
-        align-items: center;
-        gap: 9px;
-        min-width: 0;
-      }
-
-      .wax {
-        width: 24px;
-        height: 24px;
-        flex: none;
-        border-radius: 50%;
-        background: radial-gradient(circle at 32% 30%, #e0828f, var(--ri-wax) 62%, var(--ri-wax-deep) 100%);
-        border: 1px solid rgba(255, 232, 224, 0.55);
-        display: grid;
-        place-items: center;
-        color: #fff3f0;
-        animation: ri-wax-pulse 3s ease-in-out infinite;
-      }
-
-      .letter[open] .wax {
-        animation: none;
-      }
-
-      .label-text {
-        font-size: 13px;
-        font-weight: 600;
-        color: var(--ri-blue);
-        letter-spacing: 0.04em;
-      }
-
-      .sub-hint {
-        font-family: var(--font-sans);
-        font-size: 11.5px;
-        color: var(--ri-ink-soft);
-      }
-
-      .right-deco {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        flex: none;
-        color: var(--ri-gold);
-      }
-
-      .sparkle {
-        animation: ri-twinkle 2.4s ease-in-out infinite;
-      }
-
-      .caret {
-        width: 14px;
-        height: 14px;
-        transition: transform 220ms ease;
-      }
-      .letter[open] .caret {
-        transform: rotate(180deg);
-      }
-
-      .sheet {
-        padding: 12px 16px 14px;
-        border-top: 1px dashed rgba(198, 154, 75, 0.38);
-        background:
-          repeating-linear-gradient(
-            180deg,
-            transparent 0px,
-            transparent 27px,
-            rgba(198, 154, 75, 0.12) 27px,
-            rgba(198, 154, 75, 0.12) 28px
-          ),
-          rgba(255, 253, 248, 0.78);
-        animation: ri-fade-in 200ms ease;
-      }
-
-      .quote {
-        margin: 0;
-        font-size: 13.5px;
-        line-height: 28px;
-        color: var(--ri-ink);
-        white-space: pre-wrap;
-        font-style: italic;
-      }
-
-      .quote::before {
-        content: "“";
-        color: var(--ri-wax);
-        font-style: normal;
-        font-size: 16px;
-        margin-right: 3px;
-      }
-
-      .quote::after {
-        content: "”";
-        color: var(--ri-wax);
-        font-style: normal;
-        font-size: 16px;
-        margin-left: 2px;
-      }
-    html: |
-      <details class="letter">
-        <summary>
-          <span class="seal-head">
-            <span class="wax" aria-hidden="true">
-              <svg width="12" height="12" viewBox="0 0 20 20">
-                <path d="M10 17s-6.2-3.9-6.2-8.5A3.6 3.6 0 0 1 10 6a3.6 3.6 0 0 1 6.2 2.5C16.2 13.1 10 17 10 17z" fill="currentColor"/>
-              </svg>
-            </span>
-            <span class="label-text"><span data-text="names.char"></span>的心声</span>
-            <span class="sub-hint">轻启蜡封</span>
-          </span>
-          <span class="right-deco" aria-hidden="true">
-            <svg class="sparkle" width="12" height="12" viewBox="0 0 16 16">
-              <path d="M8 1l1.5 5.5L15 8l-5.5 1.5L8 15l-1.5-5.5L1 8l5.5-1.5z" fill="currentColor"/>
-            </svg>
-            <svg class="caret" viewBox="0 0 16 16">
-              <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/>
-            </svg>
-          </span>
-        </summary>
-        <div class="sheet">
-          <p class="quote" data-text="value"></p>
-        </div>
-      </details>
+      </section>

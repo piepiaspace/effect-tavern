@@ -299,6 +299,7 @@ views:
         overflow: hidden;
       }
       .tide-fill {
+        display: block;
         height: 100%;
         width: calc(var(--tide, 0) / 3 * 100%);
         background: var(--ink-2);
@@ -343,6 +344,6 @@ views:
       </details>
   - id: ferry_letter
     label: 船夫心声
-    product: inner
+    consumes: [inner]
     html: '<blockquote><p data-text="value"></p></blockquote>'
     css: "blockquote { margin: 0; padding: 1em; border-inline-start: 2px solid var(--line); color: var(--ink-2); }"

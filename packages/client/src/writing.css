@@ -415,15 +415,12 @@
   line-height: 1.45;
 }
 
-/* the record products: compact cards grouped by kind, with theaters paged in a 2×2 grid */
+/* the outputs & in-stream views: compact cards in one unified two-column grid (`.prod-kind` stays for packs.tsx) */
 .prod-body {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin: calc(-1 * var(--space-half)) calc(-1 * var(--space-1));
-  padding: var(--space-half) var(--space-1);
+  margin: 0;
+  padding: var(--space-1) var(--space-half) var(--space-2);
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
@@ -435,54 +432,17 @@
     scrollbar-color: var(--alpha-2) transparent;
   }
 }
-.prod-group {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-.prod-kind-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  min-height: 20px;
-}
 .prod-kind {
   margin: 0;
   font-size: var(--text-footnote);
   font-weight: 600;
   color: var(--ink-3);
 }
-.prod-grid,
-.theater-grid {
+.prod-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: var(--space-2);
-}
-.theater-pager {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-half);
-  padding: var(--space-half);
-  border-radius: var(--radius-pill);
-  background: var(--alpha-1);
-  color: var(--ink-2);
-  font-size: var(--text-caption);
-}
-.theater-pager .mono {
-  padding: 0 var(--space-1);
-  font-variant-numeric: tabular-nums;
-}
-.theater-pager .icon.sm {
-  width: 20px;
-  height: 20px;
-  border-radius: var(--radius-pill);
-}
-.theater-pager .icon.sm svg {
-  width: 12px;
-  height: 12px;
 }
 .prod-item {
   box-sizing: border-box;
@@ -973,12 +933,8 @@
       min-height: 0;
     }
     .sw-grid,
-    .prod-grid,
-    .theater-grid {
+    .prod-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .theater-grid[data-paged="true"] {
-      grid-template-rows: repeat(2, minmax(52px, auto));
     }
   }
 }

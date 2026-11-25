@@ -100,20 +100,24 @@ export const theater = <P extends Declared>(products: readonly P[]): P[] =>
 export const suggestions = (
   products: readonly Declared[] | undefined,
   node: { readonly theater: Readonly<Record<string, unknown>> },
+  consumedIds?: ReadonlySet<string>,
 ): string[] =>
   (products ?? []).flatMap((p) => {
+    if (consumedIds?.has(p.id)) return []
     const v = node.theater[p.id]
     return kindOf(p) === "theater" && composer(p) && Array.isArray(v) ? v.filter((x) => typeof x === "string") : []
   })
 
 /** The 小剧场 a node can still be asked for (the `demand` action): theater, enabled on this card (`on !== false`), and
- *  not on the node yet; illustration-bound theater products stay demandable whenever they have 0 effective in-range
- *  rows (`undefined`, empty `[]`, or out-of-range rows), moving re-roll to `.illust` once rendered. */
+ *  either not on the node yet or rendered via a custom view (which carries no `.theater` dice button of its own);
+ *  illustration-bound theater products stay demandable whenever they have 0 effective in-range rows (`undefined`,
+ *  empty `[]`, or out-of-range rows), moving re-roll to `.illust` once rendered. */
 export const demandable = (
   products: readonly Declared[],
   node: { readonly prose?: string; readonly theater: Readonly<Record<string, unknown>> },
   media?: Media | null,
   catalogs?: readonly Catalog[],
+  consumedIds?: ReadonlySet<string>,
 ): { value: string; label: string }[] => {
   const illustIds = illustrationTheaterIds(media)
   return theater(products)
@@ -122,7 +126,7 @@ export const demandable = (
       if (illustIds.has(p.id)) {
         return countEffectiveIllustrations(p, { prose: node.prose ?? "", theater: node.theater }, catalogs) === 0
       }
-      return node.theater[p.id] === undefined
+      return node.theater[p.id] === undefined || Boolean(consumedIds?.has(p.id))
     })
     .map((p) => ({ value: p.id, label: p.label ?? p.id }))
 }

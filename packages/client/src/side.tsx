@@ -18,7 +18,6 @@ import { read } from "./bridge.ts"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
 import {
   Archive,
-  Card as CardGlyph,
   Clue,
   Close,
   Moon,
@@ -36,7 +35,7 @@ import {
 } from "./icons.tsx"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { openSettings } from "./settings-navigation.ts"
-import { browse, close, editCard, open, openGallery, openStory, requestCardTab, showCard, toHome } from "./pages.ts"
+import { browse, close, editCard, open, openStory, requestCardTab, showCard, toHome } from "./pages.ts"
 import {
   admits,
   facetCounts,
@@ -314,8 +313,6 @@ export const Sidebar = (props: {
     props.onLeave?.()
     void showCard(id)
   }
-  const hasGallery = () =>
-    !freeChat() && (view()?.id === undefined || view()?.id === at()) && (view()?.media?.gallery?.length ?? 0) > 0
   const toCards = () => {
     props.onLeave?.()
     openSettings("cards")
@@ -662,22 +659,6 @@ export const Sidebar = (props: {
                 </span>
                 <span class="val">{t("side.promptTreeHint")}</span>
               </button>
-              <Show when={hasGallery()}>
-                <button
-                  type="button"
-                  class="tile row"
-                  disabled={at() === null}
-                  aria-label={t("card.gallery")}
-                  aria-current={pg() === "card" ? "page" : undefined}
-                  onClick={() => leaveFor(openGallery)}
-                >
-                  <span class="lbl">
-                    <CardGlyph aria-hidden="true" />
-                    <span>{t("card.gallery")}</span>
-                  </span>
-                  <span class="val">{t("card.galleryHint")}</span>
-                </button>
-              </Show>
             </div>
             <div class="input-box sm">
               <Clue aria-hidden="true" />

@@ -1,5 +1,5 @@
 import { compileView, checkMediaBindings } from "./view-template.ts"
-import { theaterSurface } from "./view-shell.ts"
+import { checkConsumesIds, consumableSurface } from "./view-shell.ts"
 // Card lint (issue #27): what a card author's type checker says about a card. Pure: a card in, facts and fixes out; no
 // I/O, no console. The throws in `makeCard` / `resolve` stay decode-time invariants; lint reports what decodes but is
 // wired wrong (topology: events, fields, bands, layers) or written where code should do the work (prose: numbers and
@@ -689,10 +689,12 @@ const rules: Rule[] = [
           dupes((view.media ?? []).map((s) => s.id)).length
         )
           throw new Error("duplicate view or media slot")
-        const p = products.get(view.product ?? "")
-        if (view.product && !theaterSurface(p, media.illustrations))
-          throw new Error("expected an available theater product")
-        const bound = checkMediaBindings(tree, view, media.portraits ?? [], catalogs, p?.shape)
+        checkConsumesIds(view.consumes)
+        for (const cid of view.consumes ?? []) {
+          if (!consumableSurface(products.get(cid), media.illustrations, true))
+            throw new Error("expected an available consumable product: " + cid)
+        }
+        const bound = checkMediaBindings(tree, view, media.portraits ?? [], catalogs, [...products.values()])
         for (const catalog of bound) consumers.push({ catalog, expected: "image", path })
         for (const slot of view.media ?? []) {
           if (!catalogs.has(slot.catalog)) throw new Error("unknown view catalog " + slot.catalog)

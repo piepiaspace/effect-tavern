@@ -28,15 +28,23 @@ import { blocks } from "./markdown.ts"
 import { activeStoryMatchesCard } from "./media.ts"
 import { plain, Prose } from "./prose.tsx"
 import {
+  claimedDraftProducts,
+  claimedNodeProducts,
   Demand,
+  eligibleDraftViews,
+  eligibleNodeViews,
   Failed,
   RecordSheet,
+  sameIds,
+  sameTheater,
+  sameViews,
   Settlement,
   Rewrite,
   SiblingKind,
   StatusPage,
   StateViews,
   Theater,
+  trimmedTheater,
 } from "./readings.tsx"
 import { apart, lineOf, suggestions, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
@@ -436,12 +444,24 @@ const Latest = () => {
  *  flash dust without explanation. Once the prose is done (check, polish, record) the cursor goes and the footer names
  *  the settling stage. A failed turn stays as a grey ghost with the error under it; its line is back in the box. No
  *  model to run it on: the error opens Settings on 默认模型. */
-export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failure | null; lost?: boolean }) => {
+export const Draft = (props: {
+  d: DraftState
+  phase: Phase | null
+  error: Failure | null
+  lost?: boolean
+  view?: ReturnType<typeof card>
+  parent?: Node
+}) => {
   onSettled(anchor)
   const done = () => settling(props.phase)
   const writing = () => !done() && !props.error && !props.lost // waiting on a retry is still
   const hasProse = () => props.d.text.length > 0
   const rewriting = () => writing() && hasProse() && Boolean(props.d.prev)
+  const draftTheater = createMemo(() => trimmedTheater(props.d.products), { equals: sameTheater })
+  const views = createMemo(() => eligibleDraftViews(props.view, props.d.visibleViews, draftTheater()), {
+    equals: sameViews,
+  })
+  const consumedIds = createMemo(() => claimedDraftProducts(props.view, props.d.visibleViews), { equals: sameIds })
   return (
     <section class={{ draft: true, dead: props.error !== null }}>
       <Said input={props.d.input} invocations={props.d.composition?.invocations ?? props.d.invocations} />
@@ -476,7 +496,8 @@ export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failur
           </Show>
         </div>
       </div>
-      <Theater visibleViews={props.d.visibleViews} products={props.d.products ?? {}} />
+      <Theater products={draftTheater()} consumedIds={consumedIds()} />
+      <StateViews views={views()} view={props.view} node={props.parent} draft latest theater={draftTheater()} />
       <Show when={done() || rewriting()}>
         <footer class="actions">
           <TurnStatus kind={done() ? settleKind(props.phase) : "rewriting"} variant="pill" />
@@ -634,7 +655,12 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
     }
     turn.checkout(siblings()[i].id)
   }
-  const options = () => suggestions(props.view?.layer.products, props.node)
+  const settled = () => !busy() || props.node.settlementStatus !== "pending"
+  const views = createMemo(() => eligibleNodeViews(props.view, props.node, props.last, settled()), {
+    equals: sameViews,
+  })
+  const consumedIds = createMemo(() => claimedNodeProducts(props.view, props.node, props.last), { equals: sameIds })
+  const options = () => suggestions(props.view?.layer.products, props.node, consumedIds())
   // the editor's close: with text, the edit is sent; without (Escape, unchanged, empty), it is only closed
   const done = (text?: string) => {
     registry.set(editing, null)
@@ -654,14 +680,14 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
         <Editor text={prose(props.node)} onDone={done} />
       </Show>
       <Settlement node={props.node} />
-      <Theater products={props.node.theater} node={props.node} last={props.last} />
-      <StateViews node={props.node} last={props.last} view={props.view} />
+      <Theater products={props.node.theater} consumedIds={consumedIds()} node={props.node} />
+      <StateViews views={views()} view={props.view} node={props.node} latest={props.last} />
       {/* the turn's row (#101): the Record pill (a ledger to open), 小剧场, the version count, "stopped"; then, at the right end, this turn's
           actions (readings.tsx `Rewrite`), which a pointer sees on the latest turn always and on a past one while it
           is over the section, a touch screen always (reader.css) */}
       <footer class="actions">
         <RecordSheet node={props.node} n={props.n} />
-        <Demand node={props.node} n={props.n} />
+        <Demand node={props.node} n={props.n} consumedIds={consumedIds()} />
         <Show when={siblings().length > 1}>
           <span class="siblings">
             <button
@@ -734,7 +760,6 @@ const Reader = () => {
   const phase = read(stage)
   const err = read(error)
   const gone = read(lost)
-  const busy = read(working)
   // the draft hangs under its parent: a sibling of a past turn cuts the line there while it is written
   // equal by its nodes: the draft changes every frame while prose streams, and a fresh but same slice must not
   // re-run every section ([UNSTABLE_MEMO_OUTPUT] under the diagnostics)
@@ -752,15 +777,14 @@ const Reader = () => {
           {/* keyed by id: a snapshot read back (after a stop) refreshes each section in place instead of rebuilding them */}
           <For each={shown()} keyed={(n) => n.id}>
             {(n, i) => (
-              <Section
-                view={storyView()}
-                node={n()}
-                n={i() + 1}
-                last={d() === null && (!busy() || n().settlementStatus !== "pending") && i() === shown().length - 1}
-              />
+              <Section view={storyView()} node={n()} n={i() + 1} last={d() === null && i() === shown().length - 1} />
             )}
           </For>
-          <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>
+          <Show when={d()}>
+            {(dr) => (
+              <Draft d={dr()} phase={phase()} error={err()} lost={gone()} view={storyView()} parent={shown().at(-1)} />
+            )}
+          </Show>
         </main>
       </div>
       <Composer />

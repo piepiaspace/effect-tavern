@@ -9,11 +9,11 @@ const tags = words(
   "div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i small sub sup code pre blockquote hr br figure figcaption details summary label input svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath",
 )
 const attributes = words(
-  "class id title aria-label aria-hidden role name for type checked open colspan rowspan viewBox width height x y x1 y1 x2 y2 cx cy r rx ry points d fill stroke stroke-width offset stop-color clip-path transform",
+  "class id title aria-label aria-hidden role name for type checked open colspan rowspan viewBox width height x y x1 y1 x2 y2 cx cy r rx ry points d fill stroke stroke-width stroke-linecap stroke-linejoin stroke-dasharray stroke-dashoffset stroke-miterlimit stroke-opacity fill-opacity fill-rule clip-rule opacity vector-effect offset stop-color clip-path transform",
 )
 const directives = words("data-text data-if data-unless data-each data-as data-media data-fit data-lightbox data-open")
 const cssFunctions = words(
-  "var calc min max clamp rgb rgba hsl hsla oklab oklch color color-mix linear-gradient radial-gradient conic-gradient repeating-linear-gradient repeating-radial-gradient repeating-conic-gradient translate translatex translatey rotate scale repeat minmax fit-content cubic-bezier blur inset polygon circle ellipse steps",
+  "var calc min max clamp rgb rgba hsl hsla oklab oklch color color-mix linear-gradient radial-gradient conic-gradient repeating-linear-gradient repeating-radial-gradient repeating-conic-gradient translate translatex translatey translate3d rotate scale scalex scaley scale3d skew skewx skewy repeat minmax fit-content cubic-bezier blur drop-shadow inset polygon circle ellipse steps",
 )
 const fail = (reason: string): never => {
   throw new Error(reason)
@@ -67,19 +67,20 @@ export function compileView(v: Pick<ViewShell, "css" | "html">): TemplateNode[] 
   if (v.css) {
     if (v.css.includes("\\")) fail("CSS escapes are unsupported")
     const sheet = parse(v.css, {
+      positions: true,
       parseCustomProperty: true,
       onParseError(e) {
         throw e
       },
     })
     walk(sheet, (n) => {
-      if (
-        (n.type === "Url" && !/^#[\w-]+$/.test(n.value)) ||
-        n.type === "Raw" ||
-        (n.type === "Atrule" && !["media", "supports", "container", "keyframes"].includes(n.name.toLowerCase())) ||
-        (n.type === "Function" && !cssFunctions.has(n.name.toLowerCase()))
-      )
-        fail("unsupported view CSS: " + n.type)
+      const at = n.loc ? ` at ${n.loc.start.line}:${n.loc.start.column}` : ""
+      if (n.type === "Url" && !/^#[\w-]+$/.test(n.value)) fail(`unsupported view CSS: url(${n.value})${at}`)
+      if (n.type === "Raw") fail(`unsupported view CSS: raw${at}`)
+      if (n.type === "Atrule" && !["media", "supports", "container", "keyframes"].includes(n.name.toLowerCase()))
+        fail(`unsupported view CSS: @${n.name}${at}`)
+      if (n.type === "Function" && !cssFunctions.has(n.name.toLowerCase()))
+        fail(`unsupported view CSS: function ${n.name}()${at}`)
     })
   }
   return parseFragment(v.html, {
@@ -89,13 +90,13 @@ export function compileView(v: Pick<ViewShell, "css" | "html">): TemplateNode[] 
   }).childNodes.flatMap(templateNode)
 }
 
-/** A catalog column is addressable through its record path or the alias of a table row. */
+/** A catalog column is addressable through `theater.<productId>.<col>`, or `value.<col>` (and record `<col>`) when consuming a single product. */
 export function checkMediaBindings(
   tree: TemplateNode[],
   view: ViewShell,
   portraits: readonly { id?: string; catalog: string }[],
   catalogs: ReadonlyMap<string, Catalog>,
-  shape?: Shape,
+  products?: readonly { id: string; role?: string; shape?: Shape }[],
 ) {
   const imageCatalogs = new Set<string>()
   const columns = new Map<string, string>()
@@ -109,7 +110,12 @@ export function checkMediaBindings(
         else if (k.catalog) columns.set(path + "." + k.key, k.catalog)
       }
   }
-  if (shape) index(shape, "value")
+  for (const p of products ?? []) {
+    if ((p.role ?? "theater") === "theater" && p.shape) index(p.shape, "theater." + p.id)
+  }
+  const consumed = view.consumes ?? []
+  const primaryShape = consumed.length === 1 ? products?.find((p) => p.id === consumed[0])?.shape : undefined
+  if (primaryShape) index(primaryShape, "value")
   function visit(nodes: TemplateNode[], aliases: ReadonlyMap<string, string>) {
     const canonical = (path: string) => {
       const [root, ...rest] = path.split(".")
@@ -139,6 +145,15 @@ export function checkMediaBindings(
       visit(n.children, inner)
     }
   }
-  visit(tree, new Map(shape?.kind === "record" ? shape.keys.map((k) => [k.key, "value." + k.key]) : []))
+  visit(
+    tree,
+    new Map(
+      primaryShape?.kind === "record"
+        ? primaryShape.keys
+            .filter((k) => k.key !== "theater" && k.key !== "value")
+            .map((k) => [k.key, "value." + k.key])
+        : [],
+    ),
+  )
   return imageCatalogs
 }
