@@ -302,3 +302,598 @@ lore:
       }
 guard: []
 director: true
+products:
+  - id: inner
+    role: theater
+    surface: theater
+    label: 理的心声
+    shape: { kind: text }
+    stage: narrate
+    on: true
+    text: |-
+      这一幕里{{char}}藏在心底、没有说出口的真实想法与细微情绪，简短一两句，保持她温柔又容易害羞的口吻。
+views:
+  - id: ri_hud
+    label: 圣女手记·状态栏
+    residency: latest
+    css: |
+      :host {
+        display: block;
+        --ri-paper: #fcf7eb;
+        --ri-paper-2: #f4ead4;
+        --ri-ink: #352c24;
+        --ri-ink-soft: #756454;
+        --ri-blue: #2f4b78;
+        --ri-blue-soft: #e7eef8;
+        --ri-gold: #c69a4b;
+        --ri-gold-soft: rgba(198, 154, 75, 0.24);
+        --ri-rose: #d47483;
+        --ri-rose-soft: #fae9ec;
+        --ri-line: rgba(168, 130, 68, 0.34);
+        font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
+        color: var(--ri-ink);
+      }
+
+      @keyframes ri-glow {
+        0%, 100% { opacity: 0.72; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.07); }
+      }
+
+      @keyframes ri-shimmer {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+      }
+
+      @keyframes ri-unfold {
+        from { opacity: 0; transform: translateY(-4px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .parchment {
+        position: relative;
+        border-radius: 14px;
+        background:
+          radial-gradient(120% 90% at 10% 0%, rgba(255, 252, 244, 0.92), transparent 55%),
+          radial-gradient(90% 90% at 95% 100%, rgba(235, 217, 182, 0.45), transparent 60%),
+          linear-gradient(180deg, var(--ri-paper) 0%, var(--ri-paper-2) 100%);
+        border: 1px solid var(--ri-line);
+        box-shadow:
+          0 2px 10px rgba(72, 50, 24, 0.08),
+          inset 0 0 0 3px rgba(252, 247, 235, 0.75),
+          inset 0 0 0 4px rgba(198, 154, 75, 0.2);
+        overflow: hidden;
+      }
+
+      .corner {
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        color: var(--ri-gold);
+        opacity: 0.65;
+        pointer-events: none;
+      }
+      .c-tl { top: 6px; left: 6px; }
+      .c-tr { top: 6px; right: 6px; transform: rotate(90deg); }
+      .c-bl { bottom: 6px; left: 6px; transform: rotate(-90deg); }
+      .c-br { bottom: 6px; right: 6px; transform: rotate(180deg); }
+
+      summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 11px 16px;
+        user-select: none;
+        transition: background-color 180ms ease;
+      }
+      summary::-webkit-details-marker { display: none; }
+      summary:hover {
+        background: rgba(198, 154, 75, 0.07);
+      }
+
+      .id-group {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .crest {
+        width: 28px;
+        height: 28px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: radial-gradient(circle at 35% 30%, #44669c, var(--ri-blue));
+        border: 1.5px solid var(--ri-gold);
+        box-shadow: 0 1px 4px rgba(47, 75, 120, 0.25);
+        color: #f9e6b3;
+      }
+
+      .crest-star {
+        animation: ri-glow 3.4s ease-in-out infinite;
+        transform-origin: center;
+      }
+
+      .title-wrap {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        min-width: 0;
+      }
+
+      .char-name {
+        font-size: 14.5px;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        color: var(--ri-blue);
+      }
+
+      .ribbon {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        padding: 1px 8px;
+        border-radius: 999px;
+        font-family: var(--font-sans);
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+        background: var(--ri-blue-soft);
+        color: var(--ri-blue);
+        border: 1px solid rgba(47, 75, 120, 0.16);
+      }
+
+      .ribbon-lover {
+        background: var(--ri-rose-soft);
+        color: #a94456;
+        border-color: rgba(212, 116, 131, 0.35);
+      }
+
+      .ribbon-brother {
+        background: #f8efd9;
+        color: #8f6823;
+        border-color: rgba(198, 154, 75, 0.4);
+      }
+
+      .meter-group {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        flex: none;
+      }
+
+      .aff-readout {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-family: var(--font-sans);
+        font-size: 12px;
+        color: var(--ri-ink-soft);
+      }
+
+      .aff-heart {
+        width: 13px;
+        height: 13px;
+        color: var(--ri-rose);
+      }
+
+      .aff-num {
+        font-family: var(--font-mono);
+        font-size: 13px;
+        font-weight: 700;
+        color: var(--ri-ink);
+        min-width: 22px;
+        text-align: right;
+      }
+
+      .glass-track {
+        position: relative;
+        width: 96px;
+        height: 7px;
+        border-radius: 999px;
+        background: rgba(117, 100, 84, 0.16);
+        box-shadow: inset 0 1px 2px rgba(53, 44, 36, 0.18);
+        overflow: hidden;
+      }
+
+      .glass-fill {
+        height: 100%;
+        width: calc((var(--aff, 0) + 30) / 130 * 100%);
+        border-radius: 999px;
+        background: linear-gradient(90deg, #6d89b8 0%, #d47483 55%, #e5b869 100%);
+        background-size: 180% 100%;
+        animation: ri-shimmer 5s ease infinite;
+        transition: width 320ms ease;
+      }
+
+      .chevron {
+        width: 15px;
+        height: 15px;
+        color: var(--ri-gold);
+        transition: transform 220ms ease;
+        flex: none;
+      }
+      details[open] .chevron {
+        transform: rotate(180deg);
+      }
+
+      .panel {
+        padding: 4px 16px 14px;
+        animation: ri-unfold 220ms ease;
+      }
+
+      .divider {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 11px;
+        color: var(--ri-gold);
+      }
+      .divider-line {
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--ri-line), transparent);
+      }
+
+      .scale-wrap {
+        padding: 10px 12px 12px;
+        border-radius: 10px;
+        background: rgba(255, 253, 248, 0.72);
+        border: 1px solid rgba(198, 154, 75, 0.22);
+      }
+
+      .scale-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 10px;
+        font-family: var(--font-sans);
+        font-size: 11.5px;
+        color: var(--ri-ink-soft);
+      }
+
+      .scale-rail {
+        position: relative;
+        height: 8px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #98a9c4 0%, #d8c2a6 23%, #e5b2b9 55%, #e4b668 100%);
+        box-shadow: inset 0 1px 2px rgba(53, 44, 36, 0.16);
+      }
+
+      .scale-pin {
+        position: absolute;
+        top: 50%;
+        left: calc((var(--aff, 0) + 30) / 130 * 100%);
+        margin-top: -8px;
+        margin-left: -8px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #fffdf7;
+        border: 2px solid var(--ri-blue);
+        box-shadow: 0 0 0 3px var(--ri-gold-soft), 0 1px 4px rgba(47, 75, 120, 0.3);
+        display: grid;
+        place-items: center;
+        color: var(--ri-rose);
+        transition: left 360ms ease;
+      }
+
+      .scale-labels {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 8px;
+        font-family: var(--font-sans);
+        font-size: 10.5px;
+        color: var(--ri-ink-soft);
+      }
+
+      .bond-note {
+        margin-top: 10px;
+        padding: 7px 10px;
+        border-radius: 8px;
+        background: var(--ri-rose-soft);
+        border: 1px solid rgba(212, 116, 131, 0.28);
+        font-size: 12px;
+        color: #8f3c4b;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .bond-note-bro {
+        background: #f8efd9;
+        border-color: rgba(198, 154, 75, 0.32);
+        color: #7c5920;
+      }
+
+      .footnote {
+        margin-top: 9px;
+        text-align: center;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        color: var(--ri-ink-soft);
+        opacity: 0.85;
+      }
+    html: |
+      <details class="parchment" data-var-aff="fields.好感度">
+        <svg class="corner c-tl" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 14V5a3 3 0 0 1 3-3h9" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="5" cy="5" r="1.4" fill="currentColor"/>
+        </svg>
+        <svg class="corner c-tr" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 14V5a3 3 0 0 1 3-3h9" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="5" cy="5" r="1.4" fill="currentColor"/>
+        </svg>
+        <svg class="corner c-bl" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 14V5a3 3 0 0 1 3-3h9" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="5" cy="5" r="1.4" fill="currentColor"/>
+        </svg>
+        <svg class="corner c-br" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 14V5a3 3 0 0 1 3-3h9" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <circle cx="5" cy="5" r="1.4" fill="currentColor"/>
+        </svg>
+
+        <summary>
+          <span class="id-group">
+            <span class="crest" aria-hidden="true">
+              <svg class="crest-star" width="16" height="16" viewBox="0 0 24 24">
+                <path d="M12 2.5L14 9.5L21 12L14 14.5L12 21.5L10 14.5L3 12L10 9.5Z" fill="currentColor"/>
+              </svg>
+            </span>
+            <span class="title-wrap">
+              <span class="char-name">圣女 · <span data-text="names.char"></span></span>
+              <span class="ribbon" data-unless="fields.恋人">小镇教堂</span>
+              <span class="ribbon ribbon-lover" data-if="fields.恋人">♥ 恋人</span>
+              <span class="ribbon ribbon-brother" data-if="fields.哥哥">✦ 兄长</span>
+            </span>
+          </span>
+
+          <span class="meter-group">
+            <span class="aff-readout">
+              <svg class="aff-heart" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M10 17.2s-6.5-4.1-6.5-8.9A3.8 3.8 0 0 1 10 5.6a3.8 3.8 0 0 1 6.5 2.7c0 4.8-6.5 8.9-6.5 8.9z" fill="currentColor"/>
+              </svg>
+              <span>好感</span>
+              <span class="aff-num" data-text="fields.好感度"></span>
+            </span>
+            <span class="glass-track" aria-hidden="true">
+              <span class="glass-fill"></span>
+            </span>
+            <svg class="chevron" viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            </svg>
+          </span>
+        </summary>
+
+        <div class="panel">
+          <div class="divider" aria-hidden="true">
+            <span class="divider-line"></span>
+            <svg width="14" height="14" viewBox="0 0 16 16">
+              <path d="M8 1v14M3 6h10" stroke="currentColor" stroke-width="1.2"/>
+              <circle cx="8" cy="6" r="1.6" fill="currentColor"/>
+            </svg>
+            <span class="divider-line"></span>
+          </div>
+
+          <div class="scale-wrap">
+            <div class="scale-head">
+              <span>心意刻度</span>
+              <span>-30 ～ 100</span>
+            </div>
+            <div class="scale-rail" aria-hidden="true">
+              <span class="scale-pin">
+                <svg width="8" height="8" viewBox="0 0 12 12">
+                  <path d="M6 1l1.4 3.6L11 6 7.4 7.4 6 11 4.6 7.4 1 6l3.6-1.4z" fill="currentColor"/>
+                </svg>
+              </span>
+            </div>
+            <div class="scale-labels">
+              <span>疏离</span>
+              <span>初识</span>
+              <span>熟稔</span>
+              <span>亲密</span>
+              <span>倾心</span>
+              <span>挚爱</span>
+            </div>
+          </div>
+
+          <div class="bond-note" data-if="fields.恋人">
+            <span>♥</span>
+            <span>教堂钟声为证——她已把最珍贵的心意交托给了你。</span>
+          </div>
+          <div class="bond-note bond-note-bro" data-if="fields.哥哥">
+            <span>✦</span>
+            <span>她把心事轻轻折好，决定往后以兄妹之礼陪伴在你身侧。</span>
+          </div>
+
+          <div class="footnote">✦ 祈祷 · 草药茶 · 刚出炉的司康饼 ✦</div>
+        </div>
+      </details>
+
+  - id: ri_inner
+    label: 理的心声·蜡封信笺
+    product: inner
+    css: |
+      :host {
+        display: block;
+        --ri-note-bg: #fffaf0;
+        --ri-note-bg2: #f6ecd7;
+        --ri-ink: #3c3128;
+        --ri-ink-soft: #7b6958;
+        --ri-blue: #324e7a;
+        --ri-gold: #c69a4b;
+        --ri-wax: #c86472;
+        --ri-wax-deep: #9c4350;
+        font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
+        color: var(--ri-ink);
+      }
+
+      @keyframes ri-wax-pulse {
+        0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(200, 100, 114, 0.28); }
+        50% { transform: scale(1.06); box-shadow: 0 0 0 5px rgba(200, 100, 114, 0); }
+      }
+
+      @keyframes ri-twinkle {
+        0%, 100% { opacity: 0.35; }
+        50% { opacity: 1; }
+      }
+
+      @keyframes ri-fade-in {
+        from { opacity: 0; transform: translateY(-3px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .letter {
+        border-radius: 13px;
+        background: linear-gradient(180deg, var(--ri-note-bg) 0%, var(--ri-note-bg2) 100%);
+        border: 1px solid rgba(198, 154, 75, 0.36);
+        box-shadow:
+          0 2px 8px rgba(72, 50, 24, 0.06),
+          inset 0 1px 0 rgba(255, 255, 255, 0.85);
+        overflow: hidden;
+      }
+
+      summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 9px 14px;
+        user-select: none;
+        transition: background-color 180ms ease;
+      }
+      summary::-webkit-details-marker { display: none; }
+      summary:hover {
+        background: rgba(200, 100, 114, 0.05);
+      }
+
+      .seal-head {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        min-width: 0;
+      }
+
+      .wax {
+        width: 24px;
+        height: 24px;
+        flex: none;
+        border-radius: 50%;
+        background: radial-gradient(circle at 32% 30%, #e0828f, var(--ri-wax) 62%, var(--ri-wax-deep) 100%);
+        border: 1px solid rgba(255, 232, 224, 0.55);
+        display: grid;
+        place-items: center;
+        color: #fff3f0;
+        animation: ri-wax-pulse 3s ease-in-out infinite;
+      }
+
+      .letter[open] .wax {
+        animation: none;
+      }
+
+      .label-text {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ri-blue);
+        letter-spacing: 0.04em;
+      }
+
+      .sub-hint {
+        font-family: var(--font-sans);
+        font-size: 11.5px;
+        color: var(--ri-ink-soft);
+      }
+
+      .right-deco {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex: none;
+        color: var(--ri-gold);
+      }
+
+      .sparkle {
+        animation: ri-twinkle 2.4s ease-in-out infinite;
+      }
+
+      .caret {
+        width: 14px;
+        height: 14px;
+        transition: transform 220ms ease;
+      }
+      .letter[open] .caret {
+        transform: rotate(180deg);
+      }
+
+      .sheet {
+        padding: 12px 16px 14px;
+        border-top: 1px dashed rgba(198, 154, 75, 0.38);
+        background:
+          repeating-linear-gradient(
+            180deg,
+            transparent 0px,
+            transparent 27px,
+            rgba(198, 154, 75, 0.12) 27px,
+            rgba(198, 154, 75, 0.12) 28px
+          ),
+          rgba(255, 253, 248, 0.78);
+        animation: ri-fade-in 200ms ease;
+      }
+
+      .quote {
+        margin: 0;
+        font-size: 13.5px;
+        line-height: 28px;
+        color: var(--ri-ink);
+        white-space: pre-wrap;
+        font-style: italic;
+      }
+
+      .quote::before {
+        content: "“";
+        color: var(--ri-wax);
+        font-style: normal;
+        font-size: 16px;
+        margin-right: 3px;
+      }
+
+      .quote::after {
+        content: "”";
+        color: var(--ri-wax);
+        font-style: normal;
+        font-size: 16px;
+        margin-left: 2px;
+      }
+    html: |
+      <details class="letter">
+        <summary>
+          <span class="seal-head">
+            <span class="wax" aria-hidden="true">
+              <svg width="12" height="12" viewBox="0 0 20 20">
+                <path d="M10 17s-6.2-3.9-6.2-8.5A3.6 3.6 0 0 1 10 6a3.6 3.6 0 0 1 6.2 2.5C16.2 13.1 10 17 10 17z" fill="currentColor"/>
+              </svg>
+            </span>
+            <span class="label-text"><span data-text="names.char"></span>的心声</span>
+            <span class="sub-hint">轻启蜡封</span>
+          </span>
+          <span class="right-deco" aria-hidden="true">
+            <svg class="sparkle" width="12" height="12" viewBox="0 0 16 16">
+              <path d="M8 1l1.5 5.5L15 8l-5.5 1.5L8 15l-1.5-5.5L1 8l5.5-1.5z" fill="currentColor"/>
+            </svg>
+            <svg class="caret" viewBox="0 0 16 16">
+              <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6"/>
+            </svg>
+          </span>
+        </summary>
+        <div class="sheet">
+          <p class="quote" data-text="value"></p>
+        </div>
+      </details>
