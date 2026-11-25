@@ -24,11 +24,20 @@ import { copyText } from "./host.ts"
 import { Home } from "./home.tsx"
 import { imeController } from "./ime.ts"
 import { Back, Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
-import { MediaFrame } from "./lightbox.tsx"
 import { blocks } from "./markdown.ts"
-import { activePortraits, activeStoryMatchesCard } from "./media.ts"
+import { activeStoryMatchesCard } from "./media.ts"
 import { plain, Prose } from "./prose.tsx"
-import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
+import {
+  Demand,
+  Failed,
+  RecordSheet,
+  Settlement,
+  Rewrite,
+  SiblingKind,
+  StatusPage,
+  StateViews,
+  Theater,
+} from "./readings.tsx"
 import { apart, lineOf, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
 import { shrinkwrap } from "./shrinkwrap.ts"
@@ -639,7 +648,8 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
         <Editor text={prose(props.node)} onDone={done} />
       </Show>
       <Settlement node={props.node} />
-      <Theater products={props.node.theater} node={props.node} />
+      <Theater products={props.node.theater} node={props.node} last={props.last} />
+      <StateViews node={props.node} last={props.last} view={props.view} />
       {/* the turn's row (#101): the Record pill (a ledger to open), 小剧场, the version count, "stopped"; then, at the right end, this turn's
           actions (readings.tsx `Rewrite`), which a pointer sees on the latest turn always and on a past one while it
           is over the section, a touch screen always (reader.css) */}
@@ -729,29 +739,8 @@ const Reader = () => {
     const view = card()
     return activeStoryMatchesCard(view?.id) ? view : null
   })
-  const portraits = activePortraits
   return (
     <div class="panel">
-      <Show when={wide() && portraits().length}>
-        <aside class="reader-portraits" aria-label={t("readings.portraits")}>
-          <For each={portraits()} keyed={(p) => p.id}>
-            {(p) => (
-              <div class="reader-portrait">
-                <MediaFrame
-                  class="reader-portrait-frame"
-                  src={p().url}
-                  label={p().label}
-                  fallbackText={p().slotLabel || p().label}
-                  triggerLabel={p().slotLabel ? `${p().slotLabel} · ${p().label}` : p().label}
-                  lightboxLabel={p().label}
-                  lightbox
-                />
-                <span class="reader-portrait-name">{p().slotLabel || p().label}</span>
-              </div>
-            )}
-          </For>
-        </aside>
-      </Show>
       <div class="scroll">
         <main>
           {/* keyed by id: a snapshot read back (after a stop) refreshes each section in place instead of rebuilding them */}

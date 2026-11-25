@@ -91,6 +91,7 @@ import {
   type Rows,
 } from "./layer.ts"
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
+import { activeView, residency } from "./view-shell.ts"
 import { projectNodeMedia } from "./media.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
@@ -1644,22 +1645,34 @@ export const makeSession = ({
     return !!(record || theater)
   }
 
-  const toTimeline = (parents: readonly Turn[], n: Node): TimelineNode =>
-    timelineNode(
-      n,
-      derived.at(parents).state,
-      card.rules,
-      products(),
-      projectNodeMedia({
-        media: card.media,
-        products: products(),
-        catalogs: catalogs(),
-        turnProducts: n.turn.products,
-        fields: n.state,
-        events: n.events,
-        context: () => derived.at([...parents, n.turn]).context(),
+  const toTimeline = (parents: readonly Turn[], n: Node): TimelineNode => {
+    const views = (layer().views ?? []).filter(activeView)
+    let state: ReturnType<ReturnType<typeof derived.at>["context"]> | undefined
+    const conditional = views.filter((v) => v.when)
+    const context = () => (state ??= derived.at([...parents, n.turn]).context())
+    return {
+      ...timelineNode(
+        n,
+        derived.at(parents).state,
+        card.rules,
+        products(),
+        projectNodeMedia({
+          views,
+          media: card.media,
+          products: products(),
+          catalogs: catalogs(),
+          turnProducts: n.turn.products,
+          fields: n.state,
+          events: n.events,
+          context,
+        }),
+      ),
+      ...(views.some((v) => !v.product && residency(v) === "turn") && { fields: n.state }),
+      ...(conditional.length && {
+        visibleViews: conditional.filter((v) => holds(v.when!, context(), n.events)).map((v) => v.id),
       }),
-    )
+    }
+  }
 
   return {
     greet,

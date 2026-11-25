@@ -166,6 +166,8 @@ export const PlaySheet = (props: { card: string; story: string; unnamed: boolean
                   <MediaFrame
                     class="play-portrait-frame"
                     src={p().url}
+                    focus={p().focus}
+                    aspect={p().aspect}
                     label={p().label}
                     triggerLabel={p().slotLabel ? `${p().slotLabel} · ${p().label}` : p().label}
                     lightboxLabel={p().label}

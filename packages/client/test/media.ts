@@ -860,6 +860,23 @@ function testGalleryRules() {
     headContext: sunnyEbbedCtx,
   })
   const byKey = (g: ReturnType<typeof resolveGallery>) => new Map(g.items.map((i) => [`${i.catalog}/${i.id}`, i]))
+  const hud = { id: "water", html: "<div></div>", playerTemplate: false }
+  const node = {
+    id: 13,
+    prose: "潮起。",
+    media: { viewMedia: [{ id: "lantern", viewId: hud.id, catalog: "crossings", item: "rain_lantern" }] },
+  }
+  for (const [enabled, branch, expected] of [
+    [true, true, true],
+    [false, true, false],
+    [true, false, false],
+  ] as const) {
+    const gallery = resolveGallery(
+      { ...view, layer: { ...view.layer, views: [{ ...hud, on: enabled }] } },
+      { storyOpen: true, pathNodes: branch ? [node] : [] },
+    )
+    assert.equal(byKey(gallery).get("crossings/rain_lantern")?.revealed, expected)
+  }
   const shortened = resolveGallery(view, {
     storyOpen: true,
     pathNodes: sunnyPath.map((n) => (n.id === 7 ? { ...n, prose: "渡口。" } : n)),

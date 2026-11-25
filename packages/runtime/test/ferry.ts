@@ -7,6 +7,8 @@ import { resolve } from "node:path"
 import { fake } from "@effect-tavern/provider"
 import { Effect, Stream } from "effect"
 import { checkValue, validateCard } from "../src/author.ts"
+import { activeView, compileView } from "../src/view-shell.ts"
+import { decodeLayer, resolve as resolveLayer } from "../src/layer.ts"
 import * as Log from "../src/log.ts"
 import { resolveCatalogUrl } from "../src/media.ts"
 import { cardView, makeSession, type Event, type Turn } from "../src/session.ts"
@@ -23,6 +25,66 @@ const raw = parseCard(ferryYaml)
 const checked = validateCard(raw)
 assert.deepEqual(checked.diagnostics, [])
 const ferry = checked.card!
+for (const html of [
+  "<script></script>",
+  "<iframe></iframe>",
+  "<img>",
+  "<a href='x'>link</a>",
+  "<div onclick='x'></div>",
+  "<input>",
+  "<p style='color:red'></p>",
+  "<svg><use href='x'/></svg>",
+])
+  assert.throws(() => compileView({ html }))
+for (const css of ["@import 'other.css';", "p {background:url(x)}", "p {background:image-set('x' 1x)}"])
+  assert.throws(() => compileView({ html: "<p></p>", css }))
+for (const hint of [{ focus: [1.1, 0] }, { aspect: "1 / 0" }, { aspect: "100/1" }, { aspect: "wide" }])
+  assert.ok(
+    validateCard({
+      ...ferry,
+      catalogs: [{ id: "test", items: [{ id: "item", ...hint }] }, ...ferry.catalogs!],
+    }).diagnostics.some((d) => d.level === "error"),
+  )
+const letterPack = decodeLayer({
+  id: "stationery",
+  name: "信纸",
+  products: [{ id: "letter", text: "一封来信" }],
+  views: [
+    {
+      id: "stationery",
+      product: "letter",
+      html: "<p data-text='value'></p>",
+      when: { event: "unused" },
+      media: [{ id: "a", catalog: "passenger" }],
+    },
+    { id: "public", product: "inner", html: "<em data-text='value'></em>" },
+    { id: "bad", html: "<p></p>" },
+    { id: "spoiler", product: "notes", html: "<p></p>" },
+    { id: "invalid", product: "inner", html: "<img>" },
+  ],
+})
+assert.equal(letterPack.views?.[0]?.media, undefined)
+assert.equal(letterPack.views?.[0]?.when, undefined)
+const local = { id: "local", name: "local", card: ferry.id, mounts: [letterPack.id] }
+const resolveViews = (l: typeof local & { views?: { id: string; on: boolean }[] }) =>
+  resolveLayer(ferry, { local: l, packs: [letterPack] })
+const mounted = resolveViews(local)
+assert.deepEqual(
+  mounted.dropped.filter((d) => d.kind === "view").map((d) => d.id),
+  ["bad", "spoiler", "invalid"],
+)
+assert.deepEqual(
+  mounted.views?.filter((v) => activeView(v) && v.product === "inner").map((v) => v.id),
+  ["public"],
+)
+assert.ok(
+  resolveViews({ ...local, views: [{ id: "public", on: false }] }).views?.some(
+    (v) => v.id === "ferry_letter" && activeView(v),
+  ),
+)
+assert.ok(!resolveViews({ ...local, mounts: [] }).products.some((p) => p.id === "letter"))
+assert.ok(mounted.views?.find((v) => v.id === "stationery")?.playerTemplate)
+
 assert.equal(ferry.id, "ferry")
 assert.deepEqual(checkValue(ferry).diagnostics, [])
 
@@ -67,6 +129,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const root = S.greet(ferry.greetings[0]).node!
   assert.deepEqual(S.projectTimeline(root).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }],
+    viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "calm" }],
   })
   const turn1 = lastNode(await collect(S.act(root.id, { text: "上船歇脚。" })))
   const proj = S.projectTimeline(turn1)
@@ -135,6 +198,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const sunny0 = S.greet(ferry.greetings[0]).node!
   assert.deepEqual(S.projectTimeline(sunny0).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }],
+    viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "calm" }],
   })
 
   // Sunny Turn 1: tide rises 1 -> 2, passenger boards (`world.boat.aboard = true`), selects `clear_water` BGM.
@@ -153,6 +217,10 @@ assert.deepEqual(sorted.media, ferry.media)
     portraits: [
       { id: "ferryman", catalog: "ferryman", item: "high_tide" },
       { id: "passenger", catalog: "passenger", item: "aboard_night" },
+    ],
+    viewMedia: [
+      { viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "high_tide" },
+      { viewId: "ferry_hud", id: "passenger", catalog: "passenger", item: "aboard_night" },
     ],
     bgm: { catalog: "ferry_bgm", id: "clear_water" },
   })
@@ -174,6 +242,10 @@ assert.deepEqual(sorted.media, ferry.media)
       { id: "ferryman", catalog: "ferryman", item: "high_tide" },
       { id: "passenger", catalog: "passenger", item: "aboard_night" },
     ],
+    viewMedia: [
+      { viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "high_tide" },
+      { viewId: "ferry_hud", id: "passenger", catalog: "passenger", item: "aboard_night" },
+    ],
   })
   assert.ok(sunny2Proj.media)
   assert.equal("bgm" in sunny2Proj.media, false)
@@ -190,6 +262,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const sunny3 = lastNode(await collect(S.act(sunny2.id, { text: "靠岸登阶。" })))
   assert.deepEqual(S.projectTimeline(sunny3).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }],
+    viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "calm" }],
   })
 
   const sunnyPath = [sunny0.id, sunny1.id, sunny2.id, sunny3.id].map((id) => S.timelineNode(id))
@@ -209,6 +282,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const rainy0 = S.greet(ferry.greetings[1]).node!
   assert.deepEqual(S.projectTimeline(rainy0).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
+    viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
   })
   plans.push({
     prose: "细雨敲打竹篾乌篷。\n\n船头风灯在雨雾里晕开暖黄光圈。",
@@ -221,6 +295,7 @@ assert.deepEqual(sorted.media, ferry.media)
   assert.deepEqual(S.projectTimeline(rainy1).media, {
     illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "rain_lantern", afterParagraph: 2 }],
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
+    viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
     bgm: { catalog: "ferry_bgm", id: "night_rain" },
   })
 

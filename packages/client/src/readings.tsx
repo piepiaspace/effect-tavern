@@ -1,3 +1,6 @@
+import { ViewBlock } from "./view-shell.tsx"
+import { activeView, residency, type EffectiveView } from "@effect-tavern/runtime/src/view-shell.ts"
+import type { CardView } from "./store.ts"
 import { AsyncView } from "./async-view.tsx"
 // The Record's pieces: one renderer per reading element (src/record.ts projects them; this file only draws), the
 // full-page sheet they sit in on the phone, the sibling actions a turn's row holds, the Status
@@ -598,7 +601,34 @@ export const Demand = (props: { node: Node; n: number }) => {
  *  too while they stream (store.ts `Draft.products`): no node yet, so no key. */
 /** A streaming block's edges, as the landed one will have them (journal.ts `split` trims): no height jump when it lands. */
 const trimmed = (v: unknown) => (typeof v === "string" ? v.trim() : v)
-export const Theater = (props: { products: Readonly<Record<string, unknown>>; node?: Node }) => {
+const eligible = (v: EffectiveView, node: Node | undefined, last: boolean) =>
+  activeView(v) && (residency(v) === "turn" || last) && (!v.when || !!node?.visibleViews?.includes(v.id))
+export const StateViews = (props: { node: Node; last: boolean; view: CardView | null }) => {
+  const views = createMemo(
+    () => props.view?.layer.views?.filter((v) => !v.product && eligible(v, props.node, props.last)) ?? [],
+    { equals: (a, b) => a.length === b.length && a.every((v, i) => v === b[i]) },
+  )
+  const current = createMemo(() => {
+    if (views().some((v) => residency(v) === "latest")) return fetchContext(props.node.id)
+    return undefined
+  })
+  return (
+    <For each={views()} keyed={(v) => v.id}>
+      {(v) => (
+        <AsyncView>
+          <ViewBlock
+            view={v()}
+            card={props.view!}
+            node={props.node}
+            latest={props.last}
+            context={residency(v()) === "latest" ? current() : undefined}
+          />
+        </AsyncView>
+      )}
+    </For>
+  )
+}
+export const Theater = (props: { last?: boolean; products: Readonly<Record<string, unknown>>; node?: Node }) => {
   const view = read(card)
   const busy = read(working)
   const unresolved = () => props.node?.settlementStatus === "pending" || props.node?.settlementStatus === "failed"
@@ -629,7 +659,22 @@ export const Theater = (props: { products: Readonly<Record<string, unknown>>; no
               )}
             </Show>
           </div>
-          <Shaped shape={p().shape} value={trimmed(props.products[p().id])} />
+          <Show
+            when={view()?.layer.views?.find(
+              (v) => v.product === p().id && eligible(v, props.node, props.last ?? !props.node),
+            )}
+            fallback={<Shaped shape={p().shape} value={trimmed(props.products[p().id])} />}
+          >
+            {(v) => (
+              <ViewBlock
+                view={v()}
+                card={view()!}
+                node={props.node}
+                latest={props.last ?? !props.node}
+                value={trimmed(props.products[p().id])}
+              />
+            )}
+          </Show>
         </div>
       )}
     </For>
@@ -746,6 +791,8 @@ const StandingPortraits = () => {
                 <MediaFrame
                   class="portrait-card-frame"
                   src={p().url}
+                  focus={p().focus}
+                  aspect={p().aspect}
                   label={p().label}
                   triggerLabel={p().slotLabel ? `${p().slotLabel} · ${p().label}` : p().label}
                   lightboxLabel={p().label}

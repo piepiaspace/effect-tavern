@@ -154,7 +154,14 @@ export const fetchPersonas = async (): Promise<void> => registry.set(personas, a
  *  snippets, format keys. A tab switched meanwhile keeps the read from landing on the wrong card. */
 export const refreshActiveCard = async (): Promise<void> => {
   const cur = activeOf(registry.get(tabs))
+  const before = registry.get(card)?.layer?.views
   await fetchTabCard(cur, () => activeOf(registry.get(tabs)) === cur)
+  if (
+    activeOf(registry.get(tabs)) === cur &&
+    cur.story !== null &&
+    JSON.stringify(before) !== JSON.stringify(registry.get(card)?.layer?.views)
+  )
+    await fetchNodes()
 }
 /** The card's page over a story in progress: it is about the story Begin makes, on the card's default persona and not
  *  the open story's (#170). Read once the tab's story is in the slots. */

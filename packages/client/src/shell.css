@@ -139,7 +139,7 @@
   margin-inline-start: calc(-1 * var(--space-1));
 }
 .strip-portraits .strip-avatar > .media-img {
-  object-position: 50% 18%;
+  object-position: 50% 20%;
 }
 .strip-portraits .strip-avatar > .media-fallback {
   padding: 0;
@@ -1001,7 +1001,7 @@
   background: var(--surface-2);
 }
 .status-page .portrait-card-frame > .media-img {
-  object-position: 50% 15%;
+  object-position: 50% 20%;
 }
 .status-page .portrait-card-caption {
   display: flex;

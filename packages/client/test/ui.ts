@@ -468,6 +468,12 @@ const fixtures: FixtureEntry[] = [
     () => "on a mouse the text selects as it always has, a sheet opens on its search, and a key is hit on its face",
     [FINE],
   ],
+  [
+    "test/view-shell.tsx",
+    () => "view shell bindings and natural image framing pass in development",
+    [],
+    createMediaUiHost,
+  ],
   ["test/gallery-dev.tsx", () => "gallery and lightbox open under Solid development checks", [], createMediaUiHost],
   [
     "test/media-ui.tsx",

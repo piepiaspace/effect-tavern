@@ -542,6 +542,8 @@ export const CardPage = () => {
                               >
                                 <MediaFrame
                                   class="gallery-frame"
+                                  focus={item().focus}
+                                  aspect={item().aspect}
                                   masked={item().masked}
                                   src={item().masked ? undefined : item().url}
                                   label={item().masked ? t("card.spoiler") : item().label}

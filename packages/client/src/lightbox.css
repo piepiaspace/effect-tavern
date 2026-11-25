@@ -67,6 +67,17 @@
     filter var(--media-reveal-dur) var(--media-reveal-ease);
 }
 
+.media-frame[data-fit="natural"] {
+  max-height: min(68cqh, 32rem);
+}
+.media-frame[data-fit="natural"]:not([data-aspect])[data-state="ready"] {
+  aspect-ratio: auto;
+}
+.media-frame[data-fit="natural"]:not([data-aspect])[data-state="ready"] > .media-img {
+  height: auto;
+  max-height: inherit;
+}
+.media-frame[data-fit="natural"] > .media-img,
 .media-frame[data-fit="contain"] > .media-img {
   object-fit: contain;
 }

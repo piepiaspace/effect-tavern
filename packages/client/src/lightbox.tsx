@@ -326,7 +326,9 @@ export interface MediaFrameProps {
   readonly masked?: boolean
   readonly maskedLabel?: string
   readonly onUnmask?: () => void
-  readonly fit?: "cover" | "contain"
+  readonly focus?: readonly [number, number] | undefined
+  readonly aspect?: string | undefined
+  readonly fit?: "cover" | "contain" | "natural"
   readonly as?: "figure" | "div" | "span"
   readonly id?: string
   readonly class?: JSX.ClassValue
@@ -336,6 +338,12 @@ export interface MediaFrameProps {
 }
 
 export const MediaFrame = (props: MediaFrameProps) => {
+  const frameStyle = () => {
+    if (props.fit !== "natural" || !props.aspect) return props.style
+    return typeof props.style === "string"
+      ? props.style + ";aspect-ratio:" + props.aspect
+      : { ...props.style, "aspect-ratio": props.aspect }
+  }
   const rawSrc = () => (props.masked ? undefined : (props.src ?? props.url))
   // Never fetch while masked before first reveal; once decoded, keep `<img>` alive across re-masking so both surfaces
   // cross-fade through the shared blur in 0ms without re-fetching or re-decoding.
@@ -404,6 +412,7 @@ export const MediaFrame = (props: MediaFrameProps) => {
           aria-hidden={props.masked ? "true" : undefined}
           src={imgSrc()}
           alt={props.masked ? "" : props.label}
+          style={{ "object-position": props.focus && props.focus.map((n) => String(n * 100) + "%").join(" ") }}
           decoding="async"
           draggable="false"
           onLoad={(e) => {
@@ -460,7 +469,8 @@ export const MediaFrame = (props: MediaFrameProps) => {
         <div
           id={props.id}
           class={["media-frame", props.class]}
-          style={props.style}
+          style={frameStyle()}
+          data-aspect={props.aspect}
           data-state={stateAttr()}
           data-fit={props.fit ?? "cover"}
         >
@@ -472,7 +482,8 @@ export const MediaFrame = (props: MediaFrameProps) => {
         <figure
           id={props.id}
           class={["media-frame", props.class]}
-          style={props.style}
+          style={frameStyle()}
+          data-aspect={props.aspect}
           data-state={stateAttr()}
           data-fit={props.fit ?? "cover"}
         >
@@ -483,7 +494,8 @@ export const MediaFrame = (props: MediaFrameProps) => {
         <span
           id={props.id}
           class={["media-frame", props.class]}
-          style={props.style}
+          style={frameStyle()}
+          data-aspect={props.aspect}
           data-state={stateAttr()}
           data-fit={props.fit ?? "cover"}
         >

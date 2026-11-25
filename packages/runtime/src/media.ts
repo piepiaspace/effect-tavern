@@ -1,6 +1,7 @@
 // Browser-safe media schemas, node projection, deterministic variant selection, and HTTPS URL resolution.
 import { sha256 } from "@noble/hashes/sha2.js"
 import { Schema } from "effect"
+import { activeView, type EffectiveView } from "./view-shell.ts"
 import { holds, reads, type State } from "./cond.ts"
 import { rows, type Catalog, type Product } from "./product.ts"
 
@@ -31,6 +32,7 @@ export type Media = typeof Media.Type
 
 export interface NodeMedia {
   illustrations?: readonly { productId: string; catalog: string; id: string; afterParagraph: number }[]
+  viewMedia?: readonly { viewId: string; id: string; catalog: string; item: string }[]
   portraits?: readonly { id: string; catalog: string; item: string }[]
   bgm?: { catalog: string; id: string }
 }
@@ -41,10 +43,12 @@ export const projectNodeMedia = ({
   products,
   catalogs,
   turnProducts,
+  views,
   fields,
   events,
   context,
 }: {
+  views?: readonly EffectiveView[] | undefined
   media: Media | undefined
   products: readonly Product[]
   catalogs: readonly Catalog[]
@@ -53,7 +57,7 @@ export const projectNodeMedia = ({
   events: readonly string[]
   context: () => State
 }): NodeMedia | undefined => {
-  if (!media) return undefined
+  if (!media && !views?.length) return undefined
 
   // Replay checks catalog membership; an item's selection-time guard may have closed since.
   const picks = (productId: string) => {
@@ -70,38 +74,38 @@ export const projectNodeMedia = ({
         : []
     })
   }
-  const illustrations = media.illustrations?.flatMap(({ product }) =>
+  const illustrations = media?.illustrations?.flatMap(({ product }) =>
     picks(product).flatMap(({ catalog, id, afterParagraph }) =>
       typeof afterParagraph === "number" && Number.isInteger(afterParagraph)
         ? [{ productId: product, catalog, id, afterParagraph }]
         : [],
     ),
   )
-  const track = media.bgm && picks(media.bgm.product)[0]
+  const track = media?.bgm && picks(media.bgm.product)[0]
   const bgm = track && { catalog: track.catalog, id: track.id }
 
-  let portraits: { id: string; catalog: string; item: string }[] | undefined
-  if (media.portraits?.length) {
-    const fieldState = { fields }
-    let fullState: State | undefined
-    const out: { id: string; catalog: string; item: string }[] = []
-    for (const slot of media.portraits) {
-      const cat = catalogs.find((c) => c.id === slot.catalog)
-      if (!cat) continue
-      const matched = cat.items.find(({ when }) => {
-        if (!when) return true
-        const needsContext = reads(when).some((p) => p.startsWith("world.") || p.startsWith("lore."))
-        return holds(when, needsContext ? (fullState ??= context()) : fieldState, events)
-      })
-      if (matched) out.push({ id: slot.id ?? slot.catalog, catalog: slot.catalog, item: matched.id })
-    }
-    if (out.length) portraits = out
+  const fieldState = { fields }
+  let fullState: State | undefined
+  const matches = (when: NonNullable<Catalog["items"][number]["when"]>) => {
+    const needsContext = reads(when).some((p) => p.startsWith("world.") || p.startsWith("lore."))
+    return holds(when, needsContext ? (fullState ??= context()) : fieldState, events)
   }
-
-  if (!illustrations?.length && !portraits && !bgm) return undefined
+  const select = (slot: PortraitSlot) => {
+    const cat = catalogs.find((c) => c.id === slot.catalog)
+    const matched = cat?.items.find((i) => !i.when || matches(i.when))
+    return matched ? [{ id: slot.id ?? slot.catalog, catalog: slot.catalog, item: matched.id }] : []
+  }
+  const portraits = media?.portraits?.flatMap(select)
+  const viewMedia = views
+    ?.filter(
+      (v) => activeView(v) && (!v.when || matches(v.when)) && (!v.product || turnProducts[v.product] !== undefined),
+    )
+    .flatMap((v) => (v.media ?? []).flatMap(select).map((hit) => ({ ...hit, viewId: v.id })))
+  if (!illustrations?.length && !portraits?.length && !viewMedia?.length && !bgm) return undefined
   return {
     ...(illustrations?.length && { illustrations }),
-    ...(portraits && { portraits }),
+    ...(portraits?.length && { portraits }),
+    ...(viewMedia?.length && { viewMedia }),
     ...(bgm && { bgm }),
   }
 }
@@ -214,6 +218,13 @@ export const pickBgmVariant = <T = string>(
 
 export type MediaVariantTarget =
   | {
+      readonly kind: "view"
+      readonly viewId: string
+      readonly slot: string
+      readonly catalog: string
+      readonly item: string
+    }
+  | {
       readonly kind: "illustration"
       readonly nodeId: number
       readonly catalog: string
@@ -243,6 +254,8 @@ export const resolveCatalogVariant = (
   switch (target.kind) {
     case "illustration":
       return pickIllustrationVariant(entry.variants, target)
+    case "view":
+      return pickFromTuple(entry.variants, ["view", target.viewId, target.slot, target.catalog, target.item])
     case "portrait":
       return pickPortraitVariant(entry.variants, target)
     case "bgm":

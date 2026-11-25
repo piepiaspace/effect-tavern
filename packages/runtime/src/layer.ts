@@ -17,6 +17,7 @@
 // Names are filled per item by its `from` (names.ts `expand`): a player's entry with a hole nothing fills stays out, the
 // card's goes out with the literal `{{key}}`; `holes` lists what nothing fills, either way.
 import { ContextPolicy, checkContextPolicies } from "./lore.ts"
+import { ViewShellPatch, compileView, type EffectiveView } from "./view-shell.ts"
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
@@ -36,6 +37,7 @@ export type PackEntry = typeof PackEntry.Type
 export const Layer = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
+  views: Schema.optionalKey(Schema.Array(ViewShellPatch)),
   fragments: Schema.optionalKey(Schema.Array(Fragment)), // the id is a slot or its own, `at` head or tail, `mode` vs the lower ranks
   switches: Schema.optionalKey(Writing), // compiled to `pov` / `verbosity` before this row's own fragments, yielding
   asks: Schema.optionalKey(Schema.Array(Ask)), // lookup, lookup.decision, direct, decide.*, check, check.decision.*, record.*, narrate.*, polish, input.thought; switch.<key>.<value>; product.<id> is a text patch
@@ -51,6 +53,7 @@ export type Layer = typeof Layer.Type
  *  the install's default, server library.ts `personaFor`); a story's own pick is its row's. */
 export const Local = Schema.Struct({
   ...Layer.fields,
+  viewsEnabled: Schema.optionalKey(Schema.Boolean),
   card: Schema.String,
   mounts: Schema.optionalKey(Schema.Array(Schema.String)), // the packs on this card, in mount order
   persona: Schema.optionalKey(Schema.NullOr(Schema.String)),
@@ -61,6 +64,7 @@ export type Local = typeof Local.Type
 /** A row as a player may store it: no Cond and no role on a fragment, a product patch only label, text, on and trigger. */
 export const locked = <R extends Layer>(r: R): R => ({
   ...r,
+  ...(r.views && { views: r.views.map(({ when: _when, media: _media, ...v }) => v) }),
   ...(r.fragments && { fragments: r.fragments.map(({ when: _w, role: _r, ...f }) => f) }),
   ...(r.products && {
     products: r.products.map(({ id, label, text, on, trigger }) => ({
@@ -365,6 +369,7 @@ export interface Resolved {
   frame: Item<Fragment>[] // the head, names filled (names.ts: a player's entry with a hole nothing fills is not here)
   tail: Item<Fragment>[]
   asks: Record<string, Item<{ text: string }>> // every id: the highest on the chain that goes out
+  views?: EffectiveView[]
   products: Item<Product>[] // `on` decided; the question filled, or a player's `unasked` with its raw text when it does not fill
   entries: Item<PackEntry>[] // the lookup index's player-layer entries
   lexicon: Item<LexiconEntry>[] // keyed by pattern, the highest rank's copy standing (enabled: false switches off a lower rank's)
@@ -378,7 +383,7 @@ export interface Resolved {
     taken: { pov: From | null; verbosity: From | null } // who holds the slot; the frame item says whether it is compiled
   }
   // what the locks refused, nothing throws: a client words it by `kind` (one per lock), `why` is the CLI's and the tests'
-  dropped: { from: From; kind: "name" | "product" | "entry"; id: string; why: string }[]
+  dropped: { from: From; kind: "name" | "product" | "entry" | "view"; id: string; why: string }[]
 }
 
 /** The switches as slot fragments: `pov` (pov, echo, agency; the last two drop when there is no player in the fiction)
@@ -459,6 +464,7 @@ export const resolveWithTrace = (
   }
   // The card as a row: its frame and products are merged below, its fiction, lore and rules are not the layer's.
   const cardRow: Partial<Layer> = {
+    ...(card.views && { views: card.views }),
     ...(card.names && { names: card.names }),
     ...(card.lexicon && { lexicon: card.lexicon }),
     ...(card.asks && { asks: card.asks.flatMap((a) => (a.text === undefined ? [] : [{ id: a.id, text: a.text }])) }),
@@ -930,6 +936,41 @@ export const resolveWithTrace = (
     ...worded,
     ...allSnippets.flatMap((s) => [s.text, s.after ?? ""]),
   ]
+  const views = new Map<string, EffectiveView>()
+  for (const { from, row } of up) {
+    for (const patch of row.views ?? []) {
+      const prior = views.get(patch.id)
+      const view = {
+        ...prior,
+        ...patch,
+        playerTemplate: patch.html === undefined && prior ? prior.playerTemplate : row !== cardRow,
+      }
+      const product = asked.find((p) => p.id === view.product)
+      try {
+        if (!view.html) throw new Error("view requires html")
+        if (row !== cardRow && !prior && !view.product) throw new Error("player view requires a product")
+        if (
+          view.product &&
+          (product?.role !== "theater" ||
+            view.product === "options" ||
+            ("surface" in product && product.surface === "composer") ||
+            card.media?.illustrations?.some((i) => i.product === view.product))
+        )
+          throw new Error("view requires an available theater surface")
+        compileView({ html: view.html, ...(view.css !== undefined && { css: view.css }) })
+        views.delete(view.id)
+        views.set(view.id, { ...view, html: view.html })
+      } catch (error) {
+        dropped.push({ kind: "view", from, id: view.id, why: String(error) })
+      }
+    }
+  }
+  const takenProducts = new Set<string>()
+  for (const view of [...views.values()].reverse()) {
+    if (!view.product || view.on === false) continue
+    if (takenProducts.has(view.product)) view.shadowed = true
+    takenProducts.add(view.product)
+  }
   const frameEntries = filledTracked.filter((x) => x.item.at !== "tail")
   const tailEntries = filledTracked.filter((x) => x.item.at === "tail")
   return {
@@ -938,6 +979,9 @@ export const resolveWithTrace = (
       tail: tailEntries.map((x) => x.item),
       asks: Object.fromEntries(asks),
       products: asked,
+      ...(views.size && {
+        views: [...views.values()].map((v) => (local?.viewsEnabled === false ? { ...v, shadowed: true } : v)),
+      }),
       entries,
       lexicon: menu(
         (r) => r.lexicon,

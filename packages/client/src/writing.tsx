@@ -103,6 +103,7 @@ const DROPPED: Record<Resolved["dropped"][number]["kind"], Key> = {
   name: "writing.droppedName",
   product: "writing.droppedProduct",
   entry: "writing.droppedEntry",
+  view: "writing.droppedView",
 }
 
 export const WritingPage = () => {
@@ -228,6 +229,37 @@ export const WritingPage = () => {
             </Show>
           </div>
 
+          <Show when={layer()?.views?.length}>
+            <section class="wcard">
+              <h3>{t("writing.views")}</h3>
+              <Switch
+                label={t("writing.enableViews")}
+                on={loc()?.viewsEnabled !== false}
+                onFlip={() =>
+                  void putLocalAndRefresh(cardId(), (l) => ({ ...l, viewsEnabled: l.viewsEnabled === false }))
+                }
+              />
+              <For each={layer()?.views} keyed={(v) => v.id}>
+                {(v) => (
+                  <Switch
+                    label={v().label ?? v().id}
+                    on={v().on !== false}
+                    onFlip={() => {
+                      const id = v().id,
+                        on = v().on === false
+                      void putLocalAndRefresh(cardId(), (l) => ({
+                        ...l,
+                        views: [
+                          ...(l.views ?? []).filter((x) => x.id !== id),
+                          { ...l.views?.find((x) => x.id === id), id, on },
+                        ],
+                      }))
+                    }}
+                  />
+                )}
+              </For>
+            </section>
+          </Show>
           {/* 2. 本卡代称 (`layer.names` + `layer.holes`) */}
           <Show when={nameKeys().length > 0}>
             <div class="wcard">

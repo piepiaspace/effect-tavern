@@ -1220,7 +1220,7 @@ button.record-pill:active {
   background: var(--surface-2);
 }
 .play-portrait-frame > .media-img {
-  object-position: 50% 18%;
+  object-position: 50% 20%;
 }
 .play-portrait-frame > .media-fallback {
   padding: var(--space-1);

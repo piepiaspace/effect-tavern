@@ -1,3 +1,4 @@
+import { compileView } from "./view-shell.ts"
 // Card lint (issue #27): what a card author's type checker says about a card. Pure: a card in, facts and fixes out; no
 // I/O, no console. The throws in `makeCard` / `resolve` stay decode-time invariants; lint reports what decodes but is
 // wired wrong (topology: events, fields, bands, layers) or written where code should do the work (prose: numbers and
@@ -13,6 +14,7 @@ import { colsAt, type Product, type Shape } from "./product.ts"
 import { HARNESS_HOLES, HOLE, unfilled } from "./names.ts"
 import { type Entry, scan } from "./polish.ts"
 
+const dupes = (ids: readonly string[]) => [...new Set(ids.filter((x, i) => ids.indexOf(x) !== i))]
 export const identifier = /^[\p{L}\p{N}_:.\-{}]+$/u
 
 export interface Diagnostic {
@@ -42,6 +44,7 @@ const conds = (card: Card): [string, Cond][] => [
     [`lore.${e.id}.offer`, e.offer],
   ]),
   ...whenPaths("products", card.products ?? []),
+  ...(card.views ?? []).flatMap((v): [string, Cond][] => (v.when ? [["views." + v.id + ".when", v.when]] : [])),
   ...(card.catalogs ?? []).flatMap((c) =>
     c.items.flatMap((i): [string, Cond][] => (i.when ? [[`catalogs.${c.id}.items.${i.id}.when`, i.when]] : [])),
   ),
@@ -643,7 +646,6 @@ const rules: Rule[] = [
     ),
   // A catalog and an item are named by id (a node stores only the item's): two under one id are one.
   (card) => {
-    const dupes = (ids: readonly string[]) => [...new Set(ids.filter((x, i) => ids.indexOf(x) !== i))]
     const cs = card.catalogs ?? []
     return [
       ...dupes(cs.map((c) => c.id)).map((id) => `catalogs.${id}`),
@@ -656,9 +658,32 @@ const rules: Rule[] = [
       hint: "give each catalog, and each item in one, its own id",
     }))
   },
+  (card) => {
+    const out: Diagnostic[] = []
+    for (const catalog of card.catalogs ?? []) {
+      for (const item of catalog.items) {
+        const path = ["catalogs", catalog.id, "items", item.id].join(".")
+        if (item.focus?.some((x) => !Number.isFinite(x) || x < 0 || x > 1))
+          out.push({ rule: "media-focus", level: "error", path, message: "focus coordinates must be in [0, 1]" })
+        if (item.aspect !== undefined) {
+          const parts = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(item.aspect)
+          const ratio = parts ? Number(parts[1]) / Number(parts[2]) : NaN
+          if (!(ratio >= 0.25 && ratio <= 4))
+            out.push({
+              rule: "media-aspect",
+              level: "error",
+              path,
+              message: "aspect must be a positive W / H ratio between 1 / 4 and 4 / 1",
+            })
+        }
+      }
+    }
+    return out
+  },
   // Closed media bindings (`Card.media`), `Catalog.kind` consistency, and production HTTPS asset paths on bound catalogs.
   (card) => {
-    if (!card.media) return []
+    if (!card.media && !card.views?.length) return []
+    const media = card.media ?? {}
     const out: Diagnostic[] = []
     const products = new Map<string, Partial<Product> & { id: string }>(
       (harness(card.input ?? "act").products ?? []).map((p) => [p.id, p]),
@@ -667,6 +692,32 @@ const rules: Rule[] = [
     const catalogs = new Map((card.catalogs ?? []).map((c) => [c.id, c]))
     const consumers: { catalog: string; expected: "image" | "audio"; path: string }[] = []
 
+    for (const view of card.views ?? []) {
+      const path = "views." + view.id
+      try {
+        compileView(view)
+        if (
+          dupes((card.views ?? []).map((v) => v.id)).includes(view.id) ||
+          dupes((view.media ?? []).map((s) => s.id)).length
+        )
+          throw new Error("duplicate view or media slot")
+        const p = products.get(view.product ?? "")
+        if (
+          view.product &&
+          (!p ||
+            (p.role ?? "theater") !== "theater" ||
+            view.product === "options" ||
+            media.illustrations?.some((i) => i.product === view.product))
+        )
+          throw new Error("expected an available theater product")
+        for (const slot of view.media ?? []) {
+          if (!catalogs.has(slot.catalog)) throw new Error("unknown view catalog " + slot.catalog)
+          consumers.push({ catalog: slot.catalog, expected: "image", path })
+        }
+      } catch (error) {
+        out.push({ rule: "bad-view", level: "error", path, message: String(error) })
+      }
+    }
     const illustrationShapeOk = (s: Shape | undefined): boolean => {
       if (s?.kind !== "table" || s.columns.length !== 2) return false
       const after = s.columns.find((c) => c.key === "afterParagraph")
@@ -687,7 +738,7 @@ const rules: Rule[] = [
     }
 
     const seenIllust = new Set<string>()
-    for (const [i, b] of (card.media.illustrations ?? []).entries()) {
+    for (const [i, b] of (media.illustrations ?? []).entries()) {
       const path = `media.illustrations[${i}].product`
       if (seenIllust.has(b.product)) {
         out.push({
@@ -725,9 +776,9 @@ const rules: Rule[] = [
       }
     }
 
-    if (card.media.bgm) {
+    if (media.bgm) {
       const path = "media.bgm.product"
-      const b = card.media.bgm
+      const b = media.bgm
       const p = products.get(b.product)
       if (!p) {
         out.push({
@@ -755,7 +806,7 @@ const rules: Rule[] = [
     }
 
     const seenSlots = new Set<string>()
-    for (const [i, slot] of (card.media.portraits ?? []).entries()) {
+    for (const [i, slot] of (media.portraits ?? []).entries()) {
       const slotId = slot.id ?? slot.catalog
       if (slot.id !== undefined && !slot.id.trim()) {
         out.push({
@@ -789,7 +840,7 @@ const rules: Rule[] = [
     }
 
     const seenGallery = new Set<string>()
-    for (const [i, catId] of (card.media.gallery ?? []).entries()) {
+    for (const [i, catId] of (media.gallery ?? []).entries()) {
       const path = `media.gallery[${i}]`
       if (seenGallery.has(catId)) {
         out.push({

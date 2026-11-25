@@ -1,4 +1,5 @@
 // Browser-safe client media projections: node illustrations + theater attribution, portraits, and card gallery.
+import { activeView } from "@effect-tavern/runtime/src/view-shell.ts"
 import { holds, type Cond, type State } from "@effect-tavern/runtime/src/cond.ts"
 import {
   hashMediaTuple,
@@ -17,7 +18,7 @@ import {
   type NodeMedia,
   type PortraitSlot,
 } from "@effect-tavern/runtime/src/media.ts"
-import { rows, type Catalog, type Product, type TableShape } from "@effect-tavern/runtime/src/product.ts"
+import { rows, type Catalog, type Product, type Shape, type TableShape } from "@effect-tavern/runtime/src/product.ts"
 import { createMemo, createRoot, runWithOwner, type Accessor } from "solid-js"
 import { blocks } from "./markdown.ts"
 import { card, path, stories, type CardView, type Id, type StoryRow } from "./store.ts"
@@ -40,7 +41,21 @@ export {
   type PortraitSlot,
 }
 
-export interface ResolvedIllustration {
+export interface Presentation {
+  readonly focus?: readonly [number, number] | undefined
+  readonly aspect?: string | undefined
+}
+export const presentation = (item?: Presentation) => ({
+  ...(item?.focus && { focus: item.focus }),
+  ...(item?.aspect && {
+    aspect: item.aspect
+      .split("/")
+      .map((s) => s.trim())
+      .join(" / "),
+  }),
+})
+
+export interface ResolvedIllustration extends Presentation {
   readonly catalog: string
   readonly id: string
   readonly afterParagraph: number
@@ -50,7 +65,7 @@ export interface ResolvedIllustration {
   readonly theaterProductId?: string
 }
 
-export interface ResolvedPortrait {
+export interface ResolvedPortrait extends Presentation {
   readonly id: string
   readonly catalog: string
   readonly item: string
@@ -60,7 +75,7 @@ export interface ResolvedPortrait {
   readonly url: string | undefined
 }
 
-export interface ResolvedGalleryItem {
+export interface ResolvedGalleryItem extends Presentation {
   readonly key: string
   readonly catalog: string
   readonly id: string
@@ -88,7 +103,12 @@ export interface ResolvedGallery {
 
 export interface ResolveGalleryOptions {
   readonly storyOpen?: boolean
-  readonly pathNodes?: readonly { readonly id: number; readonly prose: string; readonly media?: NodeMedia }[]
+  readonly pathNodes?: readonly {
+    readonly id: number
+    readonly prose: string
+    readonly theater?: Readonly<Record<string, unknown>>
+    readonly media?: NodeMedia
+  }[]
   readonly headContext?: { readonly worldState?: State } | null
   readonly headEvents?: readonly string[]
   readonly showAll?: boolean
@@ -100,6 +120,7 @@ export type MediaViewLike = {
   readonly catalogs?: readonly Catalog[]
   readonly media?: Media
   readonly layer?: {
+    readonly views?: CardView["layer"]["views"]
     readonly products?: readonly Pick<Product, "id" | "role" | "on" | "shape">[]
   }
 }
@@ -122,6 +143,27 @@ export const safeCatalogUrl = (
   } catch {
     return undefined
   }
+}
+
+// Keep column provenance alongside the concrete path. A string elsewhere in a product cannot authorize an image.
+export function productImages(
+  shape: Shape,
+  value: unknown,
+  path = "value",
+): { catalog: string; item: string; path: string }[] {
+  if (!value || typeof value !== "object") return []
+  const refs = (row: Record<string, unknown>, columns: readonly { key: string; catalog?: string }[], prefix: string) =>
+    columns.flatMap((c) => {
+      const id = row[c.key]
+      return c.catalog && typeof id === "string" ? [{ catalog: c.catalog, item: id, path: prefix + "." + c.key }] : []
+    })
+  if (shape.kind === "table" && Array.isArray(value))
+    return safeRows(shape, value).flatMap(({ row, i }) => refs(row, shape.columns, path + "." + i))
+  if (shape.kind !== "record") return []
+  const row = value as Record<string, unknown>
+  return shape.keys.flatMap((k) =>
+    "shape" in k ? productImages(k.shape, row[k.key], path + "." + k.key) : refs(row, [k], path),
+  )
 }
 
 const safeRows = (shape: TableShape, value: unknown) => {
@@ -237,6 +279,7 @@ export const resolveNodeIllustrations = (
     const producer = view?.layer?.products?.find((p) => p.id === ill.productId)
     const theaterProductId = producer?.role === "theater" && producer.on !== false ? producer.id : undefined
     const resolved: ResolvedIllustration = {
+      ...presentation(entry),
       catalog: ill.catalog,
       id: ill.id,
       afterParagraph: ill.afterParagraph,
@@ -255,7 +298,7 @@ export const resolveNodeIllustrations = (
 
 export const resolvePortraits = (
   node: { readonly media?: NodeMedia } | null | undefined,
-  view: Pick<CardView, "media" | "catalogs"> | MediaViewLike | null | undefined,
+  view: MediaViewLike | null | undefined,
 ): ResolvedPortrait[] => {
   const hits = node?.media?.portraits
   if (!hits?.length) return []
@@ -276,6 +319,7 @@ export const resolvePortraits = (
       id: p.id,
       catalog: p.catalog,
       item: p.item,
+      ...presentation(entry),
       slotLabel,
       itemLabel,
       label,
@@ -302,7 +346,10 @@ export const samePortraits = (a: readonly ResolvedPortrait[], b: readonly Resolv
       p.slotLabel === b[i]?.slotLabel &&
       p.itemLabel === b[i]?.itemLabel &&
       p.label === b[i]?.label &&
-      p.url === b[i]?.url,
+      p.url === b[i]?.url &&
+      p.aspect === b[i]?.aspect &&
+      p.focus?.[0] === b[i]?.focus?.[0] &&
+      p.focus?.[1] === b[i]?.focus?.[1],
   )
 
 const emptyPortraits: readonly ResolvedPortrait[] = []
@@ -363,9 +410,7 @@ export const condReadsEvent = (cond: Cond | undefined): boolean => {
   return false
 }
 
-export const galleryReadsEvent = (
-  view: Pick<CardView, "media" | "catalogs"> | MediaViewLike | null | undefined,
-): boolean => {
+export const galleryReadsEvent = (view: MediaViewLike | null | undefined): boolean => {
   const ids = view?.media?.gallery
   if (!ids?.length) return false
   for (const id of ids) {
@@ -394,7 +439,7 @@ const emptyGallery: ResolvedGallery = {
 }
 
 export const resolveGallery = (
-  view: Pick<CardView, "media" | "catalogs"> | MediaViewLike | null | undefined,
+  view: MediaViewLike | null | undefined,
   options: ResolveGalleryOptions = {},
 ): ResolvedGallery => {
   const galleryIds = view?.media?.gallery
@@ -429,6 +474,33 @@ export const resolveGallery = (
             occurrence,
           })
           if (url !== undefined) pathUrls.set(key, url)
+        }
+      }
+      for (const hit of n.media?.viewMedia ?? []) {
+        if (!view.layer?.views?.some((v) => v.id === hit.viewId && activeView(v))) continue
+        const key = hit.catalog + "\0" + hit.item
+        pathRevealed.add(key)
+        const url = safeCatalogUrl(view.catalogs, { kind: "view", slot: hit.id, ...hit })
+        if (url) pathUrls.set(key, url)
+      }
+      for (const product of view.layer?.products ?? []) {
+        if (
+          view.media?.illustrations?.some((i) => i.product === product.id) ||
+          product.role !== "theater" ||
+          n.theater?.[product.id] === undefined
+        )
+          continue
+        for (const ref of productImages(product.shape, n.theater[product.id])) {
+          const url = safeCatalogUrl(view.catalogs, {
+            kind: "illustration",
+            nodeId: n.id,
+            catalog: ref.catalog,
+            item: ref.item,
+          })
+          if (!url) continue
+          const key = ref.catalog + "\0" + ref.item
+          pathRevealed.add(key)
+          pathUrls.set(key, url)
         }
       }
       if (n.media?.portraits?.length) {
@@ -480,6 +552,7 @@ export const resolveGallery = (
         catalog: cat.id,
         id: item.id,
         label: item.label ?? item.id,
+        ...presentation(item),
         gated,
         unlocked,
         revealed,

@@ -15,6 +15,7 @@ import { Fragment } from "./fragment.ts"
 import { expand, Names } from "./names.ts"
 import { Media } from "./media.ts"
 import { Entry } from "./polish.ts"
+import { ViewShell } from "./view-shell.ts"
 import { Catalog, ProductPatch } from "./product.ts"
 
 const Num = Schema.Number
@@ -322,6 +323,7 @@ export const Card = Schema.Struct({
   director: Schema.optionalKey(Schema.Boolean),
   input: Schema.optionalKey(Schema.Literals(["act", "note"])),
   asks: Schema.optionalKey(Schema.Array(Fragment)), // the harness's own wording, overridden by id
+  views: Schema.optionalKey(Schema.Array(ViewShell)),
   catalogs: Schema.optionalKey(Schema.Array(Catalog)), // attachments by id: an enum column's `catalog` names one
   products: Schema.optionalKey(Schema.Array(ProductPatch)), // record products: patches over the harness defaults by id, or new ones
   media: Schema.optionalKey(Media), // closed media bindings over catalogs and record products

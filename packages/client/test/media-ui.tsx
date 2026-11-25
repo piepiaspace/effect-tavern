@@ -2,7 +2,7 @@
 // Runs in real headless Chrome at both desktop (`1280x800`, FINE) and mobile (`390x844`, COARSE) over a real
 // `@effect-tavern/server` in-memory `tavern()` handler + scripted `MODEL=fake` + Service Worker `/__media/*` transport.
 // Exercises `samples/ferry/ferry.yaml` import -> static CardPage Gallery (spoiler masks with zero URL prefetch, manual
-// `显示全部` toggle, Lightbox + `history.back()`) -> Sunny story Turn 0 (`ferryman/calm` across desktop `.reader-portraits`,
+// `显示全部` toggle, Lightbox + `history.back()`) -> Sunny story Turn 0 (`ferryman/calm` in the desktop HUD,
 // phone `.strip-portraits` -> `PlaySheet` `.play-portraits` -> nested Lightbox + `history.back()`, and `StatusPage`
 // standing `.portraits`) -> Turn 1 state-first / illustration-later (`mediaControl({ hold })` + delayed `record`, proving
 // active prose `Selection` and `.scroll` position remain intact before AND after `record` amendment and image decode) ->
@@ -23,6 +23,7 @@ import { flip, locale, t } from "../src/i18n.ts"
 import { boot, showCard, toReader } from "../src/pages.ts"
 import { openSettings } from "../src/settings-navigation.ts"
 import { log, page, path, registry, working } from "../src/store.ts"
+import { putPack, putLocal, refreshActiveCard } from "../src/wire.ts"
 import { turn } from "../src/turn.ts"
 import { installMediaTransport, mediaControl, postResult, waitForMedia } from "./media-transport.ts"
 import { quiet, touch, tracked, until } from "./settle.ts"
@@ -405,30 +406,19 @@ const runPhaseOne = async (isDesktop: boolean) => {
   await waitTurnSettled(0)
   check(registry.get(page) === "reader", "Begin lands in Reader on sunny0 (#0)")
 
+  const hud = () => document.querySelector(".view-shell[data-view=ferry_hud]")?.shadowRoot
+  check(
+    await until(
+      () => hud()?.querySelector(".badge")?.textContent === "北岸" || !!hud()?.querySelector(".badge")?.textContent,
+    ),
+    "Greeting mounts its projected HUD",
+  )
   if (isDesktop) {
-    const aside = document.querySelector<HTMLElement>(".reader-portraits")
-    check(aside && aside.getClientRects().length > 0, "desktop Reader renders .reader-portraits")
-    check(!document.querySelector(".strip-portraits"), "desktop has no phone .strip-portraits")
-    check(
-      await until(
-        () =>
-          document.querySelectorAll(".reader-portrait").length === 1 &&
-          document.querySelector(".reader-portrait-frame")?.getAttribute("data-state") === "ready",
-      ),
-      "desktop Turn 0 shows 1 ready portrait (ferryman/calm)",
-    )
-    check(
-      document.querySelector(".reader-portrait-name")?.textContent === "船夫",
-      "desktop portrait shows slot label 船夫",
-    )
-    document.querySelector<HTMLButtonElement>(".reader-portrait-frame .media-hit")?.click()
-    check(await until(() => Boolean(document.querySelector(".lightbox"))), "desktop portrait opens Lightbox")
-    check(
-      document.querySelector(".lightbox-title")?.textContent === "船夫·静候渡客",
-      "desktop portrait Lightbox shows item label 船夫·静候渡客",
-    )
+    check(!document.querySelector(".reader-portraits"), "desktop leaves the reader margin empty")
+    check(await until(() => !!hud()?.querySelector(".media-hit")), "HUD portrait loads")
+    hud()?.querySelector<HTMLButtonElement>(".media-hit")?.click()
+    check(await until(() => !!document.querySelector(".lightbox")), "HUD portrait opens the host lightbox")
     await systemBack(1)
-    check(await until(() => !document.querySelector(".lightbox")), "history.back() closes desktop portrait Lightbox")
     await quiet()
   } else {
     check(!document.querySelector(".reader-portraits"), "mobile Reader hides desktop .reader-portraits")
@@ -541,6 +531,7 @@ const runPhaseOne = async (isDesktop: boolean) => {
 
   const scroller = document.querySelector<HTMLElement>(".scroll")!
   const sec2 = document.getElementById("node-1")!
+  check(!hud(), "previous HUD retires while record is pending")
   const paras2 = [...sec2.querySelectorAll<HTMLParagraphElement>("p")]
   check(paras2.length === 3, `Turn 1 rendered 3 paragraphs (got ${paras2.length})`)
   // Place paragraph 1 near the top of `.scroll` so `scrollTop > 0` and `< maxScroll`
@@ -572,7 +563,7 @@ const runPhaseOne = async (isDesktop: boolean) => {
   if (isDesktop) {
     check(
       await until(() => {
-        const frames = [...document.querySelectorAll(".reader-portrait-frame")]
+        const frames = [...(hud()?.querySelectorAll(".media-frame") ?? [])]
         return frames.length === 2 && frames.every((f) => f.getAttribute("data-state") === "ready")
       }),
       "desktop dual portraits (high_tide + aboard_night) decode immediately while illustration is held",
@@ -581,7 +572,7 @@ const runPhaseOne = async (isDesktop: boolean) => {
     check(
       Math.abs(mainAfterPortraits.left - mainBefore.left) < 1 &&
         Math.abs(mainAfterPortraits.width - mainBefore.width) < 1,
-      "out-of-flow .reader-portraits causes zero horizontal shift on main prose column",
+      "in-stream HUD causes zero horizontal shift on main prose column",
     )
   } else {
     check(
@@ -674,10 +665,8 @@ const runPhaseOne = async (isDesktop: boolean) => {
   await quiet()
 
   // ── (d) Turn 2 (`night_crossing` after p2, flicker-free portrait DOM) -> Turn 3 (`tide: ebb`, `passenger` leaves, `night_crossing` kept in Gallery) ──
-  const portraitImgBeforeTurn2 = document.querySelector<HTMLImageElement>(
-    isDesktop ? ".reader-portrait-frame img" : ".strip-avatar img",
-  )
-  check(Boolean(portraitImgBeforeTurn2), "captured portrait <img> before Turn 2")
+  const portraitImgBeforeTurn2 = document.querySelector<HTMLImageElement>(".strip-avatar img")
+  check(isDesktop || Boolean(portraitImgBeforeTurn2), "captured portrait <img> before Turn 2")
 
   await modelControl({
     turns: [
@@ -712,9 +701,7 @@ const runPhaseOne = async (isDesktop: boolean) => {
     sec3.querySelector(".illust")?.previousElementSibling === sec3Paras[1],
     "Turn 2 night_crossing renders after paragraph 2",
   )
-  const portraitImgOnTurn2 = document.querySelector<HTMLImageElement>(
-    isDesktop ? ".reader-portrait-frame img" : ".strip-avatar img",
-  )
+  const portraitImgOnTurn2 = document.querySelector<HTMLImageElement>(".strip-avatar img")
   check(
     portraitImgOnTurn2 === portraitImgBeforeTurn2,
     "unchanged (slotId, itemId) portrait preserves exact <img> DOM node across turns without flicker",
@@ -726,8 +713,8 @@ const runPhaseOne = async (isDesktop: boolean) => {
     check(
       await until(
         () =>
-          document.querySelectorAll(".reader-portrait").length === 1 &&
-          document.querySelector(".reader-portrait-frame img")?.getAttribute("alt") === "船夫·静候渡客",
+          hud()?.querySelectorAll(".media-frame").length === 1 &&
+          hud()?.querySelector("img")?.getAttribute("alt") === "船夫·静候渡客",
       ),
       "Turn 3 ebb tide + aboard=false removes passenger and returns ferryman to calm on desktop",
     )
@@ -866,14 +853,17 @@ const runPhaseOne = async (isDesktop: boolean) => {
   await quiet()
 
   check(
-    document.querySelectorAll(isDesktop ? ".reader-portrait" : ".strip-avatar").length === 2,
+    (isDesktop ? hud()?.querySelectorAll(".media-frame").length : document.querySelectorAll(".strip-avatar").length) ===
+      2,
     "before setField, active path shows 2 portraits (ferryman/high_tide + passenger/aboard_night)",
   )
   turn.setField(0, [{ path: "潮位", set: 0 }])
   check(
     await until(() => {
       const sunny1Portraits = registry.get(log).nodes.get(1)?.media?.portraits ?? []
-      const domCount = document.querySelectorAll(isDesktop ? ".reader-portrait" : ".strip-avatar").length
+      const domCount = isDesktop
+        ? hud()?.querySelectorAll(".media-frame").length
+        : document.querySelectorAll(".strip-avatar").length
       return (
         sunny1Portraits.length === 1 && sunny1Portraits[0]?.item === "calm" && domCount === 1 && !registry.get(working)
       )
@@ -1034,6 +1024,41 @@ const runPhaseTwo = async (isDesktop: boolean) => {
   )
   await quiet()
   check(!findButton(demandLabel, sec1), "2 effective rows remove 江岸速写 from Demand menu again")
+
+  // Imported stationery owns its product and consumes only the answer. The story keeps it across unmount/remount.
+  const packId = "stationery"
+  const cardId = "sketch_ferry"
+  const mount = async (on: boolean) => {
+    await putLocal(cardId, (l) => ({ ...l, mounts: on ? [packId] : [] }))
+    await refreshActiveCard()
+    await quiet()
+  }
+  await putPack(packId, (p) => ({
+    ...p,
+    name: "心声信纸",
+    products: [{ id: "postcard", label: "信纸", text: "写一封短信", trigger: "demand" }],
+    views: [{ id: "letter", product: "postcard", html: "<blockquote data-text='value'></blockquote>" }],
+  }))
+  await mount(true)
+  await modelControl({ clear: true, turns: [{ prose: "雨灯仍在。" }] })
+  turn.demand(0, "postcard")
+  const letter = () => sec1.querySelector("[data-view=letter]")?.shadowRoot
+  check(await until(() => letter()?.textContent === "雨灯仍在。"), "pack view draws the settled letter")
+  await putLocal(cardId, (l) => ({ ...l, viewsEnabled: false }))
+  await refreshActiveCard()
+  await quiet()
+  check(!letter() && sec1.textContent?.includes("雨灯仍在。"), "disabled shell restores the recorded answer in Shaped")
+  check(
+    !![...sec1.querySelectorAll(".product.theater")]
+      .find((el) => el.textContent?.includes("雨灯仍在。"))
+      ?.querySelector(".acts button"),
+    "fallback keeps the reroll button",
+  )
+  await mount(false)
+  check(!sec1.textContent?.includes("雨灯仍在。"), "unmounted pack stops presenting its product")
+  await putLocal(cardId, (l) => ({ ...l, viewsEnabled: true }))
+  await mount(true)
+  check(await until(() => letter()?.textContent === "雨灯仍在。"), "remount restores the historical letter")
 
   // ── (i) Final accessibility snapshot + Solid 2.0 diagnostics check ──
   visibleControlsHaveNames("final")

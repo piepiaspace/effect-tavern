@@ -238,7 +238,16 @@ export const Prose = (props: {
                 keyed={(ill) => `${ill.catalog}\0${ill.id}\0${ill.occurrence}`}
               >
                 {(ill) => (
-                  <MediaFrame as="figure" class="illust" src={ill().url} label={ill().label} lightbox>
+                  <MediaFrame
+                    as="figure"
+                    class="illust"
+                    fit="natural"
+                    focus={ill().focus}
+                    aspect={ill().aspect}
+                    src={ill().url}
+                    label={ill().label}
+                    lightbox
+                  >
                     <Show when={ill().theaterProductId}>
                       {(productId) => (
                         <span class="acts">
