@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { fake, fakeText } from "@effect-tavern/provider"
 import { readCard } from "@effect-tavern/runtime/support/author.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
-import { chat, recordingPlayer as player } from "../../runtime/test/cards/index.ts"
+import { chat } from "../../runtime/test/cards/index.ts"
 import { FREE_CHAT_ID } from "@effect-tavern/runtime/src/library.ts"
 import type { PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
 import type { TimelineEvent } from "@effect-tavern/runtime/src/projection.ts"
@@ -49,7 +49,6 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   shelf(data).install(lifeOfPi, { via: "file" })
   const lib = library({
     data,
-    overlay: player.harness,
   })
   const server = listen(handle(lib), "127.0.0.1", 0)
   const base = `http://127.0.0.1:${server.port}`
@@ -265,7 +264,6 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   }
   const lib = library({
     data,
-    overlay: player.harness,
     model: () => scripted,
   })
   lib.hats.put({
@@ -412,7 +410,6 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
   let llmCalls = 0
   const lib = library({
     data,
-    overlay: player.harness,
     pinned: true,
     model: () => ({
       ...fake(() => {
@@ -497,7 +494,7 @@ const fictionSlice = (res: PreviewNarrateResult, fragmentId: string) => {
 {
   const data = open(":memory:")
   shelf(data).install(lifeOfPi, { via: "file" })
-  const lib = library({ data, overlay: player.harness })
+  const lib = library({ data })
   lib.providers.put({
     id: "no-tools",
     name: "No Tools Gateway",

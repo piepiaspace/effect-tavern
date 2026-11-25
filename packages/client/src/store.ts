@@ -69,7 +69,7 @@ export const stories = Atom.make<{ current: Id | null; stories: readonly StoryRo
 export const personas = Atom.make<readonly Persona[]>([]).pipe(Atom.keepAlive)
 export const locals = Atom.make<Readonly<Record<string, Local>>>({}).pipe(Atom.keepAlive)
 /** The player's settings (GET /providers, /secrets, /routing, /hats, /packs): the model providers, the key vault as hints,
- *  which (provider, model) runs each stage, the hats (提示词模板 in the UI), and the player's rows ([harness, ...packs]). */
+ *  which (provider, model) runs each stage, the hats (提示词模板 in the UI), and the writing packs. */
 export const providers = Atom.make<readonly Provider[]>([]).pipe(Atom.keepAlive)
 /** Every card of the install (GET /cards, server shelf.ts): the sidebar's shelf (side.tsx, searched by query.ts), and
  *  what a persona's picks are named by. A row says how its card got here (`origin`); a new install has none. */
@@ -123,7 +123,9 @@ export const defaultProxy = Atom.make<string | false | null>(null).pipe(Atom.kee
  *  and key, never among the stage models. null until one is saved. */
 export const decision = Atom.make<DecisionConfig | null>(null).pipe(Atom.keepAlive)
 export const hats = Atom.make<readonly Hat[]>([]).pipe(Atom.keepAlive)
-export const packs = Atom.make<readonly Layer[]>([]).pipe(Atom.keepAlive)
+/** A writing pack as GET /packs lists it: `default` on the install's default pack (below every card, unless mounted). */
+export type Pack = Layer & { readonly default?: boolean }
+export const packs = Atom.make<readonly Pack[]>([]).pipe(Atom.keepAlive)
 export const composition = Atom.make<DraftModel>(emptyDraft())
 export const updateComposition = (patch: Partial<DraftModel>): void =>
   registry.update(composition, (d) => ({ ...d, ...patch }))

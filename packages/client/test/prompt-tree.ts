@@ -332,10 +332,7 @@ const structuredPreview = previewNarrate({
   },
   hat: structuredHat,
   connection: { prefill: true, reasoningBack: true, tools: false },
-  rows: {
-    packs: [{ id: "pack-role", name: "Role Pack", asks: [{ id: "narrate.role", text: "Custom pack narrator" }] }],
-    local: { id: "local", name: "local", card: "sandbox", mounts: ["pack-role"] },
-  },
+  rows: {},
 })
 assert.equal(
   structuredPreview.diagnostics.some((d) => d.code === "hat_needs_tools"),
@@ -345,7 +342,6 @@ assert.deepEqual(
   structuredPreview.traces.map((tr) => [tr.subzone, tr.role]),
   [
     ["hat-lead", "system"],
-    ["lead", "system"],
     ["hat-head", "assistant"],
     ["hat-head", "tool"],
     ["hat-turn", "system"],
@@ -358,15 +354,10 @@ for (const tr of structuredPreview.traces) {
   assert.ok(rendered.length > 0, `expected non-empty rendered messageText for trace #${tr.index} (${tr.subzone})`)
 }
 const leadSrc = structuredPreview.traces[0]?.source
-const askSrc = structuredPreview.traces[1]?.spans[0]?.source
-const turnSrc = structuredPreview.traces[4]?.source
+const turnSrc = structuredPreview.traces[3]?.source
 assert.deepEqual(leadSrc && sourceDestination(leadSrc), {
   ok: true,
   target: { kind: "hat", hatId: "hat-structured" },
-})
-assert.deepEqual(askSrc && sourceDestination(askSrc), {
-  ok: true,
-  target: { kind: "pack", packId: "pack-role" },
 })
 assert.deepEqual(turnSrc && sourceDestination(turnSrc), {
   ok: true,
@@ -395,7 +386,8 @@ const toolOnly = previewNarrate({
 const plainTool = toolOnly.connection.tool!
 assert.equal(plainTool.name, "actual_content")
 assert.equal(plainTool.sources.name.kind, "hat")
-assert.notEqual(plainTool.sources.description.kind, "hat") // the ask applies
+assert.equal(plainTool.sources.description.kind, "harness") // the built-in default applies, and links nowhere
+assert.deepEqual(sourceDestination(plainTool.sources.description), { ok: false, reason: "builtIn" })
 assert.equal(toolOnly.wrap, undefined)
 assert.deepEqual(toolParts(plainTool), {
   name: "actual_content",
@@ -456,20 +448,7 @@ assert.ok(inner.some((w) => w.text.includes("The shore at dawn.")))
 for (const w of inner)
   for (const sp of w.trace.spans) assert.equal(sliceSpanText(w.text, sp).length, Math.max(0, sp.end - sp.start))
 
-// no user message outside and the wrap's ask emptied: the refusal, in the interface's words
-const refused = previewNarrate({
-  mode: "sandbox",
-  card: sandboxCard,
-  hat: { ...wrapping, narrate: { head: wrapping.narrate!.head } },
-  connection: { prefill: false, reasoningBack: false, tools: true },
-  rows: {
-    packs: [{ id: "pack-quiet", name: "Quiet", asks: [{ id: "narrate.wrap", text: "" }] }],
-    local: { id: "local", name: "local", card: "sandbox", mounts: ["pack-quiet"] },
-  },
-})
-const needsUser = refused.diagnostics.find((d) => d.code === "wrap_needs_user")
-assert.equal(needsUser?.level, "error")
-assert.ok(diagnosticText(needsUser, true).includes("工具封装触发"))
+// a diagnostic with no words of ours shows the runtime's message
 assert.equal(diagnosticText({ level: "warn", code: "layer_dropped", message: "raw" }, false), "raw")
 
 // entered from play: the wrapped traces lose a hidden field's condition as the outer ones do

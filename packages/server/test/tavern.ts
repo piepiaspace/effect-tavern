@@ -1,6 +1,5 @@
 // The composition root (src/tavern.ts): a first run's seeding only on an empty install. No card is bound, so nothing is
 // greeted on the server (the card page picks the opening).
-import { plain as player } from "@effect-tavern/runtime/support/rows.ts"
 import assert from "node:assert/strict"
 import { open } from "../src/data.ts"
 import { tavern } from "../src/tavern.ts"
@@ -9,7 +8,6 @@ import { tavern } from "../src/tavern.ts"
 const empty = open(":memory:")
 const fresh = tavern({
   data: empty,
-  overlay: player.harness,
   seed: { key: "sk-ant-api-x" },
 })
 assert.deepEqual(
@@ -28,7 +26,7 @@ assert.deepEqual(fresh.lib.cards.list(), []) // nor a card: the program comes wi
 const data = open(":memory:")
 const own = { id: "mine", name: "Mine", enabled: true, defaultFormat: "anthropic" as const, endpoints: {}, models: [] }
 data.providers.put(own)
-tavern({ data, overlay: player.harness, seed: { key: "sk-ant-api-x" } })
+tavern({ data, seed: { key: "sk-ant-api-x" } })
 assert.deepEqual([data.providers.list(), data.secrets.list(), data.routing.read()], [[own], [], undefined])
 
 console.log("tavern ok")

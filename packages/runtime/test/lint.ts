@@ -302,7 +302,6 @@ const holed: Card = {
   fiction: [{ id: "f", text: "{{b}}" }],
   greetings: [{ text: "{{c}}" }],
   lore: [{ id: "l", layers: ["{{d}}。"], unlock: { all: [] }, offer: { any: [] } }],
-  asks: [{ id: "product.notes", text: "{{e}}" }],
   products: [{ id: "town", text: "{{f}}" }],
   guard: ["{{g}}"],
   rules: { ...base.rules, readouts: [{ id: "q", text: "{{h}}", options: [{ id: "o", text: "{{i}}", do: [] }] }] },
@@ -312,26 +311,11 @@ assert.deepEqual(said(holed, "unfilled-name"), [
   "warn fiction.f.text: {{b}} has no default in the card's names",
   "warn lore.l.layers[0]: {{d}} has no default in the card's names",
   "warn greetings[0].text: {{c}} has no default in the card's names",
-  "warn asks.product.notes.text: {{e}} has no default in the card's names",
   "warn products.town.text: {{f}} has no default in the card's names",
   "warn guard[0]: {{g}} has no default in the card's names",
   "warn rules.readouts.q.text: {{h}} has no default in the card's names",
   "warn rules.readouts.q.options.o.text: {{i}} has no default in the card's names",
 ])
-// the harness's own holes in a delivery ask are filled by the harness (#220, #221); elsewhere they are names
-assert.deepEqual(
-  said(
-    {
-      ...base,
-      asks: [
-        { id: "narrate.deliver.tool", text: "Call {{tool}}. {{context}}" },
-        { id: "narrate.wrap", text: "Read {{tool}}, {{context}}." },
-      ],
-    },
-    "unfilled-name",
-  ),
-  ["warn asks.narrate.wrap.text: {{context}} has no default in the card's names"],
-)
 // unsupported-macro: a scripted macro or anything else in braces that is not a plain key; a plain hole is not one.
 assert.deepEqual(
   said(

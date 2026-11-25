@@ -12,14 +12,14 @@ Canonical naming primitives for developers, card authors, and coding agents. The
 | Primitive | Definition |
 | --- | --- |
 | `diegetic` / `non-diegetic` | Inside vs. outside the story world: **`external diegetic`** (perceptible speech/action), **`internal diegetic`** (`thought`—private to the player character, visible to the reader), and **`non-diegetic`** (`note`—direction to the narrator). |
-| `mark` | Player-layer notation marking `thought` (e.g. `⦅⦆`, italics), explained to stages via `input.thought` rather than parsed by wire protocol. |
+| `mark` | Player-layer notation marking `thought` (e.g. `⦅⦆`, italics), defined by a writing pack fragment/snippet rather than parsed by wire protocol. |
 | `dramatic irony` | Asymmetry where the reader knows a `thought` or secret that counterparts in the scene do not. |
 | `metagaming` | A character acting on knowledge they cannot possess in-world (such as replying to the player's private `thought`). |
 | `bleedthrough` | The narrator speaking, acting, or deciding for the player (*impersonation*). |
 | `has no agency` | Mechanical rule that `decide` ignores `thought` when choosing card `actions`. |
 | `participant mode` / `author mode` | Coordinate pair (`persona` filled vs. empty, paired with default `input: "act" \| "note"`). |
 | `persona` | Frame slot (`persona`) and reusable player asset (`/personas`, with optional install-wide default and tri-state `local.persona`; inherited in `yield` mode on participant cards). |
-| `hat` | Provider-specific continuation shell (`/hats`), worn by the routing (`Routing.hat`, per stage `Routing.stageHats`): five slots `narrate.lead`, `narrate.head`, `narrate.turn`, `narrate.tail`, `review.head` of role messages (with optional `reasoning`) or `tool` handshakes, plus `deliver` (`"text"` \| `"tool"`); under tool delivery `toolChoice` (`"auto"` \| `"force"`), the delivery `tool` (`name`, and `description` / `param` over the `narrate.deliver.tool` / `narrate.deliver.param` asks) and `wrap` (the story context moves into the tool's description, `messages[]` keeps the lead and tail, the prefix cache is off). |
+| `hat` | Provider-specific continuation shell (`/hats`), worn by the routing (`Routing.hat`, per stage `Routing.stageHats`): five slots `narrate.lead`, `narrate.head`, `narrate.turn`, `narrate.tail`, `review.head` of role messages (with optional `reasoning`) or `tool` handshakes, plus `deliver` (`"text"` \| `"tool"`); under tool delivery `toolChoice` (`"auto"` \| `"force"`), the delivery `tool` (`name`, and optional `description` / `param` overrides) and `wrap` (the story context moves into the tool's description, `messages[]` keeps the lead and tail, the prefix cache is off). |
 | `slop` (`claudeism`) | Over-repeated model stock phrases and clichés targeted by `lexicon` and `polish`. |
 
 ## Runtime, Turn & State
@@ -28,16 +28,16 @@ Canonical naming primitives for developers, card authors, and coding agents. The
 | --- | --- |
 | `Card` | Single declarative schema (`packages/runtime/src/card.ts`) covering metadata, `frame`, `fiction`, `greetings`, `passages`, `rules`, `lore`, `products`, `catalogs`, `guard`, and `lexicon`. |
 | `Passage` / `Boundary` | Post-record card transitions (`Card.passages`) evaluated first-match-wins after player `record`: emits an authored transition (`passage: true`), optionally runs interval `digest` extraction (`boundary: true`, slicing narrator transcript and folds while preserving `fields`, `lore` floors, and `world`/`chronicle` state), or seals a terminal leaf (`end: "over"`). |
-| `Turn` & `Stage` | Fixed 8-stage pipeline: `lookup → (decide → settle)* → gate → direct → narrate → check → polish → record`. |
+| `Turn` & `Stage` | Fixed 8-stage pipeline: `lookup → decide → settle → gate → direct → narrate → check → polish → record`. |
 | `Log` / `Node` / `head` | Immutable append/amend tree (`log.ts`), turn record (`journal.ts`), and active leaf cursor (`head`). |
 | `sibling` (`swipe`, `reword`, `edit`) | Nodes sharing a `parent`, restarting respectively from `lookup`, `narrate`, or `check`. |
 | `Derived` | Pure path fold (`derived.ts`) computing state, floors/counters, transcripts, compression, and UI projections without storing snapshots. |
 | `WorldState` & `DomainChange` | Unified `{ fields, world, lore }` state and sparse two-phase mutations (`insert_entity`, `patch_entity`, `remove_entity`, `patch_record`, `replace`). |
 | `Fold` | Path accumulation (`latest`, `append`, `{ key }`) on products, and byte-stable prefix compression over `notes` and disclosed lore. |
-| `Head` / `Tail` & `<world>` | The two prompt assembly zones (`request.ts`, replacing numeric chat-depth insertion); only `narrate` reads the full `frame`, whereas off-stage passes read `stage.role` + a compact XML-tagged `<world>` projection (`worldOf`). |
+| `Head` / `Tail` & `<world>` | The two prompt assembly zones (`request.ts`, replacing numeric chat-depth insertion); only `narrate` reads the full `frame` and `<writing_guidelines>`, whereas off-stage passes read harness stage framing + a compact XML-tagged `<world>` projection (`worldOf`). |
 | `Channel` (`act` / `note`) | Input route: `act` enters the `transcript`; `note` directs this turn only. |
 | `Fragment` / `Slot` / `Band` | Prompt unit (`fragment.ts`), named `frame` slot (`SLOTS`), and `when`-gated `fiction` state variant. |
-| `Layer` / `Local` / `Pack` | Rank-ordered customization rows (`harness → card → packs → local → persona`). |
+| `Layer` / `Local` / `Pack` | Rank-ordered customization rows (`defaultPack → card → packs → local → persona`). |
 | `Lore` / `Hook` / `Section` / `ContextPolicy` | Progressive `layers` (`unlock` floor + `offer` window), first-sentence `hook`, ungated `sections` (`card:<id>#<sec>`), and `{ access, activation, residency }` policy. |
 | `Product` (`world` / `chronicle` / `theater`) | Per-turn structured extractions (`product.ts`) separated into mutable `world` state, folded `chronicle` memory (`notes`), and player-only `theater` (`inner`, `options`, `<<aside>>`). |
 | `Catalog` | Card attachment registry (`catalogs`) dynamically filtering pickable `enum` IDs during `record`. |

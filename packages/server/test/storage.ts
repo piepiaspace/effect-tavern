@@ -4,7 +4,6 @@ import { canonicalJson, CheckpointMutation, EMPTY_OVERLAY_HASH, hashUtf8 } from 
 import { requestDetailed, type Common, type Ask } from "@effect-tavern/runtime/src/request.ts"
 import { stripTraceRawText } from "@effect-tavern/runtime/src/preview.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
-import { overlaid } from "@effect-tavern/runtime/src/layer.ts"
 import { decideCheckpoint, layerDelta, restoreLayerDelta } from "../src/checkpoint.ts"
 import { dehydrateCall, hydrateCall } from "../src/stored-call.ts"
 import type { Call } from "../src/turn.ts"
@@ -48,12 +47,10 @@ assert.deepEqual(decideCheckpoint(state, revert, 6, conflict), { code: "checkpoi
 
 const local = { id: "local", name: "c", card: "c", tags: [], switches: {}, mounts: [] }
 const localOwner = { kind: "local", card: "c" } as const
-const harnessOwner = { kind: "harness" } as const
-for (const row of [undefined, local, { ...overlaid("act"), fragments: [], switches: {} }]) {
+for (const row of [undefined, local, { ...local, fragments: [], switches: {} }]) {
   const delta = layerDelta(row)
   assert.equal(hashUtf8(canonicalJson(delta)), EMPTY_OVERLAY_HASH)
   assert.equal(restoreLayerDelta(delta, localOwner), undefined)
-  assert.equal(restoreLayerDelta(delta, harnessOwner), undefined)
 }
 const picked = { ...local, persona: null, switches: { polish: false }, names: { user: "" } }
 const delta = layerDelta(picked)
@@ -68,9 +65,6 @@ const editable = {
 const writableDelta = layerDelta(editable)
 assert.deepEqual(writableDelta, { persona: null, names: { user: "" }, fragments: [{ id: "voice", text: "quiet" }] })
 assert.deepEqual(layerDelta(restoreLayerDelta(writableDelta, localOwner)), writableDelta)
-const changedHarness = layerDelta({ ...overlaid("act"), asks: [{ id: "stage.role", text: "Changed" }] })
-assert.deepEqual(changedHarness, { asks: [{ id: "stage.role", text: "Changed" }] })
-assert.deepEqual(layerDelta(restoreLayerDelta(changedHarness, harnessOwner)), changedHarness)
 
 const body = "正文😀".repeat(40)
 const prefix = "剧场🎭\n<message>\n"
@@ -124,14 +118,7 @@ assert.throws(() => hydrateCall({ $v: 1, call: { $text: hashUtf8(body) } }, obje
 const common: Common = {
   frame: [],
   world: [],
-  role: "",
-  narrator: "N.",
-  directions: "",
   input: { text: body },
-  thought: "",
-  deliver: "Use {{tool}}.",
-  deliverTool: "剧场🎭 {{context}} 收尾",
-  wrapAsk: "Read {{tool}}.",
 }
 const ask: Ask = {
   stage: "narrate",
@@ -147,6 +134,7 @@ const hat: Hat = {
   id: "shell",
   name: "Shell",
   deliver: "tool",
+  tool: { description: "剧场🎭 {{context}} 收尾" },
   narrate: { lead: [{ role: "tool", toolName: "boot", toolInput: '{"v":2}', text: "ok", reasoning: "Booting" }] },
 }
 for (const wrapped of [false, true]) {

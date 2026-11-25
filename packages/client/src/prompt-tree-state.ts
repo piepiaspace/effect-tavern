@@ -386,8 +386,6 @@ export const diagnosticText = (d: PreviewDiagnostic, deliverTool: boolean): stri
       return t("promptTree.diagReasoningUnsigned")
     case "prefill_disallowed":
       return deliverTool ? t("promptTree.diagDeliverNoPrefill") : t("promptTree.diagPrefillDisallowed")
-    case "wrap_needs_user":
-      return t("promptTree.diagWrapNeedsUser")
     default:
       return d.message
   }

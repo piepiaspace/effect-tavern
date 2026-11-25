@@ -5,7 +5,7 @@
 // announced address; never a tavern on a real model under MODEL=fake; a live owner that never says its address is
 // exit 3 naming its pid; a stale address is ignored and removed.
 import { fake, fakeText } from "@effect-tavern/provider"
-import { chat, plain as player } from "../../runtime/test/cards/index.ts"
+import { chat } from "../../runtime/test/cards/index.ts"
 import { printCard } from "@effect-tavern/runtime/support/author.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import assert from "node:assert/strict"
@@ -36,7 +36,7 @@ const model = fake((o) => {
     ? { text: "hello world ".repeat(20), delay: 20 }
     : { text: "done." }
 })
-const lib = library({ data: open(":memory:"), overlay: player.harness, model: () => model })
+const lib = library({ data: open(":memory:"), model: () => model })
 const wire = handle(lib, { dirs: true, scripted: true })
 const listener = createServer(node(app(wire))).listen(0, "127.0.0.1")
 await new Promise<void>((resolve) => listener.once("listening", resolve))
@@ -70,7 +70,7 @@ try {
     assert.ok((await h.list()).some((s) => s.id === story && s.card === "cli"))
     await h.name("cli", "阿青")
     assert.equal(lib.locals.read("cli").names?.user, "阿青")
-    assert.equal(await h.input(story), "act")
+    assert.equal((await h.card(story)).input, "act")
     const events: CliEvent[] = []
     await h.submit(story, { kind: "act", input: { text: "hello" } }, (e) => events.push(e))
     assert.ok(events.some((e) => e.kind === "delta"))
@@ -292,7 +292,7 @@ try {
     const owned = join(dir, "owned")
     mkdirSync(owned)
     const data = open(libraryFile(owned))
-    const real = library({ data, overlay: player.harness })
+    const real = library({ data })
     shelf(data).install({ ...chat, id: "owned" }, { via: "file" })
     const server = createServer(node(app(handle(real, { scripted: false })))).listen(0, "127.0.0.1")
     await new Promise<void>((resolve) => server.once("listening", resolve))

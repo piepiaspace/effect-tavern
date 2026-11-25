@@ -48,7 +48,7 @@ export interface Insert {
   after?: string
 }
 /** A quick input with a meaning in play: a perception scope (心声), the note channel, a direction to the narrator. The
- *  ecosystem's quick replies as player-layer data; the harness ships defaults (layer.ts `harness`). */
+ *  ecosystem's quick replies as player-layer data (the starter pack's, starter-pack.ts). */
 export const Snippet = Schema.Struct({
   name: Schema.String,
   text: Schema.String,

@@ -18,7 +18,6 @@ import {
   type FakeCall,
   type CompileOptions,
 } from "@effect-tavern/provider"
-import { player } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { mkdirSync } from "node:fs"
 import { resolve } from "node:path"
@@ -61,7 +60,7 @@ const answer = (o: FakeCall) => {
         delay: demo ? 1000 : 0,
       }
     case "record": {
-      // canned rows for the harness's own products; a card's product is asked of the model alone and decodes to nothing here
+      // canned rows for the starter pack's products (runtime starter-pack.ts); any other product decodes to nothing here
       const canned: Record<string, unknown> = {
         notes: `第${n}幕：两人隔着一张桌子说话，各自试探对方的来意。`,
         options: [
@@ -83,7 +82,7 @@ const answer = (o: FakeCall) => {
       if (text.includes("Write no prose")) return through({ text: `<<aside>> inner\n${inner}`, delay: 20 })
       const block = /^inner: /m.test(text) ? `\n<<aside>> inner\n${inner}` : ""
       return through({
-        text: `第${++n}段。${text.includes("Previous draft broke") ? "二稿。" : demo ? "一稿。" : ""}${"雨刚停，屋檐上的水还在一滴一滴往下落。"}${"对方站在三步开外，没有说话，目光落在你带来的东西上。".repeat(demo ? 6 : 2)}${block}`,
+        text: `第${++n}段。${text.includes("<correction>") ? "二稿。" : demo ? "一稿。" : ""}${"雨刚停，屋檐上的水还在一滴一滴往下落。"}${"对方站在三步开外，没有说话，目光落在你带来的东西上。".repeat(demo ? 6 : 2)}${block}`,
         delay: demo ? 120 : 20,
       })
     }
@@ -110,7 +109,6 @@ const model = scriptedModel ? () => scriptedModel : await live()
 const key = await localAnthropicKey()
 const { handler: wire } = tavern({
   data,
-  overlay: player.harness,
   model,
   pinned: scripted, // MODEL=fake scripts every stage, whatever the routing says
   ...(key && { seed: { key } }), // a first start puts the local key in the vault (tavern.ts `seed`)

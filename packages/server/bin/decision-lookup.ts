@@ -4,7 +4,7 @@
 // and sends nothing.
 //
 // Per stored turn with an input: the pool a lookup had (session `readable` at the parent, as catalog lines), asked as the
-// turn asks a complete catalog (runtime decision.ts `lookupQuestions`: the `lookup.decision` ask, then each unit's
+// turn asks a complete catalog (runtime decision.ts `lookupQuestions`: its `lookup.decision` probe, then each unit's
 // title), over the full scene and the input; `--no-scene` leaves the scene out.
 // The label is what the stored lookup delivered from that pool. CASES are hand-written inputs asked at a card's
 // newest stored turn, each naming the entries it should need: the library alone holds only turns that read nothing.
@@ -17,7 +17,7 @@ import { blocked, compileDecision, decide } from "@effect-tavern/provider"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
 import type { Unit } from "@effect-tavern/runtime/src/context.ts"
 import { LOOKUP, lookupQuestions } from "@effect-tavern/runtime/src/decision.ts"
-import { resolve, type Layer, type Local, type Rows } from "@effect-tavern/runtime/src/layer.ts"
+import { type Layer, type Local, type Rows } from "@effect-tavern/runtime/src/layer.ts"
 import { makeSession } from "@effect-tavern/runtime/src/session.ts"
 import { plain } from "@effect-tavern/runtime/support/rows.ts"
 import { readCard } from "@effect-tavern/runtime/support/author.ts"
@@ -70,6 +70,8 @@ for (const r of all("select id, json from card"))
 const packs = all("select id, name, json from pack").map(
   (r) => ({ ...json<object>(r), id: r["id"], name: r["name"] }) as Layer,
 )
+/** The pack the install stands on by default (server sqlite.ts `pack_default`). */
+const mark = db.query("select pack from pack_default where id = 1").get() as { pack: string } | null
 
 interface Node {
   id: number
@@ -96,11 +98,8 @@ const ask = async (
   scene: string,
   input: { text?: string; note?: string },
   label: (id: string) => boolean,
-  rows: Rows,
-  card: Card,
 ) => {
-  const R = resolve(card, rows)
-  const q = lookupQuestions({ scene: scened ? scene : "", input, units, wording: (id) => R.asks[id].text })
+  const q = lookupQuestions({ scene: scened ? scene : "", input, units })
   const pool = q.asked
   const state = q.state
   const questions = Object.entries(q.questions)
@@ -157,7 +156,7 @@ if (cardFile) {
   const card = await readCard(cardFile)
   const pool = makeSession({ card, rows: () => plain, model: idle }).readable(null)
   for (const c of CASES[card.id] ?? [])
-    await ask(`${card.id} case`, pool, "", c, (id) => c.need.some((x) => id.endsWith(`:${x}`)), plain, card)
+    await ask(`${card.id} case`, pool, "", c, (id) => c.need.some((x) => id.endsWith(`:${x}`)))
 }
 const cased = new Set<string>()
 for (const s of cardFile ? [] : all("select id, card, head, next from story order by id")) {
@@ -166,8 +165,8 @@ for (const s of cardFile ? [] : all("select id, card, head, next from story orde
   const nodes = all("select json from node where story = ? order by id", s["id"] as number).map((r) => json<Node>(r)!)
   if (!nodes.length) continue
   const rows: Rows = {
-    harness: packs.find((p) => p.id === "harness"),
-    packs: packs.filter((p) => p.id !== "harness"),
+    defaultPack: packs.find((p) => p.id === mark?.pack),
+    packs,
     local: json<Local>(db.query("select json from local where card = ?").get(card.id) as Row | null),
   }
   const session = makeSession({
@@ -185,14 +184,8 @@ for (const s of cardFile ? [] : all("select id, card, head, next from story orde
     const pool = session.readable(n.parent)
     if (!pool.length) continue
     const read = new Set((n.deliveries ?? []).map((d) => d.resourceId))
-    await ask(
-      `${card.id} ${s["id"] as number}/${n.id}`,
-      pool,
-      prose(byId.get(n.parent ?? -1)),
-      n.input,
-      (id) => read.has(id),
-      rows,
-      card,
+    await ask(`${card.id} ${s["id"] as number}/${n.id}`, pool, prose(byId.get(n.parent ?? -1)), n.input, (id) =>
+      read.has(id),
     )
   }
   const last = nodes.at(-1)!
@@ -201,14 +194,8 @@ for (const s of cardFile ? [] : all("select id, card, head, next from story orde
     if (!pool.length) continue
     cased.add(card.id)
     for (const c of CASES[card.id])
-      await ask(
-        `${card.id} ${s["id"] as number} case`,
-        pool,
-        prose(last),
-        c,
-        (id) => c.need.some((x) => id.endsWith(`:${x}`)),
-        rows,
-        card,
+      await ask(`${card.id} ${s["id"] as number} case`, pool, prose(last), c, (id) =>
+        c.need.some((x) => id.endsWith(`:${x}`)),
       )
   }
 }

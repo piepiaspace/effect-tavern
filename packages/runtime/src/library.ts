@@ -46,6 +46,7 @@ export interface CardView {
   fiction: readonly { id: string; label?: string; when?: Cond }[] // the fiction's modules without their text
   catalogs?: Card["catalogs"]
   media?: Card["media"]
+  cardProducts?: readonly string[] // ids of products declared by the card itself (never their text)
   rules: Rules
   local: Local
   mounts: readonly { id: string; name: string }[]

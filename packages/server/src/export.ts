@@ -4,7 +4,7 @@
 // judged by. Both are pure over what the library holds, so they are built here and tested without a server.
 import { textOf, type Input } from "@effect-tavern/runtime/src/journal.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
-import { kindOf, render, type Product } from "@effect-tavern/runtime/src/product.ts"
+import { composer, kindOf, render, type Product } from "@effect-tavern/runtime/src/product.ts"
 import type { Turn } from "@effect-tavern/runtime/src/session.ts"
 import type { StoryRow } from "./data.ts"
 
@@ -12,7 +12,7 @@ export interface Exported {
   card: { id: string; title: string }
   story: StoryRow
   snapshot: L.Snapshot<Turn>
-  products: readonly Pick<Product, "id" | "label" | "shape" | "fold" | "feed" | "recall" | "role">[] // the card's, as declared
+  products: readonly Pick<Product, "id" | "label" | "shape" | "fold" | "feed" | "recall" | "role" | "surface">[] // the card's, as declared
 }
 /** The backup: a format name and version first, so a reader knows what it holds before the tree. */
 export const backup = (x: Exported, at = new Date()) => ({
@@ -45,14 +45,14 @@ const asked = (i: Input): string[] => {
   }
   return out
 }
-/** The reply as it reads: the prose whole, then each of the node's 小剧场 (product.ts `kindOf` theater, not options;
+/** The reply as it reads: the prose whole, then each of the node's 小剧场 (product.ts `kindOf` theater, not a composer list;
  *  either stage) in italics, named, in the card's order. */
 const told = (t: Turn, products: Exported["products"]): string[] => {
   const prose = textOf(t.reply).trim()
   const out = prose ? [prose] : []
   for (const p of products) {
     const v = t.products[p.id]
-    if (p.id === "options" || kindOf(p) !== "theater" || v === undefined) continue
+    if (composer(p) || kindOf(p) !== "theater" || v === undefined) continue
     const text = render(p.shape, v).trim()
     if (text) out.push(`*（${p.label ?? p.id}）${text}*`)
   }

@@ -98,7 +98,6 @@ rules:
     any:
       - { path: hp, is: 0 }
       - { path: foe, is: 0 }
-  cap: 4
 lore:
   # The lock: layer 2 is unlocked once Pei has trusted the player (bond ≥ 8, and it stays unlocked when bond falls back);
   # layer 3 only ever comes through a window. The moments: layer 2 is offered on a beat event (settled before the

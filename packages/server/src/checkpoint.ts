@@ -5,15 +5,7 @@ import {
   type CheckpointMutation,
   type ObjectId,
 } from "@effect-tavern/runtime/src/storage.ts"
-import {
-  decodeLayer,
-  decodeLocal,
-  harness,
-  overlayOf,
-  locked,
-  type Layer,
-  type Local,
-} from "@effect-tavern/runtime/src/layer.ts"
+import { decodeLocal, locked, type Local } from "@effect-tavern/runtime/src/layer.ts"
 
 interface Version {
   hash: ObjectId
@@ -46,11 +38,9 @@ export function decideCheckpoint(
 
 /** Identity comes from the checkpoint owner. Empty top-level collections have no effect;
  * nested values (including false, empty names and an explicit null persona) are user data. */
-export function layerDelta(row: Layer | Local | undefined): Record<string, unknown> {
+export function layerDelta(row: Local | undefined): Record<string, unknown> {
   if (!row) return {}
-  const writable = locked(row)
-  const overlay = "card" in row ? writable : overlayOf("act", writable)
-  const fields: Record<string, unknown> = JSON.parse(JSON.stringify(overlay))
+  const fields: Record<string, unknown> = JSON.parse(JSON.stringify(locked(row)))
   return Object.fromEntries(
     Object.entries(fields).filter(
       ([key, value]) =>
@@ -63,11 +53,7 @@ export function layerDelta(row: Layer | Local | undefined): Record<string, unkno
 }
 
 /** An empty delta restores the absent physical row. */
-export function restoreLayerDelta(
-  delta: ReturnType<typeof layerDelta>,
-  owner: { kind: "local"; card: string } | { kind: "harness" },
-) {
+export function restoreLayerDelta(delta: ReturnType<typeof layerDelta>, owner: { kind: "local"; card: string }) {
   if (!Object.keys(delta).length) return undefined
-  if (owner.kind === "local") return decodeLocal({ ...delta, id: "local", name: owner.card, card: owner.card })
-  return decodeLayer({ ...delta, id: "harness", name: harness("act").name })
+  return decodeLocal({ ...delta, id: "local", name: owner.card, card: owner.card })
 }

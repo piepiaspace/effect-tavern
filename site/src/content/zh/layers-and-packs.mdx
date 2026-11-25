@@ -19,24 +19,25 @@ Effect Tavern 彻底取消了预设这一概念，将传统预设混装的五类
 
 ## 1. 统一 `Layer` 五级合并序
 
-从底座默认值、卡片自身、挂载的写作包到单卡本地设置与当前人设，所有参与者均表示为同一种 `Layer` 结构（`packages/runtime/src/layer.ts`），由纯函数 `resolve` 按唯一顺序一次合并：
+从全局默认写作包、卡片自身、挂载的写作包到单卡本地设置与当前人设，所有参与者均表示为同一种 `Layer` 结构（`packages/runtime/src/layer.ts`），由纯函数 `resolve` 按唯一顺序一次合并：
 
 ```text
-harness（代码默认 + 玩家全局叠加行）
+defaultPack（标星全局默认写作包，除非本卡显式挂载）
   → card（当前卡片投影）
     → mounted packs（按 local.mounts 挂载顺序）
       → local（玩家在该卡上的本地设置）
         → persona（正文填入 persona 槽，名字填入 names.user）
 ```
 
-- **同 `id` 后者胜出：** 对片段（`fragments`）、问法（`asks`）、产物补丁（`products`）、快捷片段（`snippets`）、格式键（`format`）与代称（`names`）一致生效。
+- **中性底座 + 可编辑基础包：** 底座代码本身不预置任何默认片段、产物、快捷输入或禁词；全新库首次打开时会自动放入一份普通的第一方**基础写作包**（`starter-pack.ts`）作为 `defaultPack`，玩家可自由修改、取消默认或删除。
+- **同 `id` 后者胜出：** 对片段（`fragments`）、产物（`products`）、快捷片段（`snippets`）、格式键（`format`）与代称（`names`）一致生效。
 - **槽位相处模式（`Fragment.mode`）：**
   - `"override"`（包与本地行默认）：覆盖低等级同名槽位；
-  - `"yield"`（全局叠加行相对卡片的默认）：若低等级已填入该槽位则主动让位；
+  - `"yield"`（默认包片段显式落盘的模式）：若低等级已填入该槽位则主动让位；
   - `"both"`：保留双方内容并按等级序拼接。
 - **全局默认 `persona` 继承与三态 `local.persona`：** `/personas` 库允许标记一份全实例默认人设。单卡上的 `local.persona` 为三态（`undefined` = 跟随全局默认，`null` = 显式不挂人设，`<id>` = 指定覆盖）。参与者视角卡片以让位模式（`yield`）继承全局默认人设——保留卡片自带的 `persona` 槽位文本，同时兜底提供最低优先级的 `names.user`；作者视角卡片（`input: "note"` 且无 `persona`）绝不继承；正文为空的人设仅提供 `names.user` 代称而不清空 `persona` 槽位。
 - **未填 `{{key}}` 占位洞规则（`names.ts`）：** 卡片原文中未填满的 `{{key}}` 占位符按字面透传，不锁定开局或回合；而玩家行、写作包或帽子条目若引用未填满的占位洞，则该条不进请求，记入追踪的 `omitted`（原因 `unfilled_hole`），而非 `Resolved.dropped`。
-- **零抛错安全锁（`locked`）：** 玩家行与写作包在入库解码时自动剥离 `when` 条件与自定义 `role`，且不得篡改产物的 `shape` 或 `role`；不合法条目归入 `Resolved.dropped` 供界面提示，绝不因挂载第三方包而炸毁会话。
+- **零抛错安全锁（`locked`）：** 玩家行与写作包在入库解码时自动剥离 `when` 条件与自定义 `role`，且不得篡改卡片声明产物的 `shape` 或 `role`（对于其他玩家写作包声明的产物，上层给出合法完整声明时允许覆盖其结构）；不合法条目归入 `Resolved.dropped` 供界面提示，绝不因挂载第三方包而炸毁会话。
 
 ## 2. 框架槽位与写作开关（`switches`）
 
@@ -56,11 +57,11 @@ harness（代码默认 + 玩家全局叠加行）
 
 ## 3. 写作包（`Pack` / Enhancer）
 
-写作包（库表 `/packs`，对应社区常说的 *text LoRA*）是按卡挂载（`local.mounts`）的可复用 `Layer`，可包含：
+写作包（库表 `/packs`，对应社区常说的 *text LoRA*）是可复用的 `Layer`（可标星一份作为全局默认 `defaultPack`，也可按卡挂载到 `local.mounts`），可包含：
 
 - **头区或尾区片段**：`at: "head"` 填框架槽位，`at: "tail"` 追加在 `narrate` 末尾；
-- **开关与 `asks` 问法覆盖**：微调 `lookup`、`direct`、`input.thought` 等系统指令措辞；
-- **产物补丁与小剧场（`theater`）**：调整已有产物的名称与开关，或新增带问法的 ID 以声明一条内联 `<<aside>>` 小剧场；
+- **写作开关（`switches`）**：提供默认的人称、转述、抢话边界、篇幅与润色偏好；
+- **产物与产物补丁**：完整声明 `chronicle` / `composer` / `theater` 产物，或调整已有产物的名称与开关；新增带提示词的 ID 默认创建一条内联 `<<aside>>` 小剧场；
 - **单层词条（`entries`）**：以 `<包id>/<词条id>` 编入 `lookup` 索引（首句即钩子，支持 `ContextPolicy`）；
 - **套话词表（`lexicon`）**、**快捷输入（`snippets`）**、**标点格式键（`format`）**与**代称字典（`names`）**。
 
@@ -68,8 +69,8 @@ harness（代码默认 + 玩家全局叠加行）
 
 不同模型家族往往需要不同的续写握手外壳，这类适配既不属于卡片设定，也不属于文风包。**`Hat`**（`/hats`）专门承载这层协议壳，由阶段路由佩戴而非挂在模型条目上：`Routing.hat` 是所有可戴帽阶段的主帽，`Routing.stageHats.<阶段>` 逐阶段覆盖（帽子 ID，或 `null` 表示不戴）；切换阶段模型不会丢帽。共五个槽位：
 
-- **`narrate.lead`**：`narrate` 请求最前，位于 `narrate.role` 与 `frame` 之前；
-- **`narrate.head`**：系统消息接在 `frame` 与 `fiction` 之后，握手消息排在全部头区系统消息之后，位于头区缓存断点与历史转录稿之前；
+- **`narrate.lead`**：`narrate` 请求最前，位于底座阶段说明与 `<world>` 之前；
+- **`narrate.head`**：系统消息接在 `<world>`、`<fiction>` 与 `<writing_guidelines>` 之后，握手消息排在全部头区系统消息之后，位于头区缓存断点与历史转录稿之前；
 - **`narrate.turn`**：历史之后、本回合玩家输入之前；
 - **`narrate.tail`**：落在 `narrate` 请求最末尾（若连接声明 `prefill: false`，如当前 Claude 模型，则拒绝以 `assistant` 消息收尾）；
 - **`review.head`**：供读取正文的阶段（`check`、`polish`、`record`）佩戴，接在 `<world>` 之后；
@@ -77,10 +78,10 @@ harness（代码默认 + 玩家全局叠加行）
 
 每个槽位条目要么是角色消息（`system`、`user` 或 `assistant`，`assistant` 可带 `reasoning`，作为思考片段回传），要么是 **`tool` 握手**（`toolName`、`toolInput`、结果正文 `text`、可选 `reasoning`），发送为一条 `assistant` 的 `tool-call` 加其 `tool-result`，要求连接支持原生工具调用。
 
-**`deliver`** 决定 `narrate` 如何交付正文：`"text"`（默认）直接流式输出纯文本；`"tool"` 让模型调用唯一的 `narrative({ text })` 工具并边流边解码，在请求开头追加 `narrate.deliver` 问法，要求原生工具调用，且请求不得以 `assistant` 预填收尾。工具交付下 **`toolChoice`** 取 `"auto"`（默认，适配拒绝强制工具的思考模型）或 `"force"`；非工具交付时不保留该字段。
+**`deliver`** 决定 `narrate` 如何交付正文：`"text"`（默认）直接流式输出纯文本；`"tool"` 让模型调用唯一的 `narrative({ text })` 工具并边流边解码，在请求开头追加交付说明，要求原生工具调用，且请求不得以 `assistant` 预填收尾。工具交付下 **`toolChoice`** 取 `"auto"`（默认，适配拒绝强制工具的思考模型）或 `"force"`；非工具交付时不保留该字段。
 
-工具交付下，帽子还可以给交付工具命名并改写说明（**`tool`**）：工具名 `name`（默认 `narrative`；以字母或 `_` 开头，至多 64 个字母、数字、`_` 与 `-`，否则保存被拒）只属于帽子；`description` 与 `param` 覆盖 Harness 自有的两条问法：`narrate.deliver.tool`（工具说明）与 `narrate.deliver.param`（`text` 参数说明）。这些文字以及 `narrate.deliver`、帽子自己的消息里，`{{tool}}` 都是当前工具名。**`wrap: true`**（与任一 `toolChoice` 兼容）即工具封装：`messages[]` 只保留帽子的 `narrate.lead` 与 `narrate.tail`，叙述者读到的其余内容按原本发送的样子、以带角色标记的分段（`<message role="system">` … `</message>`）写进工具说明，放在其 `{{context}}` 处，没有该占位则接在说明文字之后。lead 与 tail 都没有 `user` 消息时，由 `narrate.wrap` 问法补一条收尾的 user 消息；该问法被清空时，请求在发出前即被拒绝。封装下任何消息都不带缓存断点，前缀缓存失效；按需补写的单块同样封装。其余阶段不受影响。
+工具交付下，帽子还可以给交付工具命名并改写说明（**`tool`**）：工具名 `name`（默认 `narrative`；以字母或 `_` 开头，至多 64 个字母、数字、`_` 与 `-`，否则保存被拒）只属于帽子；`description` 与 `param` 覆盖交付工具的默认说明与 `text` 参数说明。在这些文字以及帽子自己的消息里，`{{tool}}` 都是当前工具名。**`wrap: true`**（与任一 `toolChoice` 兼容）即工具封装：`messages[]` 只保留帽子的 `narrate.lead` 与 `narrate.tail`，叙述者读到的其余内容按原本发送的样子、以带角色标记的分段（`<message role="system">` … `</message>`）写进工具说明，放在其 `{{context}}` 处，没有该占位则接在说明文字之后。lead 与 tail 都没有 `user` 消息时，底座会自动补一条收尾的 `user` 消息。封装下任何消息都不带缓存断点，前缀缓存失效；按需补写的单块同样封装。其余阶段不受影响。
 
-语言模型连接 **`Connection`**（`/providers`）仅维护接口凭据、模型 ID、`maxOutputTokens` 与思考预算（`effort`），底座**不发送任何硬编码采样参数**（`temperature`、`topP` 等），一律交由推理端点默认策略决定。只有 `narrate` 读取完整 `frame` 与叙事帽；其余所有幕后阶段仅读取各自的职能描述（`stage.role`）加紧凑的 XML 标签化 `<world>` 摘要（`worldOf`，剥离写作指令与 `fiction` 正文）。
+语言模型连接 **`Connection`**（`/providers`）仅维护接口凭据、模型 ID、`maxOutputTokens` 与思考预算（`effort`），底座**不发送任何硬编码采样参数**（`temperature`、`topP` 等），一律交由推理端点默认策略决定。只有 `narrate` 读取完整 `frame`、`<writing_guidelines>` 与叙事帽；其余所有幕后阶段仅读取各自的底座阶段说明加紧凑的 XML 标签化 `<world>` 摘要（`worldOf`，剥离写作指令与 `fiction` 正文）。
 
 除常规阶段路由外，实例还可配置可选的专用决策模型 **`DecisionModel`**（`/decision`，位于默认模型路由页的 `pre-check` 卡片，支持 `google`、`openai`、`typesafe` 三种驱动）：单次纯概率调用即可完成一组二元命题打分，零 LLM 往返直接结算完整目录 `lookup`（`≤ 256` 单元且 `≤ 10,000` 字符）与边界分明的 `check`（`< 0.25` / `> 0.75`），遇到目录超界或概率处于模糊区间时无缝回退至该阶段路由的常规语言模型。

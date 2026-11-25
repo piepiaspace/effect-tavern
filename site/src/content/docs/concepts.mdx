@@ -12,7 +12,7 @@ Effect Tavern separates **narrative prose**, **mechanical settlement**, and **st
 A player turn is a fixed execution pipeline rather than a single LLM completion:
 
 ```text
-lookup → (decide → settle)* → gate → direct → narrate → check → polish → record
+lookup → decide → settle → gate → direct → narrate → check → polish → record
 ```
 
 Structured stages are **strictly opt-in**: a pure chat card (`banxing.yaml`) executes only `narrate` and `record`. All other stages activate automatically when the card declares their inputs:
@@ -20,7 +20,7 @@ Structured stages are **strictly opt-in**: a pure chat card (`banxing.yaml`) exe
 | Stage | Runs When | Reads | Responsibility |
 | --- | --- | --- | --- |
 | `lookup` | Unlocked `lore`, pack `entries`, or `recall` rows exist | `<world>`, `<input>`, factual ledger, host `catalog` | Settles via `DecisionModel` on a complete catalog (`p > 0.5`, top 8), else runs the LLM `search_context` / `read_context` loop, freezing `deliveries` |
-| `decide` | `rules.actions` non-empty & `act` input | `<world>`, `<input>` (excluding `thought`), available actions | Picks an action ID, estimates `{ judge }` chance if declared, and signals `again` for multi-beat moves |
+| `decide` | `rules.actions` non-empty & `act` input | `<world>`, `<input>` (excluding `thought`), available actions | Picks an action ID and estimates `{ judge }` chance if declared (single beat per turn) |
 | `settle` | `decide` chose an action | Seeded RNG + `rules` | Pure code: rolls dice, clamps `fields`, emits turn `events`, records `Beat` |
 | `gate` | `lore` entries exist | Post-settlement `WorldState` + turn events | Pure code: evaluates monotone `unlock` floors and per-turn `offer` windows |
 | `direct` | `card.director: true` & windows opened | `<world>`, factual ledger, open windows, `<input>` | Partitions open lore into `must` vs. `may` and emits a one-line scene `tone` (`Brief`) |
@@ -80,6 +80,6 @@ Legacy tavern cards and presets rely heavily on numeric **depth injection** (`at
 
 Effect Tavern enforces **strictly two prompt zones** (`head` and `tail`):
 
-- **`head` & off-stage `<world>` isolation:** `narrate` assembles resolved `Layer` `frame` slots (`<persona>`, `<setting>`, plus writing directives) and active `<fiction>` bands into a stable prefix before the `transcript`. Off-stage passes (`lookup`, `decide`, `direct`, `check`, `polish`, `record`) read only `stage.role` and **`<world>`** (`worldOf`—card-declared frame slots and `persona`, stripping writing directives `pov`, `verbosity`, `style` and player-added fragments so analytical passes never slip into continuing the story), with reference text enclosed in `<input>`, `<draft>`, or `<scene>` tags before the stage's task prompt.
-- **`tail`** sits immediately *after* the `transcript` and current player input in `narrate`, holding `<context>` (delivered entries) and `<turn>` (beat outcomes, `Current:`, `MUST`/`MAY reveal`, `Brief` tone, `note`), `input.thought`, and tail fragments—giving turn-level context maximum recency attention (`@D0`-equivalent position) without ever mutating historical turns.
-- **Interval `Fold` vs. rolling summaries:** Instead of rolling chat-summarizer plugins that rewrite a depth-injected summary every few turns, prefix compression folds older turns' `notes` and disclosed lore by code over fixed node intervals. Because each folded block depends only on nodes inside its closed interval, prompt-cache breakpoints (`head` end, folded prefix, and last prior turn) stay byte-identical across turns and across branches.
+- **`head` & off-stage `<world>` isolation:** `narrate` assembles `<world>` (non-writing `frame` slots: `<persona>`, `<setting>`, etc.), active `<fiction>` bands, and `<writing_guidelines>` (writing directives) into a stable prefix before the `transcript`. Off-stage passes (`lookup`, `decide`, `direct`, `check`, `polish`, `record`) read only harness stage framing and **`<world>`** (`worldOf`—card-declared frame slots and `persona`, stripping writing directives `pov`, `verbosity`, `voice`, `style`, `language` and player-added fragments so analytical passes never slip into continuing the story), with reference text enclosed in `<input>`, `<draft>`, or `<scene>` tags before the stage's task prompt.
+- **`tail`** sits immediately *after* the `transcript` and current player input in `narrate`, holding `<recalled_context>` (delivered entries), `<turn_state>` (beat outcomes, `Current:`), `<stage_directions>` (`MUST`/`MAY reveal`, `Brief` tone, `note`), `<correction>`, `<aside_blocks>` (inline `<<aside>>` requests), and `<writing_tail>` (player tail fragments)—giving turn-level context maximum recency attention (`@D0`-equivalent position) without ever mutating historical turns.
+- **Interval `Fold` vs. rolling summaries:** Instead of rolling chat-summarizer plugins that rewrite a depth-injected summary every few turns, prefix compression folds older turns' `notes` and disclosed lore by code over fixed node intervals into `<story_summary>`. Because each folded block depends only on nodes inside its closed interval, prompt-cache breakpoints (`head` end, folded prefix, and last prior turn) stay byte-identical across turns and across branches.

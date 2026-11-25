@@ -7,7 +7,7 @@ import { initialWorld, recordTransaction, worldOn } from "../src/world.ts"
 import { holds } from "../src/cond.ts"
 import type { Product } from "../src/product.ts"
 import * as Log from "../src/log.ts"
-import { chat } from "./cards/index.ts"
+import { chat, productsOff } from "./cards/index.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 
 const people: Product = {
@@ -52,7 +52,7 @@ const scene: Product = {
       frame: [],
       fiction: [],
     },
-    rows: () => ({}),
+    rows: () => productsOff,
     model: () => fake(() => ({ text: "OK" })),
     store: { read: () => undefined, write: (change) => writes.push(change) },
   })
@@ -81,7 +81,7 @@ const model = fake((o) => {
 let saved: Log.Snapshot<Turn> | undefined
 const S = makeSession({
   card: { ...chat, products: [scene, people, { id: "notes", on: true }] },
-  rows: () => ({}),
+  rows: () => productsOff,
   model: () => model,
   store: {
     read: () => saved,
@@ -397,7 +397,7 @@ console.log("record transactions ok")
   // only `battle`, which does not hold: the product leaves the request, nothing is asked of it
   const N = makeSession({
     card: { ...chat, catalogs: [{ id: "bgm", items: [battle] }], products: [bgm] },
-    rows: () => ({}),
+    rows: () => productsOff,
     model: () => M,
   })
   const callsBefore = asked.length

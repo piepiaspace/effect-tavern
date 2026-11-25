@@ -17,7 +17,7 @@ Two orthogonal coordinates place any card—not separate card formats:
 - **Default input channel (`input`):** `"act"` (enters `transcript`) or `"note"` (feeds `direct` and `narrate` this turn only).
 
 Turn spine assembled in `packages/runtime/src/request.ts`:
-`lookup → (decide → settle)* → gate → direct → narrate → check → polish → record`
+`lookup → decide → settle → gate → direct → narrate → check → polish → record`
 
 - The narrator (`narrate`) is the **only** stage that reads `fiction` and `transcript`, and **never** sees raw field numbers—state reaches narration strictly through `when`-gated `fiction` bands.
 - **Negative constraints against legacy tavern patterns:**
@@ -32,7 +32,7 @@ Turn spine assembled in `packages/runtime/src/request.ts`:
 1. **Hat 1 — Architect (Mechanism & Skeleton Only)**
    - Keep prose to one-line placeholders.
    - Choose the two coordinates (`persona` slot + `input`).
-   - Declare `rules.fields` (bounds, `initial`, `start`, `hidden`, `view`), decide which fields move via `actions` (mechanical) vs. `readouts` (prose-driven), and wire `effects` / `events` / `over` / `cap`.
+   - Declare `rules.fields` (bounds, `initial`, `start`, `hidden`, `view`), decide which fields move via `actions` (mechanical) vs. `readouts` (prose-driven), and wire `effects` / `events` / `over`.
    - Lay out `lore` (`unlock` floors, `offer` windows, `sections`, `ContextPolicy`), `fiction` band `when` conditions, `greetings` (`do` effects, optional dynamic `note`), optional post-record `passages` (`when`, `do`, `digest`, `end`), `products`, and `catalogs`.
    - Validate with `card check <card> --json` until zero errors and expected field/greeting lines, then lock behavior with `card test <card> [scenario.yaml]`.
 2. **Hat 2 — Novelist (Prose & Voice)**

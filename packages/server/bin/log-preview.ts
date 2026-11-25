@@ -2,7 +2,7 @@
 // ships: `bun packages/server/bin/log-preview.ts [--columns 48] [--plain] [--lang en]`. `--columns` lays out at that
 // width (48: a phone), `--plain` draws what a pipe or journald gets (no escapes, `[system]` labels, dated summaries);
 // otherwise it is what `tavern start` prints on this terminal, by the same terminal-mode decision (screen.ts
-// `screenOn`). The turns run the way `tavern start` runs them: a library, its harness and the real SDK drivers, against
+// `screenOn`). The turns run the way `tavern start` runs them: a library, its default pack and the real SDK drivers, against
 // aimock speaking each provider's own protocol, so every request body, every call's `#n` and every summary is the
 // real path's. Four turns: an empty card's 「你好」 on anthropic (narrate, then the settlement with its tools; the card's
 // setting holds blank rows, indents and runs of spaces under a cache breakpoint), a titled story on openai-compatible
@@ -80,7 +80,10 @@ export const play = async (screen: Screen, lang: Lang = "zh"): Promise<void> => 
       lib.cards.save(id, {
         ...lib.cards.get(id),
         title,
-        products: [{ id: "notes", on: true }],
+        products: [
+          { id: "notes", on: true },
+          { id: "options", on: false },
+        ],
         ...(o.setting && { frame: [{ id: "setting", text: o.setting }] }),
       })
       const s = lib.stories.create(id)

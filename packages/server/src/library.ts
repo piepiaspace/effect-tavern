@@ -1,6 +1,6 @@
 // The library behind the wire: every card's stories and the player's personas. A story is a session over its rows in
 // data.ts on the card its row names (`story.card`, read off the shelf when the session opens), with the player's
-// rows the library stores (runtime layer.ts; the overlay given stands until one is stored), and the turn in flight beside it (turn.ts): a
+// rows the library stores (runtime layer.ts; the install's default pack under the card), and the turn in flight beside it (turn.ts): a
 // turn is the story's, it runs to its end whoever listens, one at a time per story and with no lock across stories.
 // A persona is the player's, a sibling of the card, not a step of a story: a story's row names the one in force on it
 // (`story.persona`, none: the card's own), and the library hands it to `resolve` on every
@@ -55,16 +55,7 @@ import { author } from "./author.ts"
 import { type Card } from "@effect-tavern/runtime/src/card.ts"
 import { validateCard } from "@effect-tavern/runtime/src/author.ts"
 import { Hat, hatToolProblem, normalizeHatDelivery, uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
-import {
-  decodeLayer,
-  decodeLocal,
-  empty,
-  overlaid,
-  overlayOf,
-  type Layer,
-  type Local,
-  type Rows,
-} from "@effect-tavern/runtime/src/layer.ts"
+import { decodeLayer, decodeLocal, type Layer, type Local, type Rows } from "@effect-tavern/runtime/src/layer.ts"
 import * as Log from "@effect-tavern/runtime/src/log.ts"
 import type { Id } from "@effect-tavern/runtime/src/log.ts"
 import { policyFor } from "@effect-tavern/runtime/src/history.ts"
@@ -156,19 +147,14 @@ export type PreviewRequest = typeof PreviewRequest.Type
 const decodePreviewRequest = Schema.decodeUnknownSync(PreviewRequest)
 const decodeHat = Schema.decodeUnknownSync(Hat)
 
-/** The rows of the `pack` table that are ranks, not packs. */
-const RESERVED = new Set(["harness"])
-
 export const library = ({
   data,
-  overlay: given,
   model: env,
   pinned = false,
   fetch: cardFetch,
   logbook = openLogbook(),
 }: {
   data: Data
-  overlay?: Layer // the harness overlay until one is stored
   model?: (phase: Phase, onExchange?: CompileOptions["onExchange"]) => Model
   pinned?: boolean
   fetch?: Fetch // what a card library is read over (depot.ts); a test's own
@@ -345,13 +331,13 @@ export const library = ({
         : { id: data.personas.fallback(), yields: true }
   const listHats = (): Hat[] => data.hats.list().map(normalizeHatDelivery)
   const hat = (id: string) => listHats().find((h) => h.id === id)
-  const overlayIn = (rows: readonly Layer[]) => rows.find((p) => p.id === "harness") ?? given
   /** The player's rows on a card, as `resolve` takes them: read on every request, a session keeps none. */
   const rowsOf = (card: string, persona: Rows["persona"]): Rows => {
     const rows = data.packs.list()
+    const mark = data.packs.default()
     return {
-      harness: overlayIn(rows),
-      packs: rows.filter((p) => !RESERVED.has(p.id)),
+      defaultPack: rows.find((p) => p.id === mark),
+      packs: rows,
       local: data.locals.get(card),
       persona,
     }
@@ -581,29 +567,25 @@ export const library = ({
       },
     },
     packs: {
-      /** `[harness, ...packs]`, one row template: the harness row whole, the code's defaults under its overlay. */
-      list: (): Layer[] => {
-        const rows = data.packs.list()
-        return [overlaid("act", overlayIn(rows)), ...rows.filter((p) => !RESERVED.has(p.id))]
+      /** By name, the install's default marked. */
+      list: (): (Layer & { default?: true })[] => {
+        const mark = data.packs.default()
+        return data.packs.list().map((p) => (p.id === mark ? { ...p, default: true } : p))
       },
-      /** The harness keeps only what differs from the code's defaults, nothing at all when nothing does: a left-out item is
-       *  its default again. A pack's id may not be a rank's name: `from` says which row an item came from; nor `base`, which
-       *  `open` folds into the overlay (data.ts). */
+      /** Written; `default` true marks it the install's default, false clears the mark when it is this one's, absent
+       *  leaves the mark as it is. A pack's id may not be a rank's name: `from` says which row an item came from; nor
+       *  `base` or `harness`, the ranks of libraries before (sqlite.ts). */
       put: (value: unknown) => {
-        const r = decodeLayer(value)
-        if (r.id === "harness") {
-          const o = overlayOf("act", r)
-          if (empty(o)) data.packs.del("harness")
-          else data.packs.put(o)
-          return
-        }
-        if (r.id === "card" || r.id === "local" || r.id === "base") throw new Error(`${r.id}: a reserved id`)
+        const { default: mark, ...rest } = (value ?? {}) as { default?: unknown }
+        const r = decodeLayer(rest)
+        if (["card", "local", "base", "harness"].includes(r.id)) throw new Error(`${r.id}: a reserved id`)
         if (r.id.includes("/")) throw new Error(`${r.id}: a pack id has no / (it prefixes the pack's entry ids)`)
         data.packs.put(r)
+        if (mark === true) data.packs.mark(r.id)
+        else if (mark === false && data.packs.default() === r.id) data.packs.mark(null)
       },
-      /** Gone from the table, and off every card it was mounted on. The harness is not a row to delete. */
+      /** Gone from the table, from the install's default, and off every card it was mounted on. */
       del: (id: string) => {
-        if (id === "harness") throw new Error(`${id}: cannot be deleted`)
         data.packs.del(id)
         pruneLocals((l) => {
           if (!l.mounts?.includes(id)) return l

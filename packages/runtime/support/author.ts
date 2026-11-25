@@ -2,7 +2,7 @@
 // YAML is a host concern; the value report and workshop transformations also run in the browser.
 import { cardIdError, checkValue } from "../src/author.ts"
 import { decodeCard, type Card } from "../src/card.ts"
-import { player } from "./rows.ts"
+import { starter } from "./rows.ts"
 
 /** A card's text as a value: YAML, and JSON with it (a JSON document is a YAML one). Not yet decoded. */
 export const parseCard = (text: string): unknown => Bun.YAML.parse(text)
@@ -13,7 +13,7 @@ export const readCard = async (path: string | URL): Promise<Card> => decodeCard(
 
 export const checkCard = (source: string): ReturnType<typeof checkValue> => {
   try {
-    return checkValue(parseCard(source), player)
+    return checkValue(parseCard(source), starter)
   } catch (e) {
     return {
       ...checkValue(undefined),

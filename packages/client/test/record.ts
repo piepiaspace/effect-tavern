@@ -18,6 +18,7 @@ import {
   record,
   sceneOf,
   status,
+  suggestions,
   versions,
   whens,
   type Element,
@@ -137,7 +138,14 @@ assert.equal(channelOf({ ...chips, input: { text: "", invoke: ["pack:guide"] } }
 assert.equal(lineOf({ ...chips, input: { text: "", invoke: ["pack:guide"] } }), "Title pack:guide")
 
 const declaredTheaters = [
-  { id: "options", label: "行动选项", role: "theater" as const, shape: { kind: "list" as const }, on: true },
+  {
+    id: "next",
+    label: "行动选项",
+    role: "theater" as const,
+    surface: "composer" as const,
+    shape: { kind: "list" as const },
+    on: true,
+  },
   { id: "inner", label: "人物心声", role: "theater" as const, shape: { kind: "text" as const }, on: false },
   {
     id: "diary",
@@ -150,6 +158,12 @@ const declaredTheaters = [
 ]
 assert.deepEqual(demandable(declaredTheaters, { theater: {} }), [{ value: "diary", label: "日记" }])
 assert.deepEqual(demandable(declaredTheaters, { theater: { diary: "written" } }), [])
+// a composer list is offered above the input box, whatever its id; a 小剧场 list is not
+assert.deepEqual(suggestions(declaredTheaters, { theater: { next: ["走", "留"], diary: "written", inner: ["x"] } }), [
+  "走",
+  "留",
+])
+assert.deepEqual(suggestions(undefined, { theater: { next: ["走"] } }), [])
 // versions are told apart from the sentence where they differ, not from the opening they share
 assert.deepEqual(apart(["她笑了。“好啊。”她点头。", "她笑了。“好啊。”她摇头。", "她笑了。“不行。”"]), [
   "…“好啊。”她点头。",

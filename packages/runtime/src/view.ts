@@ -195,7 +195,6 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
     stage === "direct"
       ? {
           stage,
-          question: R.asks["direct"].text,
           ledger: [],
           rules: lines(card.guard, R.names, "card"),
           open: offered.map((d) => ({ id: d.id, text: d.text })),
@@ -204,7 +203,6 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
       : stage === "lookup"
         ? {
             stage,
-            question: R.asks["lookup"].text,
             context: frozen.map(lookupContext.told),
             current: currentAt(R.products, world), // session.ts: sections listed for lookup only
             catalog: catalogBlock(lookupContext.catalog("")), // the view the session builds; no input to match
@@ -217,8 +215,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
               current: currentAt(R.products, world, {}, true),
               invoked: pinned ? [deliveryText(freeze(pinned))] : [],
               asks,
-              tools: R.asks["record.tools"].text,
-              readout: R.asks["record.readout"].text,
+              tools: true,
               questions,
               prose: "",
             }
@@ -232,7 +229,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
               outcome: events,
               must: [],
               may: offered.map((d) => ({ id: d.id, text: d.text })),
-              blocks: { question: R.asks["narrate.blocks"].text, asks: penned },
+              blocks: { asks: penned },
             }
   // a hat, when given, is worn as the session wears it (its names and delivery tool filled): narrate under its delivery
   // tool prints the tool, and under its wrap the description that carries the story context
@@ -241,18 +238,8 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
     {
       frame: head(R.frame, { state: context }),
       world: head(worldOf(card, R.frame), { state: context }),
-      role: R.asks["stage.role"].text,
-      narrator: R.asks["narrate.role"].text,
-      persona: R.asks["narrate.persona"].text,
-      deliver: R.asks["narrate.deliver"].text,
-      deliverTool: R.asks["narrate.deliver.tool"].text,
-      deliverParam: R.asks["narrate.deliver.param"].text,
-      wrapAsk: R.asks["narrate.wrap"].text,
-      contextLead: R.asks["narrate.context"].text,
-      directions: R.asks["narrate.turn"].text,
       tail: head(R.tail, { state: context }),
       input: { text: "" },
-      thought: R.asks["input.thought"].text,
     },
     ask,
     worn ? { hat: worn.hat, hatSources: worn.sources } : {},
@@ -311,7 +298,6 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
           `\n── delivery tool ${tool.name}${detailed.wrap ? `, wrapping ${detailed.wrap.sections.length} messages (prefix cache off)` : ""} ──`,
           `description:\n${tool.description}`,
           `text parameter: ${tool.param}`,
-          ...(detailed.wrapRefusal ? [`refused: ${detailed.wrapRefusal}`] : []),
         ]
       : []),
   ].join("\n")

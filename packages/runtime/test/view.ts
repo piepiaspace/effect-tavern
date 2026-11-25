@@ -9,10 +9,11 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Card } from "../src/card.ts"
 import type { Hat } from "../src/fragment.ts"
+import { NOTE } from "../src/request.ts"
 import { makeSession } from "../src/session.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 import { fields, openings, view } from "../src/view.ts"
-import { cardFile, cardNames, loadCard, player } from "./cards/index.ts"
+import { cardFile, cardNames, loadCard, starter as player } from "./cards/index.ts"
 import { runCard } from "./command.ts"
 
 // A real turn on 盐道 from its second greeting, with 局势 set on the greeting node: every call's messages kept.
@@ -43,6 +44,8 @@ await Effect.runPromise(
 const text = (m: Message) =>
   typeof m.content === "string" ? m.content : m.content.map((p) => ("text" in p ? p.text : "")).join("")
 const sent = (phase: string) => calls.get(phase)!.map(text)
+/** A turn's reference message less its ledger, which a preview has no path for. */
+const unledgered = (m: string) => m.replace(/<ledger>\n[\s\S]*?\n<\/ledger>(?:\n\n)?/, "")
 const at = (stage: "narrate" | "lookup" | "record") =>
   view(yandao, player, { greeting: 1, state: { 局势: "8" }, stage })
 
@@ -57,19 +60,14 @@ const head = on.map((f) =>
     .map((l) => l.slice(4))
     .join("\n"),
 )
-assert.equal(head.length, 8) // language, pov, style; town, sides, now, tense (局势 ≥ 6), blood (起点 血案)
-// after narrate.role: the frame as one message (no persona or setting here to tag), the fiction as one <fiction>
+assert.equal(head.length, 9) // language, thought-syntax, pov, style; town, sides, now, tense (局势 ≥ 6), blood (起点 血案)
+// no world slot (yandao declares only pov and style): the fiction as one <fiction>, the writing lines after it
 assert.deepEqual(sent("narrate").slice(0, 2), [
-  head.slice(0, 3).join("\n\n"),
-  `<fiction>\n${head.slice(3).join("\n\n")}\n</fiction>`,
+  `<fiction>\n${NOTE.fiction}\n${head.slice(4).join("\n\n")}\n</fiction>`,
+  `<writing_guidelines>\n${NOTE.guidelines}\n${head.slice(0, 4).join("\n\n")}\n</writing_guidelines>`,
 ])
 // lookup and record: preview has no path ledger; the final message is the session's note/prose (empty in preview).
-assert.deepEqual(
-  sent("lookup")
-    .filter((m) => !m.startsWith("Ledger:"))
-    .slice(0, -1),
-  at("lookup").doc.map(text).slice(0, -1),
-)
+assert.deepEqual(sent("lookup").map(unledgered).slice(0, -1), at("lookup").doc.map(text).slice(0, -1))
 // the catalog view, the same block in the preview and the turn (#168)
 assert.match(sent("lookup").join("\n"), /\nAvailable \(1, complete\):\ncard:yandao /)
 const r = at("record")
@@ -241,9 +239,7 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
     ),
   )
   for (const stage of ["lookup", "record"] as const) {
-    const actual = sent(stage)
-      .filter((m) => !m.startsWith("Ledger:"))
-      .slice(0, -1)
+    const actual = sent(stage).map(unledgered).slice(0, -1)
     assert.deepEqual(actual, preview(stage, "manual").doc.map(text).slice(0, -1))
   }
   for (const stage of ["lookup", "narrate", "record"] as const) {

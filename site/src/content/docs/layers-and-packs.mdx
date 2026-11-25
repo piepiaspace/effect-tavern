@@ -19,24 +19,25 @@ Effect Tavern eliminates presets completely, decomposing what a legacy preset us
 
 ## 1. Uniform `Layer` Resolution
 
-Every customization participant—harness defaults, the card, mounted enhancer packs, per-card player settings, and the active persona—projects into a single row type (`Layer` in `packages/runtime/src/layer.ts`) and resolves in one strict rank order:
+Every customization participant—the install's starred default pack, the card, mounted enhancer packs, per-card player settings, and the active persona—projects into a single row type (`Layer` in `packages/runtime/src/layer.ts`) and resolves in one strict rank order:
 
 ```text
-harness (code defaults + global player overlay)
+defaultPack (starred global default pack, unless mounted on this card)
   → card
     → mounted packs (in local.mounts order)
       → local (per-card player row)
         → persona (prose into `persona` slot, name into `names.user`)
 ```
 
-- **Higher rank wins by `id`** across fragments, `asks`, `products`, `snippets`, `format`, and `names`.
+- **Neutral harness + editable starter pack:** The harness itself ships no default fragments, products, snippets, format keys, or lexicon. A fresh library seeds one ordinary first-party **starter pack** (`starter-pack.ts`) as its `defaultPack`, which players may edit, unstar, or delete.
+- **Higher rank wins by `id`** across fragments, `products`, `snippets`, `format`, and `names`.
 - **Slot modes (`Fragment.mode`):**
   - `"override"` (default on packs/local): replaces lower-rank text in the same `frame` slot.
-  - `"yield"` (default on the global player overlay against the card): defers whenever a lower rank has already filled the slot.
+  - `"yield"` (written explicitly on starter/default-pack fragments): defers whenever a lower rank has already filled the slot.
   - `"both"`: keeps both fragments in rank order.
 - **Default `persona` inheritance & tri-state `local.persona`:** One persona in `/personas` may be marked as the install-wide default. Per card, `local.persona` is tri-state (`undefined` = follow install default, `null` = none, `<id>` = explicit override). Participant cards inherit the install default in `yield` mode—leaving a card's own authored `persona` slot intact while still supplying lowest-rank `names.user`; author-mode cards (`input: "note"` without `persona`) never inherit it; an empty-text persona supplies `names.user` without blanking `persona`.
 - **Open `{{key}}` holes (`names.ts`):** Unfilled `{{key}}` placeholders in card-authored text pass through literally without locking turns, whereas a player, pack, or hat entry referencing an unfilled hole is left out of the request and listed in the trace's `omitted` (reason `unfilled_hole`), not in `Resolved.dropped`.
-- **Zero-throw safety locks (`locked`):** Player rows and packs cannot inject `Cond` (`when`), alter message `role`, or mutate a card product's `shape` or `role`. Disallowed entries land in `Resolved.dropped` for UI inspection instead of crashing session startup.
+- **Zero-throw safety locks (`locked`):** Player rows and packs cannot inject `Cond` (`when`), alter message `role`, or mutate a card-declared product's `shape` or `role` (over another player pack's product, a valid whole declaration may replace its structure). Disallowed entries land in `Resolved.dropped` for UI inspection instead of crashing session startup.
 
 ## 2. Frame Slots & Writing Switches
 
@@ -52,15 +53,15 @@ For everyday preferences, players toggle bounded **Writing Switches** (`Writing`
 | `verbosity` | `"concise"` \| `"medium"` \| `"detailed"` | Compiled into the `verbosity` slot |
 | `polish` | `boolean` | Enables or disables the post-check `polish` stage (`lexicon`) |
 
-`pov`, `echo`, and `agency` compile together into the `pov` slot using customizable `switch.<key>.<value>` asks, and automatically **yield** whenever a card (such as `yandao.yaml`) explicitly authors its own `pov` slot.
+`pov`, `echo`, and `agency` compile together into the `pov` slot using `SWITCH_SENTENCES` (`layer.ts`), and automatically **yield** whenever a card (such as `yandao.yaml`) explicitly authors its own `pov` slot.
 
 ## 3. Enhancer Packs (`/packs`)
 
-An enhancer **`Pack`** (analogous to a *text LoRA*) is a reusable, mountable `Layer` stored in the library and mounted per card via `local.mounts`. A pack can bundle:
+An enhancer **`Pack`** (analogous to a *text LoRA*) is a reusable, mountable `Layer` stored in the library (one pack may be starred as the global `defaultPack`, and any pack may be mounted per card via `local.mounts`). A pack can bundle:
 
 - **Head or tail `fragments`** (`at: "head"` for frame slots; `at: "tail"` for end-of-turn style directives).
-- **`switches` & `asks` overrides** (customizing harness prompts like `lookup`, `direct`, or `input.thought`).
-- **Product patches & inline `theater`** (renaming or toggling existing products, or declaring a new ID with `text` to create a `stage: "narrate"` `<<aside>>` theater block).
+- **`switches`** (default POV, echo, agency, verbosity, and polish preferences).
+- **Products & product patches** (declaring whole `chronicle` / `composer` / `theater` products, or renaming/toggling existing products; a new ID with `text` defaults to a `stage: "narrate"` `<<aside>>` theater block).
 - **Single-layer `entries`** (indexed in `lookup` as `<pack>/<entry>`, first sentence as hook, governed by `ContextPolicy`).
 - **`lexicon` patterns** (merged ahead of the card's slop patterns for `polish`), **`snippets`**, **`format` keys**, and **`names`** defaults.
 
@@ -68,8 +69,8 @@ An enhancer **`Pack`** (analogous to a *text LoRA*) is a reusable, mountable `La
 
 Different model families respond best to different continuation framing—without that framing belonging in a card or style pack. A **`Hat`** is a named protocol shell the stage routing wears, not a model entry: `Routing.hat` is the main hat for every hat stage, and `Routing.stageHats.<stage>` overrides it per stage (a hat id, or `null` for bare). Switching a stage's model keeps its hat. It has five slots:
 
-- **`narrate.lead`**: First in the `narrate` request, before `narrate.role` and `frame`.
-- **`narrate.head`**: System messages after `frame` and `fiction`, handshake messages after every head system message (right before the head cache breakpoint and `transcript`).
+- **`narrate.lead`**: First in the `narrate` request, before harness stage framing and `<world>`.
+- **`narrate.head`**: System messages after `<world>`, `<fiction>`, and `<writing_guidelines>`, handshake messages after every head system message (right before the head cache breakpoint and `transcript`).
 - **`narrate.turn`**: Just before this turn's player input, after the history.
 - **`narrate.tail`**: At the very end of the `narrate` request (rejected at the wire if it ends with an `assistant` prefill on a connection where `prefill: false`, such as current Claude models).
 - **`review.head`**: Worn by prose-reading stages (`check`, `polish`, `record`), after `<world>`.
@@ -77,10 +78,10 @@ Different model families respond best to different continuation framing—withou
 
 Each slot entry is either a role message (`system`, `user`, or `assistant`, an assistant's optional `reasoning` sent back as a reasoning part) or a **`tool` handshake** (`toolName`, `toolInput`, the result `text`, optional `reasoning`), sent as an assistant `tool-call` followed by its `tool-result` and requiring native tool calling on the connection.
 
-**`deliver`** sets how `narrate` hands back its prose: `"text"` (default) streams plain text; `"tool"` has the model call one `narrative({ text })` tool, decoded as it streams, adds the `narrate.deliver` ask to the lead, needs native tool calling, and refuses a request ending in an `assistant` prefill. With `deliver: "tool"`, **`toolChoice`** is `"auto"` (default, for thinking models that refuse a forced tool) or `"force"`; it is not kept otherwise.
+**`deliver`** sets how `narrate` hands back its prose: `"text"` (default) streams plain text; `"tool"` has the model call one `narrative({ text })` tool, decoded as it streams, adds the delivery instruction to the lead, needs native tool calling, and refuses a request ending in an `assistant` prefill. With `deliver: "tool"`, **`toolChoice`** is `"auto"` (default, for thinking models that refuse a forced tool) or `"force"`; it is not kept otherwise.
 
-Under tool delivery a hat may also name its delivery **`tool`**: `name` (default `narrative`; a letter or `_` first, at most 64 letters, digits, `_` and `-`, or the save is refused) is the hat's alone, while `description` and `param` override two asks the harness owns, `narrate.deliver.tool` (the tool's description) and `narrate.deliver.param` (its `text` parameter's). In all of these, and in `narrate.deliver` and the hat's own messages, `{{tool}}` is the tool's name. **`wrap: true`** (with either `toolChoice`) is tool wrap: `messages[]` keeps only the hat's `narrate.lead` and `narrate.tail`, and everything else the narrator reads, as it would have been sent, goes into the tool's description as role-marked sections (`<message role="system">` … `</message>`), at its `{{context}}` hole or after its wording. When the lead and tail hold no `user` message, the `narrate.wrap` ask closes the request as one; with that ask emptied the request is refused before it is sent. No message carries a cache breakpoint under wrap, so the prefix cache is off; an on-demand block wraps the same way. Every other stage is untouched.
+Under tool delivery a hat may also name its delivery **`tool`**: `name` (default `narrative`; a letter or `_` first, at most 64 letters, digits, `_` and `-`, or the save is refused) is the hat's alone, while `description` and `param` override the delivery tool's default description and `text` parameter description. In all of these, and in the hat's own messages, `{{tool}}` is the tool's name. **`wrap: true`** (with either `toolChoice`) is tool wrap: `messages[]` keeps only the hat's `narrate.lead` and `narrate.tail`, and everything else the narrator reads, as it would have been sent, goes into the tool's description as role-marked sections (`<message role="system">` … `</message>`), at its `{{context}}` hole or after its wording. When the lead and tail hold no `user` message, a built-in closing `user` message is added automatically. No message carries a cache breakpoint under wrap, so the prefix cache is off; an on-demand block wraps the same way. Every other stage is untouched.
 
-Language-model **`Connection`** configurations (`/providers`) carry endpoint credentials, model IDs, `maxOutputTokens`, and optional reasoning effort, while the harness deliberately sends **zero hardcoded sampling parameters** (`temperature`, `topP`, etc.) so provider defaults govern decoding. Only `narrate` receives the full `frame` and prose hats; every off-stage pass reads its dedicated `stage.role` plus a compact XML-tagged `<world>` projection (`worldOf`) stripped of writing switches and `fiction`.
+Language-model **`Connection`** configurations (`/providers`) carry endpoint credentials, model IDs, `maxOutputTokens`, and optional reasoning effort, while the harness deliberately sends **zero hardcoded sampling parameters** (`temperature`, `topP`, etc.) so provider defaults govern decoding. Only `narrate` receives the full `frame`, `<writing_guidelines>`, and prose hats; every off-stage pass reads its harness stage framing plus a compact XML-tagged `<world>` projection (`worldOf`) stripped of writing switches and `fiction`.
 
 Alongside stage routing, an optional install-wide **`DecisionModel`** (`/decision`, toggled via the `pre-check` card on the default-model routing page; drivers: `google`, `openai`, `typesafe`) scores binary question batches in a single probability-only call—settling complete-catalog `lookup` passes (`≤ 256` units and `≤ 10,000` chars) and clear-cut `check` passes (`< 0.25` / `> 0.75`) with zero LLM round-trips while falling back seamlessly to the routed language model whenever ambiguous or incomplete.

@@ -1,6 +1,6 @@
 // Shared `narrate` request preparation and design-time Prompt Tree preview (sandbox & story branch).
 // Both `session.ts` (real play) and `previewNarrate` assemble the narrate document through `prepareNarrate`,
-// guaranteeing identical head, fiction, hat, history, <context>, <turn>, blocks and tail output.
+// guaranteeing identical head (<world>, <fiction>, <writing_guidelines>), hat, history, turn, blocks and tail output.
 import { signedOnly, wire, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
 import { makeCard, shownGreeting, type Beat, type Card, type Field, type State } from "./card.ts"
@@ -32,7 +32,7 @@ import {
 } from "./fragment.ts"
 import { narratorHistory, policyFor, type Policy } from "./history.ts"
 import { type Input, type Turn as TurnOf } from "./journal.ts"
-import { resolveWithTrace, type ResolvedTrace, type Rows } from "./layer.ts"
+import { resolveWithTrace, worldOf, type ResolvedTrace, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
 import { expand, fill, keepHoles, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
@@ -89,7 +89,7 @@ export type ResidencyStatus = "none" | "resident_in_window" | "resident_permanen
 
 export interface ResourceEntryView {
   resourceId: string
-  origin: "card" | "pack" | "harness" | "local" | "memory"
+  origin: "card" | "pack" | "local" | "memory"
   title: string
   text: string
   access: { model: boolean; player: boolean }
@@ -131,7 +131,6 @@ export interface PreviewDiagnostic {
     | "invalid_read"
     | "unfilled_holes"
     | "layer_dropped"
-    | "wrap_needs_user"
   message: string
   detail?: string
   holes?: readonly string[]
@@ -245,7 +244,7 @@ export interface PrepareNarrateInput {
   tone?: string
   input: Input
   correction?: string
-  blocks?: { question: string; asks: readonly string[]; sources?: readonly SourceRef[] }
+  blocks?: { asks: readonly string[]; sources?: readonly SourceRef[] }
   events?: readonly string[]
   packNames?: Readonly<Record<string, string>>
   extraOmitted?: readonly OmittedItem[]
@@ -257,10 +256,9 @@ export interface PrepareNarrateResult {
   traces: MessageTrace[]
   omitted: OmittedItem[]
   wireError?: WireErrorInfo
-  /** request.ts `DetailedRequest`: the delivery tool under tool delivery, the wrapped context and its refusal under wrap. */
+  /** request.ts `DetailedRequest`: the delivery tool under tool delivery, the wrapped context under wrap. */
   tool?: DeliveryToolTrace
   wrap?: WrapTrace & { messages: Message[] }
-  wrapRefusal?: string
 }
 
 export const evaluateCondition = (
@@ -689,7 +687,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   ): OmittedItem[] =>
     items.map(({ fragment: f, reason, when }) => {
       const baseSrc: SourceRef = f.source ?? {
-        kind: f.persona ? "persona" : category === "fiction" ? "card" : "harness",
+        kind: f.persona ? "persona" : category === "fiction" ? "card" : "pack",
         ...(category === "fiction" && { cardId }),
         fragmentId: f.id,
         label: f.label ?? f.id,
@@ -713,7 +711,6 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   const keptTail = enrichKept(evalTail.kept)
   const keptFiction = enrichKept(evalFiction.kept)
 
-  const wording = (id: string) => R.asks[id]?.text ?? ""
   // Only attach a template when it reproduces the frozen delivery. A resident snapshot may predate an editor change.
   const lore = new Map(card.lore.map((entry) => [entry.id, entry]))
   const rawDelivery = (d: DeliverySnapshot) => {
@@ -771,20 +768,12 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   const common: Common = {
     cardId,
     frame: keptFrame,
-    world: [],
-    role: wording("stage.role"),
-    narrator: wording("narrate.role"),
-    persona: wording("narrate.persona"),
-    deliver: wording("narrate.deliver"),
-    deliverTool: wording("narrate.deliver.tool"),
-    deliverParam: wording("narrate.deliver.param"),
-    wrapAsk: wording("narrate.wrap"),
-    contextLead: wording("narrate.context"),
-    directions: wording("narrate.turn"),
+    world: worldOf(
+      card,
+      keptFrame.filter((m): m is Slotted & { id: string } => m.id !== undefined),
+    ),
     tail: keptTail,
     input: o.input,
-    thought: wording("input.thought"),
-    askSources: RT.sources.asks,
     productSources: RT.sources.products,
   }
   const detailed = requestDetailed(common, ask, {
@@ -840,7 +829,6 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     ...(wireError && { wireError }),
     ...(detailed.tool && { tool: detailed.tool }),
     ...(detailed.wrap && { wrap: detailed.wrap }),
-    ...(detailed.wrapRefusal && { wrapRefusal: detailed.wrapRefusal }),
   }
 }
 
@@ -903,7 +891,11 @@ const staticGreetingTurn = (
 export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult => {
   const { card, rows, hat, connection } = opts
   const cardId = opts.cardId ?? card.id
-  const packNames = opts.packNames ?? Object.fromEntries((rows.packs ?? []).map((p) => [p.id, p.name]))
+  const packNames =
+    opts.packNames ??
+    Object.fromEntries(
+      [...(rows.packs ?? []), ...(rows.defaultPack ? [rows.defaultPack] : [])].map((p) => [p.id, p.name]),
+    )
   const RT = resolveWithTrace(card, rows, { cardId })
   const R = RT.resolved
   const by = labels(card.rules)
@@ -932,9 +924,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
         kind: sourceKindFrom(d.from),
         from: d.from,
         path: `${d.kind}s.${d.id}`,
-        ...(d.from !== "harness" &&
-          d.from !== "local" &&
-          d.from !== "card" && { packId: d.from, packName: packNames[d.from] }),
+        ...(d.from !== "local" && d.from !== "card" && { packId: d.from, packName: packNames[d.from] }),
       },
     })
   }
@@ -1157,7 +1147,6 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     tone: opts.assumedTone,
     input,
     blocks: {
-      question: R.asks["narrate.blocks"].text,
       asks: penned.map((p) => `${p.id}: ${p.text}`),
       sources: penned.map((p) => RT.sources.products[p.id]),
     },
@@ -1174,14 +1163,6 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     ...(prepped.tool && { tool: prepped.tool }),
     ...(prepped.wrap && { wrap: true }),
   }
-
-  if (prepped.wrapRefusal)
-    diagnostics.push({
-      level: "error",
-      code: "wrap_needs_user",
-      message: prepped.wrapRefusal,
-      ...(hat && { source: { kind: "hat", hatId: hat.id, hatName: hat.name } }),
-    })
 
   if (effectiveDeliver === "tool" && connection.tools === false) {
     diagnostics.push({
@@ -1378,7 +1359,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
           ? "resident_permanent"
           : "resident_in_window"
         : "none"
-    const origin = sourceKindFrom(e.from) as "pack" | "harness" | "local"
+    const origin = sourceKindFrom(e.from) as "pack" | "local"
     const slash = e.id.indexOf("/")
     const entryName = slash >= 0 ? e.id.slice(slash + 1) : e.id
     resourceViews.push({

@@ -8,7 +8,7 @@ import type { Card } from "../src/card.ts"
 import type { Product } from "../src/product.ts"
 import { makeSession, outcome } from "../src/session.ts"
 import { initialWorld, recordTransaction, type RecordResult } from "../src/world.ts"
-import { player } from "../support/rows.ts"
+import { starter as player } from "../support/rows.ts"
 import { defaultAnswer, readStage, type StageDoc } from "../support/script.ts"
 import { chat } from "./cards/index.ts"
 
@@ -19,7 +19,6 @@ import { chat } from "./cards/index.ts"
     phase: "record",
     subject: "scene",
     open: [],
-    soFar: [],
     rules: [],
     known: [],
     questions: [],

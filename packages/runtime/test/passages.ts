@@ -9,7 +9,7 @@ import { makeLore } from "../src/lore.ts"
 import { resolve } from "../src/layer.ts"
 import { narratorHistory } from "../src/history.ts"
 import { lint } from "../src/lint.ts"
-import { chat } from "./cards/index.ts"
+import { chat, productsOff } from "./cards/index.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 const card: Card = {
   ...chat,
@@ -33,7 +33,7 @@ const card: Card = {
 const create = (c = card) =>
   makeSession({
     card: c,
-    rows: () => ({}),
+    rows: () => productsOff,
     model: () => fake((o) => defaultAnswer(readStage(o), { notes: "day note" })),
   })
 const S = create()
@@ -62,7 +62,7 @@ const D = makeDerived({
   rpg: makeCard(card.rules),
   L: () => makeLore([]),
   lore: [],
-  products: () => resolve(card, {}).products,
+  products: () => resolve(card, productsOff).products,
   policy: () => ({ budget: 0, keep: 2, block: 2 }),
 })
 assert.equal(D.at(path).summary(), undefined)
@@ -164,7 +164,7 @@ const ld = makeDerived({
   rpg: makeCard(card.rules),
   L: () => makeLore([{ ...entry, ...gateOf(entry.id, entry.offer) }]),
   lore: [entry],
-  products: () => resolve(card, {}).products,
+  products: () => resolve(card, productsOff).products,
   policy: () => ({ budget: 0, keep: 2, block: 2 }),
 })
 const lp = path.map((t, i) =>
@@ -391,7 +391,7 @@ console.log("dynamic child recovery: ok")
         { when: { path: "clock", is: 1 }, note: "new day", digest: ["notes"], do: [{ path: "clock", set: 0 }] },
       ],
     },
-    rows: () => ({}),
+    rows: () => productsOff,
     model: () =>
       fake((o) => {
         const d = readStage(o)
