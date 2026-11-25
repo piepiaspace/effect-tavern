@@ -48,6 +48,7 @@ try {
     assert.ok(response.ok, text)
     return path === "/" ? text : JSON.parse(text)
   }
+  await api("/packs/starter", "DELETE") // nothing of the player's: a turn is narrate alone, its head empty
   const secret = await api("/secrets", "POST", { name: "mock", value: "test-key" })
   const models = [
     ["anthropic", "claude-haiku-5-5"],
@@ -108,29 +109,13 @@ try {
       .said.filter((m) => m.who === "system")
       .flatMap((m) => m.texts)
   }
-  await api("/packs/frame", "PUT", {
-    name: "Frame",
-    asks: [{ id: "narrate.role", text: "Pack role" }],
-    fragments: [{ id: "style", text: "Pack style" }],
-  })
+  await api("/packs/frame", "PUT", { name: "Frame", fragments: [{ id: "style", text: "Pack style" }] })
   await api(local, "PUT", { mounts: ["frame"] })
-  assert.deepEqual(await head(), ["Pack role", "Pack style"])
-  await api(local, "PUT", {
-    mounts: ["frame"],
-    asks: [{ id: "narrate.role", text: "" }],
-    fragments: [{ id: "style", mode: "mute" }],
-  })
-  assert.deepEqual((await api(local, "GET")).asks, [{ id: "narrate.role", text: "" }])
+  assert.deepEqual(await head(), ["Pack style"])
+  await api(local, "PUT", { mounts: ["frame"], fragments: [{ id: "style", mode: "mute" }] })
   assert.deepEqual(await head(), [])
   await api(local, "PUT", { mounts: ["frame"] })
-  assert.deepEqual(await head(), ["Pack role", "Pack style"])
-  await api(local, "PUT", { fragments: [{ id: "persona", text: "Player" }] })
-  const original = await head()
-  assert.equal(original.length, 2)
-  await api("/packs/harness", "PUT", { name: "内置", asks: [{ id: "narrate.persona", text: "" }] })
-  assert.deepEqual(await head(), original.slice(1))
-  await api("/packs/harness", "PUT", { name: "内置" })
-  assert.deepEqual(await head(), original)
+  assert.deepEqual(await head(), ["Pack style"])
 } finally {
   host.kill()
   await host.exited

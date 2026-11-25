@@ -1,3 +1,4 @@
+import { composer } from "@effect-tavern/runtime/src/product.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
 import { terminalText } from "./term/screen.ts"
 import type { CliEvent, CliHost } from "./cli-host.ts"
@@ -44,7 +45,9 @@ export const play = async (
     await host.name(card, options.user.trim())
   }
   let head = (await host.timeline(story)).head
-  const channel = await host.input(story)
+  const view = await host.card(story)
+  const channel = view.input
+  const suggestions = view.layer.products.filter(composer)
   const emit = (event: CliEvent) => {
     if (event.kind === "change") head = event.head
     if (options.jsonl) console.log(JSON.stringify(event))
@@ -80,7 +83,8 @@ export const play = async (
         const detail = await host.detail(story, head)
         for (const f of detail.fieldChanges) console.log(`${f.path}: ${f.was} → ${f.now}`)
         for (const c of detail.checks) console.log(`${c.action}: ${c.roll} / ${c.chance} ${c.hit ? "hit" : "miss"}`)
-        if (detail.products.options) console.log(JSON.stringify(detail.products.options))
+        for (const p of suggestions)
+          if (detail.products[p.id] !== undefined) console.log(JSON.stringify(detail.products[p.id]))
         if (action.kind === "greet" && !streamed)
           console.log((await host.timeline(story)).nodes.find((n) => n.id === head)?.prose ?? "")
       }

@@ -1,7 +1,6 @@
 // Shared standalone environment for the HTTP host and in-process CLI. No developer credentials, and no cards: the
 // shelf is what the library's store holds. The settings are the caller's, read once by cli/config.ts.
 import { fake } from "@effect-tavern/provider/src/fake.ts"
-import { plain } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { mkdirSync } from "node:fs"
 import { libraryFile } from "./announce.ts"
@@ -29,7 +28,6 @@ export const standalone = (
     data,
     scripted,
     page,
-    overlay: plain.harness,
     ...(model && { model: () => model, pinned: true }),
     logbook,
   })
