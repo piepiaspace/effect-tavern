@@ -45,12 +45,12 @@
 //                 absent = the install's default where the card has no player character of its own).
 //   GET  /hats    the player's hats; PUT /hats/<id> {name, narrate?, review?} writes one (decoded as `Hat`, in force
 //                 from the next request on a stage the routing puts it on), DELETE /hats/<id> removes it. Both answer the list.
-//   GET  /packs   the player's rows, one template (runtime layer.ts `Layer`): [harness, ...packs], the harness row
-//                 whole (the code's defaults under its overlay). PUT /packs/<id> {name, fragments?, switches?, asks?,
-//                 products?, entries?, lexicon?, snippets?, format?, names?} writes one whole (decoded at this boundary,
-//                 in force from the next request); on `harness` only the difference from the code's defaults is stored,
-//                 an item left out is its default again. DELETE /packs/<id> removes a pack and takes it off every card;
-//                 harness is a 400, and so is a PUT naming `card`, `local` or `base`. Both answer the list.
+//   GET  /packs   the player's writing packs (runtime layer.ts `Layer`), the install's default marked `default: true`.
+//                 PUT /packs/<id> {name, fragments?, switches?, products?, entries?, lexicon?, snippets?, format?,
+//                 names?, default?} writes one whole (decoded at this boundary, in force from the next request;
+//                 `default` true marks it the pack every card stands on, false unmarks it); a PUT naming `card`,
+//                 `local`, `base` or `harness` is a 400. DELETE /packs/<id> removes a pack, the mark and its mounts
+//                 on every card. Both answer the list.
 //   GET  /secrets the key vault as {id, name, type, hint}: a value never leaves the server. POST /secrets
 //                 {name, type?, value} adds one and answers it the same way; PUT /secrets/<id> {name, type?, value?} renames,
 //                 retypes or rekeys it in place; DELETE /secrets/<id> removes it (a provider naming it then has no key). Both answer the list.
@@ -102,7 +102,7 @@
 //                 lore as counts, what the card's text costs each turn, estimated (session.ts `cardView`); `local`, the
 //                 player's row on the card; `mounts`, its packs as {id, name}; `persona`, the persona the view wears (the
 //                 story's on /card, else library.ts `personaFor`) or null; `layer`, the one merge (layer.ts
-//                 `Resolved`: frame, tail, asks, products, entries, lexicon, snippets, format, names, holes, switches,
+//                 `Resolved`: frame, tail, products, entries, lexicon, snippets, format, names, holes, switches,
 //                 dropped, each item with its `from`), a card's item without its `text`, a card's lexicon entry not at all.
 //                 A client merges nothing.
 //                 The card's fragment bodies, guard lines and lore leave the server two ways only, both the owner's

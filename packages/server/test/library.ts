@@ -7,7 +7,6 @@ import { fake, fakeText, type Model } from "@effect-tavern/provider"
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { policyFor } from "@effect-tavern/runtime/src/history.ts"
 import { makeSession } from "@effect-tavern/runtime/src/session.ts"
-import { harness } from "@effect-tavern/runtime/src/layer.ts"
 import { chat, recordingPlayer as player } from "../../runtime/test/cards/index.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { Effect, Fiber, Stream } from "effect"
@@ -25,17 +24,18 @@ process.env.NO_PROXY = "localhost,127.0.0.1"
 const env = fake(() => ({ text: "hello world" }))
 const model = () => env
 const at = (s: { address: () => unknown }) => `http://localhost:${(s.address() as AddressInfo).port}`
-/** `data` with `cards` on its shelf: a test installs what it plays, the program comes with none. */
+/** `data` with `cards` on its shelf: a test installs what it plays, the program comes with none. Its default pack is
+ *  the recording one (notes on). */
 const stocked = (data: Data, ...cards: Card[]) => {
   for (const c of cards) shelf(data).install(c, { via: "file" }, { replace: true })
+  data.packs.put(player.defaultPack!)
   return data
 }
 const canned = { notes: "N1", options: ["A", "B", "C", "D"], people: [], scene: { place: "P", present: [] } }
 
 /** A library over `data` with chat and `other` on its shelf. */
 const other: Card = { ...chat, id: "other", title: "别处" }
-const over = (data: Data, m: () => Model = model) =>
-  library({ data: stocked(data, chat, other), overlay: player.harness, model: m })
+const over = (data: Data, m: () => Model = model) => library({ data: stocked(data, chat, other), model: m })
 
 // The library holds no open story and binds no card: a session per story, on the card its row names, opened on first
 // use and kept. The player's rows are read per request, so a write reaches every open session. The listing is every card's, each row naming its card and
@@ -89,6 +89,7 @@ const over = (data: Data, m: () => Model = model) =>
     return doc.phase === "narrate" ? { text: "雨停了。" } : defaultAnswer(doc, canned)
   })
   const lib = library({ data: open(":memory:"), model: () => scripted })
+  lib.packs.del("starter") // its options would ask record of every turn
   const made = lib.cards.create()
   const story = lib.stories.create(made.id)
   const say = (text: string) =>
@@ -232,7 +233,7 @@ const over = (data: Data, m: () => Model = model) =>
   const plain: Card = { ...chat, id: "plain", frame: chat.frame.filter((f) => f.id !== "persona") }
   const note: Card = { ...plain, id: "note", input: "note" }
   const data = open(":memory:")
-  const lib = library({ data: stocked(data, chat, plain, note), overlay: player.harness, model })
+  const lib = library({ data: stocked(data, chat, plain, note), model })
   const persona = (id: number) => lib.stories.list().find((x) => x.id === id)!.persona
   const marked = () => lib.personas.list().flatMap((p) => (p.default ? [p.id] : []))
   assert.equal(persona(lib.stories.create(plain.id)), null) // no persona yet: nothing to inherit
@@ -329,45 +330,42 @@ const over = (data: Data, m: () => Model = model) =>
   assert.equal(quick(lib.view(chat.id).layer.snippets), false)
   assert.equal(quick(lib.session(a).layer.snippets), false)
   lib.packs.del("l")
-  const rest = lib.packs.list()
+  // the install's default pack: listed marked, the mark not in its row, its fragment in the session under the card
   assert.deepEqual(
-    rest.map((r) => r.id),
-    ["harness"],
+    lib.packs.list().map((r) => [r.id, r.default]),
+    [["starter", true]],
   )
-  // the harness is not a row to delete, and the names of the ranks are not a pack's to take; a `base` would be folded away
-  assert.throws(() => lib.packs.del("harness"), /cannot be deleted/)
-  assert.throws(() => lib.packs.put({ id: "local", name: "x" }), /reserved/)
-  assert.throws(() => lib.packs.put({ id: "card", name: "x" }), /reserved/)
-  assert.throws(() => lib.packs.put({ id: "base", name: "x" }), /reserved/)
+  assert.equal("default" in data.packs.list()[0], false)
+  const language = player.defaultPack!.fragments![0].text
+  assert.ok(lib.session(a).layer.frame.some((f) => f.from === "starter" && f.text === language))
+  // the names of the ranks, those before included, are not a pack's to take
+  for (const id of ["local", "card", "base", "harness"])
+    assert.throws(() => lib.packs.put({ id, name: "x" }), /reserved/)
   assert.throws(() => lib.packs.put({ id: "a/b", name: "x" }), /no \//) // it would alias another pack's entries
-  // the overlay given stands until one is stored; a stored one wins, and takes the session with it
-  assert.deepEqual(rest[0].fragments, player.harness!.fragments)
-  assert.ok(lib.session(a).layer.frame.some((f) => f.text === player.harness!.fragments![0].text))
-  // the harness row: the whole row back stores nothing, one change stores that, and it is in the session
-  const bare = library({ data: open(":memory:") })
-  const code = bare.packs.list()[0]
-  assert.deepEqual(code.fragments, undefined)
-  bare.packs.put(code)
-  assert.deepEqual(bare.packs.list(), [code])
-  const stored = () => data.packs.list().find((p) => p.id === "harness")
-  assert.equal(stored(), undefined)
-  lib.packs.put({
-    ...harness("act"),
-    asks: harness("act").asks!.map((x) => (x.id === "lookup" ? { ...x, text: "MINE" } : x)),
-  })
-  assert.deepEqual(stored(), { id: "harness", name: "内置", asks: [{ id: "lookup", text: "MINE" }] })
-  assert.equal(lib.session(a).layer.asks["lookup"].text, "MINE")
-  assert.equal(lib.packs.list()[0].asks!.find((x) => x.id === "lookup")!.text, "MINE")
-  assert.equal(lib.packs.list()[0].fragments, undefined) // the stored one stands alone: the given is gone from it
-  lib.packs.put(harness("act"))
-  assert.equal(stored(), undefined)
+  // deleted, the mark goes with it and nothing stands in; a pack is marked only when told, never for being the only one;
+  // `default: false` clears its own mark alone
+  lib.packs.del("starter")
+  assert.equal(data.packs.default(), null)
+  assert.equal(
+    lib.session(a).layer.frame.some((f) => f.from === "starter"),
+    false,
+  )
+  lib.packs.put({ id: "m", name: "M" })
+  assert.equal(data.packs.default(), null)
+  lib.packs.put({ id: "m", name: "M", default: true })
+  assert.deepEqual(lib.packs.list(), [{ id: "m", name: "M", default: true }])
+  lib.packs.put({ id: "n", name: "N", default: false })
+  lib.packs.put({ id: "m", name: "M" })
+  assert.equal(data.packs.default(), "m")
+  lib.packs.put({ id: "m", name: "M", default: false })
+  assert.equal(data.packs.default(), null)
 }
 
 // The vault: a value goes in once and comes back only as a hint (first six, last four; none of a short key), except on
 // the one reveal. A write with a value and no type reads the type off the key: an OAuth token is a bearer, anything else
 // a key; a rename without a value keeps the type it had.
 {
-  const lib = library({ data: stocked(open(":memory:"), chat), overlay: player.harness })
+  const lib = library({ data: stocked(open(":memory:"), chat) })
   const VALUE = "sk-test-0123456789abcdef"
   const made = lib.secrets.add({ name: "Relay key", type: "api_key", value: VALUE })
   assert.deepEqual(made, { id: made.id, name: "Relay key", type: "api_key", hint: "sk-tes****cdef" })
@@ -407,7 +405,7 @@ const over = (data: Data, m: () => Model = model) =>
     secret: "k",
     models: [{ id: "m", contextTokens: 16000 }, { id: "n" }],
   }
-  const lib = library({ data: stocked(data, chat), overlay: player.harness, model })
+  const lib = library({ data: stocked(data, chat), model })
   const on = (m: Model) => (m === env ? "env" : (m.model as { modelId: string }).modelId)
   const pair = (model: string) => ({ provider: "relay", model })
   assert.equal(on(lib.model("narrate")), "env")
@@ -450,12 +448,9 @@ const over = (data: Data, m: () => Model = model) =>
   data.providers.list = list
   data.stories.list = stories
   lib.routing.write({ default: pair("m"), stages: { lookup: pair("n") } })
-  const pinned = library({ data: stocked(data, chat), overlay: player.harness, model, pinned: true })
+  const pinned = library({ data: stocked(data, chat), model, pinned: true })
   assert.deepEqual([on(pinned.model("lookup")), pinned.policy().budget], ["env", 8000])
-  assert.throws(
-    () => library({ data: stocked(open(":memory:"), chat), overlay: player.harness }).model("narrate"),
-    NoModel,
-  )
+  assert.throws(() => library({ data: stocked(open(":memory:"), chat) }).model("narrate"), NoModel)
 
   lib.providers.put({ ...relay, enabled: false })
   assert.throws(() => lib.model("narrate"), /provider "Relay": disabled/)
@@ -537,7 +532,7 @@ const over = (data: Data, m: () => Model = model) =>
   dead.close()
   const host = createServer((_, res) => res.end(JSON.stringify({ data: [{ id: "o" }, { id: "m" }] }))).listen(0)
   const hostUrl = at(host)
-  const lib = library({ data: stocked(open(":memory:"), chat), overlay: player.harness, model })
+  const lib = library({ data: stocked(open(":memory:"), chat), model })
   const made = lib.secrets.add({ name: "Relay key", type: "api_key", value: VALUE })
   const relay = {
     id: "relay",
@@ -621,7 +616,7 @@ const over = (data: Data, m: () => Model = model) =>
     secret: "k",
     models: [],
   })
-  const lib = library({ data: stocked(data, chat), overlay: player.harness, model })
+  const lib = library({ data: stocked(data, chat), model })
   try {
     assert.deepEqual(await lib.providers.models("a"), [{ id: "claude-haiku-5-5" }])
     const [listed] = await lib.providers.test("a")
@@ -762,7 +757,7 @@ for (const skip of [false, true]) {
 {
   const guarded: Card = { ...chat, id: "guarded", guard: ["Rule."] }
   const M = fake((o) => defaultAnswer(readStage(o), canned))
-  const lib = library({ data: stocked(open(":memory:"), guarded), overlay: player.harness, model: () => M })
+  const lib = library({ data: stocked(open(":memory:"), guarded), model: () => M })
   const key = lib.secrets.add({ name: "D", value: "decision-test-key" })
   const dec = {
     enabled: false,

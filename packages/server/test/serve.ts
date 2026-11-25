@@ -42,15 +42,16 @@ const scripted = {
   hat: "h",
 }
 const model = () => scripted
-/** `data` with `cards` on its shelf: a test installs what it plays, the program comes with none. */
+/** `data` with `cards` on its shelf: a test installs what it plays, the program comes with none. Its default pack is
+ *  the recording one (notes on). */
 const stocked = (data: Data, ...cards: Card[]) => {
   for (const c of cards) shelf(data).install(c, { via: "file" }, { replace: true })
+  data.packs.put(player.defaultPack!)
   return data
 }
 const shared = stocked(open(":memory:"), { ...chat, greetings: [{ text: "G" }], lexicon: [{ pattern: "CARD-BAN" }] })
 const lib = library({
   data: shared,
-  overlay: player.harness,
   model,
 })
 
@@ -97,7 +98,7 @@ const sse = (text: string) =>
     // what the card page reads: the player's row, its mounts by name, the one merge, a card's items without their text
     assert.deepEqual([about["local"], about["mounts"]], [{ id: "local", name: chat.id, card: chat.id }, []])
     const merged = about["layer"] as { frame: { from: string; text?: string }[]; names: unknown }
-    assert.ok(merged.frame.some((f) => f.from === "harness" && f.text))
+    assert.ok(merged.frame.some((f) => f.from === "starter" && f.text))
     assert.ok(merged.frame.some((f) => f.from === "card") && merged.frame.every((f) => f.from !== "card" || !f.text))
 
     // the local row: read whole, replaced whole, its card the URL's; the card follows at once, a bad body is a 400
@@ -457,8 +458,8 @@ const sse = (text: string) =>
         body: v === undefined ? undefined : JSON.stringify(v),
       })
     const kit = { name: "文风", fragments: [{ id: "style", text: "PACK-STYLE" }] }
-    const noRanks = (rows: { id: string }[]) => rows.filter((r) => r.id !== "harness")
-    const packsIn = async (r: Response) => noRanks((await r.json()) as { id: string }[])
+    const others = (rows: { id: string }[]) => rows.filter((r) => r.id !== "starter")
+    const packsIn = async (r: Response) => others((await r.json()) as { id: string }[])
     assert.deepEqual(
       await packsIn(await pack({ ...kit, fragments: [{ ...kit.fragments[0], role: "user", when: { all: [] } }] })),
       [{ id: "kit", ...kit }],
@@ -466,18 +467,14 @@ const sse = (text: string) =>
     assert.equal((await pack({ name: 1 })).status, 400)
     assert.equal((await pack({ name: "x", entries: [{ id: "a", layers: [] }] })).status, 400)
     assert.equal((await pack({ name: "x" }, "local")).status, 400)
-    const layerRows = (await (await fetch(`${base}/packs`)).json()) as {
-      id: string
-      asks?: { id: string; text: string }[]
-    }[]
+    const layerRows = (await (await fetch(`${base}/packs`)).json()) as { id: string; default?: boolean }[]
     assert.deepEqual(
-      layerRows.map((r) => r.id),
-      ["harness", "kit"],
-    )
-    assert.equal(
-      layerRows[0].asks!.some((a) => a.id === "switch.pov.second"),
-      true,
-    ) // the harness row whole
+      layerRows.map((r) => [r.id, r.default]),
+      [
+        ["starter", true],
+        ["kit", undefined],
+      ],
+    ) // the install's default marked
     await local({ persona: "monk", mounts: ["kit"] })
     assert.deepEqual(((await (await local()).json()) as { mounts: unknown }).mounts, ["kit"])
     assert.deepEqual(((await (await fetch(`${base}/cards/${chat.id}`)).json()) as { mounts: unknown }).mounts, [
@@ -487,37 +484,13 @@ const sse = (text: string) =>
     assert.deepEqual(await packsIn(await pack()), [])
     assert.equal(((await (await local()).json()) as { mounts?: unknown }).mounts, undefined)
     assert.equal((await headOf("unpacked")).includes("PACK-STYLE"), false)
-    // the harness row: only the difference stored, the rest its default, through the lock like any row; it cannot be
-    // deleted, and `base` is no one's id now (a DELETE of it is a no-op)
-    const given = { id: "harness", name: "内置", ...player.harness }
-    const edited = {
-      ...layerRows[0],
-      asks: layerRows[0].asks!.map((a) => (a.id === "lookup" ? { ...a, text: "OVERLAY" } : a)),
-      products: [
-        { id: "options", on: true, shape: { kind: "table", columns: [] } },
-        { role: "theater" as const, id: "town", text: "gossip", shape: { kind: "list" } },
-      ],
-    }
-    const after = (await (await pack(edited, "harness")).json()) as typeof layerRows
-    assert.equal(after[0].asks!.find((a) => a.id === "lookup")!.text, "OVERLAY")
-    assert.equal(after[0].asks!.length, layerRows[0].asks!.length)
-    assert.deepEqual(
-      shared.packs.list().find((p) => p.id === "harness"),
-      {
-        ...given,
-        asks: [{ id: "lookup", text: "OVERLAY" }],
-        products: [
-          { id: "options", on: true },
-          { id: "town", text: "gossip" },
-        ],
-      },
-    )
-    await pack(layerRows[0], "harness")
-    assert.deepEqual(
-      shared.packs.list().find((p) => p.id === "harness"),
-      given,
-    )
-    assert.equal((await pack(undefined, "harness")).status, 400)
+    // the mark: `default` on a PUT moves it, a DELETE takes it along; the ranks' names, those before too, are no one's id
+    const marked = async (r: Response) =>
+      ((await r.json()) as { id: string; default?: boolean }[]).flatMap((p) => (p.default ? [p.id] : []))
+    assert.deepEqual(await marked(await pack({ ...kit, default: true })), ["kit"])
+    assert.deepEqual(await marked(await pack()), [])
+    assert.deepEqual(await marked(await pack({ ...player.defaultPack, default: true }, "starter")), ["starter"])
+    assert.equal((await pack({ name: "x" }, "harness")).status, 400)
     assert.equal((await pack({ name: "x" }, "base")).status, 400)
     // 代称: the local row keeps the player's table, a bad value is refused at the boundary, /cards/<id> reads it back
     assert.equal((await local({ names: { char: "两\n行" } })).status, 400)
@@ -544,7 +517,7 @@ const sse = (text: string) =>
         ? { text: JSON.stringify({ violated: ["R"] }) }
         : doc.phase !== "narrate"
           ? defaultAnswer(doc, canned)
-          : o.prompt.some((m) => fakeText(m).includes("Previous draft broke:"))
+          : o.prompt.some((m) => fakeText(m).includes("<correction>"))
             ? { text: "SECOND DRAFT", delay: 300 } // its first character is 600 ms away: the stop lands before it
             : { text: "FIRST DRAFT" }
     }),
@@ -553,7 +526,6 @@ const sse = (text: string) =>
   const data = stocked(open(":memory:"), { ...chat, guard: ["R"] })
   const { lib: guarded, handler } = tavern({
     data,
-    overlay: player.harness,
     model: () => drafts,
   })
   const story = guarded.stories.create(chat.id)
@@ -593,7 +565,7 @@ const sse = (text: string) =>
     const doc = readStage(o)
     return doc.phase === "narrate" ? { text: "hello world ".repeat(5), delay: 20 } : defaultAnswer(doc, canned)
   })
-  const { handler } = tavern({ data: stocked(data, chat, two), overlay: player.harness, model: () => slowly })
+  const { handler } = tavern({ data: stocked(data, chat, two), model: () => slowly })
   const server = createServer(node(handler)).listen(0)
   const base = `http://localhost:${(server.address() as AddressInfo).port}`
   const on = (id: number, init: RequestInit = {}) => ({ ...init, headers: { "x-tavern-story": String(id) } })
@@ -642,7 +614,7 @@ const sse = (text: string) =>
   const deadUrl = `http://localhost:${(dead.address() as AddressInfo).port}`
   dead.close()
   // the wire called directly, no listener: the same answers a socket carries
-  const wire = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness, model }).handler
+  const wire = tavern({ data: stocked(open(":memory:"), chat), model }).handler
   const fetch = (url: string, init?: RequestInit) => wire(new Request(url, init))
   const base = "http://tavern"
   const call = async (method: string, path: string, v?: unknown) => {
@@ -849,7 +821,7 @@ const sse = (text: string) =>
 // it is sent fails with the code the client links to Settings → 默认模型 by (issue #61); a pair on a disabled provider
 // with the code it links to Settings → 服务商 by (#189).
 {
-  const t = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness })
+  const t = tavern({ data: stocked(open(":memory:"), chat) })
   const headers = { "x-tavern-story": String(t.lib.stories.create(chat.id)) }
   const bare = createServer(node(t.handler)).listen(0)
   const base = `http://localhost:${(bare.address() as AddressInfo).port}`
@@ -928,7 +900,7 @@ const sse = (text: string) =>
   const port = (refusing.address() as AddressInfo).port
   const screen = memoryScreen({ columns: 48 })
   const logbook = openLogbook({ screen })
-  const t = tavern({ data: stocked(open(":memory:"), chat), overlay: player.harness, model, logbook })
+  const t = tavern({ data: stocked(open(":memory:"), chat), model, logbook })
   logbook.host({ url: "http://127.0.0.1:7777", data: "/srv/tavern", version: "dev", model: "Relay / m" })
   const key = t.lib.secrets.add({ name: "K", value: "sk-test-0123456789abcdef" })
   t.lib.providers.put({
@@ -1032,7 +1004,6 @@ const sse = (text: string) =>
   const data = stocked(open(":memory:"), { ...chat, greetings: [{ text: "G" }] })
   const silentLib = library({
     data,
-    overlay: player.harness,
     model: () =>
       fake((o) => {
         const doc = readStage(o)

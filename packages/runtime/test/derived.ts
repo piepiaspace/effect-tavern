@@ -297,5 +297,5 @@ console.log("derived ok")
       .map((d) => d.resourceId),
     ["2", "3"],
   )
-  assert.equal(view().ledger()[0]?.text, "Ledger:\n → -; read -; fired -\n3 → -; read -; fired -")
+  assert.equal(view().ledger()[0]?.text, " → -; read -; fired -\n3 → -; read -; fired -")
 }

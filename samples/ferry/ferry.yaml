@@ -233,6 +233,15 @@ products:
         - { key: id, type: enum, catalog: ferry_bgm }
     text: |-
       若本轮开篇或江面晴雨、夜航氛围发生变化，选入一首契合当前意境的江上曲目；若延续上一幕氛围无需换曲，返回空数组。
+  - id: inner
+    role: theater
+    surface: theater
+    label: 船夫心声
+    shape: { kind: text }
+    stage: narrate
+    on: false
+    text: |-
+      这一幕里{{char}}心里闪过却没有说出口的念头，简短一段。
 media:
   illustrations: [{ product: ferry_cg }]
   portraits:

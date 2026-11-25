@@ -73,7 +73,7 @@ export type Fold = typeof Fold.Type
 export const Product = Schema.Struct({
   id: Schema.String,
   label: Schema.optionalKey(Schema.String), // the shown name (the Writing page's toggle, a drawn product); the id when absent
-  text: Schema.String, // the question; an ask `product.<id>` is a text patch at its row's rank (layer.ts)
+  text: Schema.String, // the question
   shape: Shape,
   role: Schema.Literals(["world", "chronicle", "theater"]),
   initial: Schema.optionalKey(Schema.Unknown),
@@ -84,10 +84,13 @@ export const Product = Schema.Struct({
   trigger: Schema.optionalKey(Schema.Literals(["demand", "turn"])), // theater trigger when on: per-turn auto (default) or on-demand
   feed: Schema.optionalKey(Schema.Boolean), // default false: fold goes back to the model (Known / Current)
   recall: Schema.optionalKey(Schema.Union([Schema.Literal(true), Schema.String])), // list: true; table: the hook column
+  surface: Schema.optionalKey(Schema.Literals(["theater", "composer"])), // theater only: drawn on the page (default) or offered above the input box
 })
 export type Product = typeof Product.Type
 export const feedsChronicle = (p: Product) => p.role === "chronicle" && !!p.on && !!p.feed
-/** A card's entry: a patch over the harness default of the same id, or a whole new product. */
+/** A list the client offers above the input box, each item a next input the player may pick. */
+export const composer = (p: Pick<Product, "surface">) => p.surface === "composer"
+/** A row's entry: a patch over a lower rank's product of the same id, or a whole new product (layer.ts). */
 export const ProductPatch = Schema.Struct({
   ...Product.fields,
   text: Schema.optionalKey(Schema.String),
@@ -322,6 +325,10 @@ export const validate = <P extends Partial<Product> & { id: string }>(p: P): P &
   if (p.role === "world" && p.shape.kind === "table" && p.shape.columns.some((c) => c.key === "entityId"))
     throw new Error(`${p.id}: entityId is reserved for host identity`)
   if (p.id === "answers") throw new Error("answers is reserved for rule readouts")
+  if (p.surface === "composer" && (p.role !== "theater" || p.shape.kind !== "list"))
+    throw new Error(`${p.id}: a composer product is a theater list`)
+  if (p.surface === "composer" && p.trigger === "demand")
+    throw new Error(`${p.id}: a composer product is never demanded`)
   if (
     typeof p.fold === "object" &&
     !(p.shape.kind === "table" && p.shape.columns.some((c) => c.key === (p.fold as { key: string }).key))

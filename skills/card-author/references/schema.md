@@ -65,7 +65,7 @@ Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore
   - `Effect_`: `{ path, set }`, `{ path, add }` (number or `{ path }`, clamped to `[min, max]`), or `{ event }` (`{path}` interpolates post-effect state).
 - **`readouts`**: `{ id, text, when?, options: [{ id, text, do }] }`.
   - Asked in `record` when `when` holds on post-settlement state; chosen option's `do` effects apply deterministically.
-- **`over`** (`Cond`, code-decided ending) and **`cap`** (max beats per turn).
+- **`over`** (`Cond`, code-decided ending).
 
 ### 5. `lore`: Progressive Layers, Sections & `ContextPolicy`
 
@@ -81,13 +81,13 @@ Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore
 
 ### 6. `products` & `catalogs`: World State, Chronicle & Theater
 
-- **`products`**: `{ id, label?, text, shape, role, initial?, stage?, fold?, when?, on?, trigger?, feed?, recall? }`.
-  - Patches harness defaults by `id` (`notes` on, `options` and `inner` off) or defines new products.
+- **`products`**: `{ id, label?, text, shape, role, initial?, stage?, fold?, when?, on?, trigger?, feed?, recall?, surface? }`.
+  - Cards declare their own products whole (the harness ships no default products; a player's default writing pack may supply `options`, `notes`, `inner` below the card).
   - **Shapes:** `text` (`max?`), `list` (`max?`), `record` (`keys`, max 1 nested list/table/record), `table` (`columns` of `text | int | boolean | enum`, `max?`, row `filter?` `Cond`).
   - **Explicit `role` (required on new products):**
     1. `world`: Current mutable world state (`scene`, `people`, `bag`). Lives in `WorldState.world`; updated via sparse `DomainChange` ops (`insert_entity`, `patch_entity`, `remove_entity`, `patch_record`, `replace`) in `record`. No `fold`, never `stage: "narrate"`, identifier `id`, no column named `entityId` (assigned by host; `initial` for tables is `{ entityId: row }`). Supports `feed: true` (`Current:` line) and `recall: "<col>"` (lookup index). Readable in `Cond` as `world.<id>.<key>`.
     2. `chronicle`: Path-accumulated memory (`notes`). Uses `fold` (`"append"`, `"latest"`, or `{ key }`). `feed: true` feeds `Known:`; `recall` feeds lookup.
-    3. `theater`: Player-only output (`inner`, `options`, commentary). Never `feed` or `recall`. `trigger: "turn"` (default) or `"demand"`. `stage: "narrate"` writes `text` inline via `<<aside>> <id>` with zero extra LLM calls.
+    3. `theater`: Player-only output (`inner`, `options`, commentary). Never `feed` or `recall`. `surface: "theater"` (default, drawn on the page) or `"composer"` (`list` shape, `stage: "record"`, offered above the input box, never `trigger: "demand"`). `trigger: "turn"` (default) or `"demand"`. `stage: "narrate"` writes `text` inline via `<<aside>> <id>` with zero extra LLM calls.
 - **`catalogs`**: `[{ id, baseUrl?, items: [{ id, when?, variants? }] }]`.
   - Referenced by an `enum` column (`catalog: "<id>"` instead of `options`) on `chronicle` or `theater` products (never `world`).
   - At `record`, pickable enum values are dynamically restricted to items whose `when` holds (if none hold, that table/key is omitted for the turn; zero prompt bloat). Readers resolve `variants` under `baseUrl` by node seed.

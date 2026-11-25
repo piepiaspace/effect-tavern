@@ -1,17 +1,16 @@
-// The two tabs the pack editor (packs.tsx) and the Writing page (writing.tsx) share: 文风与要求 (`Layer.fragments`) and
-// 问法 (`Layer.asks`). Their own module, so the lazily loaded Writing page does not carry the rest of the pack editor.
+// What the pack editor (packs.tsx) and the Writing page (writing.tsx) share: the 文风与要求 tab (`Layer.fragments`) and
+// the product dialog's kind and trigger picks. Their own module, so the lazily loaded Writing page does not carry the
+// rest of the pack editor.
 import { SLOTS, type Fragment } from "@effect-tavern/runtime/src/fragment.ts"
-import { harness, type Layer } from "@effect-tavern/runtime/src/layer.ts"
+import type { Layer } from "@effect-tavern/runtime/src/layer.ts"
 import { createSignal, For, Show } from "solid-js"
-import { autosize } from "./autosize.ts"
 import { Menu, newId, Switch, Well } from "./controls.tsx"
-import { Caret, Close, Snippets as Plus, Up } from "./icons.tsx"
-import { stageAskLabels } from "./pack.ts"
+import { Close, Snippets as Plus } from "./icons.tsx"
+import { KIND_LABEL, PRODUCT_KINDS, type ProductKind } from "./pack.ts"
 import { EXTRA, addFragment, atOf, removeFragment, setFragmentAt, setFragmentText } from "./requirements.ts"
-import { SWITCHES } from "./switches.ts"
+import type { Pack } from "./store.ts"
 import { t } from "./i18n.ts"
 
-export const DEFAULT_ASKS = new Map((harness("act").asks ?? []).map((a) => [a.id, a.text]))
 export type Save = (edit: (p: Layer) => Layer) => Promise<void>
 
 /** A head slot's name (fragment.ts SLOTS) in the locale in force; an id the table lacks stays as written. */
@@ -25,7 +24,6 @@ const SLOT_NAMES: Record<string, () => string> = {
   verbosity: () => t("switches.verbosity"),
 }
 const slotName = (s: string) => SLOT_NAMES[s]?.() ?? s
-export { stageAskLabels }
 
 export const leaveArea = (e: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) => {
   if (e.isComposing || e.key !== "Escape") return
@@ -39,16 +37,17 @@ export const leaveInput = (e: KeyboardEvent & { currentTarget: HTMLInputElement 
 }
 
 // ───────── 1. 文风与要求 (`Layer.fragments`) ─────────
-export const ProseTab = (props: { pack: Layer; onSave: Save; inherited?: readonly Fragment[] }) => {
+export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly Fragment[] }) => {
   const frags = () => props.pack.fragments ?? []
   const visible = (f: Fragment) => !props.inherited || f.id !== EXTRA
-  const noMode = () => (props.pack.id === "harness" ? "yield" : "override") // what a fragment with no `mode` does (layer.ts)
+  const noMode = () => (props.pack.default ? "yield" : "override") // what a fragment with no `mode` does (layer.ts)
   const [draft, setDraft] = createSignal<string | null>(null)
   const commitDraft = () => {
     const d = draft()
     if (d === null) return
     setDraft(null)
-    if (d.trim()) void props.onSave((p) => addFragment(p, newId("req"), d, "tail"))
+    const mode = props.pack.default ? ("yield" as const) : undefined
+    if (d.trim()) void props.onSave((p) => addFragment(p, newId("req"), d, "tail", mode))
   }
   const updateFrag = (idx: number, patch: Partial<Fragment>) =>
     void props.onSave((p) => {
@@ -199,7 +198,7 @@ export const ProseTab = (props: { pack: Layer; onSave: Save; inherited?: readonl
                             i,
                             v === "mute"
                               ? { mode: v, text: undefined, enabled: undefined }
-                              : { mode: v === noMode() ? undefined : v },
+                              : { mode: !props.pack.default && v === "override" ? undefined : v },
                           )
                         }
                       />
@@ -244,163 +243,45 @@ export const ProseTab = (props: { pack: Layer; onSave: Save; inherited?: readonl
   )
 }
 
-// ───────── 6. 问法 (`Layer.asks`: stage instructions & switch sentences) ─────────
-interface AskItem {
-  id: string
-  label: string
-}
-
-export const AsksTab = (props: {
-  pack: Layer
-  onSave: Save
-  inherited?: Record<string, { text?: string; from: string }>
-}) => {
-  const ownMap = () => new Map((props.pack.asks ?? []).map((a) => [a.id, a.text]))
-  const isHarness = () => props.pack.id === "harness"
-  const [openState, setOpenState] = createSignal<{ packId: string; ids: Set<string> }>({ packId: "", ids: new Set() })
-  const isOpen = (id: string) => openState().packId === props.pack.id && openState().ids.has(id)
-  const toggleOpen = (id: string) => {
-    const cur = openState()
-    const next = cur.packId === props.pack.id ? new Set(cur.ids) : new Set<string>()
-    if (next.has(id)) next.delete(id)
-    else next.add(id)
-    setOpenState({ packId: props.pack.id, ids: next })
-  }
-
-  const setAsk = (id: string, raw?: string) => {
-    void props.onSave((p) => {
-      const cur = (p.asks ?? []).filter((a) => a.id !== id)
-      const next = raw === undefined ? cur : [...cur, { id, text: raw.trim() }]
-      const { asks: _, ...rest } = p
-      return next.length ? { ...rest, asks: next } : rest
-    })
-  }
-  const modified = (id: string) => ownMap().has(id) && (!isHarness() || ownMap().get(id) !== DEFAULT_ASKS.get(id))
-  const disabled = (id: string) => ownMap().get(id) === ""
-  const valOf = (id: string) =>
-    isHarness() ? (ownMap().get(id) ?? DEFAULT_ASKS.get(id) ?? "") : (ownMap().get(id) ?? "")
-  const placeholderOf = (id: string) => {
-    const def = DEFAULT_ASKS.get(id) ?? ""
-    if (
-      id === "narrate.role" &&
-      !props.inherited?.[id]?.text &&
-      props.inherited?.[id]?.from !== "card" &&
-      !modified(id)
-    ) {
-      return t("packs.narratorExample")
-    }
-    if (disabled(id)) return ""
-    return props.inherited?.[id]?.text ?? (props.inherited?.[id]?.from === "card" ? t("writing.cardPrompt") : def)
-  }
-  const previewOf = (id: string) => (valOf(id) || placeholderOf(id)).replace(/\s+/g, " ").trim()
-
-  const visibleStageAsks = (): AskItem[] =>
-    (isHarness() ? stageAskLabels() : stageAskLabels().filter(([id]) => id === "narrate.role" || ownMap().has(id))).map(
-      ([id, label]) => ({ id, label }),
-    )
-
-  const switchAsks = (): AskItem[] =>
-    SWITCHES.flatMap((s) =>
-      s.values.map(([val, labelKey]) => ({
-        id: `switch.${s.key}.${String(val)}`,
-        label: t("packs.switchRow", { switch: t(s.label), value: t(labelKey) }),
-      })),
-    )
-
-  const renderGroup = (items: () => AskItem[]) => (
-    <div class="asks-group">
-      <For each={items()} keyed={(row) => row.id}>
-        {(row) => {
-          const id = () => row().id
-          const open = () => isOpen(id())
-          return (
-            <div
-              class={{ "ask-item": true, open: open() }}
-              data-ask={id()}
-              data-off={modified(id()) && disabled(id()) ? "true" : undefined}
-            >
-              <div class="ask-head">
-                <button
-                  type="button"
-                  class="ask-toggle"
-                  aria-expanded={open() ? "true" : "false"}
-                  onClick={() => toggleOpen(id())}
-                >
-                  <span class="ask-label">{row().label}</span>
-                  <span class="tag mono ask-id">{id()}</span>
-                  <Show when={!open()}>
-                    <span class="ask-preview">{previewOf(id())}</span>
-                  </Show>
-                </button>
-                <Show
-                  when={open()}
-                  fallback={
-                    <Show when={modified(id())}>
-                      <span class="tag ask-mod">{disabled(id()) ? t("packs.disabled") : t("packs.overridden")}</span>
-                    </Show>
-                  }
-                >
-                  <div class="ask-actions">
-                    <span class={{ tag: true, "ask-mod": modified(id()) }}>
-                      {modified(id())
-                        ? disabled(id())
-                          ? t("packs.disabled")
-                          : t("packs.overridden")
-                        : t("packs.inherited")}
-                    </span>
-                    <button
-                      type="button"
-                      class="btn xs ghost"
-                      disabled={disabled(id())}
-                      onClick={() => setAsk(id(), "")}
-                    >
-                      {t("packs.disable")}
-                    </button>
-                    <Show when={modified(id())}>
-                      <button type="button" class="btn xs ghost" onClick={() => setAsk(id())}>
-                        {isHarness() ? t("packs.restoreDefault") : t("packs.restoreInheritance")}
-                      </button>
-                    </Show>
-                  </div>
-                </Show>
-                <Show when={open()} fallback={<Caret class="ask-caret" aria-hidden="true" />}>
-                  <Up class="ask-caret" aria-hidden="true" />
-                </Show>
-              </div>
-              <Show when={open()}>
-                <div class="ask-body">
-                  <textarea
-                    ref={autosize(() => valOf(id()) || placeholderOf(id()))}
-                    class="ask-textarea"
-                    aria-label={row().label}
-                    placeholder={placeholderOf(id())}
-                    value={valOf(id())}
-                    onChange={(e) => setAsk(id(), e.currentTarget.value.trim() || undefined)}
-                    onKeyDown={leaveArea}
-                  />
-                </div>
-              </Show>
-            </div>
-          )
-        }}
+// ───────── the product dialog's picks ─────────
+/** What a new or self-declared product is for (pack.ts `ProductKind`). */
+export const KindPick = (props: { value: ProductKind; onPick: (k: ProductKind) => void }) => (
+  <div class="mfield">
+    <span>{t("packs.kind")}</span>
+    <div class="at-toggle" role="group" aria-label={t("packs.kind")}>
+      <For each={PRODUCT_KINDS}>
+        {(kind) => (
+          <button
+            type="button"
+            aria-pressed={props.value === kind ? "true" : "false"}
+            onClick={() => props.onPick(kind)}
+          >
+            {t(KIND_LABEL[kind])}
+          </button>
+        )}
       </For>
     </div>
-  )
-
-  return (
-    <section class="asks-panel scroller" role="tabpanel" aria-label={t("packs.tabAsks")}>
-      <div class="asks-section">
-        <div class="block-title">
-          <h3>{t("packs.stageAsks")}</h3>
-        </div>
-        {renderGroup(visibleStageAsks)}
-      </div>
-      <div class="asks-section">
-        <div class="block-title">
-          <h3>{t("packs.switchSentences")}</h3>
-        </div>
-        {renderGroup(switchAsks)}
-      </div>
-    </section>
-  )
-}
+  </div>
+)
+/** A 小剧场's trigger: every turn, or on demand. */
+export const TriggerPick = (props: { value: "demand" | "turn"; onPick: (v: "demand" | "turn") => void }) => (
+  <div class="mfield">
+    <span>{t("packs.trigger")}</span>
+    <div class="at-toggle" role="group" aria-label={t("packs.trigger")}>
+      <button
+        type="button"
+        aria-pressed={props.value === "demand" ? "true" : "false"}
+        onClick={() => props.onPick("demand")}
+      >
+        {t("packs.onDemand")}
+      </button>
+      <button
+        type="button"
+        aria-pressed={props.value === "turn" ? "true" : "false"}
+        onClick={() => props.onPick("turn")}
+      >
+        {t("packs.everyTurn")}
+      </button>
+    </div>
+  </div>
+)

@@ -9,10 +9,9 @@ import type { Card, Effect_, Field } from "./card.ts"
 import { type Cond, holds, reads, STATE_HOLE } from "./cond.ts"
 import { SLOTS } from "./fragment.ts"
 import { hook } from "./lore.ts"
-import { harness } from "./layer.ts"
 import { mediaBaseUrlError, mediaFileError } from "./media.ts"
 import { colsAt, type Product, type Shape } from "./product.ts"
-import { HARNESS_HOLES, HOLE, unfilled } from "./names.ts"
+import { HOLE, unfilled } from "./names.ts"
 import { type Entry, scan } from "./polish.ts"
 
 const dupes = (ids: readonly string[]) => [...new Set(ids.filter((x, i) => ids.indexOf(x) !== i))]
@@ -214,10 +213,9 @@ const INLINE: Entry[] = [
   { pattern: "end of each response", hint: TAIL },
 ]
 
-/** The card's text a hole can sit in: the prose, its asks, its products' questions, its guard lines, its readouts. */
+/** The card's text a hole can sit in: the prose, its products' questions, its guard lines, its readouts. */
 const named = (card: Card): [string, string][] => [
   ...texts(card),
-  ...(card.asks ?? []).flatMap((f): [string, string][] => (f.text ? [[`asks.${f.id}.text`, f.text]] : [])),
   ...(card.products ?? []).flatMap((p): [string, string][] => (p.text ? [[`products.${p.id}.text`, p.text]] : [])),
   ...card.guard.map((g, i): [string, string] => [`guard[${i}]`, g]),
   ...(card.rules.readouts ?? []).flatMap((q): [string, string][] => [
@@ -250,7 +248,6 @@ const rules: Rule[] = [
     const texts: [string, string | undefined][] = [
       ...card.frame.map((f): [string, string | undefined] => [`frame.${f.id}.text`, f.text]),
       ...card.fiction.map((f): [string, string] => [`fiction.${f.id}.text`, f.text ?? ""]),
-      ...(card.asks ?? []).map((f): [string, string | undefined] => [`asks.${f.id}.text`, f.text]),
       ...openings(card).flatMap((g): [string, string | undefined][] => [
         [`${g.path}.text`, g.text],
         [`${g.path}.note`, g.note],
@@ -302,11 +299,7 @@ const rules: Rule[] = [
         : [],
     ),
   (card) => {
-    const products = [
-      ...new Map(
-        [...(harness(card.input ?? "act").products ?? []), ...(card.products ?? [])].map((p) => [p.id, p]),
-      ).values(),
-    ]
+    const products = card.products ?? []
     return (card.passages ?? []).flatMap((p, i) =>
       (p.digest ?? []).flatMap((id, j): Diagnostic[] =>
         products.some((q) => q.id === id && (q.stage ?? "record") === "record")
@@ -348,19 +341,16 @@ const rules: Rule[] = [
       })),
   // A hole with no default: it goes out as the literal `{{key}}` (names.ts) until a pack or the player names it, so a typo
   // (`{{chr}}`) reaches the model as written. A warn, since leaving one to the player may be the card's design. `user` is exempt: it is the player's to name (a persona or
-  // a local name), and a warning would push an author to invent a stand-in word. The harness's own holes in a delivery
-  // ask (`{{tool}}`, and `{{context}}` in `narrate.deliver.tool`: names.ts `HARNESS_HOLES`) are filled by the harness.
+  // a local name), and a warning would push an author to invent a stand-in word.
   (card) =>
     named(card).flatMap(([path, t]) =>
-      unfilled(t, { user: "", ...card.names })
-        .flatMap((k) => ((HARNESS_HOLES[/^asks\.(.+)\.text$/.exec(path)?.[1] ?? ""] ?? []).includes(k) ? [] : [k]))
-        .map((k) => ({
-          rule: "unfilled-name",
-          level: "warn" as const,
-          path,
-          message: `{{${k}}} has no default in the card's names`,
-          hint: "give it in `names`; a pack or the player can still override it",
-        })),
+      unfilled(t, { user: "", ...card.names }).map((k) => ({
+        rule: "unfilled-name",
+        level: "warn" as const,
+        path,
+        message: `{{${k}}} has no default in the card's names`,
+        hint: "give it in `names`; a pack or the player can still override it",
+      })),
     ),
   // The ecosystem's scripted macros are not holes: nothing expands them, so the model would read them as written.
   (card) =>
@@ -686,10 +676,7 @@ const rules: Rule[] = [
     if (!card.media && !card.views?.length) return []
     const media = card.media ?? {}
     const out: Diagnostic[] = []
-    const products = new Map<string, Partial<Product> & { id: string }>(
-      (harness(card.input ?? "act").products ?? []).map((p) => [p.id, p]),
-    )
-    for (const p of card.products ?? []) products.set(p.id, { ...products.get(p.id), ...p })
+    const products = new Map<string, Partial<Product> & { id: string }>((card.products ?? []).map((p) => [p.id, p]))
     const catalogs = new Map((card.catalogs ?? []).map((c) => [c.id, c]))
     const consumers: { catalog: string; expected: "image" | "audio"; path: string }[] = []
 

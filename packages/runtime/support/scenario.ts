@@ -12,7 +12,7 @@ const Expect = Schema.Struct({
   events: Schema.optionalKey(Schema.Array(Schema.String)),
   windows: Schema.optionalKey(Schema.Array(Schema.String)),
   lore: Schema.optionalKey(Schema.Array(Schema.String)),
-  end: Schema.optionalKey(Schema.Literals(["end", "over", "cap", "stopped"])),
+  end: Schema.optionalKey(Schema.Literals(["end", "over", "stopped"])),
   products: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 })
 const Scenario = Schema.Struct({

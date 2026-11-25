@@ -42,7 +42,8 @@ export interface CliHost {
   context(id: number, node: number | null): Promise<ActiveContextView>
   detail(id: number, node: number): Promise<TurnDetail>
   trace(id: number, node: number): Promise<unknown>
-  input(id: number): Promise<"act" | "note">
+  /** The story's card as a client draws it (`GET /card`): its channel, the products the merge declares. */
+  card(id: number): Promise<CardView>
   submit(id: number, action: Action, emit: Emit): Promise<void>
   attach(id: number, emit: Emit): Promise<void>
   stop(id: number): Promise<unknown>
@@ -140,7 +141,7 @@ export const host = (wire: Wire): CliHost => {
     context: (id, node) => json(`/context?node=${node ?? "root"}`, "GET", undefined, id),
     detail: (id, node) => json(`/nodes/${node}/detail`, "GET", undefined, id),
     trace: (id, node) => json(`/nodes/${node}/trace`, "GET", undefined, id),
-    input: async (id) => (await json<CardView>("/card", "GET", undefined, id)).input,
+    card: (id) => json("/card", "GET", undefined, id),
     submit: async (id, action, emit) => readEvents(await request("/", "POST", action, id), emit),
     attach: async (id, emit) => readEvents(await request("/turn", "GET", undefined, id), emit),
     stop: (id) => json("/stop", "POST", undefined, id),

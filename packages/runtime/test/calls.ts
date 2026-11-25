@@ -6,7 +6,7 @@ import { bind, fake, type FakeCall, type Model } from "@effect-tavern/provider"
 import { Cause, Deferred, Effect, Exit, Stream } from "effect"
 import type { Hat } from "../src/fragment.ts"
 import { makeSession, type Event, type Phase } from "../src/session.ts"
-import { loadCard, chat } from "./cards/index.ts"
+import { loadCard, chat, productsOff } from "./cards/index.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 
 const base = await loadCard("wuxia")
@@ -38,7 +38,7 @@ const scripted = (fail?: Phase) =>
 const run = async (fail?: Phase, demand = false) => {
   const model = scripted(demand ? undefined : fail)
   let current = model
-  const S = makeSession({ card, rows: () => ({}), model: () => current })
+  const S = makeSession({ card, rows: () => productsOff, model: () => current })
   const root = S.greet(card.greetings[0]).node!
   const events: Event[] = []
   const collect = (s: Stream.Stream<Event, unknown>) =>
@@ -76,7 +76,7 @@ for (const ceiling of [3000, undefined]) {
     seen.set(d.phase, o.maxOutputTokens)
     return d.phase === "narrate" ? { text: "不是这样而是那样。".repeat(30) } : defaultAnswer(d, canned)
   })
-  const S = makeSession({ card, rows: () => ({}), model: () => ({ ...model, maxOutputTokens: ceiling }) })
+  const S = makeSession({ card, rows: () => productsOff, model: () => ({ ...model, maxOutputTokens: ceiling }) })
   const root = S.greet(card.greetings[0]).node!
   assert.ok(
     Exit.isSuccess(await Effect.runPromiseExit(Stream.runDrain(S.act(root.id, { text: "我看了看四周。⦅小心⦆" })))),
@@ -169,7 +169,7 @@ for (const [phase, demand] of [
         ]),
       }),
     })
-    const S = makeSession({ card: chat, rows: () => ({}), model: () => M })
+    const S = makeSession({ card: chat, rows: () => productsOff, model: () => M })
     const root = S.greet({ text: "Opening." }).node!
     const { events, exit } = await collectEvents(S.act(root.id, { text: "Tell me more." }))
     assert.ok(Exit.isFailure(exit))
@@ -205,7 +205,7 @@ for (const [phase, demand] of [
         ]),
       }),
     })
-    const S = makeSession({ card: chat, rows: () => ({}), model: () => M })
+    const S = makeSession({ card: chat, rows: () => productsOff, model: () => M })
     const root = S.greet({ text: "Opening." }).node!
     const { events, exit } = await collectEvents(S.act(root.id, { text: "Strike!" }))
     assert.ok(Exit.isFailure(exit))
@@ -235,7 +235,7 @@ for (const [phase, demand] of [
         ]),
       }),
     })
-    const S = makeSession({ card: chat, rows: () => ({}), model: () => M })
+    const S = makeSession({ card: chat, rows: () => productsOff, model: () => M })
     const root = S.greet({ text: "Opening." }).node!
     const { events, exit } = await collectEvents(S.act(root.id, { text: "Hello?" }))
     assert.ok(Exit.isFailure(exit))
@@ -265,7 +265,7 @@ for (const [phase, demand] of [
         ]),
       }),
     })
-    const S = makeSession({ card: chat, rows: () => ({}), model: () => M })
+    const S = makeSession({ card: chat, rows: () => productsOff, model: () => M })
     const root = S.greet({ text: "Opening." }).node!
     const { events, exit } = await collectEvents(S.act(root.id, { text: "Hello?" }))
     assert.ok(Exit.isFailure(exit))
@@ -277,7 +277,11 @@ for (const [phase, demand] of [
   {
     const halt = Effect.runSync(Deferred.make<void>())
     const M = fake(() => ({ text: "First line. Second line. Third line.", delay: 10 }))
-    const S = makeSession({ card: chat, rows: () => ({}), model: (phase) => (phase === "narrate" ? M : scripted()) })
+    const S = makeSession({
+      card: chat,
+      rows: () => productsOff,
+      model: (phase) => (phase === "narrate" ? M : scripted()),
+    })
     const root = S.greet({ text: "Opening." }).node!
     const { exit } = await collectEvents(
       S.act(root.id, { text: "Speak." }, Deferred.await(halt)).pipe(
@@ -316,7 +320,11 @@ for (const [phase, demand] of [
         warnings: [],
       }),
     })
-    const S = makeSession({ card: chat, rows: () => ({}), model: (phase) => (phase === "narrate" ? M : scripted()) })
+    const S = makeSession({
+      card: chat,
+      rows: () => productsOff,
+      model: (phase) => (phase === "narrate" ? M : scripted()),
+    })
     const root = S.greet({ text: "Opening." }).node!
     await collectEvents(S.act(root.id, { text: "Hello." }))
 
@@ -375,7 +383,7 @@ for (const [phase, demand] of [
       })
     const S = makeSession({
       card: chat,
-      rows: () => ({}),
+      rows: () => productsOff,
       hat: (id) => hats[id],
       model: (phase) => (phase === "narrate" ? M() : scripted()),
     })
@@ -464,7 +472,7 @@ for (const [phase, demand] of [
     }
     const toolSession = makeSession({
       card: toolCard,
-      rows: () => ({}),
+      rows: () => productsOff,
       hat: (id) => hats[id],
       model: (phase) => (phase === "narrate" ? toolModel : scripted()),
     })
@@ -510,7 +518,7 @@ for (const [phase, demand] of [
     })
     const malformedSession = makeSession({
       card: chat,
-      rows: () => ({}),
+      rows: () => productsOff,
       hat: (id) => hats[id],
       model: (phase) => (phase === "narrate" ? malformedToolModel : scripted()),
     })
@@ -576,7 +584,7 @@ for (const [phase, demand] of [
       })
     const wrapSession = makeSession({
       card: { ...chat, products: toolCard.products },
-      rows: () => ({}),
+      rows: () => productsOff,
       hat: (id) => wrapHats[id],
       model: (phase) => (phase === "narrate" ? wrapModel() : scripted()),
     })
@@ -618,24 +626,12 @@ for (const [phase, demand] of [
     const demandCall = calls(wrapDemand.events).find((c) => c.phase === "narrate")!
     assert.ok(demandCall.wrap)
     assert.ok(demandCall.wrap?.sections.length)
-    // the outer shell ending on the assistant is refused before any request; so is a shell with no user message
-    // once `narrate.wrap` is emptied
+    // the outer shell ending on the assistant is refused before any request
     const before = seen.length
     wrapHat = "wrap-prefill"
     const pre = await collectEvents(wrapSession.act(wrapRoot.id, { text: "Again." }))
     assert.ok(Exit.isFailure(pre.exit))
     assert.match(String(Cause.squash(pre.exit.cause)), /cannot end in an assistant prefill/)
-    const silent = makeSession({
-      card: chat,
-      rows: () => ({ harness: { id: "harness", name: "内置", asks: [{ id: "narrate.wrap", text: "" }] } }),
-      hat: (id) => wrapHats[id],
-      model: (phase) => (phase === "narrate" ? { ...wrapModel(), hat: "wrap-silent" } : scripted()),
-    })
-    const silentRoot = silent.greet({ text: "Opening." }).node!
-    const refused = await collectEvents(silent.act(silentRoot.id, { text: "Hm." }))
-    assert.ok(Exit.isFailure(refused.exit))
-    assert.match(String(Cause.squash(refused.exit.cause)), /or restore the narrate\.wrap ask/)
-    assert.ok(calls(refused.events).find((c) => c.phase === "narrate")?.wrap)
     assert.equal(seen.length, before)
   }
 
@@ -644,7 +640,7 @@ for (const [phase, demand] of [
     const guardedCard = { ...chat, guard: ["Never reveal the password."] }
     const checkSession = makeSession({
       card: guardedCard,
-      rows: () => ({}),
+      rows: () => productsOff,
       model: (phase, onExchange) =>
         phase === "check"
           ? bind(
@@ -680,7 +676,7 @@ for (const [phase, demand] of [
     assert.match(checkEx.exchange.error ?? "", /PROHIBITED_CONTENT/)
   }
 
-  // 5. Hat tool handshake fast-fails when `M.tools === false`, and `Layer.asks` overrides off-stage asks (`stage.role`, `check`, `polish`, `record.tools`)
+  // 5. Hat tool handshake fast-fails when `M.tools === false`
   {
     const handshakeHat: Hat = {
       id: "hs-hat",
@@ -713,21 +709,7 @@ for (const [phase, demand] of [
     }
     const S = makeSession({
       card: richCard,
-      rows: () => ({
-        packs: [
-          {
-            id: "p-asks",
-            name: "Pack Asks",
-            asks: [
-              { id: "stage.role", text: "CUSTOM-STAGE-ROLE for {{char}}" },
-              { id: "check", text: "CUSTOM-CHECK-QUESTION" },
-              { id: "polish", text: "CUSTOM-POLISH-QUESTION" },
-              { id: "record.tools", text: "CUSTOM-RECORD-TOOLS" },
-            ],
-          },
-        ],
-        local: { id: "local", name: "local", card: richCard.id, mounts: ["p-asks"] },
-      }),
+      rows: () => productsOff,
       hat: (id) => (id === handshakeHat.id ? handshakeHat : undefined),
       model: (phase) => ({
         ...fake((o) => {
@@ -759,15 +741,8 @@ for (const [phase, demand] of [
     checkToolsEnabled = true
     const okTurn = await collectEvents(S.act(root.id, { text: "Speak." }))
     assert.ok(Exit.isSuccess(okTurn.exit))
-    const stageCalls = calls(okTurn.events)
-    const checkCall = stageCalls.find((c) => c.phase === "check")!
-    const polishCall = stageCalls.find((c) => c.phase === "polish")!
-    const recordCall = stageCalls.find((c) => c.phase === "record")!
-    assert.ok(JSON.stringify(checkCall.msgs).includes("CUSTOM-STAGE-ROLE for Lin"))
-    assert.ok(JSON.stringify(checkCall.msgs).includes("CUSTOM-CHECK-QUESTION"))
+    const checkCall = calls(okTurn.events).find((c) => c.phase === "check")!
     assert.ok(checkCall.msgs.some((m) => m.role === "tool"))
-    assert.ok(JSON.stringify(polishCall.msgs).includes("CUSTOM-POLISH-QUESTION"))
-    assert.ok(JSON.stringify(recordCall.msgs).includes("CUSTOM-RECORD-TOOLS"))
   }
 }
 console.log("calls ok")

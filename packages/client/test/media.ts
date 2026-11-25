@@ -1076,6 +1076,7 @@ function testDemandableEffectiveRows() {
     id: "options",
     label: "行动选项",
     role: "theater",
+    surface: "composer",
     on: true,
     text: "选项",
     shape: { kind: "list" },

@@ -31,7 +31,6 @@ const view = (over: Partial<CardView>): CardView => ({
   layer: {
     frame: [],
     tail: [],
-    asks: {},
     products: [],
     entries: [],
     lexicon: [],

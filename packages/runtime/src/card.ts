@@ -1,7 +1,7 @@
 // §22: the card as DATA. `Card` is the whole thing: frame and fiction fragments, greetings, rules, lore, guard lines.
 // Everything the loop needs is derived from it (a card with no actions has no decide stage; no lore, no lookup).
 // The RPG half, `Rules`: fields with bounds, actions whose only branch is the die, effects that are
-// mutations (set / add / event), a termination condition and a beat cap. Every node is a GUI control, a structured-
+// mutations (set / add / event) and a termination condition. Every node is a GUI control, a structured-
 // output target (the NL compile step) and directly evaluable — §16.4's admission test.
 // The LLM has two entries into settlement: a probability (`chance: { judge }`, answered inside the decide call and
 // recorded on the beat, so `reroll` keeps the GM's difficulty and re-rolls the die, §7.1) and a readout option (answered
@@ -70,8 +70,7 @@ export const Rules = Schema.Struct({
   fields: Schema.Array(Field),
   actions: Schema.Array(Action),
   readouts: Schema.optionalKey(Schema.Array(Readout)),
-  over: Schema.optionalKey(Cond), // code-decided ending; `end` stays the model's, `cap` the harness's
-  cap: Schema.optionalKey(Schema.Int),
+  over: Schema.optionalKey(Cond), // code-decided ending; `end` stays the model's
 })
 export type Rules = typeof Rules.Type
 export type Action = typeof Action.Type
@@ -187,25 +186,21 @@ export const makeCard = (r: Rules) => {
       { s, events: [], checks: [] },
     )
   /** Decide schema for the current state: the enum is the gate; `chance` exists only when some available action is judged.
-   *  `again` is read on the first beat only: whether the input's own wording asks for more beats after this one
-   *  ("until he falls", "twice"). Without it the turn is one beat and the per-beat loop is never entered; with it the
-   *  loop asks after each outcome (§10.2). A model asked "another?" after every beat answers the input again. */
+   *  A turn is one beat at most (session.ts). */
   const decideSchema = (s: State, context: Paths = s) => {
     const acts = available(s, context)
     const judged = acts.filter((a) => a.roll !== undefined && typeof a.roll === "object" && "judge" in a.roll)
     const next = Schema.Literals([...acts.map((a) => a.id), "end"])
-    const again = Schema.optionalKey(Schema.Boolean)
     return judged.length
       ? Schema.Struct({
           next,
-          again,
           chance: Schema.optionalKey(Num.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
         }).check(
           Schema.makeFilter((d) =>
             d.chance === undefined && judged.some((a) => a.id === d.next) ? "judge chance missing" : undefined,
           ),
         ) // keep an object schema on the wire; require chance when decoding a judged choice
-      : Schema.Struct({ next, again })
+      : Schema.Struct({ next })
   }
 
   const menu = (s: State, context: Paths = s) =>
@@ -259,7 +254,6 @@ export const makeCard = (r: Rules) => {
     questions,
     settleReadouts,
     over: (s: State, context: Paths = s) => (r.over ? holds(r.over, { ...context, fields: s }) : false),
-    cap: r.cap ?? Infinity,
   }
 }
 export type Rpg = ReturnType<typeof makeCard>
@@ -322,10 +316,9 @@ export const Card = Schema.Struct({
   guard: Schema.Array(Schema.String), // checked after the prose, never shown to the narrator
   director: Schema.optionalKey(Schema.Boolean),
   input: Schema.optionalKey(Schema.Literals(["act", "note"])),
-  asks: Schema.optionalKey(Schema.Array(Fragment)), // the harness's own wording, overridden by id
   views: Schema.optionalKey(Schema.Array(ViewShell)),
   catalogs: Schema.optionalKey(Schema.Array(Catalog)), // attachments by id: an enum column's `catalog` names one
-  products: Schema.optionalKey(Schema.Array(ProductPatch)), // record products: patches over the harness defaults by id, or new ones
+  products: Schema.optionalKey(Schema.Array(ProductPatch)), // whole products, or patches over the default pack's by id (layer.ts)
   media: Schema.optionalKey(Media), // closed media bindings over catalogs and record products
   lexicon: Schema.optionalKey(Schema.Array(Entry)), // slop patterns the polish stage scans for, after the player's own
   names: Schema.optionalKey(Names), // the author's defaults for the `{{key}}` holes in its text (GLOSSARY Names)

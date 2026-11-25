@@ -3,20 +3,24 @@
 import type { Card } from "../../src/card.ts"
 import { readCard } from "../../support/author.ts"
 export * from "../../support/rows.ts"
-import { player } from "../../support/rows.ts"
 import type { Rows } from "../../src/layer.ts"
+import { createStarterPack } from "../../src/starter-pack.ts"
 
-/** Explicit opt-ins for fixtures that exercise per-turn settlement and compressed history. */
+/** Explicit opt-ins for fixtures that exercise per-turn settlement and compressed history: the starter pack with its
+ *  notes switched on, its language its one fragment, and no switches or lexicon. */
+const pack = createStarterPack()
+const { switches: _switches, lexicon: _packLexicon, ...bareStarter } = pack
 export const recordingPlayer: Rows = {
-  harness: {
-    id: "harness",
-    name: "内置",
-    fragments: player.harness!.fragments,
-    products: [
-      { id: "notes", on: true },
-      { id: "options", on: true },
-    ],
+  defaultPack: {
+    ...bareStarter,
+    fragments: pack.fragments!.filter((f) => f.id === "language"),
+    products: pack.products!.map((p) => (p.id === "notes" ? { ...p, on: true } : p)),
   },
+}
+
+/** The starter pack's products alone, every one off: a narrate product (`inner`) to demand, nothing else asked. */
+export const productsOff: Rows = {
+  defaultPack: { id: pack.id, name: pack.name, products: pack.products!.map((p) => ({ ...p, on: false })) },
 }
 
 export const cardNames = ["wuxia", "yandao", "banxing", "ri"]

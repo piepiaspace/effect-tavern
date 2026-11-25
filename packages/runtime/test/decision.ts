@@ -34,13 +34,15 @@ function b(probability: number) {
       { id: "a", text: "A1" },
       { id: "a", text: "A2" },
     ],
-    wording: (id) => `${id}:`,
   })
   assert.equal(q.state, "<world>\nW\n</world>\n\n<draft>\nD\n</draft>")
   assert.deepEqual(Object.keys(q.questions), ["g0", "o0"])
   assert.deepEqual(
     [q.questions["g0"].instructions, q.questions["o0"].instructions],
-    ["check.decision.rule:R", "check.decision.open:A1\nA2"],
+    [
+      "只评判 <draft> 里的正文；<world> 只是背景，不算正文。<draft> 是否违反了下面这条规则？\n规则：R",
+      "只看 <draft> 里的正文，<world> 只是背景。正文是否向读者传达了下面这条设定的实质内容？转述或清楚的暗示都算，只是气氛相近不算。\n设定：A1\nA2",
+    ],
   )
 }
 

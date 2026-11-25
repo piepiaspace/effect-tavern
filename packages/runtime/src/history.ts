@@ -136,12 +136,12 @@ export const ledger = <B>(
 ): Msg[] => {
   const tail = epoch(path).slice(start)
   return [
-    ...(sum ? [{ role: "system", text: sum.text } as Msg] : []),
+    ...(sum ? [{ role: "system", text: sum.text, summaryRange: { from: sum.from, to: sum.to } } as Msg] : []),
     ...(tail.length
       ? [
           {
             role: "system",
-            text: `Ledger:\n${tail
+            text: `${tail
               .map(
                 (t) =>
                   `${t.input.text} → ${eventsOf(t).join(",") || "-"}; read ${[...new Set(t.read.map((d) => d.id))].join(",") || "-"}; fired ${t.fired.map((d) => d.id).join(",") || "-"}${factsOf(

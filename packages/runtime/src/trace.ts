@@ -58,11 +58,10 @@ export type SpanKind =
   | "input"
   | "context"
   | "turn"
-  | "thought"
   | "correction"
   | "block"
   | "tail"
-  | "wrap" // the `narrate.wrap` ask: the user message the harness adds under a hat's wrap (#220)
+  | "wrap" // `harness.narrate.wrap`: the user message the harness adds under a hat's wrap (#220)
 
 export interface Span {
   start: number
@@ -76,8 +75,9 @@ export type MessageZone = "head" | "history" | "input" | "turn" | "tail"
 export type MessageSubzone =
   | "hat-lead"
   | "lead"
-  | "frame"
+  | "world" // `<world>`: the frame's who and where, as the off-stage stages read it
   | "fiction"
+  | "guidelines" // `<writing_guidelines>`: the frame's writing slots and the player's head fragments
   | "hat-head"
   | "summary"
   | "history"
@@ -85,7 +85,6 @@ export type MessageSubzone =
   | "input"
   | "context"
   | "turn"
-  | "thought"
   | "correction"
   | "blocks"
   | "tail"
@@ -134,7 +133,6 @@ export type OmittedCategory =
   | "hat"
   | "persona"
   | "switch"
-  | "ask"
   | "turn"
   | "name"
   | "product"
@@ -153,9 +151,9 @@ export interface OmittedItem {
 }
 
 /** The narrate delivery tool in force under `deliver: "tool"` (#221), each field as sent, with where its wording came
- *  from: the hat's own `tool` override (`kind: "hat"`, `path: "tool.name" | "tool.description" | "tool.param"`), the
- *  ask as the layers resolved it (`asks.narrate.deliver.tool` / `asks.narrate.deliver.param`, any layer), or the
- *  harness's built-in default (`builtIn: true`; for the name, `narrative`). Under wrap `description` is the whole
+ *  from: the hat's own `tool` override (`kind: "hat"`, `path: "tool.name" | "tool.description" | "tool.param"`) or the
+ *  harness's built-in default (`builtIn: true`, `path: "harness.deliver.tool" | "harness.deliver.param"`; for the name,
+ *  `narrative`). Under wrap `description` is the whole
  *  description sent, the serialized context included; `sources.description` is its own wording's. */
 export interface DeliveryToolTrace {
   name: string
@@ -193,8 +191,8 @@ export interface WireErrorInfo {
   source?: SourceRef
 }
 
-export const sourceKindFrom = (from: string, opts?: { persona?: boolean; builtIn?: boolean }): SourceKind => {
+export const sourceKindFrom = (from: string, opts?: { persona?: boolean }): SourceKind => {
   if (opts?.persona) return "persona"
-  if (from === "card" || from === "harness" || from === "local") return from
+  if (from === "card" || from === "local") return from
   return "pack"
 }

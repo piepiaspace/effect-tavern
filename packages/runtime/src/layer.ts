@@ -1,16 +1,18 @@
 // The player layer as one module (docs/packs-brief.md §九, GLOSSARY Layer): one kind of row, one author order, one pure
-// `resolve`, a result that says where each item came from. Every author writes a `Layer`: the harness's overlay (the
-// player's global row), each pack, and the player on one card (`Local`); a card is projected into a row here and never
-// stored as one.
+// `resolve`, a result that says where each item came from. Every author writes a `Layer`: each pack (the install's
+// default pack among them) and the player on one card (`Local`); a card is projected into a row here and never stored
+// as one. The harness writes no row: its wording is code (request.ts, decision.ts, the switch sentences below).
 //
-// THE AUTHOR ORDER, stated here and nowhere else: harness (the code's defaults, the overlay over them by id) → card →
-// the packs in `local.mounts` order → local → the persona (its text the `persona` fragment at the end of the local row,
-// its name last into `names.user`). The later wins by id, for every kind. The one exception is a fragment's
-// `mode: "yield"`: when a lower rank has filled the slot it does not stand. An overlay's fragment sits below the card, so
-// its `mode` is read against the card, and absent it yields; `override` beats the card's slot. A compiled switch always
-// yields to the card and to free text at its own or a higher rank; free text that itself says `yield` defers to a lower
-// rank's compiled switch like to any filled slot. Switches themselves merge by key down the ranks, so the local row's
-// `pov` beats the overlay's and one slot compiles from the merge.
+// THE AUTHOR ORDER, stated here and nowhere else: the default pack (`Rows.defaultPack`, unless the card mounts it) →
+// card → the packs in `local.mounts` order → local → the persona (its text the `persona` fragment at the end of the
+// local row, its name last into `names.user`). The later wins by id, for every kind. The one exception is a fragment's
+// `mode: "yield"`: when a lower rank has filled the slot it does not stand. The default pack's fragment sits below the
+// card, so its `mode` is read against the card, and absent it yields; `override` beats the card's slot. A compiled
+// switch always yields to the card and to free text at its own or a higher rank; free text that itself says `yield`
+// defers to a lower rank's compiled switch like to any filled slot. Switches themselves merge by key down the ranks, so
+// the local row's `pov` beats the default pack's and one slot compiles from the merge. Products: a player row declares a
+// new one whole (no world state) or patches one below it by label, text, on and trigger alone; the card's go over the
+// default pack's, and a card's patch over an id no lower rank declares is skipped.
 //
 // The locks are all here and never throw for a player's row (a throw would kill a card at session open for what a pack
 // happens to declare): what they refuse lands in `dropped`, for a client to draw. Only the card's own bad product throws.
@@ -22,13 +24,11 @@ import { ViewShellPatch, theaterSurface, type EffectiveView } from "./view-shell
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
-import { expand, fillHoles, HARNESS_HOLES, keepHoles, nameOk, Names, unfilled } from "./names.ts"
+import { expand, nameOk, Names, unfilled } from "./names.ts"
 import { Entry as LexiconEntry } from "./polish.ts"
-import { decodeProducts, ProductPatch, validate, type Catalog, type Product } from "./product.ts"
+import { ProductPatch, validate, type Catalog, type Product } from "./product.ts"
 import { sourceKindFrom, type OmittedItem, type SourceRef } from "./trace.ts"
 
-export const Ask = Schema.Struct({ id: Schema.String, text: Schema.String })
-export type Ask = typeof Ask.Type
 export const PackEntry = Schema.Struct({
   id: Schema.String,
   text: Schema.String,
@@ -41,8 +41,7 @@ export const Layer = Schema.Struct({
   views: Schema.optionalKey(Schema.Array(ViewShellPatch)),
   fragments: Schema.optionalKey(Schema.Array(Fragment)), // the id is a slot or its own, `at` head or tail, `mode` vs the lower ranks
   switches: Schema.optionalKey(Writing), // compiled to `pov` / `verbosity` before this row's own fragments, yielding
-  asks: Schema.optionalKey(Schema.Array(Ask)), // lookup, lookup.decision, direct, decide.*, check, check.decision.*, record.*, narrate.*, polish, input.thought; switch.<key>.<value>; product.<id> is a text patch
-  products: Schema.optionalKey(Schema.Array(ProductPatch)), // whole on the code's defaults and the card; on a player's row label, text and on
+  products: Schema.optionalKey(Schema.Array(ProductPatch)), // a new id whole (`locked`), an id below patched by label, text, on and trigger
   entries: Schema.optionalKey(Schema.Array(PackEntry)), // indexed as `<row>/<entry>`: one layer, no Cond
   lexicon: Schema.optionalKey(Schema.Array(LexiconEntry)),
   snippets: Schema.optionalKey(Schema.Array(Snippet)),
@@ -61,18 +60,27 @@ export const Local = Schema.Struct({
 })
 export type Local = typeof Local.Type
 
-/** A row as a player may store it: no Cond and no role on a fragment, a product patch only label, text, on and trigger. */
+/** A row as a player may store it: no Cond and no role on a fragment; a product without Cond, recall or initial value,
+ *  never world state (role theater or chronicle, shape text or list, fold latest or append). */
 export const locked = <R extends Layer>(r: R): R => ({
   ...r,
   ...(r.views && { views: r.views.map(({ when: _when, media: _media, ...v }) => v) }),
   ...(r.fragments && { fragments: r.fragments.map(({ when: _w, role: _r, ...f }) => f) }),
   ...(r.products && {
-    products: r.products.map(({ id, label, text, on, trigger }) => ({
+    products: r.products.map(({ id, label, text, on, trigger, role, shape, stage, fold, feed, surface }) => ({
       id,
       ...(label !== undefined && { label }),
       ...(text !== undefined && { text }),
       ...(on !== undefined && { on }),
       ...(trigger !== undefined && { trigger }),
+      ...((role === "theater" || role === "chronicle") && { role }),
+      ...((shape?.kind === "text" || shape?.kind === "list") && {
+        shape: { kind: shape.kind, ...(shape.max !== undefined && { max: shape.max }) },
+      }),
+      ...(stage !== undefined && { stage }),
+      ...((fold === "latest" || fold === "append") && { fold }),
+      ...(feed !== undefined && { feed }),
+      ...(surface !== undefined && { surface }),
     })),
   }),
 })
@@ -91,284 +99,36 @@ export const decodeLocal = (u: unknown): Local => {
   return locked(decodeLocalRow(u))
 }
 
-// ───────── The harness's own row ─────────
-// Every instruction the loop says to the model, with ids, in the open. Data lines (State:, Actions:, Open:, Known:,
-// Questions:) and the XML wrappers (<world>, <persona>, <setting>, <fiction>, <context>, <turn>, <input>, <draft>,
-// <scene>) are format and stay in code (request.ts); these are the prose around them. Narrate opens with `narrate.role`
-// before its frame and leads `<turn>` with `narrate.turn`. Every non-narrate stage opens with `stage.role` before
-// `<world>` and closes with its own task ask after the closing material tag (#167: without both, reasoning models read
-// a second-person persona at the top and a bare scene/line at the bottom as a roleplay turn to continue). Direct names
-// `tone`'s genre too (#90).
-const words: readonly Ask[] = [
-  {
-    id: "stage.role",
-    text: 'You are running an off-stage analysis pass for an interactive story, never writing or continuing the story itself. Never reply in character or address the player. Second-person pronouns ("you" / "你") in the reference material refer to the player character, not to you. In <persona>, "you" / "你" / "我" describes the player character, not you.',
-  },
-  {
-    id: "narrate.role",
-    text: "",
-  },
-  {
-    id: "narrate.persona",
-    text: 'In <persona>, "you" / "你" / "我" describes the player character, not you.',
-  },
-  {
-    id: "narrate.deliver",
-    text: "Deliver your entire reply—prose and any requested <<aside>> blocks—by calling the {{tool}} tool with the complete text in its text argument; write nothing outside the call.",
-  },
-  // The delivery tool's own wording (#221), sent as its description and its `text` parameter's description; a hat's
-  // `tool.description` / `tool.param` overrides either. `{{tool}}` is the tool's name; under the hat's wrap (#220)
-  // `{{context}}` in the description is where the story context goes (appended after a blank line when absent).
-  // The same two sentences are the provider's fallback for a call that names none (provider deliver.ts); test/layer.ts
-  // holds the two copies equal.
-  { id: "narrate.deliver.tool", text: "Deliver the complete scene narration." },
-  { id: "narrate.deliver.param", text: "The full reply, nothing omitted." },
-  // Under wrap, the one user message the harness adds when the hat's lead and tail hold none (request.ts).
-  { id: "narrate.wrap", text: "Read the {{tool}} tool's description, then call it with your reply." },
-  {
-    id: "narrate.context",
-    text: "<context> holds background lore and recalled facts for reference when relevant.",
-  },
-  {
-    id: "narrate.turn",
-    text: "This turn's stage directions to you as the narrator; they are not story text.",
-  },
-  {
-    id: "lookup",
-    text: 'Choose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. From a Player note take only what names people, places or events inside the story. Follow references in the returned text when needed. Resident snapshots and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. "No additional context needed."); never reply to <input>, write dialogue, or continue the story.',
-  },
-  // The decision model's question per catalog unit (decision.ts `lookupQuestions`), followed by the unit's title.
-  // Measured in Chinese by server bin/decision-lookup.ts (#168); kept as measured.
-  {
-    id: "lookup.decision",
-    text: "<input> 里玩家这一轮说的话或做的事，是否提到、询问或直接牵涉下面这条设定里的人物、物件或事情？\n",
-  },
-  {
-    id: "direct",
-    text: `Given <input> and the Open and Events lines above, put in "must" only the open entries the next scene cannot make sense without; the rest stay in "may", and both are empty when none fits now. "tone" is one line of direction to the narrator, not to the player: the mood, the pace, or where this scene should land, as a phrase or a short sentence. It is a direction, never a sentence of the story: it names no character and writes no one's words, actions or expression.`,
-  },
-  {
-    id: "decide.first",
-    text: `Which card action in Actions does <input> take first? Pick "end" if it takes none of the listed actions. Set "again" to true only if <input>'s own words ask for more than one beat ("until he falls", "twice", "then …").`,
-  },
-  {
-    id: "decide.again",
-    text: `The player's <input> asked to keep going. Given the outcomes in So far, pick the next action from Actions, or "end" when <input>'s goal is met, <input> said to stop under this outcome, or nothing sensible is left.`,
-  },
-  {
-    id: "check",
-    text: `Check <draft> against the Rule and Open lines above. Put in "fired" each Open entry id whose substance <draft> conveyed, and in "violated" each Rule text that <draft> broke; leave either empty when none applies. Judge only what is written in <draft>; do not rewrite or continue the story.`,
-  },
-  // The decision model's two questions in front of check (decision.ts `checkQuestions`), one per guard rule and one per
-  // open entry, each followed by the rule or the entry's text. Measured in Chinese by server bin/decision-replay.ts and
-  // decision-probe.ts; their wording is kept as measured.
-  {
-    id: "check.decision.rule",
-    text: "只评判 <draft> 里的正文；<world> 只是背景，不算正文。<draft> 是否违反了下面这条规则？\n规则：",
-  },
-  {
-    id: "check.decision.open",
-    text: "只看 <draft> 里的正文，<world> 只是背景。正文是否向读者传达了下面这条设定的实质内容？转述或清楚的暗示都算，只是气氛相近不算。\n设定：",
-  },
-  // The readouts' rule of evidence, once, before the Questions line. Without it the first ri run judged the confession
-  // refused on the turn it was made: the prose ended on the question, the player had not answered, and the model took
-  // the one option it could not rule out by the letter (#83). A card's option texts still have to cover that turn.
-  {
-    id: "record.tools",
-    text: "Use the native tools only for facts already established in <scene>; never continue the story, write prose, or infer events beyond <scene>. Read current values before updating. Insert creates an entity with a host-generated ID; patch changes defined fields; remove deletes an entity. Omit unchanged data. Finish by calling finish_record once with the required fields, even if no world data changed.",
-  },
-  {
-    id: "record.readout",
-    text: "Answer each question from what <scene> settled on the page, not from where it is heading: when a character has only raised the matter and the player has yet to answer, or <scene> does not bear on the question, pick the option that says nothing happened or nothing changed.",
-  },
-  { id: "narrate.correction", text: "Previous draft broke:" },
-  // The narrate products' one instruction, before their `<id>: <question>` lines; sent only when one is on.
-  {
-    id: "narrate.blocks",
-    text: "After the prose, write each of these as its own block: a line `<<aside>> <id>` with the id below, then the block's text. One block per id, in any order, never inside the prose.",
-  },
-  // A narrate product demanded on a node: the scene is already the last reply, so the call writes the one block alone.
-  { id: "narrate.demand", text: "Write no prose: answer with only the block asked for below, about the last scene." },
-  {
-    id: "polish",
-    text: "Each sentence marked <target> in <draft> uses wording the reader has seen too often: the words in its hits, and what its hint above names. Rewrite each <target> sentence so it no longer does, keeping its meaning, person, register, length and its seams with the sentences around it. Return a sentence unchanged if it already reads naturally. Answer each target by its id with the sentence alone, no marks, and never continue <draft>.",
-  },
-  {
-    id: "input.thought",
-    text: "Text between ⦅ and ⦆ in the player's input is what their character thinks: not said, not done, no one in the story perceives it.",
-  },
-]
-// The sentence each writing switch value compiles to, by ask id `switch.<key>.<value>`; a client shows it as the value's
-// title. An overlay edit of one changes what compiles.
-const sentences: readonly Ask[] = [
-  { id: "switch.pov.first", text: "用第一人称「我」写玩家。" },
-  { id: "switch.pov.second", text: "用第二人称「你」写玩家。" },
-  { id: "switch.pov.third", text: "用玩家角色的名字、以第三人称写玩家。" },
-  { id: "switch.pov.none", text: "故事里没有玩家角色；输入是给叙述者的指示，不是任何人物的话，不要把它写进故事。" },
-  { id: "switch.echo.true", text: "开头可先用一句转述玩家本轮的言行，再写对方的反应。" },
-  { id: "switch.echo.false", text: "不要转述或扩写玩家本轮已输入的话，直接从对方或周遭的反应写起。" },
-  {
-    id: "switch.agency.strict",
-    text: "只承接玩家已给出的言行，不要替玩家扩写未说出口的话、未声明的动作或下一步决定。",
-  },
-  { id: "switch.agency.free", text: "可以替玩家续写言行与决定，像合写一部小说那样推进。" },
-  { id: "switch.verbosity.concise", text: "每轮篇幅简短，一两段，点到即止。" },
-  { id: "switch.verbosity.medium", text: "每轮三四段，写到对方的反应落定为止。" },
-  { id: "switch.verbosity.detailed", text: "每轮篇幅从容，把动作、神态与周遭风物写足。" },
-]
-// The default quick inputs: the ecosystem's quick-reply lists as data. Each has a meaning in play: the thought mark (a
-// perception scope the `input.thought` ask explains), the note channel, or a direction to the narrator. Inserted at the
-// caret, never sent; an empty note snippet only switches the channel.
-const snippets: readonly Snippet[] = [
-  { name: "心声", text: "⦅", after: "⦆" },
-  { name: "场外", text: "", note: true },
-  { name: "继续", text: "继续。", note: true },
-  { name: "推进剧情", text: "推进剧情到下一个场景。", note: true },
-  { name: "时间流逝", text: "时间流逝，跳到下一件有事发生的时刻。", note: true },
-  { name: "详细描写", text: "把这一段写得更细。", note: true },
-]
-// The default format keys: typing conveniences with no meaning in play, the ecosystem's 输入助手 as data. A key is its
-// glyph; the text is a template with the caret between `text` and `after`.
-const format: readonly Format[] = [
-  { label: "「」", text: "「", after: "」" },
-  { label: "『』", text: "『", after: "』" },
-  { label: "“”", text: "“", after: "”" },
-  { label: "（）", text: "（", after: "）" },
-  { label: "《》", text: "《", after: "》" },
-]
-// The default products (src/product.ts). Each is opt-in. The options
-// question follows the card's input channel, because an option goes into the box as the player's next input: on an act
-// card it is their own line (the first Haiku run wrote "玩家……" in the third person, which put that sentence in the
-// player's mouth), on a note card a direction.
-const products = (input: "act" | "note"): readonly Product[] =>
-  decodeProducts([
-    {
-      id: "notes",
-      on: false,
-      role: "chronicle",
-      label: "事件摘要",
-      // One text, not a list: a list reads as "fill it", and on a pure-chat card (伴星, Opus) it came back as six or
-      // seven items a turn, the prose paraphrased paragraph by paragraph, one item split in three on a quoted "我懂"
-      // (a list's grammar admits that; a string's does not). The three ecosystem summaries read for #82 all make a
-      // turn's summary one unit (docs/summary-reading.md).
-      text: "Notes are the record of <scene>, one or two plain sentences in the third person: only what already changed or was settled on the page (what was done, decided, promised, refused or learned), or, where <scene> was talk, what was raised or confided and how the other side met it. Never continue the story or infer what happens after <scene>. Keep only what later scenes will stand on; merge the rest or leave it out, and never summarize paragraph by paragraph. Name characters by name, and refer to an unnamed player character as 玩家 (never 你 or 我). Never repeat Known, never record scenery or a gesture nothing later turns on, never judge feelings, never comment on the writing. For a pure transition where nothing happened or was settled, an empty string is allowed.",
-      shape: { kind: "text" },
-      fold: "append",
-      feed: true,
-    },
-    {
-      id: "options",
-      role: "theater",
-      label: "行动选项",
-      text:
-        input === "note"
-          ? "Four directions the player could give the narrator for what happens next, each one line, distinct in kind."
-          : "Four inputs the player might send next, each one short line as the player would type it: a direct line in quotes, a brief first-person action (我……), or both together. When the player speaks, write the exact words in quotes—never summarize speech indirectly (never 我说…… / 我问他……), and never use 你. Distinct in kind.",
-      shape: { kind: "list", max: 4 },
-      on: false,
-    },
-    {
-      id: "inner",
-      role: "theater",
-      label: "人物心声",
-      text: "What the character thought this scene but did not say, one short paragraph.",
-      shape: { kind: "text" },
-      stage: "narrate", // the narrator's own voice, streamed, no extra call
-      on: false,
-    },
-  ])
-/** The code's defaults as a row: every ask (the switch sentences among them), notes / options / inner, the quick inputs,
- *  the format keys. A question the code asks has no hole, so an ask always has a text to fall back on. */
-export const harness = (input: "act" | "note"): Layer => ({
-  id: "harness",
-  name: "内置",
-  asks: [...words, ...sentences],
-  products: products(input),
-  snippets,
-  format,
-})
-
-const canon = (v: unknown) =>
-  JSON.stringify(v && typeof v === "object" ? Object.entries(v).sort(([a], [b]) => a.localeCompare(b)) : v)
-const same = (a: unknown, b: unknown) => canon(a) === canon(b)
-const over = <T>(under: readonly T[] = [], top: readonly T[] = [], key: (x: T) => string): T[] => {
-  const m = new Map(under.map((x) => [key(x), x]))
-  for (const x of top) m.set(key(x), { ...m.get(key(x)), ...x })
-  return [...m.values()]
+// The sentence each writing switch value compiles to, by id `switch.<key>.<value>`; a client shows it as the value's
+// title (`Resolved.switches.sentences`).
+const SWITCH_SENTENCES: Readonly<Record<string, string>> = {
+  "switch.pov.first": "用第一人称「我」写玩家。",
+  "switch.pov.second": "用第二人称「你」写玩家。",
+  "switch.pov.third": "用玩家角色的名字、以第三人称写玩家。",
+  "switch.pov.none": "故事里没有玩家角色；输入是给叙述者的指示，不是任何人物的话，不要把它写进故事。",
+  "switch.echo.true": "开头可先用一句转述玩家本轮的言行，再写对方的反应。",
+  "switch.echo.false": "不要转述或扩写玩家本轮已输入的话，直接从对方或周遭的反应写起。",
+  "switch.agency.strict": "只承接玩家已给出的言行，不要替玩家扩写未说出口的话、未声明的动作或下一步决定。",
+  "switch.agency.free": "可以替玩家续写言行与决定，像合写一部小说那样推进。",
+  "switch.verbosity.concise": "每轮篇幅简短，一两段，点到即止。",
+  "switch.verbosity.medium": "每轮三四段，写到对方的反应落定为止。",
+  "switch.verbosity.detailed": "每轮篇幅从容，把动作、神态与周遭风物写足。",
 }
-/** The harness row a client edits (`GET /packs`): the code's defaults with the overlay over them by id. */
-export const overlaid = (input: "act" | "note", o?: Layer): Layer => {
-  const h = harness(input)
-  return {
-    ...o,
-    ...h,
-    asks: over(h.asks, o?.asks, (x) => x.id),
-    products: over(h.products, o?.products, (x) => x.id),
-    snippets: over(h.snippets, o?.snippets, (x) => x.name),
-    format: over(h.format, o?.format, (x) => x.label),
-  }
-}
-/** What `PUT /packs/harness` stores: only what differs from the code's defaults; an item left out is back to its default. */
-export const overlayOf = (input: "act" | "note", row: Layer): Layer => {
-  const h = harness(input)
-  const asks = (row.asks ?? []).filter(
-    (x) =>
-      !same(
-        x,
-        h.asks?.find((d) => d.id === x.id),
-      ),
-  )
-  const products = (row.products ?? []).flatMap((p) => {
-    const was = h.products?.find((d) => d.id === p.id) as Record<string, unknown> | undefined
-    if (!was) return [p]
-    const changed = Object.entries(p).filter(
-      ([k, v]) => k !== "id" && !same(v, was[k] ?? (k === "trigger" ? "turn" : undefined)),
-    )
-    return changed.length ? [{ id: p.id, ...Object.fromEntries(changed) }] : []
-  })
-  const snippets = (row.snippets ?? []).filter(
-    (x) =>
-      !same(
-        x,
-        h.snippets?.find((d) => d.name === x.name),
-      ),
-  )
-  const format = (row.format ?? []).filter(
-    (x) =>
-      !same(
-        x,
-        h.format?.find((d) => d.label === x.label),
-      ),
-  )
-  const { asks: _a, products: _p, snippets: _s, format: _f, ...rest } = row
-  return {
-    ...rest,
-    id: h.id,
-    name: h.name,
-    ...(asks.length && { asks }),
-    ...(products.length && { products }),
-    ...(snippets.length && { snippets }),
-    ...(format.length && { format }),
-  }
-}
-/** Nothing but its id and name: an overlay with this shape is no overlay. */
-export const empty = (r: Layer) => Object.keys(r).every((k) => k === "id" || k === "name")
 
 // ───────── resolve ─────────
 export interface Rows {
-  harness?: Layer | undefined // the overlay: the player's global row
+  defaultPack?: Layer | undefined // the install's default pack: below the card, its fragments yielding (unless mounted here)
   packs?: readonly Layer[] | undefined // the library; `local.mounts` says which stand here, and in what order
   local?: Local | undefined
   // `yields`: worn by inheritance (the install's default), not picked: its text leaves a `persona` slot the card writes
   // alone and its name is the lowest `user`, under the card's and the player's own
   persona?: { id?: string; name: string; text: string; yields?: boolean } | undefined
 }
-export type From = string // "harness" | "card" | "local" | a pack's id
+export type From = string // "card" | "local" | a pack's id
 export type Item<T> = T & { from: From; compiled?: true; persona?: true; unasked?: true }
 export interface Resolved {
   frame: Item<Fragment>[] // the head, names filled (names.ts: a player's entry with a hole nothing fills is not here)
   tail: Item<Fragment>[]
-  asks: Record<string, Item<{ text: string }>> // every id: the highest on the chain that goes out
   views?: EffectiveView[]
   products: Item<Product>[] // `on` decided; the question filled, or a player's `unasked` with its raw text when it does not fill
   entries: Item<PackEntry>[] // the lookup index's player-layer entries
@@ -379,7 +139,7 @@ export interface Resolved {
   holes: string[] // the holes nothing fills yet, in order of first appearance
   switches: {
     value: Writing
-    sentences: Record<string, string> // by ask id, `switch.<key>.<value>`
+    sentences: Readonly<Record<string, string>> // by id, `switch.<key>.<value>`
     taken: { pov: From | null; verbosity: From | null } // who holds the slot; the frame item says whether it is compiled
   }
   // what the locks refused, nothing throws: a client words it by `kind` (one per lock), `why` is the CLI's and the tests'
@@ -388,8 +148,8 @@ export interface Resolved {
 
 /** The switches as slot fragments: `pov` (pov, echo, agency; the last two drop when there is no player in the fiction)
  *  and `verbosity`. */
-const compile = (w: Writing, say: Readonly<Record<string, string>>): Fragment[] => {
-  const line = (k: string, v: string | boolean) => say[`switch.${k}.${String(v)}`]
+const compile = (w: Writing): Fragment[] => {
+  const line = (k: string, v: string | boolean) => SWITCH_SENTENCES[`switch.${k}.${String(v)}`]
   const povLine = w.pov === "custom" ? w.povText?.trim() || undefined : w.pov ? line("pov", w.pov) : undefined
   const pov = [
     povLine,
@@ -402,8 +162,9 @@ const compile = (w: Writing, say: Readonly<Record<string, string>>): Fragment[] 
   ]
 }
 
-/** The slots that say how to write, whoever holds them: the two the switches compile to, and a card's `style`. */
-const WRITING = new Set(["pov", "verbosity", "style"])
+/** The slots that say how to write, whoever holds them: the two the switches compile to, and a card's `voice`,
+ *  `style` and `language`. */
+const WRITING = new Set(["pov", "verbosity", "voice", "style", "language"])
 /** The part of a frame that says who and where, not how to write: the slots the card declares (a player's text in one
  *  is still that slot) and the persona, less the writing slots. It is all a stage other than narrate reads of the
  *  frame: a model that reads "write the player as 你, take your time" at the top of its document writes, whatever the
@@ -420,7 +181,6 @@ export interface ResolvedTrace {
   sources: {
     frame: readonly SourceRef[]
     tail: readonly SourceRef[]
-    asks: Readonly<Record<string, SourceRef>>
     products: Readonly<Record<string, SourceRef>>
     entries: Readonly<Record<string, SourceRef>>
   }
@@ -435,18 +195,20 @@ export const resolveWithTrace = (
   const dropped: Resolved["dropped"] = []
   const omitted: OmittedItem[] = []
   const input = card.input ?? "act"
-  const code = harness(input)
-  // The player's rows in author order, each locked again: a row is only as good as what wrote it.
-  const overlay = rows.harness && locked(rows.harness)
   const local = rows.local
+  const mounts = [...new Set(local?.mounts)]
+  const def = rows.defaultPack
+  // The player's rows in author order, each locked again: a row is only as good as what wrote it. A default pack the card
+  // mounts stands at its mount rank alone.
+  const base = def && !mounts.includes(def.id) ? { from: def.id, row: locked(def) } : undefined
   const mine: { from: From; row: Layer }[] = [
-    ...[...new Set(local?.mounts)].flatMap((id) => {
-      const p = rows.packs?.find((x) => x.id === id)
+    ...mounts.flatMap((id) => {
+      const p = rows.packs?.find((x) => x.id === id) ?? (def?.id === id ? def : undefined)
       return p ? [{ from: p.id, row: locked(p) }] : []
     }),
     ...(local ? [{ from: "local", row: locked(local) }] : []),
   ]
-  const packNames = new Map((rows.packs ?? []).map((p) => [p.id, p.name]))
+  const packNames = new Map([...(rows.packs ?? []), ...(def ? [def] : [])].map((p) => [p.id, p.name]))
   const cardId = meta.cardId ?? card.id
   const personaId = rows.persona?.id ?? meta.personaId
   const sourceOf = (from: From, path?: string, extra: Partial<SourceRef> = {}): SourceRef => {
@@ -467,14 +229,9 @@ export const resolveWithTrace = (
     ...(card.views && { views: card.views }),
     ...(card.names && { names: card.names }),
     ...(card.lexicon && { lexicon: card.lexicon }),
-    ...(card.asks && { asks: card.asks.flatMap((a) => (a.text === undefined ? [] : [{ id: a.id, text: a.text }])) }),
   }
-  const up: { from: From; row: Partial<Layer> }[] = [
-    ...(overlay ? [{ from: "harness", row: overlay }] : []),
-    { from: "card", row: cardRow },
-    ...mine,
-  ]
-  const down = [...up].reverse() // the highest rank first: a menu, the polish hints, the ask chain
+  const up: { from: From; row: Partial<Layer> }[] = [...(base ? [base] : []), { from: "card", row: cardRow }, ...mine]
+  const down = [...up].reverse() // the highest rank first: a menu, the polish hints
 
   // ───────── names ─────────
   const pairs: [string, string][] = []
@@ -498,41 +255,6 @@ export const resolveWithTrace = (
   if (rows.persona && !rows.persona.yields) name("local", "user", rows.persona.name)
   const names: Names = Object.fromEntries(pairs)
 
-  // ───────── asks: down the chain to the first that goes out (names.ts); the code's own has no hole ─────────
-  const asks = new Map<string, Item<{ text: string }>>()
-  const askSources: Record<string, SourceRef> = {}
-  const worded: string[] = [] // every ask that could go out, what `holes` scans; the ones under a filled one never do
-  for (const { from, row, builtIn } of [
-    ...down.map((x) => ({ ...x, builtIn: false })),
-    { from: "harness" as From, row: code, builtIn: true },
-  ])
-    for (const a of row.asks ?? []) {
-      if (a.id.startsWith("product.") || asks.has(a.id)) continue
-      // the harness's own holes in this ask stay for request.ts to fill; nobody is asked to name them
-      const own = HARNESS_HOLES[a.id] ?? []
-      const scope = keepHoles(names, own)
-      worded.push(own.length ? fillHoles(a.text, Object.fromEntries(own.map((k) => [k, ""]))) : a.text)
-      const src = sourceOf(from, `asks.${a.id}`, { builtIn, label: a.id, rawText: a.text })
-      const text = expand(a.text, scope, from)
-      if (text !== undefined) {
-        asks.set(a.id, { text, from })
-        askSources[a.id] = src
-      } else {
-        omitted.push({
-          category: "ask",
-          id: a.id,
-          label: a.id,
-          reason: "unfilled_hole",
-          missingHoles: unfilled(a.text, scope),
-          preview: a.text,
-          source: src,
-        })
-      }
-    }
-  const sentenceOf: Record<string, string> = Object.fromEntries(
-    [...asks].flatMap(([id, a]) => (id.startsWith("switch.") ? [[id, a.text]] : [])),
-  )
-
   // ───────── the frame: the player zone in first-written order, then what is left of the card's ─────────
   // A card's slot with no text is left for the player to fill (fragment.ts): it holds nothing.
   const theirs = new Set(card.frame.flatMap((f) => (f.text && f.enabled !== false ? [f.id] : [])))
@@ -547,7 +269,7 @@ export const resolveWithTrace = (
       value = others
     }
     value = { ...value, ...row.switches }
-    for (const c of compile(value, sentenceOf)) {
+    for (const c of compile(value)) {
       const src = sourceOf(from, `switches.${c.id}`, { label: c.id, fragmentId: c.id, rawText: c.text })
       const held = slots.get(c.id)
       const setHere =
@@ -599,10 +321,10 @@ export const resolveWithTrace = (
   // the card's head slots, so a tail row named `pov` neither yields to the card's pov nor knocks it out.
   const keyOf = (f: Fragment) => (f.at === "tail" ? `tail:${f.id}` : f.id)
   const cards = (f: Fragment) => f.at !== "tail" && theirs.has(f.id)
-  if (overlay) switched("harness", overlay)
-  for (const f of overlay?.fragments ?? []) {
+  if (base) switched(base.from, base.row)
+  for (const f of base?.row.fragments ?? []) {
     const cat = f.at === "tail" ? "tail" : "frame"
-    const src = sourceOf("harness", `${cat}.${f.id}`, { label: f.label ?? f.id, fragmentId: f.id, rawText: f.text })
+    const src = sourceOf(base!.from, `${cat}.${f.id}`, { label: f.label ?? f.id, fragmentId: f.id, rawText: f.text })
     if (f.enabled === false) {
       omitted.push({
         category: cat,
@@ -637,7 +359,7 @@ export const resolveWithTrace = (
         source: held.source,
         by: src,
       })
-    slots.set(keyOf(f), { item: { ...f, from: "harness" }, source: src })
+    slots.set(keyOf(f), { item: { ...f, from: base!.from }, source: src })
   }
   for (const { from, row } of mine) {
     switched(from, row)
@@ -760,8 +482,7 @@ export const resolveWithTrace = (
     if (!x.text) return [entry]
     const text = expand(x.text, names, x.from)
     if (text === undefined) {
-      // A custom perspective can have holes. The echo and agency sentences
-      // in the same compiled slot were independently resolved through asks.
+      // A custom perspective can have holes; the echo and agency sentences compiled beside it hold none.
       const custom = x.compiled && x.id === "pov" && value.pov === "custom" ? value.povText?.trim() : undefined
       const missingCustom = custom && unfilled(custom, names).length > 0 ? custom : undefined
       const raw = missingCustom ?? x.text
@@ -788,68 +509,91 @@ export const resolveWithTrace = (
     filled.find((f) => f.id === id && f.at !== "tail" && f.mode !== "mute" && f.text && f.enabled !== false)?.from ??
     null
 
-  // ───────── products: whole in the code's defaults and on the card, on a player's row by rank ─────────
-  const stock = new Map<string, Partial<Product> & { id: string; from: From }>(
-    (code.products ?? []).map((p) => [p.id, { ...p, from: "harness" }]),
-  )
-  /** A toggle on an id this card does not declare says nothing about this card (an overlay's `people` on a card without it). */
-  const toggleOnly = (p: { id: string }) => Object.keys(p).every((k) => k === "id" || k === "on" || k === "trigger")
-  /** A player row's patch: label, text, on and trigger over an id that exists; a new id is a 小剧场, dropped without text. The
-   *  author of the question that stands is `from`: a toggle or a label changes nothing the card wrote (`shown` strips
-   *  a card's text by it). */
-  const patched = (from: From, p: ProductPatch) => {
-    const { id, ...patch } = p as {
-      id: string
-      label?: string
-      text?: string
-      on?: boolean
-      trigger?: "demand" | "turn"
+  // ───────── products: a player row's whole or patched by rank, the card's over the default pack's ─────────
+  const stock = new Map<string, Item<Product>>()
+  const refuse = (from: From, id: string, why: string, label?: string) => {
+    dropped.push({ from, kind: "product", id, why })
+    omitted.push({
+      category: "product",
+      id,
+      reason: "invalid",
+      detail: why,
+      source: sourceOf(from, `products.${id}`, { label: label ?? id }),
+    })
+  }
+  /** A player's product stands only valid: an invalid one is refused and what stood before stays. */
+  const tryStock = (p: Partial<Product> & { id: string; from: From }, from: From) => {
+    try {
+      stock.set(p.id, validate(p) as Item<Product>)
+    } catch (e) {
+      refuse(from, p.id, e instanceof Error ? e.message : String(e), p.label)
     }
-    const was = stock.get(id)
-    if (was) stock.set(id, { ...was, ...patch, from: patch.text === undefined ? was.from : from })
-    else if (toggleOnly(p)) return
-    else if (patch.text === undefined) {
-      const why = "a new product needs text"
-      dropped.push({ from, kind: "product", id, why })
+  }
+  /** A toggle on an id nobody below declares says nothing about this card (a pack's `people` on a card without it). */
+  const toggleOnly = (p: { id: string }) => Object.keys(p).every((k) => k === "id" || k === "on" || k === "trigger")
+  /** A player row's entry: over a card-declared id, label, text, on and trigger alone (the structure is the card's);
+   *  over a player-declared id, a whole declaration replaces the structure (already `locked`), a partial patch updates
+   *  label/text/on/trigger; a new id declared whole as `locked` let it, by default a narrate 小剧场, dropped without text.
+   *  The author of the question that stands is `from`: a toggle or a label changes nothing the card wrote (`shown` strips
+   *  a card's text by it). */
+  const cardIds = new Set<string>()
+  const whole = (p: ProductPatch) => p.text !== undefined && p.shape !== undefined && p.role !== undefined
+  const patched = (from: From, p: ProductPatch) => {
+    const was = stock.get(p.id)
+    if (was) {
+      if (!cardIds.has(p.id) && whole(p)) {
+        tryStock({ ...p, from }, from)
+        return
+      }
+      const { label, text, on, trigger } = p
+      const patch = {
+        ...(label !== undefined && { label }),
+        ...(text !== undefined && { text }),
+        ...(on !== undefined && { on }),
+        ...(trigger !== undefined && { trigger }),
+      }
+      tryStock({ ...was, ...patch, from: text === undefined ? was.from : from }, from)
+    } else if (toggleOnly(p)) return
+    else if (p.text === undefined) refuse(from, p.id, "a new product needs text", p.label)
+    else tryStock({ role: "theater", shape: { kind: "text" }, stage: "narrate", ...p, from }, from)
+  }
+  // the default pack's toggle on a card's own product: the card's `on`, when it writes one, goes over it
+  const under = new Map<string, boolean>()
+  for (const p of base?.row.products ?? [])
+    if (toggleOnly(p) && p.on !== undefined && card.products?.some((c) => c.id === p.id)) under.set(p.id, p.on)
+    else patched(base!.from, p)
+  for (const p of card.products ?? []) {
+    const was = stock.get(p.id)
+    const on = under.get(p.id)
+    // the card's whole product stands on its own (its error fails the session at open); only a toggle-only defaultPack patch holds
+    if (whole(p)) {
+      cardIds.add(p.id)
+      stock.set(p.id, validate({ ...(on !== undefined && { on }), ...p, from: "card" }))
+    } else if (!was) {
+      const why = "no lower rank declares this product"
       omitted.push({
         category: "product",
-        id,
+        id: p.id,
         reason: "invalid",
         detail: why,
-        source: sourceOf(from, `products.${id}`, { label: patch.label ?? id }),
+        source: sourceOf("card", `products.${p.id}`, { label: p.label ?? p.id }),
       })
     } else
-      stock.set(id, {
-        id,
-        ...patch,
-        text: patch.text,
-        shape: { kind: "text" },
-        role: "theater",
-        stage: "narrate",
-        from,
-      })
+      try {
+        stock.set(p.id, validate({ ...was, ...p, from: "card" }))
+        cardIds.add(p.id)
+      } catch (e) {
+        omitted.push({
+          category: "product",
+          id: p.id,
+          reason: "invalid",
+          detail: e instanceof Error ? e.message : String(e),
+          source: sourceOf("card", `products.${p.id}`, { label: p.label ?? p.id }),
+        })
+      }
   }
-  // An id the card declares exists at the overlay's rank too: the patch stays a patch, and the card's own fields go over it.
-  for (const p of overlay?.products ?? []) {
-    if (!stock.has(p.id) && card.products?.some((c) => c.id === p.id)) stock.set(p.id, { id: p.id, from: "harness" })
-    patched("harness", p)
-  }
-  /** An ask `product.<id>` is a text patch at its row's rank; on a product this card does not have it is nothing. */
-  const reworded = (from: From, row: Partial<Layer>) => {
-    for (const a of row.asks ?? []) {
-      const was = a.id.startsWith("product.") && stock.get(a.id.slice("product.".length))
-      if (was) stock.set(was.id, { ...was, text: a.text, from })
-    }
-  }
-  if (overlay) reworded("harness", overlay)
-  for (const p of card.products ?? []) stock.set(p.id, { ...stock.get(p.id), ...p, from: "card" })
-  reworded("card", cardRow)
-  for (const p of stock.values()) validate(p) // the card's own error stands: it fails when the session opens
-  for (const { from, row } of mine) {
-    for (const p of row.products ?? []) patched(from, p)
-    reworded(from, row)
-  }
-  const raw = [...stock.values()].map((p) => validate(p) as Item<Product>)
+  for (const { from, row } of mine) for (const p of row.products ?? []) patched(from, p)
+  const raw = [...stock.values()]
   const asked = raw.map((p) => {
     const text = expand(p.text, names, p.from)
     return text === undefined ? { ...p, unasked: true as const } : { ...p, text }
@@ -904,8 +648,7 @@ export const resolveWithTrace = (
   /** Keyed, the highest rank first and its copy standing: what a menu shows. */
   const menu = <T>(pick: (r: Partial<Layer>) => readonly T[] | undefined, key: (x: T) => string) => {
     const m = new Map<string, Item<T>>()
-    for (const { from, row } of [...down, { from: "harness", row: code }])
-      for (const x of pick(row) ?? []) if (!m.has(key(x))) m.set(key(x), { ...x, from })
+    for (const { from, row } of down) for (const x of pick(row) ?? []) if (!m.has(key(x))) m.set(key(x), { ...x, from })
     return [...m.values()]
   }
   const allSnippets = menu(
@@ -916,9 +659,8 @@ export const resolveWithTrace = (
     const text = expand(s.text, names, s.from)
     const after = s.after === undefined ? undefined : expand(s.after, names, s.from)
     if (text === undefined || (s.after !== undefined && after === undefined)) return []
-    // in author mode every send is already a note and nobody in the story thinks: the channel switch and the thought
-    // mark have nothing to do there
-    if (input === "note" && (text === "" || /⦅/.test(text))) return []
+    // in author mode every send is already a note: the channel switch has nothing to do there
+    if (input === "note" && text === "") return []
     return [{ ...s, text, ...(after !== undefined && { after }) }]
   })
 
@@ -933,7 +675,6 @@ export const resolveWithTrace = (
     ...card.guard,
     ...(card.rules.readouts ?? []).flatMap((q) => [q.text, ...q.options.map((o) => o.text)]),
     ...raw.map((p) => p.text),
-    ...worded,
     ...allSnippets.flatMap((s) => [s.text, s.after ?? ""]),
   ]
   const views = new Map<string, EffectiveView>()
@@ -988,7 +729,6 @@ export const resolveWithTrace = (
     resolved: {
       frame: frameEntries.map((x) => x.item),
       tail: tailEntries.map((x) => x.item),
-      asks: Object.fromEntries(asks),
       products: asked,
       ...(views.size && {
         views: [...views.values()],
@@ -1007,7 +747,7 @@ export const resolveWithTrace = (
       holes: unfilled(out.join("\n"), names),
       switches: {
         value,
-        sentences: sentenceOf,
+        sentences: SWITCH_SENTENCES,
         taken: { pov: holder("pov"), verbosity: holder("verbosity") },
       },
       dropped,
@@ -1016,7 +756,6 @@ export const resolveWithTrace = (
     sources: {
       frame: frameEntries.map((x) => x.source),
       tail: tailEntries.map((x) => x.source),
-      asks: askSources,
       products: productSources,
       entries: entrySources,
     },
@@ -1042,10 +781,5 @@ export const shown = (r: Resolved) => {
     frame: r.frame.map(bare),
     tail: r.tail.map(bare),
     products: r.products.map(bare),
-    asks: Object.fromEntries(Object.entries(r.asks).map(([id, a]) => [id, bare(a)])),
-    switches: {
-      ...r.switches,
-      sentences: Object.fromEntries(Object.entries(r.switches.sentences).filter(([id]) => r.asks[id]?.from !== "card")),
-    },
   }
 }

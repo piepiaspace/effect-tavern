@@ -21,6 +21,13 @@ export const HI = 0.75
 export const LOOKUP = 0.5
 export const TOP = 8 // read_context's per-call cap
 
+// The questions, each followed by the unit's title, the rule or the entry's text. Measured in Chinese by server
+// bin/decision-lookup.ts (#168), decision-replay.ts and decision-probe.ts; kept as measured.
+const LOOKUP_ASK = "<input> 里玩家这一轮说的话或做的事，是否提到、询问或直接牵涉下面这条设定里的人物、物件或事情？\n"
+const RULE_ASK = "只评判 <draft> 里的正文；<world> 只是背景，不算正文。<draft> 是否违反了下面这条规则？\n规则："
+const OPEN_ASK =
+  "只看 <draft> 里的正文，<world> 只是背景。正文是否向读者传达了下面这条设定的实质内容？转述或清楚的暗示都算，只是气氛相近不算。\n设定："
+
 /** One answered question as the trace row shows it: its label and its probability (null: none came back); `read`: a
  *  lookup unit the host then delivered (by id: two units may share a title). */
 export interface Line {
@@ -30,13 +37,11 @@ export interface Line {
 }
 
 /** Lookup's state (the full parent scene, then `<input>`: the line and the note) and one boolean question per catalog unit
- *  (`u<i>`): an unread entry's face, or an unread section of a held one. The ask is layer.ts `lookup.decision`,
- *  followed by the unit's title. `scene` is the parent turn's prose; "" leaves the tag out. */
+ *  (`u<i>`): an unread entry's face, or an unread section of a held one: LOOKUP_ASK and the unit's title. `scene` is the parent turn's prose; "" leaves the tag out. */
 export const lookupQuestions = (o: {
   scene: string
   input: { text?: string; note?: string }
   units: readonly Unit[]
-  wording: (id: string) => string
 }): { state: string; questions: Record<string, Question>; asked: { resourceId: string; title: string }[] } => {
   const asked = askedOf(o.units)
   return {
@@ -47,7 +52,7 @@ export const lookupQuestions = (o: {
       .filter(Boolean)
       .join("\n\n"),
     questions: Object.fromEntries(
-      asked.map((u, i) => [`u${i}`, { type: "boolean", instructions: `${o.wording("lookup.decision")}${u.title}` }]),
+      asked.map((u, i) => [`u${i}`, { type: "boolean", instructions: `${LOOKUP_ASK}${u.title}` }]),
     ),
     asked,
   }
@@ -78,13 +83,12 @@ export const lookupSelect = (
 
 /** The state (`<world>` + `<draft>`) and one boolean question per guard rule (`g<i>`: violated?) and per open entry id
  *  (`o<i>`, in first-appearance order: its substance conveyed?; an id opened at several layers asks about them together).
- *  `world` is request.ts `worldBlock`, "" when the card has none. The asks are layer.ts `check.decision.rule` / `.open`. */
+ *  `world` is request.ts `worldBlock`, "" when the card has none. */
 export const checkQuestions = (o: {
   world: string
   draft: string
   rules: readonly string[]
   open: readonly { id: string; text: string }[]
-  wording: (id: string) => string
 }): { state: string; questions: Record<string, Question> } => {
   const ids = [...new Set(o.open.map((d) => d.id))]
   return {
@@ -95,7 +99,7 @@ export const checkQuestions = (o: {
           `g${i}`,
           {
             type: "boolean",
-            instructions: `${o.wording("check.decision.rule")}${rule}`,
+            instructions: `${RULE_ASK}${rule}`,
             criteria: { true: "正文中发生了规则禁止的事。", false: "正文没有发生规则禁止的事。" },
           },
         ]),
@@ -105,7 +109,7 @@ export const checkQuestions = (o: {
           `o${i}`,
           {
             type: "boolean",
-            instructions: `${o.wording("check.decision.open")}${o.open
+            instructions: `${OPEN_ASK}${o.open
               .filter((d) => d.id === id)
               .map((d) => d.text)
               .join("\n")}`,

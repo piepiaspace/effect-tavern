@@ -10,7 +10,6 @@ import { existsSync, rmSync } from "node:fs"
 import { dirname, extname, resolve } from "node:path"
 import { deflateSync } from "node:zlib"
 import { fake, type FakeCall } from "@effect-tavern/provider"
-import { player } from "@effect-tavern/runtime/support/rows.ts"
 import { defaultAnswer, readStage } from "@effect-tavern/runtime/support/script.ts"
 import { open as openData } from "../../server/src/data.ts"
 import { app } from "../../server/src/serve.ts"
@@ -620,7 +619,6 @@ function createMediaUiHost(): FixtureHost {
 
   const { handler } = tavern({
     data,
-    overlay: player.harness,
     model: () => fake(answer),
     seed: { key: "sk-ant-fake" },
     pinned: true,

@@ -91,7 +91,7 @@ const duel = makeCard(
         { path: "fled", is: true },
       ],
     },
-    cap: 4,
+    cap: 4, // an old card's beat cap: decoded and dropped, a turn is one beat
   }),
 )
 assert.deepEqual(
@@ -112,7 +112,7 @@ assert.deepEqual(
 )
 d = duel.fold(d.s, [{ next: "flee", seed: 0 }])
 assert.ok(duel.over(d.s) && d.events.includes("fled"))
-assert.equal(duel.cap, 4)
+assert.equal("cap" in duel.rules, false)
 
 // ───────── Cond's one new leaf: this turn's events, for lore windows (§19.1) ─────────
 // Declared fields are flat paths; the derived lore counters are nested. A flat field wins when both exist.

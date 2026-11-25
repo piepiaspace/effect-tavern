@@ -15,7 +15,7 @@ Effect Tavern 将一张卡视为**声明式数据 + 确定性规则**，而非�
 玩家的每一轮输入走固定骨架的阶段流水线，而非单次对话补全：
 
 ```text
-lookup → (decide → settle)* → gate → direct → narrate → check → polish → record
+lookup → decide → settle → gate → direct → narrate → check → polish → record
 ```
 
 - **结构化阶段按需开启与决策模型预检：** 纯聊天卡每轮只跑 `narrate` 与 `record`；`lookup`、`decide`、`direct`、`check`、`polish` 均根据卡片声明自动启停。可选的全局**决策模型（Decision Model）**支持以概率打分直接完成完整目录 `lookup` 检索与边界清晰的 `check` 预检，仅在需要时回退至语言模型调用。
@@ -30,7 +30,7 @@ lookup → (decide → settle)* → gate → direct → narrate → check → po
 ### 3. 无预设（Preset-free）分层装配
 
 - 用统一的 `Layer` 优先级序取代传统的大杂烩预设：
-  `harness → card → 挂载的写作包（packs）→ 单卡本地设置（local）→ 人设（persona）`
+  `默认写作包（defaultPack）→ card → 挂载的写作包（packs）→ 单卡本地设置（local）→ 人设（persona）`
 - 玩家可独立调节写作开关（`pov`、`echo`、`agency`、`verbosity`、`polish`）、挂载写作包（`Pack`）、切换模型续写协议壳（`Hat`）、配置快捷片段与阶段模型路由，互不侵入卡片内部逻辑。
 
 ### 4. 与传统酒馆系统的核心边界
