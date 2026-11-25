@@ -19,6 +19,8 @@
 // Names are filled per item by its `from` (names.ts `expand`): a player's entry with a hole nothing fills stays out, the
 // card's goes out with the literal `{{key}}`; `holes` lists what nothing fills, either way.
 import { ContextPolicy, checkContextPolicies } from "./lore.ts"
+import { compileView } from "./view-template.ts"
+import { ViewShellPatch, theaterSurface, type EffectiveView } from "./view-shell.ts"
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
 import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
@@ -36,6 +38,7 @@ export type PackEntry = typeof PackEntry.Type
 export const Layer = Schema.Struct({
   id: Schema.String,
   name: Schema.String,
+  views: Schema.optionalKey(Schema.Array(ViewShellPatch)),
   fragments: Schema.optionalKey(Schema.Array(Fragment)), // the id is a slot or its own, `at` head or tail, `mode` vs the lower ranks
   switches: Schema.optionalKey(Writing), // compiled to `pov` / `verbosity` before this row's own fragments, yielding
   products: Schema.optionalKey(Schema.Array(ProductPatch)), // a new id whole (`locked`), an id below patched by label, text, on and trigger
@@ -61,6 +64,7 @@ export type Local = typeof Local.Type
  *  never world state (role theater or chronicle, shape text or list, fold latest or append). */
 export const locked = <R extends Layer>(r: R): R => ({
   ...r,
+  ...(r.views && { views: r.views.map(({ when: _when, media: _media, ...v }) => v) }),
   ...(r.fragments && { fragments: r.fragments.map(({ when: _w, role: _r, ...f }) => f) }),
   ...(r.products && {
     products: r.products.map(({ id, label, text, on, trigger, role, shape, stage, fold, feed, surface }) => ({
@@ -125,6 +129,7 @@ export type Item<T> = T & { from: From; compiled?: true; persona?: true; unasked
 export interface Resolved {
   frame: Item<Fragment>[] // the head, names filled (names.ts: a player's entry with a hole nothing fills is not here)
   tail: Item<Fragment>[]
+  views?: EffectiveView[]
   products: Item<Product>[] // `on` decided; the question filled, or a player's `unasked` with its raw text when it does not fill
   entries: Item<PackEntry>[] // the lookup index's player-layer entries
   lexicon: Item<LexiconEntry>[] // keyed by pattern, the highest rank's copy standing (enabled: false switches off a lower rank's)
@@ -138,7 +143,7 @@ export interface Resolved {
     taken: { pov: From | null; verbosity: From | null } // who holds the slot; the frame item says whether it is compiled
   }
   // what the locks refused, nothing throws: a client words it by `kind` (one per lock), `why` is the CLI's and the tests'
-  dropped: { from: From; kind: "name" | "product" | "entry"; id: string; why: string }[]
+  dropped: { from: From; kind: "name" | "product" | "entry" | "view"; id: string; why: string }[]
 }
 
 /** The switches as slot fragments: `pov` (pov, echo, agency; the last two drop when there is no player in the fiction)
@@ -221,6 +226,7 @@ export const resolveWithTrace = (
   }
   // The card as a row: its frame and products are merged below, its fiction, lore and rules are not the layer's.
   const cardRow: Partial<Layer> = {
+    ...(card.views && { views: card.views }),
     ...(card.names && { names: card.names }),
     ...(card.lexicon && { lexicon: card.lexicon }),
   }
@@ -671,6 +677,52 @@ export const resolveWithTrace = (
     ...raw.map((p) => p.text),
     ...allSnippets.flatMap((s) => [s.text, s.after ?? ""]),
   ]
+  const views = new Map<string, EffectiveView>()
+  // The menu keeps declaration order. Only an authored template changes the priority of a product takeover.
+  const authored = new Set<string>()
+  for (const { from, row } of up) {
+    for (const patch of row.views ?? []) {
+      const prior = views.get(patch.id)
+      const { id, on, label, ...definition } = patch
+      const switches = { ...(on !== undefined && { on }), ...(label !== undefined && { label }) }
+      if (prior && !Object.keys(definition).length) {
+        views.set(id, { ...prior, ...switches })
+        continue
+      }
+      try {
+        const playerTemplate = row !== cardRow
+        if (playerTemplate && (prior ? !prior.product : !patch.product))
+          throw new Error("player templates require a theater product")
+        const view = { ...prior, ...patch, playerTemplate }
+        if (!view.html) throw new Error("view requires html")
+        if (
+          view.product &&
+          !theaterSurface(
+            asked.find((p) => p.id === view.product),
+            card.media?.illustrations,
+          )
+        )
+          throw new Error("view requires an available theater surface")
+        if (playerTemplate) {
+          delete view.when
+          delete view.media
+        }
+        const tree = compileView({ html: view.html, ...(view.css !== undefined && { css: view.css }) })
+        views.set(id, { ...view, html: view.html, tree })
+        authored.delete(id)
+        authored.add(id)
+      } catch (error) {
+        dropped.push({ kind: "view", from, id, why: String(error) })
+      }
+    }
+  }
+  const takenProducts = new Set<string>()
+  for (const id of [...authored].reverse()) {
+    const view = views.get(id)!
+    if (!view.product || view.on === false) continue
+    if (takenProducts.has(view.product)) view.shadowed = true
+    takenProducts.add(view.product)
+  }
   const frameEntries = filledTracked.filter((x) => x.item.at !== "tail")
   const tailEntries = filledTracked.filter((x) => x.item.at === "tail")
   return {
@@ -678,6 +730,9 @@ export const resolveWithTrace = (
       frame: frameEntries.map((x) => x.item),
       tail: tailEntries.map((x) => x.item),
       products: asked,
+      ...(views.size && {
+        views: [...views.values()],
+      }),
       entries,
       lexicon: menu(
         (r) => r.lexicon,

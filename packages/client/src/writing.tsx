@@ -108,6 +108,7 @@ const DROPPED: Record<Resolved["dropped"][number]["kind"], Key> = {
   name: "writing.droppedName",
   product: "writing.droppedProduct",
   entry: "writing.droppedEntry",
+  view: "writing.droppedView",
 }
 
 export const WritingPage = () => {
@@ -131,6 +132,13 @@ export const WritingPage = () => {
   const freeChat = () => isFreeChat(view())
   const loc = () => view()?.local
   const layer = () => view()?.layer
+  const toggleViews = (ids: string[], on: boolean) =>
+    putLocalAndRefresh(cardId(), (l) => {
+      const patches = new Map(l.views?.map((v) => [v.id, v]))
+      for (const id of ids) patches.set(id, { ...patches.get(id), id, on })
+      return { ...l, views: [...patches.values()] }
+    })
+  const anyViewOn = () => !!layer()?.views?.some((v) => v.on !== false)
 
   const fromLabel = (from: string): string => {
     if (from === "card") return title() || t("side.cardDefault")
@@ -249,6 +257,25 @@ export const WritingPage = () => {
             </Show>
           </div>
 
+          <Show when={layer()?.views?.length}>
+            <section class="wcard">
+              <h3>{t("writing.views")}</h3>
+              <Switch
+                label={t("writing.enableViews")}
+                on={anyViewOn()}
+                onFlip={() => void toggleViews(layer()?.views?.map((v) => v.id) ?? [], !anyViewOn())}
+              />
+              <For each={layer()?.views} keyed={(v) => v.id}>
+                {(v) => (
+                  <Switch
+                    label={v().label ?? v().id}
+                    on={v().on !== false}
+                    onFlip={() => void toggleViews([v().id], v().on === false)}
+                  />
+                )}
+              </For>
+            </section>
+          </Show>
           {/* 2. 本卡代称 (`layer.names` + `layer.holes`) */}
           <Show when={nameKeys().length > 0}>
             <div class="wcard">

@@ -18,6 +18,9 @@ const blank: Card = {
   guard: [],
 }
 
+const illustrated = { ...blank, views: [{ id: "hud", html: "<span data-text='names.char'></span>" }] }
+assert.deepEqual(cardOf(illustrated, manuscriptOf(illustrated)).views, illustrated.views)
+
 // A card made elsewhere, opened and not touched: the same card, key for key, so nothing is saved for the opening of it.
 for (const name of cardNames) {
   const card = await loadCard(name)

@@ -17,18 +17,19 @@ export const Col = Schema.Struct({
 type Col = typeof Col.Type
 /** Attachments by id (#1): what a record product may pick. A node stores only the id; a reader resolves `variants`
  *  (files relative to `baseUrl`, several takes of one id) by the node's seed. */
+export const CatalogItem = Schema.Struct({
+  id: Schema.String,
+  label: Schema.optionalKey(Schema.String),
+  when: Schema.optionalKey(Cond), // pickable only while it holds; no `when`, always
+  focus: Schema.optionalKey(Schema.Tuple([Schema.Number, Schema.Number])),
+  aspect: Schema.optionalKey(Schema.String),
+  variants: Schema.optionalKey(Schema.Array(Schema.String)),
+})
 export const Catalog = Schema.Struct({
   id: Schema.String,
   kind: Schema.optionalKey(Schema.Literals(["image", "audio"])),
   baseUrl: Schema.optionalKey(Schema.String),
-  items: Schema.Array(
-    Schema.Struct({
-      id: Schema.String,
-      label: Schema.optionalKey(Schema.String),
-      when: Schema.optionalKey(Cond), // pickable only while it holds; no `when`, always
-      variants: Schema.optionalKey(Schema.Array(Schema.String)),
-    }),
-  ),
+  items: Schema.Array(CatalogItem),
 })
 export type Catalog = typeof Catalog.Type
 export const TextShape = Schema.Struct({ kind: Schema.Literal("text"), max: Schema.optionalKey(Int) }) // max chars

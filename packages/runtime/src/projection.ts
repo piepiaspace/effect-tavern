@@ -25,6 +25,8 @@ export interface PlayerCatalogItem extends InvocationToken {
   available: boolean
 }
 export interface TimelineNode {
+  fields?: State
+  visibleViews?: readonly string[] // conditional views whose guard held at this node
   id: number
   parent: number | null
   input: Turn<Beat>["input"]
@@ -153,6 +155,7 @@ export const turnDetail = (n: Node, before: State, rules: Rules): TurnDetail => 
 })
 
 export interface Draft {
+  visibleViews?: readonly string[]
   parent: Id | null
   input: Input
   invocations?: readonly InvocationToken[]

@@ -383,6 +383,8 @@ export const Shell = (props: { children: JSX.Element }) => {
                               as="span"
                               class="strip-avatar"
                               src={p().url}
+                              focus={p().focus}
+                              aspect={p().aspect}
                               label={p().label}
                               fallbackText={initialOf(p().slotLabel || p().label)}
                             />

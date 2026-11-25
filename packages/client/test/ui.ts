@@ -467,6 +467,12 @@ const fixtures: FixtureEntry[] = [
     () => "on a mouse the text selects as it always has, a sheet opens on its search, and a key is hit on its face",
     [FINE],
   ],
+  [
+    "test/view-shell.tsx",
+    () => "view shells preserve input state and natural framing under reactive diagnostics",
+    [],
+    createMediaUiHost,
+  ],
   ["test/gallery-dev.tsx", () => "gallery and lightbox open under Solid development checks", [], createMediaUiHost],
   [
     "test/media-ui.tsx",
@@ -520,6 +526,9 @@ rules:
   actions: []
 lore: []
 guard: []
+views:
+  - id: gauge
+    html: '<details data-open="latest"><summary>江面</summary><span data-text="fields.潮位"></span></details>'
 catalogs:
   - id: crossings
     kind: image

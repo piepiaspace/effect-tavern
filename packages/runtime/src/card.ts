@@ -15,6 +15,7 @@ import { Fragment } from "./fragment.ts"
 import { expand, Names } from "./names.ts"
 import { Media } from "./media.ts"
 import { Entry } from "./polish.ts"
+import { ViewShell } from "./view-shell.ts"
 import { Catalog, ProductPatch } from "./product.ts"
 
 const Num = Schema.Number
@@ -315,6 +316,7 @@ export const Card = Schema.Struct({
   guard: Schema.Array(Schema.String), // checked after the prose, never shown to the narrator
   director: Schema.optionalKey(Schema.Boolean),
   input: Schema.optionalKey(Schema.Literals(["act", "note"])),
+  views: Schema.optionalKey(Schema.Array(ViewShell)),
   catalogs: Schema.optionalKey(Schema.Array(Catalog)), // attachments by id: an enum column's `catalog` names one
   products: Schema.optionalKey(Schema.Array(ProductPatch)), // whole products, or patches over the default pack's by id (layer.ts)
   media: Schema.optionalKey(Media), // closed media bindings over catalogs and record products

@@ -860,6 +860,66 @@ function testGalleryRules() {
     headContext: sunnyEbbedCtx,
   })
   const byKey = (g: ReturnType<typeof resolveGallery>) => new Map(g.items.map((i) => [`${i.catalog}/${i.id}`, i]))
+  const hud = {
+    id: "water",
+    html: "<div data-media='media.lantern'></div>",
+    playerTemplate: false,
+    tree: [{ tag: "div", svg: false, attrs: { "data-media": "media.lantern" }, children: [] }],
+  }
+  const node = {
+    id: 13,
+    prose: "潮起。",
+    media: { viewMedia: [{ id: "lantern", viewId: hud.id, catalog: "crossings", item: "rain_lantern" }] },
+  }
+  for (const [enabled, branch, expected] of [
+    [true, true, true],
+    [false, true, false],
+    [true, false, false],
+  ] as const) {
+    const gallery = resolveGallery(
+      { ...view, layer: { ...view.layer, views: [{ ...hud, on: enabled }] } },
+      { storyOpen: true, pathNodes: branch ? [node] : [] },
+    )
+    assert.equal(byKey(gallery).get("crossings/rain_lantern")?.revealed, expected)
+  }
+  // A former head can still be cached with its latest-only hits after the next turn arrives.
+  assert.equal(
+    byKey(
+      resolveGallery(
+        { ...view, layer: { ...view.layer, views: [hud] } },
+        { storyOpen: true, pathNodes: [node, { id: 14, prose: "" }] },
+      ),
+    ).get("crossings/rain_lantern")?.revealed,
+    false,
+  )
+  const photo = {
+    ...hud,
+    id: "photo",
+    product: "letter",
+    tree: [{ tag: "div", svg: false, attrs: { "data-if": "show", "data-media": "crossings:picture" }, children: [] }],
+  }
+  const letter = {
+    id: "letter",
+    role: "theater" as const,
+    shape: {
+      kind: "record" as const,
+      keys: [
+        { key: "picture", type: "enum" as const, catalog: "crossings" },
+        { key: "show", type: "boolean" as const },
+      ],
+    },
+  }
+  for (const [on, show, revealed] of [
+    [true, true, true],
+    [true, false, false],
+    [false, true, false],
+  ] as const) {
+    const gallery = resolveGallery(
+      { ...view, layer: { views: [{ ...photo, on }], products: [letter] } },
+      { storyOpen: true, pathNodes: [{ id: 9, prose: "", theater: { letter: { picture: "rain_lantern", show } } }] },
+    )
+    assert.equal(byKey(gallery).get("crossings/rain_lantern")?.revealed, revealed)
+  }
   const shortened = resolveGallery(view, {
     storyOpen: true,
     pathNodes: sunnyPath.map((n) => (n.id === 7 ? { ...n, prose: "渡口。" } : n)),

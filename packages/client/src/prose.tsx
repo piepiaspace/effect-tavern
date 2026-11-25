@@ -179,6 +179,9 @@ const sameIllustration = (a: ResolvedIllustration, b: ResolvedIllustration): boo
   a.occurrence === b.occurrence &&
   a.label === b.label &&
   a.url === b.url &&
+  a.aspect === b.aspect &&
+  a.focus?.[0] === b.focus?.[0] &&
+  a.focus?.[1] === b.focus?.[1] &&
   a.theaterProductId === b.theaterProductId
 
 const sameIllustrationBuckets = (
@@ -238,7 +241,16 @@ export const Prose = (props: {
                 keyed={(ill) => `${ill.catalog}\0${ill.id}\0${ill.occurrence}`}
               >
                 {(ill) => (
-                  <MediaFrame as="figure" class="illust" src={ill().url} label={ill().label} lightbox>
+                  <MediaFrame
+                    as="figure"
+                    class="illust"
+                    fit="natural"
+                    focus={ill().focus}
+                    aspect={ill().aspect}
+                    src={ill().url}
+                    label={ill().label}
+                    lightbox
+                  >
                     <Show when={ill().theaterProductId}>
                       {(productId) => (
                         <span class="acts">

@@ -233,6 +233,15 @@ products:
         - { key: id, type: enum, catalog: ferry_bgm }
     text: |-
       若本轮开篇或江面晴雨、夜航氛围发生变化，选入一首契合当前意境的江上曲目；若延续上一幕氛围无需换曲，返回空数组。
+  - id: inner
+    role: theater
+    surface: theater
+    label: 船夫心声
+    shape: { kind: text }
+    stage: narrate
+    on: false
+    text: |-
+      这一幕里{{char}}心里闪过却没有说出口的念头，简短一段。
 media:
   illustrations: [{ product: ferry_cg }]
   portraits:
@@ -240,3 +249,100 @@ media:
     - { catalog: passenger, label: 乘客 }
   gallery: [crossings, ferryman]
   bgm: { product: score }
+
+views:
+  - id: ferry_hud
+    label: 沧江渡口风物栏
+    residency: latest
+    media:
+      - { id: ferryman, catalog: ferryman }
+      - { id: passenger, catalog: passenger }
+    css: |
+      :host {
+        display: block;
+        font-family: var(--font-sans);
+        color: var(--ink);
+      }
+      .hud {
+        border-radius: var(--radius-card);
+        background: var(--alpha-1);
+        box-shadow: inset 0 0 0 1px var(--line);
+        padding: 10px 14px;
+      }
+      .hud[data-weather="雨"] {
+        background: color-mix(in oklab, var(--surface-2) 86%, var(--ink) 4%);
+      }
+      summary {
+        list-style: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 13px;
+      }
+      summary::-webkit-details-marker { display: none; }
+      .meta { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+      .badge {
+        padding: 1px 8px;
+        border-radius: 999px;
+        background: var(--alpha-2);
+        color: var(--ink-2);
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .tide-bar {
+        width: 72px;
+        height: 4px;
+        border-radius: 999px;
+        background: var(--alpha-2);
+        overflow: hidden;
+      }
+      .tide-fill {
+        height: 100%;
+        width: calc(var(--tide, 0) / 3 * 100%);
+        background: var(--ink-2);
+        transition: width 220ms ease;
+      }
+      .cast {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        display: flex;
+        gap: 12px;
+      }
+      .person { display: flex; align-items: center; gap: 8px; min-width: 0; }
+      .avatar { width: 40px; height: 40px; border-radius: 8px; flex: none; }
+      .role { font-size: 12px; color: var(--ink-2); }
+    html: |
+      <details class="hud" data-open="latest" data-attr-weather="fields.天气" data-var-tide="fields.潮位">
+        <summary>
+          <span class="meta">
+            <span>白沙渡</span>
+            <span class="badge" data-text="world.boat.moor"></span>
+            <span class="badge" data-text="fields.天气"></span>
+          </span>
+          <span class="tide-bar" aria-hidden="true"><span class="tide-fill"></span></span>
+        </summary>
+        <div class="cast">
+          <div class="person" data-if="media.ferryman">
+            <div class="avatar" data-media="media.ferryman" data-lightbox></div>
+            <div>
+              <div data-text="names.char"></div>
+              <div class="role">守渡船夫</div>
+            </div>
+          </div>
+          <div class="person" data-if="world.boat.aboard">
+            <div class="avatar" data-media="media.passenger" data-lightbox></div>
+            <div>
+              <div>沈寄舟</div>
+              <div class="role">同船夜渡客</div>
+            </div>
+          </div>
+        </div>
+      </details>
+  - id: ferry_letter
+    label: 船夫心声
+    product: inner
+    html: '<blockquote><p data-text="value"></p></blockquote>'
+    css: "blockquote { margin: 0; padding: 1em; border-inline-start: 2px solid var(--line); color: var(--ink-2); }"

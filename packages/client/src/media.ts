@@ -1,4 +1,6 @@
+import { safeRows, viewBindings, displayedImages } from "./view-bindings.ts"
 // Browser-safe client media projections: node illustrations + theater attribution, portraits, and card gallery.
+import { activeView, residency } from "@effect-tavern/runtime/src/view-shell.ts"
 import { holds, type Cond, type State } from "@effect-tavern/runtime/src/cond.ts"
 import {
   hashMediaTuple,
@@ -17,7 +19,7 @@ import {
   type NodeMedia,
   type PortraitSlot,
 } from "@effect-tavern/runtime/src/media.ts"
-import { rows, type Catalog, type Product, type TableShape } from "@effect-tavern/runtime/src/product.ts"
+import type { Catalog, Product } from "@effect-tavern/runtime/src/product.ts"
 import { createMemo, createRoot, runWithOwner, type Accessor } from "solid-js"
 import { blocks } from "./markdown.ts"
 import { card, path, stories, type CardView, type Id, type StoryRow } from "./store.ts"
@@ -40,7 +42,21 @@ export {
   type PortraitSlot,
 }
 
-export interface ResolvedIllustration {
+export interface Presentation {
+  readonly focus?: readonly [number, number] | undefined
+  readonly aspect?: string | undefined
+}
+export const presentation = (item?: Presentation) => ({
+  ...(item?.focus && { focus: item.focus }),
+  ...(item?.aspect && {
+    aspect: item.aspect
+      .split("/")
+      .map((s) => s.trim())
+      .join(" / "),
+  }),
+})
+
+export interface ResolvedIllustration extends Presentation {
   readonly catalog: string
   readonly id: string
   readonly afterParagraph: number
@@ -50,7 +66,7 @@ export interface ResolvedIllustration {
   readonly theaterProductId?: string
 }
 
-export interface ResolvedPortrait {
+export interface ResolvedPortrait extends Presentation {
   readonly id: string
   readonly catalog: string
   readonly item: string
@@ -60,7 +76,7 @@ export interface ResolvedPortrait {
   readonly url: string | undefined
 }
 
-export interface ResolvedGalleryItem {
+export interface ResolvedGalleryItem extends Presentation {
   readonly key: string
   readonly catalog: string
   readonly id: string
@@ -88,8 +104,15 @@ export interface ResolvedGallery {
 
 export interface ResolveGalleryOptions {
   readonly storyOpen?: boolean
-  readonly pathNodes?: readonly { readonly id: number; readonly prose: string; readonly media?: NodeMedia }[]
-  readonly headContext?: { readonly worldState?: State } | null
+  readonly pathNodes?: readonly {
+    readonly id: number
+    readonly fields?: State
+    readonly visibleViews?: readonly string[]
+    readonly prose: string
+    readonly theater?: Readonly<Record<string, unknown>>
+    readonly media?: NodeMedia
+  }[]
+  readonly headContext?: { readonly worldState?: State; readonly products?: Record<string, unknown> } | null
   readonly headEvents?: readonly string[]
   readonly showAll?: boolean
   readonly peekedKeys?: ReadonlySet<string>
@@ -100,6 +123,8 @@ export type MediaViewLike = {
   readonly catalogs?: readonly Catalog[]
   readonly media?: Media
   readonly layer?: {
+    readonly names?: unknown
+    readonly views?: CardView["layer"]["views"]
     readonly products?: readonly Pick<Product, "id" | "role" | "on" | "shape">[]
   }
 }
@@ -121,14 +146,6 @@ export const safeCatalogUrl = (
     return resolveCatalogUrl(catalogs, target)
   } catch {
     return undefined
-  }
-}
-
-const safeRows = (shape: TableShape, value: unknown) => {
-  try {
-    return rows(shape, value)
-  } catch {
-    return []
   }
 }
 
@@ -237,6 +254,7 @@ export const resolveNodeIllustrations = (
     const producer = view?.layer?.products?.find((p) => p.id === ill.productId)
     const theaterProductId = producer?.role === "theater" && producer.on !== false ? producer.id : undefined
     const resolved: ResolvedIllustration = {
+      ...presentation(entry),
       catalog: ill.catalog,
       id: ill.id,
       afterParagraph: ill.afterParagraph,
@@ -255,7 +273,7 @@ export const resolveNodeIllustrations = (
 
 export const resolvePortraits = (
   node: { readonly media?: NodeMedia } | null | undefined,
-  view: Pick<CardView, "media" | "catalogs"> | MediaViewLike | null | undefined,
+  view: MediaViewLike | null | undefined,
 ): ResolvedPortrait[] => {
   const hits = node?.media?.portraits
   if (!hits?.length) return []
@@ -276,6 +294,7 @@ export const resolvePortraits = (
       id: p.id,
       catalog: p.catalog,
       item: p.item,
+      ...presentation(entry),
       slotLabel,
       itemLabel,
       label,
@@ -302,7 +321,10 @@ export const samePortraits = (a: readonly ResolvedPortrait[], b: readonly Resolv
       p.slotLabel === b[i]?.slotLabel &&
       p.itemLabel === b[i]?.itemLabel &&
       p.label === b[i]?.label &&
-      p.url === b[i]?.url,
+      p.url === b[i]?.url &&
+      p.aspect === b[i]?.aspect &&
+      p.focus?.[0] === b[i]?.focus?.[0] &&
+      p.focus?.[1] === b[i]?.focus?.[1],
   )
 
 const emptyPortraits: readonly ResolvedPortrait[] = []
@@ -363,9 +385,7 @@ export const condReadsEvent = (cond: Cond | undefined): boolean => {
   return false
 }
 
-export const galleryReadsEvent = (
-  view: Pick<CardView, "media" | "catalogs"> | MediaViewLike | null | undefined,
-): boolean => {
+export const galleryReadsEvent = (view: MediaViewLike | null | undefined): boolean => {
   const ids = view?.media?.gallery
   if (!ids?.length) return false
   for (const id of ids) {
@@ -394,7 +414,7 @@ const emptyGallery: ResolvedGallery = {
 }
 
 export const resolveGallery = (
-  view: Pick<CardView, "media" | "catalogs"> | MediaViewLike | null | undefined,
+  view: MediaViewLike | null | undefined,
   options: ResolveGalleryOptions = {},
 ): ResolvedGallery => {
   const galleryIds = view?.media?.gallery
@@ -429,6 +449,38 @@ export const resolveGallery = (
             occurrence,
           })
           if (url !== undefined) pathUrls.set(key, url)
+        }
+      }
+      const latest = n === options.pathNodes.at(-1)
+      for (const shell of view.layer?.views ?? []) {
+        if (
+          !activeView(shell) ||
+          shell.playerTemplate ||
+          (residency(shell) === "latest" && !latest) ||
+          (shell.when && !n.visibleViews?.includes(shell.id))
+        )
+          continue
+        const value = shell.product ? n.theater?.[shell.product] : undefined
+        if (shell.product && value === undefined) continue
+        const shape = view.layer?.products?.find((p) => p.id === shell.product)?.shape
+        const context = residency(shell) === "latest" && !shell.product ? options.headContext : undefined
+        const bindings = viewBindings({
+          view: shell,
+          node: n,
+          shape,
+          value,
+          names: view.layer?.names,
+          context: {
+            fields: context?.worldState?.fields,
+            world: context?.products,
+          },
+        })
+        for (const hit of displayedImages(shell.tree, bindings)) {
+          const url = safeCatalogUrl(view.catalogs, hit)
+          if (!url) continue
+          const key = hit.catalog + "\0" + hit.item
+          pathRevealed.add(key)
+          pathUrls.set(key, url)
         }
       }
       if (n.media?.portraits?.length) {
@@ -480,6 +532,7 @@ export const resolveGallery = (
         catalog: cat.id,
         id: item.id,
         label: item.label ?? item.id,
+        ...presentation(item),
         gated,
         unlocked,
         revealed,

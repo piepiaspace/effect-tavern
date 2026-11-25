@@ -24,11 +24,20 @@ import { copyText } from "./host.ts"
 import { Home } from "./home.tsx"
 import { imeController } from "./ime.ts"
 import { Back, Check, Close, Copy, Down, Edit, Insert, Next, Prev, Warning } from "./icons.tsx"
-import { MediaFrame } from "./lightbox.tsx"
 import { blocks } from "./markdown.ts"
-import { activePortraits, activeStoryMatchesCard } from "./media.ts"
+import { activeStoryMatchesCard } from "./media.ts"
 import { plain, Prose } from "./prose.tsx"
-import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
+import {
+  Demand,
+  Failed,
+  RecordSheet,
+  Settlement,
+  Rewrite,
+  SiblingKind,
+  StatusPage,
+  StateViews,
+  Theater,
+} from "./readings.tsx"
 import { apart, lineOf, suggestions, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
 import { shrinkwrap } from "./shrinkwrap.ts"
@@ -461,7 +470,7 @@ export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failur
           </Show>
         </div>
       </div>
-      <Theater products={props.d.products ?? {}} />
+      <Theater visibleViews={props.d.visibleViews} products={props.d.products ?? {}} />
       <Show when={done() || rewriting()}>
         <footer class="actions">
           <TurnStatus kind={done() ? settleKind(props.phase) : "rewriting"} variant="pill" />
@@ -639,7 +648,8 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
         <Editor text={prose(props.node)} onDone={done} />
       </Show>
       <Settlement node={props.node} />
-      <Theater products={props.node.theater} node={props.node} />
+      <Theater products={props.node.theater} node={props.node} last={props.last} />
+      <StateViews node={props.node} last={props.last} view={props.view} />
       {/* the turn's row (#101): the Record pill (a ledger to open), 小剧场, the version count, "stopped"; then, at the right end, this turn's
           actions (readings.tsx `Rewrite`), which a pointer sees on the latest turn always and on a past one while it
           is over the section, a touch screen always (reader.css) */}
@@ -705,7 +715,7 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
         </Show>
         <Rewrite rerun={!!lineOf(props.node) || !!props.node.input.invoke?.length} node={props.node.id} />
       </footer>
-      <Show when={props.last && options().length}>
+      <Show when={props.last && !busy() && options().length}>
         <Options items={options()} />
       </Show>
     </section>
@@ -729,35 +739,19 @@ const Reader = () => {
     const view = card()
     return activeStoryMatchesCard(view?.id) ? view : null
   })
-  const portraits = activePortraits
   return (
     <div class="panel">
-      <Show when={wide() && portraits().length}>
-        <aside class="reader-portraits" aria-label={t("readings.portraits")}>
-          <For each={portraits()} keyed={(p) => p.id}>
-            {(p) => (
-              <div class="reader-portrait">
-                <MediaFrame
-                  class="reader-portrait-frame"
-                  src={p().url}
-                  label={p().label}
-                  fallbackText={p().slotLabel || p().label}
-                  triggerLabel={p().slotLabel ? `${p().slotLabel} · ${p().label}` : p().label}
-                  lightboxLabel={p().label}
-                  lightbox
-                />
-                <span class="reader-portrait-name">{p().slotLabel || p().label}</span>
-              </div>
-            )}
-          </For>
-        </aside>
-      </Show>
       <div class="scroll">
         <main>
           {/* keyed by id: a snapshot read back (after a stop) refreshes each section in place instead of rebuilding them */}
           <For each={shown()} keyed={(n) => n.id}>
             {(n, i) => (
-              <Section view={storyView()} node={n()} n={i() + 1} last={!busy() && i() === shown().length - 1} />
+              <Section
+                view={storyView()}
+                node={n()}
+                n={i() + 1}
+                last={(!busy() || (d() === null && n().settlementStatus !== "pending")) && i() === shown().length - 1}
+              />
             )}
           </For>
           <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>

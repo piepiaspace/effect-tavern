@@ -91,7 +91,8 @@ import {
   type Rows,
 } from "./layer.ts"
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
-import { projectNodeMedia } from "./media.ts"
+import { activeView, residency } from "./view-shell.ts"
+import { nodeCondition, projectNodeMedia } from "./media.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
 import { prepareHat, prepareNarrate, stripTraceRawText } from "./preview.ts"
@@ -130,7 +131,7 @@ export type Pair = typeof Pair.Type
 export type { Node } from "./derived.ts" // internal complete projection; clients use projection.ts
 export type Event =
   | { kind: "exchange"; phase: Phase; attempt: number; model: string; exchange: Exchange }
-  | { kind: "stage"; phase: Phase }
+  | { kind: "stage"; phase: Phase; visibleViews?: readonly string[] }
   | { kind: "delta"; part: Part | ProductDelta }
   // `via: "decision"`: lookup's or check's pass on the decision model (`decisionPass`), not a language model call
   // every call a stage makes, landed or failed: `model` the model's own id, `fault` (provider fault.ts) when it failed
@@ -1024,7 +1025,16 @@ export const makeSession = ({
       const transcript = transition ? derived.at(path) : here
       const sum = transcript.summary()
       // the narrate products on this turn: one ask line each in narrate's tail, each block cut off the reply
-      const penned = askedAt(products(), "narrate", here.context(s1))
+      const narrationState = here.context(s1)
+      const penned = askedAt(products(), "narrate", narrationState)
+      const guarded = layer().views?.filter((v) => activeView(v) && v.product && v.when)
+      const visibility = guarded?.length
+        ? {
+            visibleViews: guarded
+              .filter((v) => holds(v.when!, narrationState, [...o.events, ...events]))
+              .map((v) => v.id),
+          }
+        : {}
 
       // No output cap by default: the model's own limit (128k on Haiku) is the ceiling. A cap is connection config.
       const M = modelFor("narrate", emit.observe("narrate"))
@@ -1043,7 +1053,7 @@ export const makeSession = ({
         allowAsideOnlyForCheck = false,
       ) =>
         Effect.gen(function* () {
-          yield* emit({ kind: "stage", phase: "narrate" })
+          yield* emit({ kind: "stage", phase: "narrate", ...visibility })
           const t0 = Date.now()
           const marked = deliveryMeta(delivery, req)
           let callMeta:
@@ -1586,22 +1596,45 @@ export const makeSession = ({
     return !!(record || theater)
   }
 
-  const toTimeline = (parents: readonly Turn[], n: Node): TimelineNode =>
-    timelineNode(
-      n,
-      derived.at(parents).state,
-      card.rules,
-      products(),
-      projectNodeMedia({
-        media: card.media,
-        products: products(),
-        catalogs: catalogs(),
-        turnProducts: n.turn.products,
-        fields: n.state,
-        events: n.events,
-        context: () => derived.at([...parents, n.turn]).context(),
-      }),
+  const moveHead = (next: Parameters<typeof held.commit>[0]) => {
+    const old = held.log.head
+    const result = change(held.commit(next))
+    if (old === result.head || !layer().views?.some((v) => activeView(v) && residency(v) === "latest")) return result
+    const affected = [old, result.head].filter((id): id is number => id !== null && held.log.nodes.has(id))
+    return { ...result, invalidated: affected }
+  }
+
+  const toTimeline = (parents: readonly Turn[], n: Node): TimelineNode => {
+    const views = (layer().views ?? []).filter(
+      (v) => activeView(v) && (n.id === held.log.head || residency(v) === "turn"),
     )
+    let state: ReturnType<ReturnType<typeof derived.at>["context"]> | undefined
+    const conditional = views.filter((v) => v.when)
+    const context = () => (state ??= derived.at([...parents, n.turn]).context())
+    const matches = nodeCondition(n.state, n.events, context)
+    return {
+      ...timelineNode(
+        n,
+        derived.at(parents).state,
+        card.rules,
+        products(),
+        projectNodeMedia({
+          views,
+          media: card.media,
+          products: products(),
+          catalogs: catalogs(),
+          turnProducts: n.turn.products,
+          fields: n.state,
+          events: n.events,
+          context,
+        }),
+      ),
+      ...(views.some((v) => !v.product && residency(v) === "turn") && { fields: n.state }),
+      ...(conditional.length && {
+        visibleViews: conditional.filter((v) => matches(v.when!)).map((v) => v.id),
+      }),
+    }
+  }
 
   return {
     greet,
@@ -1724,14 +1757,14 @@ export const makeSession = ({
     /** Head moves to a version's newest leaf (its whole follow-up comes back), or to null: an empty line. */
     checkout: (id: number | null): Change => {
       fresh()
-      return change(held.commit(Log.checkout(held.log, id)))
+      return moveHead(Log.checkout(held.log, id))
     },
     /** The card's openings, for the greet action: a new thread is a new root, so the client asks for one by index. */
     greetings: card.greetings,
     /** A node and its descendants gone for good: deleting a thread is dropping its root. */
     drop: (id: number): Change => {
       fresh()
-      return change(held.commit(Log.drop(held.log, id)))
+      return moveHead(Log.drop(held.log, id))
     },
     /** The card's rules as data, for a client that draws state: field bounds and options, action ids. Static per session. */
     rules: card.rules,

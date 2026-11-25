@@ -650,6 +650,9 @@ const zh = {
     noLexiconMatch: "没有匹配的禁词",
     droppedName: "{from}的代称「{id}」须为一行、不含 {{，未采用",
     droppedProduct: "{from}的小剧场「{id}」没有内容，未采用",
+    droppedView: "未采用{from}的视图「{id}」",
+    views: "流内视图",
+    enableViews: "启用流内视图",
     droppedEntry: "{from}的词条「{id}」含 /，未采用",
   },
   packs: {

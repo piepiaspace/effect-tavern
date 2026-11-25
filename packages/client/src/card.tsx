@@ -164,7 +164,7 @@ export const CardPage = () => {
     return resolveGallery(view(), {
       storyOpen: openForCard,
       pathNodes: openForCard ? line() : [],
-      headContext: h ? { worldState: { ...h.context.worldState } } : null,
+      headContext: h ? { worldState: { ...h.context.worldState }, products: h.context.products } : null,
       headEvents: h?.events,
       showAll: showAll(),
       peekedKeys: peeked(),
@@ -542,6 +542,8 @@ export const CardPage = () => {
                               >
                                 <MediaFrame
                                   class="gallery-frame"
+                                  focus={item().focus}
+                                  aspect={item().aspect}
                                   masked={item().masked}
                                   src={item().masked ? undefined : item().url}
                                   label={item().masked ? t("card.spoiler") : item().label}

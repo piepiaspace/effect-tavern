@@ -5,7 +5,7 @@ import { responseError, responseValue } from "./response.ts"
 import type { ListedModel as Listed } from "@effect-tavern/provider/src/providers.ts"
 import { readCache } from "./read-cache.ts"
 import type { TimelineNode as Node, ActiveContextView, TurnDetail } from "@effect-tavern/runtime/src/projection.ts"
-type Change = L.Change<Node>
+type Change = L.Change<Node> & { updated?: readonly Node[] }
 // The seam to packages/server: `GET /card`, `GET /nodes` (nodes and head) and the library (`/stories`, `/personas`,
 // `/locals`, `/cards/<id>/local`) are the snapshot, `POST /` is one action whose events come back as SSE. A story call (open, new, delete)
 // answers the listing with the story to be on (`current`, none on an empty library): the client names it on every
@@ -31,6 +31,7 @@ import type { Call } from "./inspect.ts"
 import type { Hit } from "./stories.ts"
 import {
   apply,
+  updateTimeline,
   openStreams,
   card,
   cards,
@@ -141,7 +142,7 @@ export const fetchCardOf = async (id: string, current: () => boolean = () => tru
 }
 export const dropNodes = async (id: number): Promise<void> => {
   const c = await got<Change>(call(`${base}/nodes/${id}`, { method: "DELETE" }))
-  registry.update(log, (l) => L.apply(l, c))
+  updateTimeline(c)
   await fetchStories() // the head moved: the row's last line and size follow
 }
 /** A listing read or answered by a write keeps the client's own `current`: to a request that names no story (a tab on
@@ -154,7 +155,14 @@ export const fetchPersonas = async (): Promise<void> => registry.set(personas, a
  *  snippets, format keys. A tab switched meanwhile keeps the read from landing on the wrong card. */
 export const refreshActiveCard = async (): Promise<void> => {
   const cur = activeOf(registry.get(tabs))
+  const before = registry.get(card)?.layer?.views
   await fetchTabCard(cur, () => activeOf(registry.get(tabs)) === cur)
+  if (
+    activeOf(registry.get(tabs)) === cur &&
+    cur.story !== null &&
+    JSON.stringify(before) !== JSON.stringify(registry.get(card)?.layer?.views)
+  )
+    await fetchNodes()
 }
 /** The card's page over a story in progress: it is about the story Begin makes, on the card's default persona and not
  *  the open story's (#170). Read once the tab's story is in the slots. */
