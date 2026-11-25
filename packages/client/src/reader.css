@@ -148,8 +148,10 @@ main > section:last-of-type {
 }
 .turn-status {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: var(--space-2);
+  white-space: nowrap;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -571,11 +573,13 @@ main > section:focus-within > :is(.actions, .theater) .acts {
 }
 .siblings {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 0;
   font-size: var(--text-footnote);
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .actions .siblings .icon {
   width: 20px;
@@ -595,6 +599,7 @@ main > section:focus-within > :is(.actions, .theater) .acts {
   color: inherit;
   font: inherit;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 .siblings .count[data-open],
 .siblings .count:active:not(:disabled) {

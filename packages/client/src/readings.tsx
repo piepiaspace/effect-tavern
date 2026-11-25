@@ -507,26 +507,14 @@ export const Rewrite = (props: {
 }) => {
   const busy = read(working)
   return (
-    <>
+    <Show when={!busy()}>
       <span class="spacer" />
       <span class="acts" role="toolbar" aria-label={t("readings.turnActions")}>
         <Show when={props.rerun}>
-          <button
-            type="button"
-            class="icon"
-            aria-label={t("common.swipe")}
-            disabled={busy()}
-            onClick={() => turn.swipe(props.node)}
-          >
+          <button type="button" class="icon" aria-label={t("common.swipe")} onClick={() => turn.swipe(props.node)}>
             <Swipe />
           </button>
-          <button
-            type="button"
-            class="icon"
-            aria-label={t("common.reword")}
-            disabled={busy()}
-            onClick={() => turn.reword(props.node)}
-          >
+          <button type="button" class="icon" aria-label={t("common.reword")} onClick={() => turn.reword(props.node)}>
             <Reword />
           </button>
         </Show>
@@ -534,14 +522,13 @@ export const Rewrite = (props: {
           type="button"
           class="icon"
           aria-label={t("common.edit")}
-          disabled={busy()}
           // the editor opens on the prose in place (App.tsx `Editor`); a second press closes it
           onClick={() => registry.set(editing, registry.get(editing) === props.node ? null : props.node)}
         >
           <Edit />
         </button>
       </span>
-    </>
+    </Show>
   )
 }
 

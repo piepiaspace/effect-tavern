@@ -9,10 +9,12 @@
   border-radius: var(--radius-pill);
   background: var(--alpha-1);
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: var(--space-1);
   font-size: var(--text-footnote);
   color: var(--ink-2);
+  white-space: nowrap;
 }
 @media (hover: hover) and (pointer: fine) {
   button.record-pill:hover {
