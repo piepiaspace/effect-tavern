@@ -758,6 +758,8 @@ data.close()
     { id: "product.notes", text: "ASKED-NOTES" },
     { id: "product.town", text: "ASKED-TOWN" },
     { id: "product.mine", text: "ASKED-MINE" },
+    { id: "product.muted", text: "" },
+    { id: "product.blank", text: "   " },
     { id: "lookup", text: "GONE" },
   ]
   const plain = before(

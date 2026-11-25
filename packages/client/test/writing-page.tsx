@@ -1,5 +1,5 @@
 import { render } from "@solidjs/web"
-import { flush } from "solid-js"
+import { createSignal, flush } from "solid-js"
 import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import { cardView } from "@effect-tavern/runtime/src/session.ts"
 import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
@@ -164,12 +164,49 @@ async function run() {
     const custom: Layer = { id: "custom", name: "Custom", fragments: [{ id: "req-123", text: "Write clearly." }] }
     const modeShown = () =>
       root.querySelector<HTMLButtonElement>(`[aria-label="${t("packs.mode")}"]`)?.textContent ?? ""
+    let latestDefault: Layer & { default?: boolean } = { ...custom, default: true }
+    const [savedDefault, setSavedDefault] = createSignal(latestDefault)
     const disposeDefault = render(
-      () => <ProseTab pack={{ ...custom, default: true }} onSave={() => Promise.resolve()} />,
+      () => (
+        <ProseTab
+          pack={savedDefault()}
+          onSave={(edit) => {
+            latestDefault = { ...edit(latestDefault), default: latestDefault.default }
+            setSavedDefault(latestDefault)
+            return Promise.resolve()
+          }}
+        />
+      ),
       root,
     )
     flush()
     if (!modeShown().includes(t("packs.modeYield"))) throw Error("A default pack's fragment does not show yield")
+    // Picking override then yield in a default pack persists explicit `mode: "yield"` (never strips it back to undefined)
+    const pickMode = async (label: string) => {
+      root.querySelector<HTMLButtonElement>(`[aria-label="${t("packs.mode")}"]`)!.click()
+      if (!(await until(() => document.querySelector('[role="option"]'))))
+        throw Error("Missing default pack mode options")
+      ;[...document.querySelectorAll<HTMLElement>('[role="option"]')]
+        .find((o) => o.textContent?.includes(label))!
+        .click()
+      await until(() => !document.querySelector('[role="option"]'))
+    }
+    const latestMode = () => latestDefault.fragments?.[0]?.mode
+    await pickMode(t("packs.modeOverride"))
+    if (latestMode() !== "override")
+      throw Error(`Expected explicit mode "override" in default pack, got ${String(latestMode())}`)
+    await pickMode(t("packs.modeYield"))
+    if (latestMode() !== "yield")
+      throw Error(`Expected explicit mode "yield" in default pack, got ${String(latestMode())}`)
+    // Adding a new requirement in a default pack also persists explicit `mode: "yield"`
+    button(root, t("writing.addRequirement"))!.click()
+    await until(() => root.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t("writing.requirement")}"]`))
+    const draftArea = root.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${t("writing.requirement")}"]`)!
+    draftArea.value = "Default pack note"
+    draftArea.dispatchEvent(new Event("input", { bubbles: true }))
+    draftArea.dispatchEvent(new FocusEvent("focusout", { bubbles: true }))
+    if (latestMode() !== "yield")
+      throw Error(`Expected new default pack fragment to save mode "yield", got ${String(latestMode())}`)
     disposeDefault()
     const disposeCustom = render(() => <ProseTab pack={custom} onSave={() => Promise.resolve()} />, root)
     flush()

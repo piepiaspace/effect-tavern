@@ -131,7 +131,6 @@ export interface PreviewDiagnostic {
     | "invalid_read"
     | "unfilled_holes"
     | "layer_dropped"
-    | "wrap_needs_user"
   message: string
   detail?: string
   holes?: readonly string[]
@@ -688,7 +687,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   ): OmittedItem[] =>
     items.map(({ fragment: f, reason, when }) => {
       const baseSrc: SourceRef = f.source ?? {
-        kind: f.persona ? "persona" : category === "fiction" ? "card" : "harness",
+        kind: f.persona ? "persona" : category === "fiction" ? "card" : "pack",
         ...(category === "fiction" && { cardId }),
         fragmentId: f.id,
         label: f.label ?? f.id,
@@ -892,7 +891,11 @@ const staticGreetingTurn = (
 export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult => {
   const { card, rows, hat, connection } = opts
   const cardId = opts.cardId ?? card.id
-  const packNames = opts.packNames ?? Object.fromEntries((rows.packs ?? []).map((p) => [p.id, p.name]))
+  const packNames =
+    opts.packNames ??
+    Object.fromEntries(
+      [...(rows.packs ?? []), ...(rows.defaultPack ? [rows.defaultPack] : [])].map((p) => [p.id, p.name]),
+    )
   const RT = resolveWithTrace(card, rows, { cardId })
   const R = RT.resolved
   const by = labels(card.rules)

@@ -2,6 +2,7 @@
 // shape (`Layer`) in one 5-tab full-height workbench (文风与要求, 线索词条, 润色禁词, 记录与小剧场, 快捷输入). One pack may
 // be the install's default (starred, as a persona is). Every edit is one `PUT /packs/<id>` and a re-read of the active
 // card.
+import { uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Format, Snippet } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Layer, PackEntry } from "@effect-tavern/runtime/src/layer.ts"
 import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
@@ -10,7 +11,20 @@ import type { Entry } from "@effect-tavern/runtime/src/polish.ts"
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { ask, Menu, Modal, Name, newId, Switch, Tick, ToList, type Pane, dialogHandle, Well } from "./controls.tsx"
+import {
+  ask,
+  blurField,
+  Menu,
+  Modal,
+  Name,
+  newId,
+  Switch,
+  Tick,
+  ToList,
+  type Pane,
+  dialogHandle,
+  Well,
+} from "./controls.tsx"
 import { Clue, Close, Export, Import, Package, Snippets as Plus, Star, StarFill, Trash } from "./icons.tsx"
 import { caretOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf, type InsertDraft } from "./inserts.ts"
 import { cleanLex, FILE, mergeLexicon, parseLexicon, serializeLexicon } from "./lexicon.ts"
@@ -29,7 +43,7 @@ import {
 import { cards, cardTitle, locals, packs, type Pack } from "./store.ts"
 import { KindPick, leaveArea, leaveInput, ProseTab, TriggerPick, type Save } from "./layer-tabs.tsx"
 import { type Key, t } from "./i18n.ts"
-import { deletePack, putPack, refreshActiveCard, saveFile } from "./wire.ts"
+import { deletePack, pendingPackWrite, putPack, refreshActiveCard, saveFile } from "./wire.ts"
 
 type PackTab = "prose" | "entries" | "lexicon" | "products" | "inputs"
 const PACK_TABS: [PackTab, Key][] = [
@@ -68,13 +82,16 @@ export const Packs = (props: Pane) => {
     await refreshActiveCard()
   }
   const create = async () => {
+    blurField()
     const id = newId("pack")
-    await savePack(id, () => ({ id, name: t("packs.newPack") }))
+    await savePack(id, () => ({ id, name: uniqueHatName(list(), t("packs.newPack")) }))
     props.onPick(id)
   }
   const loadStarter = async () => {
+    blurField()
     const id = newId("pack")
-    await savePack(id, () => createStarterPack(id))
+    const starter = createStarterPack(id)
+    await savePack(id, () => ({ ...starter, name: uniqueHatName(list(), starter.name) }))
     props.onPick(id)
   }
   const [importError, setImportError] = createSignal("")
@@ -95,8 +112,12 @@ export const Packs = (props: Pane) => {
       setImportError(e instanceof Error ? e.message : t("packs.invalidFile"))
     }
   }
-  const exportPack = (p: Layer) => {
-    void saveFile(new Blob([serializePack(p)], { type: "application/json" }), `${p.name}.pack.json`).catch(
+  const exportPack = async (id: string) => {
+    blurField()
+    await pendingPackWrite().catch(() => {})
+    const latest = list().find((x) => x.id === id)
+    if (!latest) return
+    void saveFile(new Blob([serializePack(latest)], { type: "application/json" }), `${latest.name}.pack.json`).catch(
       (e: unknown) => setImportError(e instanceof Error ? e.message : String(e)),
     )
   }
@@ -111,7 +132,7 @@ export const Packs = (props: Pane) => {
                 type="button"
                 class="p-row"
                 aria-selected={x().id === pack()?.id ? "true" : "false"}
-                onClick={() => props.onPick(x().id)}
+                onClick={() => (blurField(), props.onPick(x().id))}
               >
                 <span class="p-name">{x().name}</span>
                 <For each={onCards(x().id)}>{(c) => <span class="tag clip">{c}</span>}</For>
@@ -134,7 +155,12 @@ export const Packs = (props: Pane) => {
           >
             <Package />
           </button>
-          <button type="button" class="icon boxed" aria-label={t("writing.import")} onClick={() => fileInput.click()}>
+          <button
+            type="button"
+            class="icon boxed"
+            aria-label={t("writing.import")}
+            onClick={() => (blurField(), fileInput.click())}
+          >
             <Import />
           </button>
           <input
@@ -159,7 +185,7 @@ export const Packs = (props: Pane) => {
             return (
               <>
                 <header class="detail-header pack-detail-header">
-                  <ToList onBack={props.onBack} />
+                  <ToList onBack={() => (blurField(), props.onBack())} />
                   <Name
                     value={p().name}
                     label={t("packs.packName")}
@@ -174,7 +200,7 @@ export const Packs = (props: Pane) => {
                           type="button"
                           role="tab"
                           aria-selected={tab() === row()[0] ? "true" : "false"}
-                          onClick={() => setTab(row()[0])}
+                          onClick={() => (blurField(), setTab(row()[0]))}
                         >
                           {t(row()[1])}
                         </button>
@@ -186,20 +212,28 @@ export const Packs = (props: Pane) => {
                     class="icon sm"
                     aria-label={t("packs.defaultPack")}
                     aria-pressed={p().default ? "true" : "false"}
-                    onClick={() => void savePack(p().id, (x) => ({ ...x, default: !x.default }))}
+                    onClick={() => (blurField(), void savePack(p().id, (x) => ({ ...x, default: !x.default })))}
                   >
                     <Show when={p().default} fallback={<Star aria-hidden="true" />}>
                       <StarFill aria-hidden="true" />
                     </Show>
                   </button>
-                  <button type="button" class="icon sm" aria-label={t("common.export")} onClick={() => exportPack(p())}>
+                  <button
+                    type="button"
+                    class="icon sm"
+                    aria-label={t("common.export")}
+                    onClick={() => void exportPack(p().id)}
+                  >
                     <Export />
                   </button>
                   <button
                     type="button"
                     class="icon sm"
                     aria-label={t("packs.deletePack")}
-                    onClick={() => ask(t("packs.confirmDelete", { name: p().name }), () => void removePack(p().id))}
+                    onClick={() => (
+                      blurField(),
+                      ask(t("packs.confirmDelete", { name: p().name }), () => void removePack(p().id))
+                    )}
                   >
                     <Trash />
                   </button>
@@ -727,12 +761,13 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
   let editName = ""
   const openEdit = (p: ProductPatch) => {
     editName = p.label ?? p.id
+    const kind = kindOf(p)
     setEditing({
       id: p.id,
       isNew: false,
       whole: p.role !== undefined && p.shape !== undefined,
-      kind: kindOf(p),
-      stage: p.stage === "record" ? "record" : "narrate",
+      kind,
+      stage: kind === "theater" && p.stage === "record" ? "record" : "narrate",
       label: p.label ?? p.id,
       on: !!p.on,
       trigger: p.trigger ?? "turn",
@@ -836,7 +871,10 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
                   />
                 </label>
                 <Show when={d().whole}>
-                  <KindPick value={d().kind} onPick={(kind) => setEditing({ ...d(), kind })} />
+                  <KindPick
+                    value={d().kind}
+                    onPick={(kind) => setEditing({ ...d(), kind, stage: kind === "theater" ? "narrate" : d().stage })}
+                  />
                 </Show>
                 <Show when={d().kind === "theater"}>
                   <TriggerPick value={d().trigger} onPick={(trigger) => setEditing({ ...d(), trigger })} />

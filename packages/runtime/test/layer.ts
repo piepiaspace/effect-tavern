@@ -524,7 +524,7 @@ const packs = [packB, packA]
   // The starter pack's products stand in for a library's default pack.
   const stock = createStarterPack().products!
   const pk = row("base", { products: stock })
-  // A player row's patch on an id below it: label, text, on and trigger alone; its structure stays its declarer's.
+  // A player row's partial patch on a pack product below it: label, text, on and trigger alone; structure stays.
   const P = (r: Rows, id: string) => resolve(chat, r).products.find((p) => p.id === id)
   for (const id of ["notes", "options", "inner"]) {
     const was = P({ defaultPack: pk }, id)!
@@ -532,20 +532,7 @@ const packs = [packB, packA]
       {
         defaultPack: pk,
         local: here({
-          products: [
-            {
-              role: "chronicle" as const,
-              id,
-              label: "X",
-              text: "NEW",
-              on: true,
-              shape: { kind: "list" },
-              stage: "record",
-              fold: "latest",
-              feed: false,
-              surface: "theater",
-            } as never,
-          ],
+          products: [{ id, label: "X", text: "NEW", on: true, stage: "record", fold: "latest", feed: false } as never],
         }),
       },
       id,
@@ -555,6 +542,29 @@ const packs = [packB, packA]
       ["X", "NEW", true, "local", was.role, was.shape, was.stage, was.fold, was.feed, was.surface],
     )
   }
+  // Over a player-declared product (defaultPack), a mounted pack's valid whole declaration replaces its structure
+  // (e.g. a cloned starter pack re-typing `options` from composer to an on-demand theater).
+  const cloned = row("clone", {
+    products: [
+      {
+        id: "options",
+        label: "小剧场选项",
+        role: "theater",
+        shape: { kind: "text" },
+        stage: "narrate",
+        trigger: "demand",
+        on: true,
+        text: "Write a short aside.",
+      },
+    ],
+  })
+  const replaced = resolve(chat, { defaultPack: pk, packs: [cloned], local: here({ mounts: ["clone"] }) })
+  assert.deepEqual(replaced.dropped, [])
+  const opt = replaced.products.find((p) => p.id === "options")!
+  assert.deepEqual(
+    [opt.role, opt.surface, opt.shape, opt.stage, opt.trigger, opt.from],
+    ["theater", undefined, { kind: "text" }, "narrate", "demand", "clone"],
+  )
   // no text keeps the question and its author; the later rank's `on` and `trigger` win over the pack's
   const onOff = resolve(chat, {
     defaultPack: row("base", { products: [...stock, { id: "inner", on: false, trigger: "demand" }] }),
@@ -574,7 +584,8 @@ const packs = [packB, packA]
     resolve(cardsOwn, { local: here({ products: [{ id: "scene", on: false }] }) }),
   ).products.find((p) => p.id === "scene")!
   assert.deepEqual([toggledCard.from, toggledCard.on, "text" in toggledCard], ["card", false, false])
-  // a card's whole world product: a pack rewords it, its table, fold and when stay
+  // a card's whole world product: a pack rewords it, its table, fold and when stay — even if a later row sends a whole
+  // declaration over the already-reworded id
   const people = {
     role: "world" as const,
     id: "people",
@@ -586,26 +597,45 @@ const packs = [packB, packA]
   const tabled = { ...chat, products: [people] }
   const onTable = resolve(tabled, {
     packs: [row("p", { products: [{ id: "people", text: "MINE", role: "theater", shape: { kind: "text" } }] })],
-    local: here({ mounts: ["p"] }),
+    local: here({
+      mounts: ["p"],
+      products: [{ id: "people", text: "LOCAL", role: "theater", shape: { kind: "text" }, stage: "narrate" }],
+    }),
   }).products.at(-1)!
   assert.deepEqual(
     [onTable.text, onTable.role, onTable.shape, onTable.fold, onTable.when, onTable.from],
-    ["MINE", "world", people.shape, undefined, people.when, "p"],
+    ["LOCAL", "world", people.shape, undefined, people.when, "local"],
   )
-  // the default pack's own product under the card's whole one of the same id: the card's stands, the pack's `on` holds
-  // where the card is silent; a toggle alone the same
-  for (const under of [
-    resolve(tabled, {
-      defaultPack: row("base", { products: [{ id: "people", label: "L", text: "OVER", on: false }] }),
-    }),
-    resolve(tabled, { defaultPack: row("base", { products: [{ id: "people", on: false }] }) }),
-  ]) {
-    const p = under.products.at(-1)!
-    assert.deepEqual(
-      [p.label, p.on, p.text, p.role, p.shape, p.stage, p.from],
-      [undefined, false, "Who.", "world", people.shape, undefined, "card"],
-    )
-  }
+  // the default pack's whole product with `on: false` (e.g. starter `notes`) must NOT turn off a card's own whole
+  // product of the same id that omits `on`; a toggle-only patch in defaultPack still holds where the card is silent
+  const cardWholeOverStarter = resolve(
+    {
+      ...chat,
+      products: [
+        { id: "notes", role: "chronicle", shape: { kind: "text" }, text: "CARD-NOTES", fold: "append", feed: true },
+      ],
+    },
+    { defaultPack: pk },
+  ).products.find((p) => p.id === "notes")!
+  assert.deepEqual(
+    [cardWholeOverStarter.on, cardWholeOverStarter.text, cardWholeOverStarter.from],
+    [true, "CARD-NOTES", "card"],
+  )
+  const toggleUnder = resolve(tabled, {
+    defaultPack: row("base", { products: [{ id: "people", on: false }] }),
+  }).products.at(-1)!
+  assert.deepEqual(
+    [
+      toggleUnder.label,
+      toggleUnder.on,
+      toggleUnder.text,
+      toggleUnder.role,
+      toggleUnder.shape,
+      toggleUnder.stage,
+      toggleUnder.from,
+    ],
+    [undefined, false, "Who.", "world", people.shape, undefined, "card"],
+  )
   // an entry id holding `/` would alias another row's entry: dropped, the sibling indexed
   const slashed = resolve(chat, {
     defaultPack: row("base", {
@@ -1007,7 +1037,15 @@ const packs = [packB, packA]
   ])
   // cardView carries it, with the card's own projection beside it
   const v = cardView(c, {})
-  assert.deepEqual(Object.keys(v).sort(), ["catalogs", "fiction", "greetings", "layer", "meta", "rules"])
+  assert.deepEqual(Object.keys(v).sort(), [
+    "cardProducts",
+    "catalogs",
+    "fiction",
+    "greetings",
+    "layer",
+    "meta",
+    "rules",
+  ])
   assert.ok(!/SECRET/.test(JSON.stringify(v)))
 }
 

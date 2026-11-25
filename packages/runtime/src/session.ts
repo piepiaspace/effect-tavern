@@ -363,6 +363,7 @@ export const cardView = (card: Card, rows: Rows = {}) => {
     fiction: card.fiction.map(({ id, label, when }) => ({ id, label, when })),
     catalogs: catalogs.length ? catalogs : card.catalogs, // attachments by id as declared: a gallery draws them, a reader resolves a node's id
     ...(card.media !== undefined && { media: card.media }),
+    ...(card.products?.length && { cardProducts: card.products.map((p) => p.id) }),
     layer: shown(resolve(card, rows)),
   }
 }
@@ -412,7 +413,9 @@ export const makeSession = ({
     const RT = resolveWithTrace(card, rawRows, { cardId: card.id })
     const R = RT.resolved
     const I = makeLore<Paths, readonly string[]>(namedLore(cardLore, R.names))
-    const packNames = Object.fromEntries((rawRows.packs ?? []).map((p) => [p.id, p.name]))
+    const packNames = Object.fromEntries(
+      [...(rawRows.packs ?? []), ...(rawRows.defaultPack ? [rawRows.defaultPack] : [])].map((p) => [p.id, p.name]),
+    )
     const catalogs = catalogsOf(card, rawRows)
     return (now = { RT, R, I, packNames, catalogs })
   }

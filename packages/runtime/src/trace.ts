@@ -191,7 +191,7 @@ export interface WireErrorInfo {
   source?: SourceRef
 }
 
-export const sourceKindFrom = (from: string, opts?: { persona?: boolean; builtIn?: boolean }): SourceKind => {
+export const sourceKindFrom = (from: string, opts?: { persona?: boolean }): SourceKind => {
   if (opts?.persona) return "persona"
   if (from === "card" || from === "local") return from
   return "pack"

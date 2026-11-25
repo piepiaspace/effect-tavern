@@ -46,7 +46,8 @@ export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly
     const d = draft()
     if (d === null) return
     setDraft(null)
-    if (d.trim()) void props.onSave((p) => addFragment(p, newId("req"), d, "tail"))
+    const mode = props.pack.default ? ("yield" as const) : undefined
+    if (d.trim()) void props.onSave((p) => addFragment(p, newId("req"), d, "tail", mode))
   }
   const updateFrag = (idx: number, patch: Partial<Fragment>) =>
     void props.onSave((p) => {
@@ -197,7 +198,7 @@ export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly
                             i,
                             v === "mute"
                               ? { mode: v, text: undefined, enabled: undefined }
-                              : { mode: v === noMode() ? undefined : v },
+                              : { mode: !props.pack.default && v === "override" ? undefined : v },
                           )
                         }
                       />

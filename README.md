@@ -15,7 +15,7 @@ Effect Tavern treats a card as declarative data plus deterministic rules rather 
 A player turn is a typed pipeline rather than a single chat completion:
 
 ```text
-lookup → (decide → settle)* → gate → direct → narrate → check → polish → record
+lookup → decide → settle → gate → direct → narrate → check → polish → record
 ```
 
 - **Opt-in structured stages & fast decision passes:** Pure chat cards run only `narrate` and `record`; `lookup`, `decide`, `direct`, `check`, and `polish` activate automatically from what the card declares. An optional install-wide **Decision Model** (`/decision`) settles complete-catalog `lookup` and clear-cut `check` passes via probability scoring before falling back to language-model calls.
@@ -30,7 +30,7 @@ lookup → (decide → settle)* → gate → direct → narrate → check → po
 ### 3. Layered Assembly Without Presets
 
 - Legacy monolithic presets are replaced by a uniform `Layer` resolution order:
-  `harness → card → mounted packs → local card settings → persona`
+  `defaultPack → card → mounted packs → local card settings → persona`
 - Players customize voice, writing switches (`pov`, `echo`, `agency`, `verbosity`, `polish`), enhancers (`Pack`), continuation shells (`Hat`), snippets, and provider routing without touching card internals.
 
 ### 4. Departures from Legacy Tavern Clients

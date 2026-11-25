@@ -380,6 +380,7 @@ export const deleteHat = async (id: string): Promise<void> => {
 }
 export const fetchPacks = async (): Promise<void> => registry.set(packs, await got(call(`${base}/packs`)))
 let packWrite: Promise<void> = Promise.resolve()
+export const pendingPackWrite = () => packWrite
 /** Apply each edit to the last acknowledged row for `id` (the `packs` atom; a row it lacks starts bare), serially, as
  *  `putLocal` does: two edits in one blur/click sequence never overwrite each other. */
 export const putPack = (id: string, edit: (p: Layer) => Layer): Promise<void> =>

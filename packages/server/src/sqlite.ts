@@ -235,7 +235,7 @@ const unasked = ({ asks, ...r }: Asked): Partial<Layer> => {
   const products = new Map((r.products ?? []).map((p) => [p.id, p]))
   for (const a of asks ?? []) {
     const id = a.id.startsWith("product.") ? a.id.slice("product.".length) : undefined
-    if (id === undefined || a.text === undefined) continue
+    if (id === undefined || !a.text?.trim()) continue
     const p = products.get(id)
     if (p?.text === undefined) products.set(id, { ...p, id, text: a.text })
   }

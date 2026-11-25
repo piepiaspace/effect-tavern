@@ -525,13 +525,20 @@ export const resolveWithTrace = (
   }
   /** A toggle on an id nobody below declares says nothing about this card (a pack's `people` on a card without it). */
   const toggleOnly = (p: { id: string }) => Object.keys(p).every((k) => k === "id" || k === "on" || k === "trigger")
-  /** A player row's entry: over an id that exists, label, text, on and trigger alone (the structure is its declarer's);
-   *  a new id declared whole as `locked` let it, by default a narrate 小剧场, dropped without text. The author of the
-   *  question that stands is `from`: a toggle or a label changes nothing the card wrote (`shown` strips a card's text
-   *  by it). */
+  /** A player row's entry: over a card-declared id, label, text, on and trigger alone (the structure is the card's);
+   *  over a player-declared id, a whole declaration replaces the structure (already `locked`), a partial patch updates
+   *  label/text/on/trigger; a new id declared whole as `locked` let it, by default a narrate 小剧场, dropped without text.
+   *  The author of the question that stands is `from`: a toggle or a label changes nothing the card wrote (`shown` strips
+   *  a card's text by it). */
+  const cardIds = new Set<string>()
+  const whole = (p: ProductPatch) => p.text !== undefined && p.shape !== undefined && p.role !== undefined
   const patched = (from: From, p: ProductPatch) => {
     const was = stock.get(p.id)
     if (was) {
+      if (!cardIds.has(p.id) && whole(p)) {
+        tryStock({ ...p, from }, from)
+        return
+      }
       const { label, text, on, trigger } = p
       const patch = {
         ...(label !== undefined && { label }),
@@ -544,7 +551,6 @@ export const resolveWithTrace = (
     else if (p.text === undefined) refuse(from, p.id, "a new product needs text", p.label)
     else tryStock({ role: "theater", shape: { kind: "text" }, stage: "narrate", ...p, from }, from)
   }
-  const whole = (p: ProductPatch) => p.text !== undefined && p.shape !== undefined && p.role !== undefined
   // the default pack's toggle on a card's own product: the card's `on`, when it writes one, goes over it
   const under = new Map<string, boolean>()
   for (const p of base?.row.products ?? [])
@@ -552,10 +558,12 @@ export const resolveWithTrace = (
     else patched(base!.from, p)
   for (const p of card.products ?? []) {
     const was = stock.get(p.id)
-    const on = was?.on ?? under.get(p.id)
-    // the card's whole product stands on its own (its error fails the session at open); the player's `on` below holds
-    if (whole(p)) stock.set(p.id, validate({ ...(on !== undefined && { on }), ...p, from: "card" }))
-    else if (!was) {
+    const on = under.get(p.id)
+    // the card's whole product stands on its own (its error fails the session at open); only a toggle-only defaultPack patch holds
+    if (whole(p)) {
+      cardIds.add(p.id)
+      stock.set(p.id, validate({ ...(on !== undefined && { on }), ...p, from: "card" }))
+    } else if (!was) {
       const why = "no lower rank declares this product"
       omitted.push({
         category: "product",
@@ -567,6 +575,7 @@ export const resolveWithTrace = (
     } else
       try {
         stock.set(p.id, validate({ ...was, ...p, from: "card" }))
+        cardIds.add(p.id)
       } catch (e) {
         omitted.push({
           category: "product",
