@@ -78,7 +78,7 @@ export const NOTE = {
     '<!-- The player character\'s profile; pronouns here ("you"/"你"/"我") describe the player character, not the narrator. -->',
   fiction: "<!-- Narrative premise, characters, and active scene canon. -->",
   guidelines: "<!-- Style, perspective, pacing, and language rules for writing the prose; not in-world facts. -->",
-  summary: "<!-- Condensed record of earlier turns omitted from the transcript below. -->",
+  summary: "<!-- Condensed record of earlier turns. -->",
   turn: "<!-- Off-stage reference and directions for this turn only; never quote, paraphrase, or expose them as in-world text. -->",
   tail: "<!-- Per-turn writing reminders; apply to the prose without quoting them. -->",
 }

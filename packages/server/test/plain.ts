@@ -4,7 +4,10 @@ import assert from "node:assert/strict"
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { NOTE } from "@effect-tavern/runtime/src/request.ts"
 import { readRequest } from "../src/logbook/body.ts"
+
+const guidelines = (body: string) => `<writing_guidelines>\n${NOTE.guidelines}\n${body}\n</writing_guidelines>`
 
 const dir = mkdtempSync(join(tmpdir(), "tavern-plain-"))
 const mock = new LLMock({ port: 0 })
@@ -84,7 +87,7 @@ try {
       }
       assert.deepEqual(
         readRequest(body)!.said.map(({ who, texts }) => ({ who, texts })),
-        [...(input === "继续" ? [{ who: "system", texts: ["请用中文。"] }] : []), ...transcript],
+        [...(input === "继续" ? [{ who: "system", texts: [guidelines("请用中文。")] }] : []), ...transcript],
         format,
       )
       transcript.push({ who: format === "gemini" ? "model" : "assistant", texts: ["收到"] })
@@ -111,11 +114,11 @@ try {
   }
   await api("/packs/frame", "PUT", { name: "Frame", fragments: [{ id: "style", text: "Pack style" }] })
   await api(local, "PUT", { mounts: ["frame"] })
-  assert.deepEqual(await head(), ["Pack style"])
+  assert.deepEqual(await head(), [guidelines("Pack style")])
   await api(local, "PUT", { mounts: ["frame"], fragments: [{ id: "style", mode: "mute" }] })
   assert.deepEqual(await head(), [])
   await api(local, "PUT", { mounts: ["frame"] })
-  assert.deepEqual(await head(), ["Pack style"])
+  assert.deepEqual(await head(), [guidelines("Pack style")])
 } finally {
   host.kill()
   await host.exited

@@ -157,8 +157,9 @@ const compile = (w: Writing): Fragment[] => {
   ]
 }
 
-/** The slots that say how to write, whoever holds them: the two the switches compile to, and a card's `style`. */
-const WRITING = new Set(["pov", "verbosity", "style"])
+/** The slots that say how to write, whoever holds them: the two the switches compile to, and a card's `voice`,
+ *  `style` and `language`. */
+const WRITING = new Set(["pov", "verbosity", "voice", "style", "language"])
 /** The part of a frame that says who and where, not how to write: the slots the card declares (a player's text in one
  *  is still that slot) and the persona, less the writing slots. It is all a stage other than narrate reads of the
  *  frame: a model that reads "write the player as 你, take your time" at the top of its document writes, whatever the

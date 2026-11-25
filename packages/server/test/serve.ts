@@ -517,7 +517,7 @@ const sse = (text: string) =>
         ? { text: JSON.stringify({ violated: ["R"] }) }
         : doc.phase !== "narrate"
           ? defaultAnswer(doc, canned)
-          : o.prompt.some((m) => fakeText(m).includes("Previous draft broke:"))
+          : o.prompt.some((m) => fakeText(m).includes("<correction>"))
             ? { text: "SECOND DRAFT", delay: 300 } // its first character is 600 ms away: the stop lands before it
             : { text: "FIRST DRAFT" }
     }),

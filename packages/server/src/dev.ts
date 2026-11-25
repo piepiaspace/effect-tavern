@@ -82,7 +82,7 @@ const answer = (o: FakeCall) => {
       if (text.includes("Write no prose")) return through({ text: `<<aside>> inner\n${inner}`, delay: 20 })
       const block = /^inner: /m.test(text) ? `\n<<aside>> inner\n${inner}` : ""
       return through({
-        text: `第${++n}段。${text.includes("Previous draft broke") ? "二稿。" : demo ? "一稿。" : ""}${"雨刚停，屋檐上的水还在一滴一滴往下落。"}${"对方站在三步开外，没有说话，目光落在你带来的东西上。".repeat(demo ? 6 : 2)}${block}`,
+        text: `第${++n}段。${text.includes("<correction>") ? "二稿。" : demo ? "一稿。" : ""}${"雨刚停，屋檐上的水还在一滴一滴往下落。"}${"对方站在三步开外，没有说话，目光落在你带来的东西上。".repeat(demo ? 6 : 2)}${block}`,
         delay: demo ? 120 : 20,
       })
     }
