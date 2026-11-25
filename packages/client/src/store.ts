@@ -307,7 +307,15 @@ export const discardQueuedProse = (): void => {
   held = []
   resetPlay()
 }
+const hiddenPage = () => typeof document !== "undefined" && document.hidden
+const appendProse = (text: string) =>
+  registry.update(draft, (d) => (d ? { ...d, text: d.text + text, thinking: undefined } : d))
+
 const enqueue = (chunk: string) => {
+  if (hiddenPage()) {
+    appendProse(chunk)
+    return
+  }
   const chars = Array.from(segmenter.segment(chunk), (x) => x.segment)
   if (chars.length === 0) return
   const now = performance.now()
@@ -362,10 +370,7 @@ const tick = () => {
   }
   play.at = now
   count = Math.min(count, q.length)
-  if (count > 0) {
-    const out = q.splice(0, count).join("")
-    registry.update(draft, (d) => (d ? { ...d, text: d.text + out, thinking: undefined } : d))
-  }
+  if (count > 0) appendProse(q.splice(0, count).join(""))
   play.frame ??= requestAnimationFrame(tick)
 }
 
@@ -383,18 +388,31 @@ export const apply = (e: Wire): void => {
     applyNow(e)
     return
   }
+  if (hiddenPage()) flushHiddenProse()
   if (held.length || (play.queue.length && !flows(e))) held.push(e)
   else applyNow(e)
 }
 const drain = () => {
   while (held.length && (play.queue.length === 0 || flows(held[0]))) applyNow(held.shift()!)
 }
+/** Hidden pages may receive the entire SSE response without another animation frame. */
+export const flushHiddenProse = () => {
+  if (!hiddenPage() || (!play.queue.length && !held.length && play.frame === undefined)) return
+  if (play.queue.length) appendProse(play.queue.join(""))
+  resetPlay()
+  drain()
+}
 export const updateTimeline = (e: L.Change<Node> & { updated?: readonly Node[] }) => {
   registry.update(log, (l) => {
     const next = L.apply(l, e)
-    if (!e.updated?.length) return next
+    const previous = l.head !== null && l.head !== next.head ? next.nodes.get(l.head) : undefined
+    if (!e.updated?.length && !previous?.latestContext) return next
     const nodes = new Map(next.nodes)
-    for (const n of e.updated) nodes.set(n.id, n)
+    if (previous?.latestContext) {
+      const { latestContext: _, ...historical } = previous
+      nodes.set(previous.id, historical)
+    }
+    for (const n of e.updated ?? []) nodes.set(n.id, n)
     return { ...next, nodes }
   })
 }

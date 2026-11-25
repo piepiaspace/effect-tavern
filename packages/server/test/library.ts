@@ -713,6 +713,43 @@ for (const skip of [false, true]) {
   assert.equal(T.busy, null)
 }
 
+// A dynamic passage narrates after its parent has settled. Skip still targets only that pending parent.
+{
+  const S = makeSession({
+    card: { ...chat, passages: [{ when: { all: [] }, note: "New chapter" }] },
+    rows: () => ({}),
+    model: () => fake((o) => ({ ...defaultAnswer(readStage(o), canned), delay: 12 })),
+  })
+  const T = makeTurn(S, (_, events) => events)
+  let skipped: number | undefined
+  const events = await Effect.runPromise(
+    Stream.runCollect(
+      T.start({ kind: "act", input: { text: "go" } }).pipe(
+        Stream.tap((e) =>
+          Effect.sync(() => {
+            const parent = S.log.head
+            if (
+              e.kind !== "stage" ||
+              e.phase !== "narrate" ||
+              parent === null ||
+              S.log.nodes.get(parent)?.passageStatus !== "pending"
+            )
+              return
+            assert.throws(() => T.skip(parent + 1), /active record attempt/)
+            T.skip(parent)
+            skipped = parent
+          }),
+        ),
+      ),
+    ),
+  )
+  assert.ok(skipped !== undefined)
+  assert.equal(S.log.nodes.get(skipped)?.passageStatus, "skipped")
+  assert.ok(events.some((e) => e.kind === "change" && e.node?.turn.passageStatus === "skipped"))
+  assert.equal(T.busy, null)
+  assert.equal(S.log.nodes.size, 1)
+}
+
 // A rewrite clears an aside-only first draft for a late subscriber as well as a live client.
 {
   let narrations = 0

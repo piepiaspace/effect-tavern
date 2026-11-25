@@ -1,6 +1,6 @@
-import type { EffectiveView, TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
-import type { NodeMedia, MediaVariantTarget } from "@effect-tavern/runtime/src/media.ts"
-import { rows, type Shape, type TableShape } from "@effect-tavern/runtime/src/product.ts"
+import type { EffectiveView, TemplateNode } from "./view-shell.ts"
+import type { NodeMedia, MediaVariantTarget } from "./media.ts"
+import { rows, type Shape, type TableShape } from "./product.ts"
 export type Scope = Record<string, unknown>
 export const readPath = (scope: Scope, path: string) => {
   if (Object.hasOwn(scope, path)) return scope[path]
@@ -61,7 +61,7 @@ export function viewBindings({
     scope.media = Object.fromEntries(hits.map((m) => [m.id, m]))
     scope.fields = context?.fields ?? node?.fields
     if (!view.product) {
-      scope.world = context?.world
+      Object.defineProperty(scope, "world", { enumerable: true, configurable: true, get: () => context?.world })
       scope.theater = node?.theater
     }
   }
@@ -95,11 +95,11 @@ export function contentDirective(a: Record<string, string>) {
   if ("data-each" in a) return "each"
   return "children"
 }
-export const rowScope = (scope: Scope, alias: string, item: unknown, index: number) => ({
-  ...scope,
-  [alias]: item,
-  [alias + ".$num"]: index + 1,
-})
+export const rowScope = (scope: Scope, alias: string, item: unknown, index: number) =>
+  Object.create(null, {
+    ...Object.getOwnPropertyDescriptors(scope),
+    ...Object.getOwnPropertyDescriptors({ [alias]: item, [alias + ".$num"]: index + 1 }),
+  }) as Scope
 export const rowAliases = (aliases: Record<string, string>, alias: string, path: string, index: number) => ({
   ...aliases,
   [alias]: canonicalPath(path, aliases) + "." + index,

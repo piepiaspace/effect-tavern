@@ -116,12 +116,35 @@ export const productEdit = (
   const x = text.trim()
   const shownTrigger = shown?.trigger ?? "turn"
   const patch = {
-    ...(l && l !== (shown?.label ?? shown?.id) && { label: l }),
-    ...(x && x !== shown?.text && { text: x }),
+    ...(l && l !== (shown?.label ?? shown?.id)?.trim() && { label: l }),
+    ...(x && x !== shown?.text?.trim() && { text: x }),
     ...(trigger !== undefined && (shown ? trigger !== shownTrigger : trigger === "demand") && { trigger }),
   }
   if (!shown) return x ? { id, ...patch, on: false } : undefined
   return Object.keys(patch).length ? { id, ...patch } : undefined
+}
+
+export interface ProductEditDraft {
+  id: string
+  isNew: boolean
+  kind: ProductKind
+  stage: "narrate" | "record"
+  label: string
+  text: string
+  trigger: "demand" | "turn"
+}
+
+/** Both editors preserve a declaration's shape and folding policy on ordinary edits. */
+export function editedProduct(
+  shown: ProductPatch | undefined,
+  draft: ProductEditDraft,
+  canChangeKind: boolean,
+  canSetTrigger: boolean,
+): ProductPatch | undefined {
+  const patch = productEdit(shown, draft.id, draft.label, draft.text, canSetTrigger ? draft.trigger : undefined)
+  if (draft.isNew ? !!patch : canChangeKind && shown && draft.kind !== productKind(shown))
+    return { ...kindFields(draft.kind, draft.trigger, draft.stage), id: draft.id, ...patch }
+  return patch
 }
 
 /** The row without its id or the install's default mark (JSON drops an undefined key): what an import sends back

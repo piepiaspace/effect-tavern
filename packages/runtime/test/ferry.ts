@@ -8,7 +8,7 @@ import { fake } from "@effect-tavern/provider"
 import { Effect, Stream } from "effect"
 import { checkValue, validateCard } from "../src/author.ts"
 import { compileView } from "../src/view-template.ts"
-import { activeView } from "../src/view-shell.ts"
+import { activeView, theaterSurface } from "../src/view-shell.ts"
 import { decodeLayer, resolve as resolveLayer } from "../src/layer.ts"
 import * as Log from "../src/log.ts"
 import { resolveCatalogUrl } from "../src/media.ts"
@@ -86,6 +86,13 @@ assert.ok(
 assert.ok(!resolveViews({ ...local, mounts: [] }).products.some((p) => p.id === "letter"))
 assert.ok(mounted.views?.find((v) => v.id === "stationery")?.playerTemplate)
 
+assert.ok(
+  !resolveViews({ ...local, mounts: [], views: [{ id: "public", on: false }] }).dropped.some((d) => d.id === "public"),
+)
+assert.doesNotThrow(() => compileView({ html: '<svg><path stroke="var(--ink-2)" fill="var(--paper)"/></svg>' }))
+assert.ok(theaterSurface({ id: "options", role: "theater" }))
+assert.ok(!theaterSurface({ id: "new-suggestions", surface: "composer" }))
+
 const toggled = resolveViews({ ...local, views: [{ id: "ferry_letter", on: true }] })
 assert.deepEqual(
   toggled.views?.map((v) => v.id),
@@ -140,6 +147,36 @@ const photoCard = { ...ferry, views: [photoView], products: [...ferry.products!,
 const validatePhotos = (catalog: object, views = [photoView]) =>
   validateCard({ ...photoCard, views, catalogs: [...ferry.catalogs!, { id: "photos", ...catalog }] }).diagnostics
 const photos = { baseUrl: "https://example.org/photos", items: [{ id: "portrait", variants: ["portrait.png"] }] }
+{
+  const rawAlbum = {
+    ...photoCard,
+    views: [
+      {
+        ...photoView,
+        html: '<ul data-each="value" data-as="post"><li data-if="post.show" data-media="photos:post.photo"></li></ul>',
+      },
+    ],
+    media: { gallery: ["photos"] },
+    catalogs: [...ferry.catalogs!, { id: "photos", ...photos }],
+    products: [
+      ...ferry.products!,
+      { ...album, shape: { kind: "table", columns: [...album.shape.columns, { key: "show", type: "boolean" }] } },
+    ],
+  }
+  const card = validateCard(rawAlbum).card!
+  const S = makeSession({ card, rows: () => ({}), model: () => fake(() => ({ text: "" })) })
+  const root = S.greet(card.greetings[0]).node!
+  for (const show of [true, false]) {
+    const projected = S.projectTimeline({
+      ...root,
+      turn: { ...root.turn, products: { album: [{ photo: "portrait", show }] } },
+    })
+    assert.deepEqual(
+      projected.media?.viewImages ?? [],
+      show ? [{ kind: "illustration", nodeId: root.id, catalog: "photos", item: "portrait" }] : [],
+    )
+  }
+}
 assert.deepEqual(
   validatePhotos(photos).filter((d) => d.level === "error"),
   [],
@@ -202,12 +239,19 @@ assert.deepEqual(sorted.media, ferry.media)
   const root = S.greet(ferry.greetings[0]).node!
   assert.deepEqual(S.projectTimeline(root).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }],
+    viewImages: [{ kind: "view", viewId: "ferry_hud", slot: "ferryman", catalog: "ferryman", item: "calm" }],
     viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "calm" }],
+  })
+  assert.deepEqual(S.timelineNode(root.id).latestContext, {
+    fields: root.state,
+    world: S.activeContext(root.id).products,
   })
   const events = await collect(S.act(root.id, { text: "上船歇脚。" }))
   assert.ok(events.some((e) => e.kind === "stage" && e.phase === "narrate" && e.visibleViews?.includes("ferry_letter")))
   const turn1 = lastNode(events)
   assert.equal(S.timelineNode(root.id).media?.viewMedia, undefined)
+  assert.equal(S.timelineNode(root.id).latestContext, undefined)
+  assert.equal(S.timelineNode(root.id).media?.viewImages?.[0]?.item, "calm")
   const proj = S.projectTimeline(turn1)
   assert.deepEqual(proj.media?.illustrations, [
     { productId: "ferry_cg", catalog: "crossings", id: "misty_pier", afterParagraph: 1 },
@@ -274,6 +318,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const sunny0 = S.greet(ferry.greetings[0]).node!
   assert.deepEqual(S.projectTimeline(sunny0).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }],
+    viewImages: [{ kind: "view", viewId: "ferry_hud", slot: "ferryman", catalog: "ferryman", item: "calm" }],
     viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "calm" }],
   })
 
@@ -294,6 +339,7 @@ assert.deepEqual(sorted.media, ferry.media)
       { id: "ferryman", catalog: "ferryman", item: "high_tide" },
       { id: "passenger", catalog: "passenger", item: "aboard_night" },
     ],
+    viewImages: [{ kind: "view", viewId: "ferry_hud", slot: "ferryman", catalog: "ferryman", item: "high_tide" }],
     viewMedia: [
       { viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "high_tide" },
       { viewId: "ferry_hud", id: "passenger", catalog: "passenger", item: "aboard_night" },
@@ -318,6 +364,7 @@ assert.deepEqual(sorted.media, ferry.media)
       { id: "ferryman", catalog: "ferryman", item: "high_tide" },
       { id: "passenger", catalog: "passenger", item: "aboard_night" },
     ],
+    viewImages: [{ kind: "view", viewId: "ferry_hud", slot: "ferryman", catalog: "ferryman", item: "high_tide" }],
     viewMedia: [
       { viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "high_tide" },
       { viewId: "ferry_hud", id: "passenger", catalog: "passenger", item: "aboard_night" },
@@ -338,6 +385,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const sunny3 = lastNode(await collect(S.act(sunny2.id, { text: "靠岸登阶。" })))
   assert.deepEqual(S.projectTimeline(sunny3).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "calm" }],
+    viewImages: [{ kind: "view", viewId: "ferry_hud", slot: "ferryman", catalog: "ferryman", item: "calm" }],
     viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "calm" }],
   })
 
@@ -358,6 +406,7 @@ assert.deepEqual(sorted.media, ferry.media)
   const rainy0 = S.greet(ferry.greetings[1]).node!
   assert.deepEqual(S.projectTimeline(rainy0).media, {
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
+    viewImages: [{ kind: "view", viewId: "ferry_hud", slot: "ferryman", catalog: "ferryman", item: "rain_cape" }],
     viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
   })
   plans.push({
@@ -371,6 +420,7 @@ assert.deepEqual(sorted.media, ferry.media)
   assert.deepEqual(S.projectTimeline(rainy1).media, {
     illustrations: [{ productId: "ferry_cg", catalog: "crossings", id: "rain_lantern", afterParagraph: 2 }],
     portraits: [{ id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
+    viewImages: [{ kind: "view", viewId: "ferry_hud", slot: "ferryman", catalog: "ferryman", item: "rain_cape" }],
     viewMedia: [{ viewId: "ferry_hud", id: "ferryman", catalog: "ferryman", item: "rain_cape" }],
     bgm: { catalog: "ferry_bgm", id: "night_rain" },
   })
@@ -382,6 +432,34 @@ assert.deepEqual(sorted.media, ferry.media)
   assert.deepEqual(restoredIds, [sunny0.id, sunny1.id, sunny2.id, sunny3.id])
   const restoredBgmSource = restoredIds.map((id) => S.timelineNode(id)).findLast((n) => n.media?.bgm)!
   assert.equal(restoredBgmSource.id, sunny1.id)
+
+  // Reopening the same journal with a different card template or player switches re-evaluates historical visibility.
+  const lantern = {
+    id: "lantern",
+    media: [{ id: "light", catalog: "crossings" }],
+    html: '<section data-if="world.boat.aboard"><div data-unless="names.hide" data-media="media.light"></div></section>',
+  }
+  let hidden = false
+  let disabled = false
+  const withLantern = makeSession({
+    card: { ...ferry, views: [lantern] },
+    rows: () => ({
+      local: { ...local, ...(hidden && { names: { hide: "yes" } }), views: [{ id: "lantern", on: !disabled }] },
+    }),
+    model: () => scripted,
+    store,
+  })
+  const hits = (id: number) => withLantern.timelineNode(id).media?.viewImages ?? []
+  assert.equal(hits(sunny1.id).length, 1)
+  assert.equal(hits(sunny3.id).length, 0)
+  assert.equal(hits(rainy0.id).length, 0)
+  assert.equal(withLantern.timelineNode(sunny1.id).latestContext, undefined)
+  assert.ok(!JSON.stringify(savedSnapshot).includes("viewImages"))
+  hidden = true
+  assert.equal(hits(sunny1.id).length, 0)
+  hidden = false
+  disabled = true
+  assert.equal(hits(sunny1.id).length, 0)
 
   // Ancestor `setField` on `sunny0` (`潮位` 1 -> 0): `sunny1` (`潮位` becomes 1 < 2) loses `passenger` and `high_tide`!
   const amended = S.setField(sunny0.id, [{ path: "潮位", set: 0 }])

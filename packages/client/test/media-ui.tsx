@@ -679,7 +679,7 @@ const runPhaseOne = async (isDesktop: boolean) => {
         sky: "clear",
       },
       {
-        prose: "渡船拢向南岸青石镇埠头，晚潮渐退。",
+        prose: Array.from({ length: 18 }, () => "渡船拢向南岸青石镇埠头，晚潮渐退。").join("\n\n"),
         boat: { aboard: false, moor: "对岸" },
         cg: [],
         score: [],
@@ -709,6 +709,11 @@ const runPhaseOne = async (isDesktop: boolean) => {
 
   await sendLine("靠岸登阶。")
   await waitTurnSettled(3)
+  check(
+    await until(() => scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 2),
+    "following a long settled turn keeps its inline HUD and actions in reach",
+  )
+
   if (isDesktop) {
     check(
       await until(

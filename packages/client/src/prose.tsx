@@ -219,7 +219,10 @@ export const Prose = (props: {
   )
   const last = createMemo(() => bs().length - 1)
   const byParagraph = createMemo(
-    () => (props.node ? resolveNodeIllustrations(props.node, props.view, bs().length) : undefined),
+    () =>
+      props.node?.media?.illustrations?.length
+        ? resolveNodeIllustrations(props.node, props.view, bs().length)
+        : undefined,
     { equals: sameIllustrationBuckets },
   )
   // `.md` scopes reader.css's block styles; display: contents, so the blocks stay the host's own flex children.

@@ -685,8 +685,8 @@ export const resolveWithTrace = (
       const prior = views.get(patch.id)
       const { id, on, label, ...definition } = patch
       const switches = { ...(on !== undefined && { on }), ...(label !== undefined && { label }) }
-      if (prior && !Object.keys(definition).length) {
-        views.set(id, { ...prior, ...switches })
+      if (Object.values(definition).every((value) => value === undefined)) {
+        if (prior) views.set(id, { ...prior, ...switches })
         continue
       }
       try {

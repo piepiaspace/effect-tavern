@@ -30,7 +30,8 @@ import { caretOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf
 import { cleanLex, FILE, mergeLexicon, parseLexicon, serializeLexicon } from "./lexicon.ts"
 import {
   KIND_LABEL,
-  kindFields,
+  editedProduct,
+  type ProductEditDraft,
   PRODUCT_KINDS,
   productKind,
   packHoles,
@@ -38,7 +39,6 @@ import {
   withoutProductPatch,
   withPackName,
   withProductPatch,
-  type ProductKind,
 } from "./pack.ts"
 import { cards, cardTitle, locals, packs, type Pack } from "./store.ts"
 import { KindPick, leaveArea, leaveInput, ProseTab, TriggerPick, type Save } from "./layer-tabs.tsx"
@@ -720,16 +720,8 @@ const LexiconTab = (props: { pack: Layer; onSave: Save }) => {
 }
 
 // ───────── 4. 记录与小剧场 (`Layer.products`) ─────────
-interface ProductDraft {
-  id: string
-  isNew: boolean
-  whole: boolean // the row declares the product (its kind is its own to change), not a patch over one below
-  kind: ProductKind
-  stage: "narrate" | "record"
-  label: string
-  on: boolean
-  trigger: "demand" | "turn"
-  text: string
+interface ProductDraft extends ProductEditDraft {
+  whole: boolean
 }
 const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }) => {
   const products = () => props.pack.products ?? []
@@ -751,7 +743,6 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
       kind: "theater",
       stage: "narrate",
       label: "",
-      on: false,
       trigger: "demand",
       text: "",
     })
@@ -769,7 +760,6 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
       kind,
       stage: kind === "theater" && p.stage === "record" ? "record" : "narrate",
       label: p.label ?? p.id,
-      on: !!p.on,
       trigger: p.trigger ?? "turn",
       text: p.text ?? "",
     })
@@ -777,15 +767,10 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
   }
   const save = () => {
     const d = editing()
-    if (!d || !d.label.trim() || !d.text.trim()) return
-    const item = {
-      ...(d.whole ? kindFields(d.kind, d.trigger, d.stage) : d.kind === "theater" ? { trigger: d.trigger } : {}),
-      id: d.id,
-      label: d.label.trim(),
-      text: d.text.trim(),
-      on: d.on,
-    }
-    void props.onSave((p) => ({ ...p, products: withProductPatch(p.products, item) }))
+    if (!d || !d.label.trim() || (d.whole && !d.text.trim())) return
+    const original = products().find((p) => p.id === d.id)
+    const item = editedProduct(original, d, d.whole, d.kind === "theater")
+    if (item) void props.onSave((p) => ({ ...p, products: withProductPatch(p.products, item) }))
     dlg.close()
   }
   const remove = () => {
@@ -903,7 +888,7 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
                 <button
                   type="button"
                   class="btn sm primary"
-                  disabled={!d().label.trim() || !d().text.trim()}
+                  disabled={!d().label.trim() || (d().whole && !d().text.trim())}
                   onClick={save}
                 >
                   {t("common.save")}

@@ -23,7 +23,7 @@
    - 存量库当前 `PRAGMA auto_vacuum = 0`（`NONE`）。新库建表前直接启用 `PRAGMA auto_vacuum = INCREMENTAL`；存量库在迁移初始化或 `tavern doctor` 清理时配合一次 `VACUUM` 激活增量回收页头，日常 GC 仅按页数预算执行 `PRAGMA incremental_vacuum(pages)` 渐进归还空闲页。
 
 4. **稀疏默认覆盖、工坊乐观锁与上游 `origin.edited` 的正交边界**
-   - **稀疏覆盖资产（`harness` 与 `local`）**：[`packages/server/src/library.ts`](../packages/server/src/library.ts#L589-L599) 中 `pack` 表的 `harness` 行与有效卡片下的 `local` 行仅代表**相对默认值的用户覆盖差集（Overlay Delta）**。“无覆盖”本身即为合法的天然初始基线（规范化为空对象 `"{}"`，对应共享哈希 `H_empty`，按需物化入 `blob`），与“所属卡片已删除（`404 no-card`）”严格区分；回退到 `H_empty` 即清除覆盖、继续跟随当前内置或卡片默认值，绝不将当时的合并展示态固化为死配置。
+   - **稀疏覆盖资产（`local`）**：[`packages/server/src/library.ts`](../packages/server/src/library.ts#L456) 中，有效卡片下的 `local` 行代表**相对默认值的用户覆盖差集（Overlay Delta）**。“无覆盖”本身即为合法的天然初始基线（规范化为空对象 `"{}"`，对应共享哈希 `H_empty`，按需物化入 `blob`），与“所属卡片已删除（`404 no-card`）”严格区分；回退到 `H_empty` 即清除覆盖、继续跟随当前写作包与卡片默认值，绝不将当时的合并展示态固化为死配置。
    - **本地快照状态与上游来源状态正交**：`CheckpointStanding`（`clean | drifted`）表达“当前工作态相对用户上次认可的本地快照是否偏离”；卡片的 [`Origin.edited`](../packages/runtime/src/library.ts#L23-L29) 表达“本地卡片相对上游安装来源（如卡库版本）是否改过”。玩家在工坊改卡后点 `Pin`，相对快照变为 `clean`，相对上游卡库依然是 `edited: true`。
 
 > [!IMPORTANT]
@@ -38,7 +38,7 @@
 flowchart LR
   subgraph Domain["1. 纯业务值域 (Runtime / Wire Type)"]
     direction TB
-    Asset["可编辑资产与覆盖差集 · Card | Hat | Pack | HarnessDelta | LocalDelta | Persona"]
+    Asset["可编辑资产与覆盖差集 · Card | Hat | Pack | LocalDelta | Persona"]
     HydratedCall["完整追踪事件 Call · msgs + tool.description + wrap + out"]
   end
 
@@ -84,7 +84,7 @@ flowchart LR
 
 ### 3.1 Layer 3 · 通用单层快照状态机（业务语义驱动，无 `Unanchored` 态）
 
-存量库升级迁移时一次性为既有可编辑资产建立初始锚点，新建/安装时同步建锚，`harness` 与现存卡的 `local` 天然以无覆盖 `H_empty` 为初始锚点。因此任何现存可编辑实体的 `(workingHash: ObjectId, anchorHash: ObjectId)` 均为非空总函数，产品状态机直接化简为 **`Clean` / `Drifted` 二态投影**（不落盘冗余布尔脏标志）：
+存量库升级迁移时一次性为既有可编辑资产建立初始锚点，新建/安装时同步建锚，现存卡的 `local` 天然以无覆盖 `H_empty` 为初始锚点。因此任何现存可编辑实体的 `(workingHash: ObjectId, anchorHash: ObjectId)` 均为非空总函数，产品状态机直接化简为 **`Clean` / `Drifted` 二态投影**（不落盘冗余布尔脏标志）：
 
 ```mermaid
 stateDiagram-v2
@@ -95,7 +95,7 @@ stateDiagram-v2
   state "Drifted · 偏离态 (workingHash != anchorHash)" as Drifted
 
   Absent --> Clean: 新建 / 安装 (写 working + blob, 设 anchor = H0)
-  Absent --> Clean: 稀疏覆盖项初始态 (harness 或建卡后的 local, 隐式锚定 H_empty)
+  Absent --> Clean: 稀疏覆盖项初始态 (建卡后的 local, 隐式锚定 H_empty)
 
   Clean --> Clean: 覆盖安装 install/pull replace=true (working = B 且 anchor = B, 重置 origin.edited)
   Clean --> Clean: 幂等保存 或 纯净导出 (本地快照零污染)
@@ -120,7 +120,7 @@ stateDiagram-v2
    - 恢复资产必须经过领域校验并在提交后触发完整副作用，但**绝不允许静默篡改快照内容导致写回后哈希仍不等于 `anchorHash`**：
      - **`hat`**：校验 `normalizeHatDelivery` 与 `hatToolProblem`；若锚点中的 `hat.name` 已被另一顶不同 ID 的 Hat 占用，**不调用自动编号改名的 `uniqueHatName`**，而是拒绝恢复并返回 `409 checkpoint-conflict`（指明冲突名称），保留现场交由用户处理。
      - **`local`**：校验所属 `card` 存在；若锚点中的 `mounts` 含已删除的 `pack` ID，或 `persona` 指向已删除的 `persona` ID，**不静默剥离引用**，而是返回 `409 checkpoint-conflict`（列出缺失引用 ID）。回退到 `H_empty` 时删除 `local` 表物理行。
-     - **`pack`**：普通包经 `decodeLayer` 校验写回；`harness` 仅快照 `overlayOf("act", r)` 差集，回退到 `H_empty` 时物理删除 `pack` 表中的 `'harness'` 行。
+     - **`pack`**：所有写作包（含预置基础写作包）按完整可写层建锚，经 `decodeLayer` 校验写回。全局默认指针 `pack_default` 由安装库单独管理。
      - **`card`**：校验非 `builtin` 且通过 `validateCard`，写回卡片正文并重算 `summary` 与 `facets(card)`，按 `checkpoint.origin_edited` 恢复锚点当时的 `origin.edited` 位（改卡后 `Pin` 会记下 `origin_edited = 1`，故再改再回退仍保持相对上游 `edited: true`；而未 `Pin` 直接回退到干净安装基线则恢复 `origin_edited = 0`），事务提交后调用 `changed(card.id)` 刷新空闲缓存 `Session` 并返回最新 `rev`。
      - **`persona`**：快照仅含纯文本载荷 `{ id, name, text }`，回退时只恢复该三元组，绝不触碰全局默认标记表 `persona_default`。
 3. **双侧乐观并发校验 `(expectedWorkingHash, expectedAnchorHash)`**：
@@ -170,7 +170,7 @@ erDiagram
 
   CHECKPOINT {
     text kind PK "'hat' | 'pack' | 'card' | 'persona' | 'local'"
-    text entity_id PK "资产主键 (local 为 card_id, 全局层为 'harness')"
+    text entity_id PK "资产主键 (local 为 card_id, pack 为 pack_id)"
     text hash FK "REFERENCES blob(hash) ON DELETE RESTRICT"
     integer origin_edited "仅 card 使用: 锚点建立时 origin.edited 是否为真 (0|1)"
     integer updated_at "unix ms"
@@ -254,8 +254,8 @@ CLI 默认使用 `~/.tavern/tavern.db`，可用 `--data` 指定数据目录。De
 
 1. **业务操作决定快照转移（采纳方案 A）**：新建、安装与同 ID 覆盖安装（`cards.install` / `importLink` / `depots.pull` 含 `replace: true`）同时设定工作态与锚点（`Clean`）；日常编辑、自动保存及未来编辑器内「用文件内容覆盖当前项」只改工作态；手动 `Pin` 推进锚点，`Revert` 恢复锚点。
 2. **`Revert` 精确性承诺与双侧并发锁**：`Revert` 成功即保证落盘后 `workingHash === anchorHash`（`Clean`）；遇到 Hat 重名占用或 Local 缺失写作包/人设引用时拒绝静默改写，返回 `409 checkpoint-conflict` 保留现场。`Pin` 与 `Revert` 在单事务内同时校验 `expectedWorkingHash` 与 `expectedAnchorHash`。
-3. **存量库一次性打底初始化（消除 `Unanchored`）**：`sqlite.ts` 升级步骤将库内现存 `hat`、普通 `pack`、`card`、`persona` 及已存在的 `harness` / `local` 覆盖行一次性写入 `blob` + `checkpoint`（卡片同步记录当时的 `origin.edited` 位）；无覆盖的 `harness` 与现存卡 `local` 天然锚定 `EMPTY_OVERLAY_HASH`。
-   - 迁移与运行时按同一 `kind` 规范化后取哈希。卡片从行主键补回 `id`，Hat 统一执行 `normalizeHatDelivery`，Persona 仅取 `{ id, name, text }`。普通 Pack 使用解码后的可写层，harness 和 Local 使用 `layerDelta`。验收时用同一资产的存量行与业务读取值分别建锚，断言地址相等。
+3. **存量库一次性打底初始化（消除 `Unanchored`）**：`sqlite.ts` 升级步骤将库内现存 `hat`、普通 `pack`、`card`、`persona` 及已存在的 `local` 覆盖行一次性写入 `blob` + `checkpoint`（卡片同步记录当时的 `origin.edited` 位）；无覆盖的现存卡 `local` 天然锚定 `EMPTY_OVERLAY_HASH`。
+   - 迁移与运行时按同一 `kind` 规范化后取哈希。卡片从行主键补回 `id`，Hat 统一执行 `normalizeHatDelivery`，Persona 仅取 `{ id, name, text }`。普通 Pack 使用解码后的可写层，Local 使用 `layerDelta`。验收时用同一资产的存量行与业务读取值分别建锚，断言地址相等。
 4. **分期节奏与延迟启用压缩**：
    - **压缩策略**：一期 `blob` 表包含 `encoding` 列但仅写 `"utf8"`（零压缩耗时、100% 透明）；二期依据真实长故事体积测量决定是否对超阈值块启用 `"deflate-b64"`。
    - **Phase 1（Layer 1 + Layer 3 + 通用桥接批处理）**：落地 `blob` 与 `checkpoint` 表、迁移一次性打底、`/checkpoints/:kind/:id` 接口与五类可编辑资产业务接缝、`db.go` / `web/sqlite.ts` 通用 `batch` 模式、可达性 GC + `incremental_vacuum` 及 `tavern doctor` 存储诊断，接通编辑页快照顶栏。

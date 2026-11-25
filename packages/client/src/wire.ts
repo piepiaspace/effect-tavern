@@ -160,7 +160,8 @@ export const refreshActiveCard = async (): Promise<void> => {
   if (
     activeOf(registry.get(tabs)) === cur &&
     cur.story !== null &&
-    JSON.stringify(before) !== JSON.stringify(registry.get(card)?.layer?.views)
+    // Names, product shapes and catalogs can change the projected images even with identical templates.
+    (before?.length || registry.get(card)?.layer?.views?.length)
   )
     await fetchNodes()
 }

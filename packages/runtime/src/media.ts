@@ -31,6 +31,7 @@ export const Media = Schema.Struct({
 export type Media = typeof Media.Type
 
 export interface NodeMedia {
+  viewImages?: readonly MediaVariantTarget[]
   illustrations?: readonly { productId: string; catalog: string; id: string; afterParagraph: number }[]
   viewMedia?: readonly { viewId: string; id: string; catalog: string; item: string }[]
   portraits?: readonly { id: string; catalog: string; item: string }[]

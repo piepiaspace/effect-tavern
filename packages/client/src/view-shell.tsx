@@ -6,7 +6,7 @@ import {
   viewBindings,
   visibleElement,
   type Scope,
-} from "./view-bindings.ts"
+} from "@effect-tavern/runtime/src/view-bindings.ts"
 import {
   Dynamic,
   insert,
@@ -16,8 +16,8 @@ import {
   type JSX,
 } from "@solidjs/web"
 import { createEffect, createMemo, For, Show, onSettled } from "solid-js"
-import { type EffectiveView, type TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
-import type { TimelineNode, ActiveContextView } from "@effect-tavern/runtime/src/projection.ts"
+import { residency, type EffectiveView, type TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
+import type { TimelineNode } from "@effect-tavern/runtime/src/projection.ts"
 import type { CardView } from "./store.ts"
 import { MediaFrame } from "./lightbox.tsx"
 import { presentation, safeCatalogUrl } from "./media.ts"
@@ -31,7 +31,6 @@ interface Props {
   node?: TimelineNode
   latest: boolean
   value?: unknown
-  context?: ActiveContextView
 }
 const stylesheet = (css: string) => {
   const s = new CSSStyleSheet()
@@ -54,7 +53,9 @@ export const ViewBlock = (props: Props) => {
       shape: props.card.layer.products.find((p) => p.id === props.view.product)?.shape,
       value: props.value,
       names: props.card.layer.names,
-      context: { fields: props.context?.worldState.fields, world: props.context?.products },
+      ...(!props.view.product &&
+        residency(props.view) === "latest" &&
+        props.node?.latestContext && { context: props.node.latestContext }),
     }),
   )
   let loopSequence = 0

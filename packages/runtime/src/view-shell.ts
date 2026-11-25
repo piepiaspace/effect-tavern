@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { composer, type Product } from "./product.ts"
 import { Cond } from "./cond.ts"
 
 export const ViewShell = Schema.Struct({
@@ -30,13 +31,13 @@ export type TemplateNode =
   | { tag: string; svg: boolean; attrs: Record<string, string>; children: TemplateNode[] }
 
 export function theaterSurface(
-  product: { id: string; role?: string; surface?: string } | undefined,
+  product: (Pick<Product, "id" | "surface"> & { role?: string }) | undefined,
   illustrations?: readonly { product: string }[],
 ) {
   return (
     !!product &&
     (product.role ?? "theater") === "theater" &&
-    (product.surface ? product.surface !== "composer" : product.id !== "options") &&
+    !composer(product) &&
     !illustrations?.some((i) => i.product === product.id)
   )
 }

@@ -1,6 +1,5 @@
-import { safeRows, viewBindings, displayedImages } from "./view-bindings.ts"
+import { safeRows } from "@effect-tavern/runtime/src/view-bindings.ts"
 // Browser-safe client media projections: node illustrations + theater attribution, portraits, and card gallery.
-import { activeView, residency } from "@effect-tavern/runtime/src/view-shell.ts"
 import { holds, type Cond, type State } from "@effect-tavern/runtime/src/cond.ts"
 import {
   hashMediaTuple,
@@ -451,37 +450,12 @@ export const resolveGallery = (
           if (url !== undefined) pathUrls.set(key, url)
         }
       }
-      const latest = n === options.pathNodes.at(-1)
-      for (const shell of view.layer?.views ?? []) {
-        if (
-          !activeView(shell) ||
-          shell.playerTemplate ||
-          (residency(shell) === "latest" && !latest) ||
-          (shell.when && !n.visibleViews?.includes(shell.id))
-        )
-          continue
-        const value = shell.product ? n.theater?.[shell.product] : undefined
-        if (shell.product && value === undefined) continue
-        const shape = view.layer?.products?.find((p) => p.id === shell.product)?.shape
-        const context = residency(shell) === "latest" && !shell.product ? options.headContext : undefined
-        const bindings = viewBindings({
-          view: shell,
-          node: n,
-          shape,
-          value,
-          names: view.layer?.names,
-          context: {
-            fields: context?.worldState?.fields,
-            world: context?.products,
-          },
-        })
-        for (const hit of displayedImages(shell.tree, bindings)) {
-          const url = safeCatalogUrl(view.catalogs, hit)
-          if (!url) continue
-          const key = hit.catalog + "\0" + hit.item
-          pathRevealed.add(key)
-          pathUrls.set(key, url)
-        }
+      for (const hit of n.media?.viewImages ?? []) {
+        const url = safeCatalogUrl(view.catalogs, hit)
+        if (!url) continue
+        const key = hit.catalog + "\0" + hit.item
+        pathRevealed.add(key)
+        pathUrls.set(key, url)
       }
       if (n.media?.portraits?.length) {
         for (const p of n.media.portraits) {

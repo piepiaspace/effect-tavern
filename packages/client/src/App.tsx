@@ -16,7 +16,7 @@ import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { Phase } from "@effect-tavern/runtime/src/session.ts"
 import type { JSX } from "@solidjs/web"
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createEffect, createMemo, createSignal, untrack, Errored, For, lazy, Loading, onSettled, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
@@ -285,8 +285,6 @@ const Latest = () => {
         if (settledHead === null && curLog.head !== null) {
           settledHead = curLog.head
           if (follow.on && !hasSelection()) stick()
-        } else if (curLog.head !== null && untrack(d) === null) {
-          settledHead = curLog.head
         }
         return
       }
@@ -367,7 +365,7 @@ const Latest = () => {
       const head = all().head
       const amendedSettledTurn = booted && d() === null && mainChanged && head !== null && head === settledHead
       booted = true
-      if (head !== null && d() === null) settledHead = head
+      if (head !== null && d() === null && all().nodes.get(head)?.settlementStatus !== "pending") settledHead = head
       if (amendedSettledTurn) {
         follow.on = gap() <= 40
       } else if (follow.on && !hasSelection() && performance.now() - follow.touched >= 150) {

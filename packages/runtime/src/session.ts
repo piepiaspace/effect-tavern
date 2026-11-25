@@ -92,6 +92,7 @@ import {
 } from "./layer.ts"
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
 import { activeView, residency } from "./view-shell.ts"
+import { displayedImages, viewBindings } from "./view-bindings.ts"
 import { nodeCondition, projectNodeMedia } from "./media.ts"
 import { lines, expand, fill, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
@@ -1604,36 +1605,69 @@ export const makeSession = ({
     return { ...result, invalidated: affected }
   }
 
-  const toTimeline = (parents: readonly Turn[], n: Node): TimelineNode => {
-    const views = (layer().views ?? []).filter(
-      (v) => activeView(v) && (n.id === held.log.head || residency(v) === "turn"),
+  const expandedWorld = (state: ReturnType<ReturnType<typeof derived.at>["context"]>) =>
+    Object.fromEntries(
+      products()
+        .filter((p) => p.role === "world")
+        .map((p) => [p.id, worldValue(p, state.world[p.id])]),
     )
+
+  const toTimeline = (parents: readonly Turn[], n: Node): TimelineNode => {
+    const views = (layer().views ?? []).filter(activeView)
     let state: ReturnType<ReturnType<typeof derived.at>["context"]> | undefined
-    const conditional = views.filter((v) => v.when)
+    let world: Record<string, unknown> | undefined
     const context = () => (state ??= derived.at([...parents, n.turn]).context())
     const matches = nodeCondition(n.state, n.events, context)
-    return {
-      ...timelineNode(
-        n,
-        derived.at(parents).state,
-        card.rules,
-        products(),
-        projectNodeMedia({
-          views,
-          media: card.media,
-          products: products(),
-          catalogs: catalogs(),
-          turnProducts: n.turn.products,
-          fields: n.state,
-          events: n.events,
-          context,
-        }),
-      ),
-      ...(views.some((v) => !v.product && residency(v) === "turn") && { fields: n.state }),
-      ...(conditional.length && {
-        visibleViews: conditional.filter((v) => matches(v.when!)).map((v) => v.id),
-      }),
+    const media = projectNodeMedia({
+      views,
+      media: card.media,
+      products: products(),
+      catalogs: catalogs(),
+      turnProducts: n.turn.products,
+      fields: n.state,
+      events: n.events,
+      context,
+    })
+    const node = timelineNode(n, derived.at(parents).state, card.rules, products(), media)
+    const applicable = views.filter((v) => !v.when || matches(v.when))
+    const turnFields = views.some((v) => !v.product && residency(v) === "turn")
+    if (turnFields) node.fields = n.state
+    const latestContext = {
+      fields: n.state,
+      get world() {
+        return (world ??= expandedWorld(context()))
+      },
     }
+
+    // Evaluate each shell as it could appear on its turn. Only displayed images travel with history.
+    const gallery = card.media?.gallery
+    const viewImages = gallery?.length
+      ? applicable.flatMap((view) => {
+          const value = view.product ? node.theater[view.product] : undefined
+          if (view.playerTemplate || (view.product && value === undefined)) return []
+          const bindings = viewBindings({
+            view,
+            node,
+            value,
+            names: layer().names,
+            shape: products().find((p) => p.id === view.product)?.shape,
+            ...(!view.product && residency(view) === "latest" && { context: latestContext }),
+          })
+          return displayedImages(view.tree, bindings).filter((hit) => gallery.includes(hit.catalog))
+        })
+      : []
+    const head = n.id === held.log.head
+    const rendered = applicable.filter((v) => head || residency(v) === "turn")
+    if (rendered.some((v) => !v.product && residency(v) === "latest"))
+      node.latestContext = { fields: n.state, world: latestContext.world }
+    if (views.some((v) => v.when)) node.visibleViews = rendered.filter((v) => v.when).map((v) => v.id)
+    if (!head && media?.viewMedia) {
+      const slots = media.viewMedia.filter((slot) => rendered.some((v) => v.id === slot.viewId))
+      if (slots.length) media.viewMedia = slots
+      else delete media.viewMedia
+    }
+    if (viewImages.length) (node.media ??= {}).viewImages = viewImages
+    return node
   }
 
   return {
@@ -1666,27 +1700,21 @@ export const makeSession = ({
     },
     cancelRecord,
     retryRecord: (nodeId: number): Events => emitting((emit) => settleRecord(emit, nodeId)),
-    skipRecord: (nodeId: number): Change => {
+    skipRecord: (nodeId: number, onCommit?: (change: Change) => void): Change => {
       const t = turnOf(nodeId)
-      if (t.passageStatus === "pending" || t.passageStatus === "failed") {
-        const c = change(
-          held.commit(Log.amend(held.log, nodeId, { passageStatus: "skipped", settlementError: undefined })),
-        )
-        cancelRecord(nodeId)
-        return c
-      }
-      if (t.settlementStatus !== "pending" && t.settlementStatus !== "failed")
+      const passage = t.passageStatus === "pending" || t.passageStatus === "failed"
+      if (!passage && t.settlementStatus !== "pending" && t.settlementStatus !== "failed")
         throw new Error("settlement is already closed")
-      const c = change(
-        held.commit(
-          Log.amend(held.log, nodeId, {
-            settlementStatus: "skipped",
+      const patch = passage
+        ? { passageStatus: "skipped" as const }
+        : {
+            settlementStatus: "skipped" as const,
             settlementVersion: t.settlementVersion + 1,
             settlementAttempt: undefined,
-            settlementError: undefined,
-          }),
-        ),
-      )
+          }
+      const c = change(held.commit(Log.amend(held.log, nodeId, { ...patch, settlementError: undefined })))
+      // Interrupting the passage can close its stream synchronously.
+      onCommit?.(c)
       cancelRecord(nodeId)
       return c
     },
@@ -1707,11 +1735,7 @@ export const makeSession = ({
       return {
         worldState: state,
         playerCatalog: here.playerCatalog(),
-        products: Object.fromEntries(
-          products()
-            .filter((p) => p.role === "world")
-            .map((p) => [p.id, worldValue(p, state.world[p.id])]),
-        ),
+        products: expandedWorld(state),
       }
     },
     projectTimeline: (n: Node): TimelineNode => toTimeline(chain(n.parent), n),

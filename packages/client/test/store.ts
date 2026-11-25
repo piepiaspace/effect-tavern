@@ -5,7 +5,19 @@ import { timelineNode as node } from "./fixtures.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import { captureArtifact, expectNoDiagnostics } from "@solidjs/diagnostics"
 import assert from "node:assert/strict"
-import { apply, draft, log, path, registry, stage, working, openStreams, composition, error } from "../src/store.ts"
+import {
+  flushHiddenProse,
+  apply,
+  draft,
+  log,
+  path,
+  registry,
+  stage,
+  working,
+  openStreams,
+  composition,
+  error,
+} from "../src/store.ts"
 
 let frames: (() => void)[] = []
 ;(globalThis as any).requestAnimationFrame = (f: () => void) => frames.push(f)
@@ -138,3 +150,24 @@ while (frames.length && n++ < 400) tick()
 assert.equal(registry.get(log).nodes.get(101)!.settlementStatus, "committed")
 assert.equal(registry.get(working), false)
 console.log("ok")
+
+{
+  const page = { hidden: false }
+  Object.defineProperty(globalThis, "document", { value: page, configurable: true })
+  apply({ kind: "attach", phase: "narrate", draft: { parent: 1, input: { text: "go" }, text: "" } })
+  apply({ kind: "delta", part: { type: "text-delta", id: "a", text: "甲" } })
+  apply({ kind: "delta", part: { type: "product-delta", id: "inner", text: "乙" } })
+  page.hidden = true
+  flushHiddenProse()
+  assert.deepEqual([registry.get(draft)?.text, registry.get(draft)?.products], ["甲", { inner: "乙" }])
+  apply({ kind: "delta", part: { type: "text-delta", id: "b", text: "丙" } })
+  assert.equal(registry.get(draft)?.text, "甲丙")
+  const latestContext = { fields: {}, world: {} }
+  apply({ kind: "change", head: 11, node: { ...node(11, 1, "甲丙"), latestContext } })
+  apply({ kind: "change", head: 12, node: { ...node(12, 11, "次"), latestContext } })
+  apply({ kind: "streamEnd" })
+  assert.equal(registry.get(working), false)
+  assert.equal(registry.get(log).nodes.get(11)?.latestContext, undefined)
+  assert.deepEqual(registry.get(log).nodes.get(12)?.latestContext, latestContext)
+  Reflect.deleteProperty(globalThis, "document")
+}
