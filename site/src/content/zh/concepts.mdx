@@ -24,7 +24,7 @@ lookup → decide → settle → gate → direct → narrate → check → polis
 | `settle` | `decide` 选出了动作 | 随机种子 + `rules` | 纯代码结算：掷骰、夹紧字段边界、发出本轮 `events`、记下 `Beat` |
 | `gate` | 声明了 `lore` | 结算后 `WorldState` + 本轮事件 | 纯代码门控：求值单调地板 `unlock` 与当轮窗口 `offer` |
 | `direct` | `director: true` 且本轮有窗口打开 | `<world>`、事实账本、开窗候选、`<input>` | 将开窗条目划分为必讲 `must` 与可选 `may`，并给出一句场景基调 `tone`（`Brief`） |
-| `narrate` | 每轮必跑 | 完整 `frame`、`<fiction>` 分段、`transcript`、`tail` | 流式生成故事正文（及可选的内联 `<<aside>>` 小剧场块） |
+| `narrate` | 每轮必跑 | 完整 `frame`、`<fiction>` 分段、`transcript`、`tail` | 流式生成故事正文 |
 | `check` | `guard` 或 `must` 非空 | `<world>`、`review.head`、`<draft>` 草稿 | 开启预检时先经 `DecisionModel` 快筛；遇到模糊项再回退语言模型 `check`，最多触发一次纠错重写 |
 | `polish` | `switches.polish !== false` 且命中词表 | `<world>`、`review.head`、`<draft>` 命中句 | 仅重写对白之外命中 `lexicon` 套话模式的旁白句子 |
 | `record` | 每轮必跑 | `<world>`、`review.head`、`<scene>` 定稿正文 | 回答 `readouts` 选择题、提取 `chronicle` / `theater` 产物、提交 `world` 稀疏变更 |
@@ -72,7 +72,7 @@ SillyTavern 的 `chara_card_v2` / `ccv3` 默认每张卡都是单个 NPC（`desc
 | --- | --- | --- | --- |
 | `world` | 当前世界状态（如 `scene`、`people`、`bag`），经 `record` 两阶段 `DomainChange` 稀疏事务更新 | `feed: true` 进 `Current:` 行；`recall` 进 `lookup` 索引；`Cond` 可读 `world.<id>.<key>` | 状态面板与本轮 `Ledger` 药丸 |
 | `chronicle` | 沿路径折叠的编年记忆（`fold`: `append` / `latest` / `{ key }`），如默认 `notes` | `feed: true` 进 `Known:` 行与前缀压缩摘要；`recall` 进 `lookup` | 检查器（Inspector） |
-| `theater` | 纯面向玩家的小剧场（`inner`、`options`、旁批），在 `record` 或 `narrate` 内联 `<<aside>> <id>` 产出 | 严禁回喂或召回（`feed` / `recall` 禁用）；支持对节点按需 `demand` | 正文下方内联卡片（`options` 进输入框候选） |
+| `theater` | 纯面向玩家的小剧场（`inner`、`options`、旁批），在 `record` 产出 | 严禁回喂或召回（`feed` / `recall` 禁用）；支持对节点按需 `demand` | 正文下方内联卡片（`options` 进输入框候选） |
 
 ## 5. 双区装配与缓存纪律（为什么不存在 `@D` 深度插入）
 
@@ -81,5 +81,5 @@ SillyTavern 的 `chara_card_v2` / `ccv3` 默认每张卡都是单个 NPC（`desc
 Effect Tavern 严格规定提示词只有 **`head`** 与 **`tail`** 两个装配区：
 
 - **`head`（头区）与后台阶段 `<world>` 隔离**：`narrate` 将 `<world>`（非写作框架槽位：`<persona>`、`<setting>` 等）、当前生效的 `<fiction>` 分段与 `<writing_guidelines>`（行文指令）组装在 `transcript` 之前作为稳定缓存前缀。所有非叙事后台阶段（`lookup`、`decide`、`direct`、`check`、`polish`、`record`）仅读取底座阶段说明与 **`<world>`**（`worldOf`——仅含卡片声明的框架槽位与 `persona`，彻底剥离 `pov`、`verbosity`、`voice`、`style`、`language` 等行文风格指令与玩家附加片段，防止分析阶段误入小说续写），并将待处理文本装入 `<input>`、`<draft>` 或 `<scene>` 标签后，再紧跟该阶段的任务提问。
-- **`tail`（尾区）**：在 `narrate` 中紧接在历史转录稿与本轮输入*之后*，承载 `<recalled_context>`（送达背景）、`<turn_state>`（掷骰结果、`Current:`）、`<stage_directions>`（`MUST`/`MAY reveal`、`Brief` 基调、`note`）、`<correction>`、`<aside_blocks>`（内联 `<<aside>>` 请求）与 `<writing_tail>`（玩家尾部片段）——在不改动任何历史楼层的前提下获得最强的末尾近因权重（等价于 `@D0` 的注意力位置，且 100% 保住前缀缓存）。
+- **`tail`（尾区）**：在 `narrate` 中紧接在历史转录稿与本轮输入*之后*，承载 `<recalled_context>`（送达背景）、`<turn_state>`（掷骰结果、`Current:`）、`<stage_directions>`（`MUST`/`MAY reveal`、`Brief` 基调、`note`）、`<correction>`与 `<writing_tail>`（玩家尾部片段）——在不改动任何历史楼层的前提下获得最强的末尾近因权重（等价于 `@D0` 的注意力位置，且 100% 保住前缀缓存）。
 - **固定区间 `Fold` vs. 滚动摘要插件**：不同于每隔几轮改写一段深度插入摘要的滚动总结插件，前缀压缩由代码按固定节点区间折叠旧轮 `notes` 与已揭示 lore 为 `<story_summary>`；每个折叠块只依赖区间内已定稿节点，因此缓存断点（头区末尾、折叠前缀末尾、上一轮历史末尾）在跨轮推进与分支切换时始终字节级一致。

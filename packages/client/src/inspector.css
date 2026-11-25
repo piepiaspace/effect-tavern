@@ -599,14 +599,8 @@
   background: light-dark(#fde047, #a16207);
   color: var(--ink);
 }
-/* the result: narrate's prose and its blocks, polish's sentences before and after, a tool stage's steps, the pre-check's
+/* the result: narrate's prose, polish's sentences before and after, a tool stage's steps, the pre-check's
    readings against its two thresholds */
-.inspect .piece {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-1);
-}
 .inspect .ptext {
   margin: 0;
   font-size: var(--text-body);

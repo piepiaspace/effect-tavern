@@ -238,7 +238,6 @@ products:
     surface: theater
     label: 船夫心声
     shape: { kind: text }
-    stage: narrate
     on: false
     text: |-
       这一幕里{{char}}心里闪过却没有说出口的念头，简短一段。

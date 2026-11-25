@@ -28,15 +28,12 @@ import { blocks } from "./markdown.ts"
 import { activeStoryMatchesCard } from "./media.ts"
 import { plain, Prose } from "./prose.tsx"
 import {
-  claimedDraftProducts,
   claimedNodeProducts,
   Demand,
-  eligibleDraftViews,
   eligibleNodeViews,
   Failed,
   RecordSheet,
   sameIds,
-  sameTheater,
   sameViews,
   Settlement,
   Rewrite,
@@ -44,7 +41,6 @@ import {
   StatusPage,
   StateViews,
   Theater,
-  trimmedTheater,
 } from "./readings.tsx"
 import { apart, lineOf, suggestions, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
@@ -54,6 +50,7 @@ import { gutter, wide } from "./viewport.ts"
 import {
   card,
   updateComposition,
+  demanded,
   dismiss,
   draft,
   drawn,
@@ -444,24 +441,12 @@ const Latest = () => {
  *  flash dust without explanation. Once the prose is done (check, polish, record) the cursor goes and the footer names
  *  the settling stage. A failed turn stays as a grey ghost with the error under it; its line is back in the box. No
  *  model to run it on: the error opens Settings on 默认模型. */
-export const Draft = (props: {
-  d: DraftState
-  phase: Phase | null
-  error: Failure | null
-  lost?: boolean
-  view?: ReturnType<typeof card>
-  parent?: Node
-}) => {
+export const Draft = (props: { d: DraftState; phase: Phase | null; error: Failure | null; lost?: boolean }) => {
   onSettled(anchor)
   const done = () => settling(props.phase)
   const writing = () => !done() && !props.error && !props.lost // waiting on a retry is still
   const hasProse = () => props.d.text.length > 0
   const rewriting = () => writing() && hasProse() && Boolean(props.d.prev)
-  const draftTheater = createMemo(() => trimmedTheater(props.d.products), { equals: sameTheater })
-  const views = createMemo(() => eligibleDraftViews(props.view, props.d.visibleViews, draftTheater()), {
-    equals: sameViews,
-  })
-  const consumedIds = createMemo(() => claimedDraftProducts(props.view, props.d.visibleViews), { equals: sameIds })
   return (
     <section class={{ draft: true, dead: props.error !== null }}>
       <Said input={props.d.input} invocations={props.d.composition?.invocations ?? props.d.invocations} />
@@ -496,8 +481,6 @@ export const Draft = (props: {
           </Show>
         </div>
       </div>
-      <Theater products={draftTheater()} consumedIds={consumedIds()} />
-      <StateViews views={views()} view={props.view} node={props.parent} draft latest theater={draftTheater()} />
       <Show when={done() || rewriting()}>
         <footer class="actions">
           <TurnStatus kind={done() ? settleKind(props.phase) : "rewriting"} variant="pill" />
@@ -655,7 +638,11 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
     }
     turn.checkout(siblings()[i].id)
   }
-  const settled = () => !busy() || props.node.settlementStatus !== "pending"
+  const demandNode = read(demanded)
+  const phase = read(stage)
+  const pendingDraft = read(draft)
+  // Field edits also open a stream. They update the mounted HUD without running a model stage.
+  const settled = () => !busy() || demandNode() !== null || (phase() === null && pendingDraft() === null)
   const views = createMemo(() => eligibleNodeViews(props.view, props.node, props.last, settled()), {
     equals: sameViews,
   })
@@ -780,11 +767,7 @@ const Reader = () => {
               <Section view={storyView()} node={n()} n={i() + 1} last={d() === null && i() === shown().length - 1} />
             )}
           </For>
-          <Show when={d()}>
-            {(dr) => (
-              <Draft d={dr()} phase={phase()} error={err()} lost={gone()} view={storyView()} parent={shown().at(-1)} />
-            )}
-          </Show>
+          <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>
         </main>
       </div>
       <Composer />

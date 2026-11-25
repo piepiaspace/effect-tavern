@@ -1,6 +1,6 @@
 // Shared `narrate` request preparation and design-time Prompt Tree preview (sandbox & story branch).
 // Both `session.ts` (real play) and `previewNarrate` assemble the narrate document through `prepareNarrate`,
-// guaranteeing identical head (<world>, <fiction>, <writing_guidelines>), hat, history, turn, blocks and tail output.
+// guaranteeing identical head (<world>, <fiction>, <writing_guidelines>), hat, history, turn and tail output.
 import { signedOnly, wire, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
 import { makeCard, shownGreeting, type Beat, type Card, type Field, type State } from "./card.ts"
@@ -37,7 +37,6 @@ import { hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
 import { expand, fill, keepHoles, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
 import { cond, labels } from "./phrase.ts"
-import { askedAt } from "./product.ts"
 import { requestDetailed, type Ask, type Common, type HatSource } from "./request.ts"
 import {
   sourceKindFrom,
@@ -244,7 +243,6 @@ export interface PrepareNarrateInput {
   tone?: string
   input: Input
   correction?: string
-  blocks?: { asks: readonly string[]; sources?: readonly SourceRef[] }
   events?: readonly string[]
   packNames?: Readonly<Record<string, string>>
   extraOmitted?: readonly OmittedItem[]
@@ -763,7 +761,6 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     may: o.may.map(disclosure),
     tone: o.tone,
     correction: o.correction,
-    blocks: o.blocks,
   }
   const common: Common = {
     cardId,
@@ -774,7 +771,6 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     ),
     tail: keptTail,
     input: o.input,
-    productSources: RT.sources.products,
   }
   const detailed = requestDetailed(common, ask, {
     reasoningBack: w.reasoningBack,
@@ -1125,7 +1121,6 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   deliveries = uniqueDeliveries(deliveries)
 
   const fed = here.known()
-  const penned = askedAt(R.products, "narrate", s1Context)
   const prepped = prepareNarrate({
     card,
     resolvedTrace: RT,
@@ -1146,10 +1141,6 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     may: open.filter((d) => mayIds.includes(d.id)),
     tone: opts.assumedTone,
     input,
-    blocks: {
-      asks: penned.map((p) => `${p.id}: ${p.text}`),
-      sources: penned.map((p) => RT.sources.products[p.id]),
-    },
     events: gateEvents,
     packNames,
     extraOmitted,

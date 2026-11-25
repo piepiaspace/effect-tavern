@@ -1,7 +1,7 @@
 // End-to-end verification of `samples/ferry/ferry.yaml` («渡口») and unified `ViewShell` (`consumes`) contracts (#228, #243):
 // 0 lint errors/warnings, YAML & mechanical workshop roundtrips, generic MODEL=fake enum-table fallback,
 // sunny/rainy branches, dual portraits (field + world.boat.aboard), empty-table BGM inheritance, setField invalidation,
-// unified `consumes` + `{ fields, world, theater }` scope, composer consumption, multi-product shadowing,
+// unified `consumes` + `{ fields, world, theater }` scope, composer consumption, unique product claims,
 // CSS `line:col` diagnostics + expanded SVG/CSS whitelist, and `ri.yaml` unified parchment HUD.
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
@@ -10,15 +10,15 @@ import { fake } from "@effect-tavern/provider"
 import { Effect, Stream } from "effect"
 import { checkValue, validateCard } from "../src/author.ts"
 import { compileView } from "../src/view-template.ts"
-import { activeView, consumableSurface, residency, theaterSurface } from "../src/view-shell.ts"
+import { residency } from "../src/view-shell.ts"
 import { readPath, viewBindings } from "../src/view-bindings.ts"
-import { decodeLayer, resolve as resolveLayer } from "../src/layer.ts"
 import * as Log from "../src/log.ts"
 import { resolveCatalogUrl } from "../src/media.ts"
 import { cardView, makeSession, type Event, type Turn } from "../src/session.ts"
 import { applyCompile, applySort, mechanical } from "../src/workshop.ts"
 import { parseCard, printCard } from "../support/author.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
+import { createStarterPack } from "../src/starter-pack.ts"
 import { loadCard } from "./cards/index.ts"
 
 const collect = (s: Stream.Stream<Event, unknown>) =>
@@ -77,7 +77,7 @@ for (const hint of [{ focus: [1.1, 0] }, { aspect: "1 / 0" }, { aspect: "100/1" 
     }).diagnostics.some((d) => d.level === "error"),
   )
 
-// Reject empty strings and duplicate IDs in `consumes` on both Card validation and Layer resolution.
+// Reject empty strings and duplicate IDs in `consumes` on card validation.
 for (const badConsumes of [[""], ["  "], ["inner", "inner"]]) {
   assert.ok(
     validateCard({
@@ -87,70 +87,14 @@ for (const badConsumes of [[""], ["  "], ["inner", "inner"]]) {
   )
 }
 
-const letterPack = decodeLayer({
-  id: "stationery",
-  name: "信纸",
-  products: [{ id: "letter", text: "一封来信" }],
-  views: [
-    {
-      id: "stationery",
-      consumes: ["letter"],
-      html: "<p data-text='value'></p>",
-      when: { event: "unused" },
-      media: [{ id: "a", catalog: "passenger" }],
-    },
-    { id: "public", consumes: ["inner"], html: "<em data-text='value'></em>" },
-    { id: "bad", html: "<p></p>" },
-    { id: "empty_list", consumes: [], html: "<p></p>" },
-    { id: "blank_id", consumes: [""], html: "<p></p>" },
-    { id: "dupe_id", consumes: ["inner", "inner"], html: "<p></p>" },
-    { id: "spoiler", consumes: ["notes"], html: "<p></p>" },
-    { id: "invalid", consumes: ["inner"], html: "<img>" },
-  ],
-})
-assert.equal(letterPack.views?.[0]?.media, undefined)
-assert.equal(letterPack.views?.[0]?.when, undefined)
-const local = { id: "local", name: "local", card: ferry.id, mounts: [letterPack.id] }
-const resolveViews = (l: typeof local & { views?: { id: string; on: boolean }[] }) =>
-  resolveLayer(ferry, { local: l, packs: [letterPack] })
-const mounted = resolveViews(local)
-assert.deepEqual(
-  mounted.dropped.filter((d) => d.kind === "view").map((d) => d.id),
-  ["bad", "empty_list", "blank_id", "dupe_id", "spoiler", "invalid"],
-)
-assert.deepEqual(
-  mounted.views?.filter((v) => activeView(v) && v.consumes?.includes("inner")).map((v) => v.id),
-  ["public"],
-)
-assert.ok(
-  resolveViews({ ...local, views: [{ id: "public", on: false }] }).views?.some(
-    (v) => v.id === "ferry_letter" && activeView(v),
-  ),
-)
-assert.ok(!resolveViews({ ...local, mounts: [] }).products.some((p) => p.id === "letter"))
-assert.ok(mounted.views?.find((v) => v.id === "stationery")?.playerTemplate)
-
-assert.ok(
-  !resolveViews({ ...local, mounts: [], views: [{ id: "public", on: false }] }).dropped.some((d) => d.id === "public"),
-)
-assert.ok(theaterSurface({ id: "options", role: "theater" }))
-assert.ok(!theaterSurface({ id: "new-suggestions", surface: "composer" }))
-assert.ok(consumableSurface({ id: "new-suggestions", surface: "composer" }, undefined, true))
-assert.ok(!consumableSurface({ id: "ferry_cg", role: "theater" }, [{ product: "ferry_cg" }], true))
-
-// Card views can consume `composer` products; player templates cannot. Multi-product shadowing does not leak unclaimed IDs.
 {
   const composerCard = validateCard({
     ...ferry,
     products: [
       ...ferry.products!,
       { id: "choices", role: "theater", surface: "composer", shape: { kind: "list" }, text: "建议行动" },
-      { id: "aside_b", role: "theater", shape: { kind: "text" }, text: "旁白注记" },
     ],
     views: [
-      { id: "low_b", consumes: ["aside_b"], html: "<p data-text='value'></p>" },
-      { id: "mid_ab", consumes: ["inner", "aside_b"], html: "<p data-text='theater.aside_b'></p>" },
-      { id: "high_a", consumes: ["inner"], html: "<p data-text='value'></p>" },
       {
         id: "card_deck",
         consumes: ["choices"],
@@ -159,71 +103,13 @@ assert.ok(!consumableSurface({ id: "ferry_cg", role: "theater" }, [{ product: "f
     ],
   })
   assert.deepEqual(composerCard.diagnostics, [])
-  const stealComposer = decodeLayer({
-    id: "steal",
-    name: "steal",
-    views: [{ id: "steal_choices", consumes: ["choices"], html: "<p></p>" }],
-  })
-  const merged = resolveLayer(composerCard.card!, {
-    local: { id: "local", name: "local", card: ferry.id, mounts: ["steal"] },
-    packs: [stealComposer],
-  })
-  assert.deepEqual(
-    merged.dropped.map((d) => d.id),
-    ["steal_choices"],
+  const deck = composerCard.card!.views![0]
+  const duplicate = validateCard({ ...composerCard.card, views: [deck, { ...deck, id: "second" }] })
+  assert.ok(
+    duplicate.diagnostics.some(
+      (d) => d.rule === "bad-view" && d.message.includes("duplicate consumed product across views: choices"),
+    ),
   )
-  assert.deepEqual(
-    merged.views?.filter(activeView).map((v) => v.id),
-    ["low_b", "high_a", "card_deck"],
-  )
-  assert.equal(merged.views?.find((v) => v.id === "mid_ab")?.shadowed, true)
-}
-
-const toggled = resolveViews({ ...local, views: [{ id: "ferry_letter", on: true }] })
-assert.deepEqual(
-  toggled.views?.map((v) => v.id),
-  mounted.views?.map((v) => v.id),
-)
-assert.deepEqual(
-  toggled.views?.filter((v) => v.consumes?.includes("inner") && activeView(v)).map((v) => v.id),
-  ["public"],
-)
-const intruding = decodeLayer({
-  id: "rewrite",
-  name: "rewrite",
-  views: [
-    { id: "ferry_hud", html: "<p></p>" },
-    { id: "ferry_letter", css: "p{color:red}" },
-  ],
-})
-const privateLetter = {
-  ...ferry,
-  views:
-    ferry.views?.map((v) =>
-      v.id === "ferry_letter"
-        ? { ...v, when: { path: "天气", is: "雨" }, media: [{ id: "private", catalog: "crossings" }] }
-        : v,
-    ) ?? [],
-}
-const locked = resolveLayer(privateLetter, { local: { ...local, mounts: [intruding.id] }, packs: [intruding] })
-assert.ok(locked.dropped.some((d) => d.id === "ferry_hud"))
-const replaced = locked.views?.find((v) => v.id === "ferry_letter")
-assert.ok(replaced?.playerTemplate && !replaced.when && !replaced.media)
-
-// Player templates only see `names`, their consumed `theater` slice, and single-product `value` (never `fields` or `world`).
-{
-  const bound = viewBindings({
-    view: replaced,
-    node: { id: 1, fields: { 潮位: 2 }, theater: { inner: "心声", secret: "不该见" } },
-    products: locked.products,
-    names: { char: "老艄公" },
-    context: { fields: { 潮位: 2 }, world: { boat: { moor: "江心" } } },
-  })
-  assert.equal(readPath(bound.scope, "value"), "心声")
-  assert.equal(readPath(bound.scope, "theater.inner"), "心声")
-  assert.equal(readPath(bound.scope, "theater.secret"), undefined)
-  assert.equal(readPath(bound.scope, "fields.潮位"), undefined)
-  assert.equal(readPath(bound.scope, "world.boat.moor"), undefined)
 }
 
 for (const binding of ["media.unknown", "portraits.missing", "crossings:value.fake", "absent:value"]) {
@@ -320,11 +206,25 @@ assert.deepEqual(checkValue(ferry).diagnostics, [])
     ri.views?.map((v) => ({ id: v.id, label: v.label, residency: v.residency, consumes: v.consumes })),
     [{ id: "ri_hud", label: "圣女手记", residency: "latest", consumes: ["inner"] }],
   )
-  const S = makeSession({ card: ri, rows: () => ({}), model: () => fake(() => ({ text: "" })) })
+  const pack = createStarterPack()
+  let enabled = true
+  const M = fake((o) => {
+    const doc = readStage(o)
+    if (doc.phase === "narrate") return { text: "她深吸一口气。".repeat(36) }
+    return defaultAnswer(doc, { inner: "牧师先生今天也很温柔呢。", options: ["点头"], answers: { affinity: "warm" } })
+  })
+  const S = makeSession({
+    card: ri,
+    rows: () => ({
+      defaultPack: pack,
+      local: { id: "local", name: "local", card: ri.id, products: [{ id: "inner", on: enabled }] },
+    }),
+    model: () => M,
+  })
   const root = S.greet(ri.greetings[0]).node!
   const headNode = S.timelineNode(root.id)
   assert.deepEqual(headNode.latestContext, { fields: root.state, world: {} })
-  const riView = S.layer.views![0]
+  const riView = cardView(ri).views![0]
   const bound = viewBindings({
     view: riView,
     node: { ...headNode, theater: { inner: "牧师先生今天也很温柔呢。" } },
@@ -336,6 +236,24 @@ assert.deepEqual(checkValue(ferry).diagnostics, [])
   assert.equal(readPath(bound.scope, "names.char"), "理")
   assert.equal(readPath(bound.scope, "theater.inner"), "牧师先生今天也很温柔呢。")
   assert.equal(readPath(bound.scope, "value"), "牧师先生今天也很温柔呢。")
+  const events = await collect(S.act(root.id, { text: "向她问好。" }))
+  const calls = events.filter((e) => e.kind === "call")
+  assert.ok(calls.some((c) => c.phase === "polish"))
+  assert.deepEqual(
+    calls
+      .filter((c) => c.phase === "record")
+      .map((c) => c.product ?? "main")
+      .sort(),
+    ["inner", "main", "options"],
+  )
+  assert.ok(!JSON.stringify(calls.find((c) => c.phase === "narrate")!.msgs).includes("没有说出口的真实想法"))
+  const first = S.timelineNode(lastNode(events).id)
+  assert.equal(first.latestContext?.fields.好感度, 18)
+  assert.equal(first.theater.inner, "牧师先生今天也很温柔呢。")
+  enabled = false
+  const next = await collect(S.act(first.id, { text: "继续。" }))
+  assert.ok(!next.some((e) => e.kind === "call" && e.product === "inner"))
+  assert.equal(S.timelineNode(lastNode(next).id).theater.inner, undefined)
 }
 
 // YAML print -> parse roundtrip & CardView exposure.
@@ -392,7 +310,6 @@ assert.deepEqual(sorted.media, ferry.media)
   })
   assert.deepEqual(S.timelineNode(root.id).fields, root.state) // card turn view (`ferry_letter`) exposes `node.fields`
   const events = await collect(S.act(root.id, { text: "上船歇脚。" }))
-  assert.ok(events.some((e) => e.kind === "stage" && e.phase === "narrate" && e.visibleViews?.includes("ferry_letter")))
   const turn1 = lastNode(events)
   assert.equal(S.timelineNode(root.id).media?.viewMedia, undefined)
   assert.equal(S.timelineNode(root.id).latestContext, undefined)
@@ -585,11 +502,10 @@ assert.deepEqual(sorted.media, ferry.media)
     html: '<section data-if="world.boat.aboard"><div data-unless="names.hide" data-media="media.light"></div></section>',
   }
   let hidden = false
-  let disabled = false
   const withLantern = makeSession({
     card: { ...ferry, views: [lantern] },
     rows: () => ({
-      local: { ...local, ...(hidden && { names: { hide: "yes" } }), views: [{ id: "lantern", on: !disabled }] },
+      local: { id: "local", name: "local", card: ferry.id, ...(hidden && { names: { hide: "yes" } }) },
     }),
     model: () => scripted,
     store,
@@ -603,8 +519,7 @@ assert.deepEqual(sorted.media, ferry.media)
   hidden = true
   assert.equal(hits(sunny1.id).length, 0)
   hidden = false
-  disabled = true
-  assert.equal(hits(sunny1.id).length, 0)
+  assert.equal(hits(sunny1.id).length, 1)
 
   // Ancestor `setField` on `sunny0` (`潮位` 1 -> 0): `sunny1` (`潮位` becomes 1 < 2) loses `passenger` and `high_tide`!
   const amended = S.setField(sunny0.id, [{ path: "潮位", set: 0 }])

@@ -50,7 +50,14 @@ function here(r: Partial<Local> = {}): Local {
 {
   const file = new URL("fixtures/requests.json", import.meta.url)
   const fixture = JSON.parse(readFileSync(file, "utf8"))
-  const canned = { notes: "N", options: ["A", "B", "C", "D"], people: [], scene: { place: "P", present: [] } }
+  const canned = {
+    inner: "I",
+    town: "GOSSIP",
+    notes: "N",
+    options: ["A", "B", "C", "D"],
+    people: [],
+    scene: { place: "P", present: [] },
+  }
   const model = fake((o) => {
     const d = readStage(o)
     if (d.phase === "narrate") return { text: "不是这样而是那样。".repeat(30) }
@@ -532,14 +539,14 @@ const packs = [packB, packA]
       {
         defaultPack: pk,
         local: here({
-          products: [{ id, label: "X", text: "NEW", on: true, stage: "record", fold: "latest", feed: false } as never],
+          products: [{ id, label: "X", text: "NEW", on: true, fold: "latest", feed: false } as never],
         }),
       },
       id,
     )!
     assert.deepEqual(
-      [got.label, got.text, got.on, got.from, got.role, got.shape, got.stage, got.fold, got.feed, got.surface],
-      ["X", "NEW", true, "local", was.role, was.shape, was.stage, was.fold, was.feed, was.surface],
+      [got.label, got.text, got.on, got.from, got.role, got.shape, got.fold, got.feed, got.surface],
+      ["X", "NEW", true, "local", was.role, was.shape, was.fold, was.feed, was.surface],
     )
   }
   // Over a player-declared product (defaultPack), a mounted pack's valid whole declaration replaces its structure
@@ -551,7 +558,6 @@ const packs = [packB, packA]
         label: "小剧场选项",
         role: "theater",
         shape: { kind: "text" },
-        stage: "narrate",
         trigger: "demand",
         on: true,
         text: "Write a short aside.",
@@ -562,8 +568,8 @@ const packs = [packB, packA]
   assert.deepEqual(replaced.dropped, [])
   const opt = replaced.products.find((p) => p.id === "options")!
   assert.deepEqual(
-    [opt.role, opt.surface, opt.shape, opt.stage, opt.trigger, opt.from],
-    ["theater", undefined, { kind: "text" }, "narrate", "demand", "clone"],
+    [opt.role, opt.surface, opt.shape, opt.trigger, opt.from],
+    ["theater", undefined, { kind: "text" }, "demand", "clone"],
   )
   // no text keeps the question and its author; the later rank's `on` and `trigger` win over the pack's
   const onOff = resolve(chat, {
@@ -599,7 +605,7 @@ const packs = [packB, packA]
     packs: [row("p", { products: [{ id: "people", text: "MINE", role: "theater", shape: { kind: "text" } }] })],
     local: here({
       mounts: ["p"],
-      products: [{ id: "people", text: "LOCAL", role: "theater", shape: { kind: "text" }, stage: "narrate" }],
+      products: [{ id: "people", text: "LOCAL", role: "theater", shape: { kind: "text" } }],
     }),
   }).products.at(-1)!
   assert.deepEqual(
@@ -625,16 +631,8 @@ const packs = [packB, packA]
     defaultPack: row("base", { products: [{ id: "people", on: false }] }),
   }).products.at(-1)!
   assert.deepEqual(
-    [
-      toggleUnder.label,
-      toggleUnder.on,
-      toggleUnder.text,
-      toggleUnder.role,
-      toggleUnder.shape,
-      toggleUnder.stage,
-      toggleUnder.from,
-    ],
-    [undefined, false, "Who.", "world", people.shape, undefined, "card"],
+    [toggleUnder.label, toggleUnder.on, toggleUnder.text, toggleUnder.role, toggleUnder.shape, toggleUnder.from],
+    [undefined, false, "Who.", "world", people.shape, "card"],
   )
   // an entry id holding `/` would alias another row's entry: dropped, the sibling indexed
   const slashed = resolve(chat, {
@@ -649,7 +647,7 @@ const packs = [packB, packA]
     [slashed.entries.map((e) => e.id), slashed.dropped],
     [["base/c"], [{ from: "base", kind: "entry", id: "a/b", why: "an entry id has no /" }]],
   )
-  // A new id: narrate, text, on by default, its Cond stripped. Without text it is dropped, into the ledger.
+  // A new id: theater, text, on by default, its Cond stripped. Without text it is dropped, into the ledger.
   const town = P(
     { local: here({ products: [{ id: "town", label: "T", text: "gossip", when: { all: [] } }] }) },
     "town",
@@ -660,7 +658,6 @@ const packs = [packB, packA]
     label: "T",
     text: "gossip",
     shape: { kind: "text" },
-    stage: "narrate",
     on: true,
     from: "local",
   })
@@ -679,7 +676,6 @@ const packs = [packB, packA]
     id: "diary",
     role: "chronicle" as const,
     shape: { kind: "list" as const, max: 3 },
-    stage: "record" as const,
     fold: "append" as const,
     feed: true,
     label: "D",
@@ -713,7 +709,7 @@ const packs = [packB, packA]
   )
   const worldish = resolveWithTrace(chat, {
     defaultPack: row("base", {
-      products: [{ role: "world" as const, id: "w", text: "W", shape: { kind: "list" }, stage: "record", feed: true }],
+      products: [{ role: "world" as const, id: "w", text: "W", shape: { kind: "list" }, feed: true }],
     }),
   })
   assert.ok(!worldish.resolved.products.some((p) => p.id === "w"))
@@ -760,17 +756,6 @@ const packs = [packB, packA]
   )
 
   // the card's own whole product's error still throws; a player row's goes in the ledger, since it would kill every card
-  assert.throws(
-    () =>
-      resolve(
-        {
-          ...chat,
-          products: [{ role: "theater" as const, id: "n", text: "t", shape: { kind: "list" }, stage: "narrate" }],
-        },
-        {},
-      ),
-    /a narrate product is text/,
-  )
   assert.throws(
     () =>
       resolve(
@@ -936,9 +921,7 @@ const packs = [packB, packA]
   // a card's product keeps its wording with the hole in it; a player row's rewording takes the product over
   const asked: Card = {
     ...chat,
-    products: [
-      { id: "q", text: "Q {{x}}", shape: { kind: "text" }, role: "theater", stage: "narrate" },
-    ] as Card["products"],
+    products: [{ id: "q", text: "Q {{x}}", shape: { kind: "text" }, role: "theater" }] as Card["products"],
   }
   const q = resolve(asked, {}).products.find((p) => p.id === "q")!
   assert.deepEqual([q.text, q.unasked], ["Q {{x}}", undefined])
@@ -1050,7 +1033,14 @@ const packs = [packB, packA]
 }
 
 // ───────── A session: rows read per request ─────────
-const canned = { notes: "N1", options: ["A", "B", "C", "D"], people: [], scene: { place: "P", present: [] } }
+const canned = {
+  inner: "I",
+  town: "GOSSIP",
+  notes: "N1",
+  options: ["A", "B", "C", "D"],
+  people: [],
+  scene: { place: "P", present: [] },
+}
 const picks: string[][] = [] // the lookup's next answers
 const prose = { text: "hello world" }
 const model = () =>
@@ -1217,16 +1207,16 @@ for (const povText of ["", "{{missing}}"]) {
   assert.equal(asked(unmounted, "polish"), undefined)
 }
 
-// A row's product: asked of the narrator, on a node, demandable when off; a lock's refusal leaves the session open.
+// A row's product: asked by record, saved on a node, demandable when off; a lock's refusal leaves the session open.
 {
-  prose.text = "hello\n<<aside>> town\nGOSSIP"
-  const narrateAsks = (es: readonly Event[], line: string) => texts(asked(es, "narrate")).join("\n").includes(line)
+  prose.text = "hello"
+  const recordAsks = (es: readonly Event[], line: string) =>
+    es.some((e) => e.kind === "call" && e.phase === "record" && texts(e.msgs).join("\n").includes(line))
   const town = { id: "town", label: "T", text: "The town's gossip." }
   const rows: Rows = { packs: [row("t", { products: [{ ...town, on: true }] })], local: mount("t") }
   const S = makeSession({ card: chat, rows: () => rows, model })
   const es = await collect(S.act(null, { text: "a" }))
-  assert.ok(narrateAsks(es, "town: The town's gossip."))
-  assert.ok(!texts(asked(es, "record")).join("\n").includes("town: "))
+  assert.ok(recordAsks(es, "town: The town's gossip."))
   const n1 = nodeOf(es)
   assert.equal(n1.turn.products.town, "GOSSIP")
   assert.equal(proseOf(n1.turn).trim(), "hello")
@@ -1234,17 +1224,17 @@ for (const povText of ["", "{{missing}}"]) {
   prose.text = "hello"
   rows.packs = [row("t", { products: [{ ...town, on: false }] })]
   const off = await collect(S.act(n1.id, { text: "b" }))
-  assert.ok(!narrateAsks(off, "town: "))
+  assert.ok(!recordAsks(off, "town: "))
   const n2 = nodeOf(off)
   assert.equal(n2.turn.products.town, undefined)
   const declared = S.layer.products.find((p) => p.id === "town")!
   assert.deepEqual([kindOf(declared), declared.on, declared.text, declared.from], ["theater", false, town.text, "t"])
-  prose.text = "DEMANDED"
+  canned.town = "DEMANDED"
   assert.equal(nodeOf(await collect(S.demand(n2.id, "town"))).turn.products.town, "DEMANDED")
   // the local row's `on` over the pack's
   prose.text = "hello"
   rows.local = here({ mounts: ["t"], products: [{ id: "town", on: true }] })
-  assert.ok(narrateAsks(await collect(S.act(n2.id, { text: "c" })), "town: "))
+  assert.ok(recordAsks(await collect(S.act(n2.id, { text: "c" })), "town: "))
   // a patch on the default pack's record product rewords its question where record asks it
   rows.defaultPack = row("base", { products: createStarterPack().products! })
   rows.local = here({ products: [{ id: "notes", text: "MY-NOTES", on: true }] })

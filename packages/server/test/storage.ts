@@ -66,6 +66,18 @@ const writableDelta = layerDelta(editable)
 assert.deepEqual(writableDelta, { persona: null, names: { user: "" }, fragments: [{ id: "voice", text: "quiet" }] })
 assert.deepEqual(layerDelta(restoreLayerDelta(writableDelta, localOwner)), writableDelta)
 
+const recordCall: Call = {
+  kind: "call",
+  phase: "record",
+  product: "inner",
+  msgs: [],
+  out: { inner: "未说出口的回答" },
+  usage: { input: 2, output: 1, cacheRead: 0, cacheWrite: 0 },
+  ms: 9,
+}
+const storedProduct = dehydrateCall(recordCall)
+assert.deepEqual(hydrateCall(storedProduct.envelope, storedProduct.objects), recordCall)
+
 const body = "正文😀".repeat(40)
 const prefix = "剧场🎭\n<message>\n"
 const gap = "\n</message>\n\n<message>\n"

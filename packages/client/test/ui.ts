@@ -586,8 +586,9 @@ function createMediaUiHost(): FixtureHost {
     }
     if (doc.phase === "record") {
       if (!doc.tools.includes("finish_record")) {
-        const canned = demandPlans.shift() ?? {}
-        return defaultAnswer(doc, canned)
+        const index = demandPlans.findIndex((plan) => doc.asked.some((id) => Object.hasOwn(plan, id)))
+        const [plan] = index >= 0 ? demandPlans.splice(index, 1) : []
+        return { ...defaultAnswer(doc, plan), ...(typeof plan?.delay === "number" && { delay: plan.delay }) }
       }
       const plan = currentTurn
       currentTurn = undefined

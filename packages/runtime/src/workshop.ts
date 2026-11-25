@@ -147,7 +147,6 @@ export const CompileOutput = Schema.Struct({
         id: Token,
         shape: Shape,
         role: Product.fields.role,
-        stage: Product.fields.stage,
         fold: optional(Schema.Union([Schema.Literals(["latest", "append"]), Schema.Struct({ key: Token })])),
         when: optional(Condition),
         on: Product.fields.on,

@@ -1,5 +1,6 @@
 // Shared library records and read contracts, independent of persistence and transport.
 import type { Card, ShownGreeting as Greeting, Rules } from "./card.ts"
+import type { CompiledView } from "./view-shell.ts"
 import type { Cond } from "./cond.ts"
 import type { Input } from "./journal.ts"
 import type { Id } from "./log.ts"
@@ -46,6 +47,7 @@ export interface CardView {
   fiction: readonly { id: string; label?: string; when?: Cond }[] // the fiction's modules without their text
   catalogs?: Card["catalogs"]
   media?: Card["media"]
+  views?: readonly CompiledView[]
   cardProducts?: readonly string[] // ids of products declared by the card itself (never their text)
   rules: Rules
   local: Local

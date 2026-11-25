@@ -87,7 +87,7 @@ assert.deepEqual(fold([keyed], [{ kbag: [bag[0]] }, { kbag: [] }]), { kbag: [bag
 
 // Revisioned recall is exercised through derived.ts and context.ts.
 
-// Validate: a product needs text and shape; recall and fold must fit the shape; a narrate product is text; `on` decided.
+// Validate: a product needs text and shape; recall and fold must fit the shape; `on` decided.
 assert.equal(validate(inventory).on, true)
 assert.equal(validate({ ...inventory, on: false }).on, false)
 assert.throws(() => validate({ id: "ghost" }), /needs text and shape/)
@@ -97,7 +97,6 @@ assert.throws(
   () => validate({ ...inventory, role: "chronicle", fold: { key: "weight" } }),
   /fold key names a table column/,
 )
-assert.throws(() => validate({ ...inventory, stage: "narrate" }), /world writes belong to record/)
 
 assert.throws(() => validate({ ...inventory, fold: { key: "item" } }), /world state uses transactions/)
 // Catalogs: a catalog column is an enum whose options are the items holding on the state; none holding drops the table

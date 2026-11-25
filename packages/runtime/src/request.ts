@@ -11,7 +11,7 @@
 // `<recalled_context>` (lookup's deliveries, title and text), `<turn_state>` (Known, Outcome, Current) and
 // `<stage_directions>` (MUST / MAY reveal, Tone, Player note): Anthropic takes a mid-conversation system message only
 // directly after a user message (verified live), the one placement all three formats accept. Then `<correction>` on a
-// rewrite, `<aside_blocks>` when a narrate product is asked, the player's tail fragments (a system run as one
+// rewrite, the player's tail fragments (a system run as one
 // `<writing_tail>`), the hat's tail. A container with nothing in it is never sent. Cache breakpoints: the head's last
 // message (the connection's TTL), the summary, the last history message; everything before this turn's input is a
 // cached read next turn.
@@ -68,7 +68,7 @@ export const STAGE_ROLE =
   'You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> ("you"/"你"/"我") describe the player character, not you.'
 /** The lead line under tool delivery; `{{tool}}` is the tool's name. */
 export const DELIVER =
-  "Deliver your entire reply—prose and any requested <<aside>> blocks—by calling the {{tool}} tool with the complete text in its text argument; write nothing outside the call."
+  "Deliver your entire reply by calling the {{tool}} tool with the complete text in its text argument; write nothing outside the call."
 /** Under wrap (#220), the one user message the harness adds when the hat's lead and tail hold none. */
 export const WRAP = "Read the {{tool}} tool's description, then call it with your reply."
 /** The containers' one-line comments, written raw after the opening tag; `turn` opens narrate's turn message. */
@@ -95,12 +95,6 @@ export const RECORD_READOUT =
   "Answer each question strictly from what is explicitly settled in <scene>, not from intent or what may happen next. If <scene> does not establish a change for a question, choose the option indicating no change."
 /** Before the violation list, inside `<correction>`. */
 export const CORRECTION = "Revise the draft to fix the following rule violations:"
-/** The narrate products' one instruction, before their `<id>: <question>` lines; sent only when one is asked. */
-export const BLOCKS =
-  "After the prose, append each requested block starting on a new line with `<<aside>> <id>`, followed by its text. One block per id, in any order, never inside the prose."
-/** A narrate product demanded on a node: the scene is already the last reply, so the call writes the one block alone
- *  (session.ts sends it as the input's note). */
-export const DEMAND = "Write no prose: answer with only the block asked for below, about the last scene."
 export const POLISH =
   "Each sentence marked <target> in <draft> uses wording the reader has seen too often: the words in its hits, and what its hint above names. Rewrite each <target> sentence so it no longer does, keeping its meaning, person, register, length and its seams with the sentences around it. Return a sentence unchanged if it already reads naturally. Answer each target by its id with the sentence alone, no marks, and never continue <draft>."
 /** A harness constant's source: built in, by its id. */
@@ -127,7 +121,6 @@ export interface Common {
   input: Input
   tail?: readonly Msg[] // the player's tail-placed fragments; only narrate reads them
   cardId?: string
-  productSources?: Readonly<Record<string, SourceRef>>
 }
 /** An entry with its text: what Open lines and reveal directives carry. */
 export interface Told {
@@ -169,7 +162,6 @@ export type Ask =
       may: readonly Told[]
       tone?: string
       correction?: string // what the draft broke, after CORRECTION
-      blocks?: { asks: readonly string[]; sources?: readonly SourceRef[] } // narrate products: `<id>: <question>` lines after BLOCKS
     }
   | {
       stage: "check"
@@ -1029,29 +1021,6 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           { sep: "\n" },
         )
         pushMsg("turn", "correction", sys(cw.text()), cw.spans)
-      }
-      if (a.blocks?.asks.length) {
-        const bw = writer()
-        block(
-          bw,
-          "aside_blocks",
-          [
-            { text: BLOCKS, kind: "turn", source: builtIn("narrate.blocks") },
-            ...a.blocks.asks.map((line, i): Piece => {
-              const colon = line.indexOf(":")
-              const id = colon > 0 ? line.slice(0, colon) : line
-              const src = a.blocks!.sources?.[i] ??
-                c.productSources?.[id] ?? { kind: "card", label: id, path: `products.${id}` }
-              return {
-                text: line,
-                kind: "block",
-                source: src.rawText === line.slice(colon + 1).trimStart() ? { ...src, rawText: undefined } : src,
-              }
-            }),
-          ],
-          { sep: "\n" },
-        )
-        pushMsg("turn", "blocks", sys(bw.text()), bw.spans)
       }
 
       // 6. Tail: a system run as one `<writing_tail>`, a user/assistant fragment its own message, in place; the hat's tail

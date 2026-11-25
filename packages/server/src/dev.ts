@@ -62,6 +62,7 @@ const answer = (o: FakeCall) => {
     case "record": {
       // canned rows for the starter pack's products (runtime starter-pack.ts); any other product decodes to nothing here
       const canned: Record<string, unknown> = {
+        inner: "对方垂眼看着桌面，心里在想你究竟是从哪里听来这件事的。",
         notes: `第${n}幕：两人隔着一张桌子说话，各自试探对方的来意。`,
         options: [
           "我把带来的东西放在桌上：「我是来还这个的。」",
@@ -73,16 +74,11 @@ const answer = (o: FakeCall) => {
       return { ...defaultAnswer(doc, canned), delay: demo ? 1000 : 0 }
     }
     case "narrate": {
-      // inner is a narrate-stage product: asked for on the turn (an `inner:` ask line) it follows the prose as a block;
-      // demanded on a node ("Write no prose") the block is the whole answer
-      const inner = "对方垂眼看着桌面，心里在想你究竟是从哪里听来这件事的。"
       // under a hat's tool delivery the one function tool is the delivery tool: answer through it, as a model would
       const through = (r: { text: string; delay: number }) =>
         tools[0] ? { text: "", toolCalls: [{ name: tools[0].name, input: { text: r.text } }], delay: r.delay } : r
-      if (text.includes("Write no prose")) return through({ text: `<<aside>> inner\n${inner}`, delay: 20 })
-      const block = /^inner: /m.test(text) ? `\n<<aside>> inner\n${inner}` : ""
       return through({
-        text: `第${++n}段。${text.includes("<correction>") ? "二稿。" : demo ? "一稿。" : ""}${"雨刚停，屋檐上的水还在一滴一滴往下落。"}${"对方站在三步开外，没有说话，目光落在你带来的东西上。".repeat(demo ? 6 : 2)}${block}`,
+        text: `第${++n}段。${text.includes("<correction>") ? "二稿。" : demo ? "一稿。" : ""}${"雨刚停，屋檐上的水还在一滴一滴往下落。"}${"对方站在三步开外，没有说话，目光落在你带来的东西上。".repeat(demo ? 6 : 2)}`,
         delay: demo ? 120 : 20,
       })
     }

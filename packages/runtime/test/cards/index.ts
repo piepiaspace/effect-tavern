@@ -18,7 +18,7 @@ export const recordingPlayer: Rows = {
   },
 }
 
-/** The starter pack's products alone, every one off: a narrate product (`inner`) to demand, nothing else asked. */
+/** The starter pack's products alone, every one off: a theater product (`inner`) to demand, nothing else asked. */
 export const productsOff: Rows = {
   defaultPack: { id: pack.id, name: pack.name, products: pack.products!.map((p) => ({ ...p, on: false })) },
 }

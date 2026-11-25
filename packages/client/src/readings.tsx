@@ -1,5 +1,5 @@
 import { ViewBlock } from "./view-shell.tsx"
-import { activeView, residency, type EffectiveView } from "@effect-tavern/runtime/src/view-shell.ts"
+import { residency, type CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import type { CardView } from "./store.ts"
 import { AsyncView } from "./async-view.tsx"
 // The Record's pieces: one renderer per reading element (src/record.ts projects them; this file only draws), the
@@ -587,29 +587,13 @@ export const Demand = (props: { node: Node; n: number; consumedIds?: ReadonlySet
  *  default, or demanded), drawn by its shape, with one key that asks for it again (the same id demanded: history.ts
  *  replaces it in place). Custom `ViewShell`s render bare in the column via `StateViews` without this `.product.theater`
  *  wrapper, while their consumed products are skipped here and re-rollable via `Demand`. */
-/** A streaming block's edges, as the landed one will have them (journal.ts `split` trims): no height jump when it lands. */
-const trimmed = (v: unknown) => (typeof v === "string" ? v.trim() : v)
-const emptyTheater: Readonly<Record<string, unknown>> = {}
 const emptyConsumed: ReadonlySet<string> = new Set()
 
-export const sameViews = (a: readonly EffectiveView[], b: readonly EffectiveView[]) =>
+export const sameViews = (a: readonly CompiledView[], b: readonly CompiledView[]) =>
   a.length === b.length && a.every((v, i) => v === b[i])
 export const sameIds = (a: ReadonlySet<string>, b: ReadonlySet<string>) =>
   a.size === b.size && [...a].every((id) => b.has(id))
-export const sameTheater = (a: Readonly<Record<string, unknown>>, b: Readonly<Record<string, unknown>>) => {
-  const ak = Object.keys(a)
-  const bk = Object.keys(b)
-  return ak.length === bk.length && ak.every((k) => a[k] === b[k])
-}
-export const trimmedTheater = (
-  raw: Readonly<Record<string, unknown>> | undefined,
-): Readonly<Record<string, unknown>> => {
-  if (!raw) return emptyTheater
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(raw)) out[k] = trimmed(v)
-  return out
-}
-export const consumedProducts = (views: readonly EffectiveView[]): ReadonlySet<string> => {
+export const consumedProducts = (views: readonly CompiledView[]): ReadonlySet<string> => {
   const ids = new Set<string>()
   for (const v of views) {
     for (const id of v.consumes ?? []) ids.add(id)
@@ -621,9 +605,9 @@ export const eligibleNodeViews = (
   node: Node,
   last: boolean,
   settled: boolean,
-): EffectiveView[] =>
-  view?.layer.views?.filter((v) => {
-    if (!activeView(v) || (v.when && !node.visibleViews?.includes(v.id))) return false
+): CompiledView[] =>
+  view?.views?.filter((v) => {
+    if (v.when && !node.visibleViews?.includes(v.id)) return false
     if (residency(v) === "latest") return last && settled
     return !v.consumes?.length || v.consumes.some((id) => node.theater[id] !== undefined)
   }) ?? []
@@ -634,52 +618,24 @@ export const claimedNodeProducts = (
   last: boolean,
 ): ReadonlySet<string> =>
   consumedProducts(
-    view?.layer.views?.filter((v) => {
-      if (!activeView(v) || (v.when && !node.visibleViews?.includes(v.id))) return false
+    view?.views?.filter((v) => {
+      if (v.when && !node.visibleViews?.includes(v.id)) return false
       if (residency(v) === "latest") return last
       return !v.consumes?.length || v.consumes.some((id) => node.theater[id] !== undefined)
     }) ?? [],
   )
-export const eligibleDraftViews = (
-  view: CardView | null | undefined,
-  visibleViews: readonly string[] | undefined,
-  draftTheater: Readonly<Record<string, unknown>>,
-): EffectiveView[] =>
-  view?.layer.views?.filter(
-    (v) =>
-      activeView(v) &&
-      residency(v) === "turn" &&
-      (!v.when || !!visibleViews?.includes(v.id)) &&
-      Boolean(v.consumes?.some((id) => draftTheater[id] !== undefined)),
-  ) ?? []
-/** Products claimed during `<Draft>`, including `latest` views that will mount once the turn settles. */
-export const claimedDraftProducts = (
-  view: CardView | null | undefined,
-  visibleViews: readonly string[] | undefined,
-): ReadonlySet<string> =>
-  consumedProducts(view?.layer.views?.filter((v) => activeView(v) && (!v.when || !!visibleViews?.includes(v.id))) ?? [])
 export const StateViews = (props: {
-  views: readonly EffectiveView[]
+  views: readonly CompiledView[]
   view: CardView | null | undefined
-  node?: Node
-  draft?: boolean
+  node: Node
   latest: boolean
-  theater?: Readonly<Record<string, unknown>>
   context?: Node["latestContext"]
 }) => (
   <Show when={props.view}>
     {(cardView) => (
       <For each={props.views} keyed={(v) => v.id}>
         {(v) => (
-          <ViewBlock
-            view={v()}
-            card={cardView()}
-            node={props.node}
-            draft={props.draft}
-            latest={props.latest}
-            theater={props.theater}
-            context={props.context}
-          />
+          <ViewBlock view={v()} card={cardView()} node={props.node} latest={props.latest} context={props.context} />
         )}
       </For>
     )}
@@ -721,7 +677,7 @@ export const Theater = (props: {
               )}
             </Show>
           </div>
-          <Shaped shape={p().shape} value={trimmed(props.products[p().id])} />
+          <Shaped shape={p().shape} value={props.products[p().id]} />
         </div>
       )}
     </For>

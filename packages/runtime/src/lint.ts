@@ -302,7 +302,7 @@ const rules: Rule[] = [
     const products = card.products ?? []
     return (card.passages ?? []).flatMap((p, i) =>
       (p.digest ?? []).flatMap((id, j): Diagnostic[] =>
-        products.some((q) => q.id === id && (q.stage ?? "record") === "record")
+        products.some((q) => q.id === id)
           ? []
           : [
               {
@@ -680,6 +680,7 @@ const rules: Rule[] = [
     const catalogs = new Map((card.catalogs ?? []).map((c) => [c.id, c]))
     const consumers: { catalog: string; expected: "image" | "audio"; path: string }[] = []
 
+    const consumed = new Set<string>()
     for (const view of card.views ?? []) {
       const path = "views." + view.id
       try {
@@ -691,7 +692,9 @@ const rules: Rule[] = [
           throw new Error("duplicate view or media slot")
         checkConsumesIds(view.consumes)
         for (const cid of view.consumes ?? []) {
-          if (!consumableSurface(products.get(cid), media.illustrations, true))
+          if (consumed.has(cid)) throw new Error("duplicate consumed product across views: " + cid)
+          consumed.add(cid)
+          if (!consumableSurface(products.get(cid), media.illustrations))
             throw new Error("expected an available consumable product: " + cid)
         }
         const bound = checkMediaBindings(tree, view, media.portraits ?? [], catalogs, [...products.values()])
@@ -748,16 +751,12 @@ const rules: Rule[] = [
       }
       const catId = p.shape?.kind === "table" ? p.shape.columns.find((c) => c.key === "id")?.catalog : undefined
       if (catId !== undefined) consumers.push({ catalog: catId, expected: "image", path })
-      if (
-        (p.stage ?? "record") !== "record" ||
-        (p.role !== "chronicle" && p.role !== "theater") ||
-        !illustrationShapeOk(p.shape)
-      ) {
+      if ((p.role !== "chronicle" && p.role !== "theater") || !illustrationShapeOk(p.shape)) {
         out.push({
           rule: "bad-media-product",
           level: "error",
           path,
-          message: `${b.product}: media.illustrations requires a record-stage chronicle or theater table with exact columns afterParagraph (int) and id (catalog enum)`,
+          message: `${b.product}: media.illustrations requires a chronicle or theater table with exact columns afterParagraph (int) and id (catalog enum)`,
         })
       }
     }
@@ -776,16 +775,12 @@ const rules: Rule[] = [
       } else {
         const catId = p.shape?.kind === "table" ? p.shape.columns.find((c) => c.key === "id")?.catalog : undefined
         if (catId !== undefined) consumers.push({ catalog: catId, expected: "audio", path })
-        if (
-          (p.stage ?? "record") !== "record" ||
-          (p.role !== "chronicle" && p.role !== "theater") ||
-          !bgmShapeOk(p.shape)
-        ) {
+        if ((p.role !== "chronicle" && p.role !== "theater") || !bgmShapeOk(p.shape)) {
           out.push({
             rule: "bad-media-product",
             level: "error",
             path,
-            message: `${b.product}: media.bgm requires a record-stage chronicle or theater table with max: 1 and exact column id (catalog enum)`,
+            message: `${b.product}: media.bgm requires a chronicle or theater table with max: 1 and exact column id (catalog enum)`,
           })
         }
       }

@@ -169,7 +169,7 @@ const assertSdkPrompt = (prompt: FakeCall["prompt"], messages: readonly Message[
     spans.find((s) => s.source.entryId === "harbor" && s.source.layer === 2)?.source.rawText,
     "Secret for {{char}}.",
   )
-  assert.equal(spans.find((s) => s.source.path === "products.scrap")?.source.rawText, "Write to {{char}}.")
+  assert.ok(!res.messages.some((m) => JSON.stringify(m.content).includes("Write to ")))
   // Offsets address the rendered message, even when substitution changes its length.
   for (const tr of res.traces) {
     const { content } = res.messages[tr.index]
@@ -873,7 +873,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.ok(unroutedPrefill.diagnostics.some((d) => d.code === "prefill_disallowed" && d.level === "error"))
 }
 
-// 8. Protocol-shell Hat: all 4 narrate slots, paired tool handshakes, assistant reasoning, the harness's blocks attribution,
+// 8. Protocol-shell Hat: all 4 narrate slots, paired tool handshakes, assistant reasoning,
 //    `hat_needs_tools` diagnostic, and 100% live `makeSession` parity across anthropic, gemini, and openai-compatible
 {
   const card: Card = {
@@ -892,7 +892,6 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
       {
         id: "inner",
         role: "theater",
-        stage: "narrate",
         shape: { kind: "text" },
         text: "Silent thought.",
         on: true,
@@ -940,17 +939,6 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     assert.equal(pv.messages[0]?.content, "Protocol lead for Astra.")
     assert.equal(pv.traces[1]?.subzone, "world")
 
-    // the blocks instruction is the harness's, built in
-    const blocksTrace = pv.traces.find((t) => t.subzone === "blocks")!
-    assert.deepEqual(blocksTrace.spans[0]?.source, {
-      kind: "harness",
-      builtIn: true,
-      path: "harness.narrate.blocks",
-      label: "narrate.blocks",
-    })
-    const blocksContent = pv.messages[blocksTrace.index].content
-    assert.ok(typeof blocksContent === "string" && blocksContent.startsWith("<aside_blocks>\nAfter the prose,"))
-
     // `hat-turn` sits immediately before player `input`, and `wire()` rewrites `system` after `tool` on anthropic/gemini
     const hatTurnIdx = pv.traces.findIndex((t) => t.subzone === "hat-turn")
     assert.ok(hatTurnIdx > 0)
@@ -976,7 +964,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
       model: (phase) => ({
         ...fake((o) => {
           if (phase === "narrate") assertSdkPrompt(o.prompt, pv.wiredMessages ?? pv.messages)
-          return { text: "Scene prose.\n<<aside>> inner\nQuiet." }
+          return { text: "Scene prose." }
         }),
         format,
         prefill: false,

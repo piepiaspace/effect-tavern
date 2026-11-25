@@ -1,5 +1,5 @@
 import { Schema } from "effect"
-import { composer, type Product } from "./product.ts"
+import type { Product } from "./product.ts"
 import { Cond } from "./cond.ts"
 
 export const ViewShell = Schema.Struct({
@@ -15,18 +15,13 @@ export const ViewShell = Schema.Struct({
   ),
   html: Schema.String,
   css: Schema.optionalKey(Schema.String),
-  on: Schema.optionalKey(Schema.Boolean),
 })
 export type ViewShell = typeof ViewShell.Type
-export const ViewShellPatch = Schema.Struct({ ...ViewShell.fields, html: Schema.optionalKey(Schema.String) })
 export const residency = (v: Pick<ViewShell, "residency" | "consumes">) =>
   v.residency ?? (v.consumes?.length ? "turn" : "latest")
-export interface EffectiveView extends ViewShell {
-  tree: TemplateNode[]
-  playerTemplate: boolean
-  shadowed?: boolean
+export interface CompiledView extends ViewShell {
+  readonly tree: TemplateNode[]
 }
-export const activeView = (v: EffectiveView) => v.on !== false && !v.shadowed
 export type TemplateNode =
   | string
   | { tag: string; svg: boolean; attrs: Record<string, string>; children: TemplateNode[] }
@@ -42,21 +37,8 @@ export function checkConsumesIds(consumes: readonly string[] | undefined) {
 }
 
 export function consumableSurface(
-  product: (Pick<Product, "id" | "surface"> & { role?: string }) | undefined,
-  illustrations?: readonly { product: string }[],
-  allowComposer = false,
-) {
-  return (
-    !!product &&
-    (product.role ?? "theater") === "theater" &&
-    (allowComposer || !composer(product)) &&
-    !illustrations?.some((i) => i.product === product.id)
-  )
-}
-
-export function theaterSurface(
-  product: (Pick<Product, "id" | "surface"> & { role?: string }) | undefined,
+  product: (Pick<Product, "id"> & { role?: string }) | undefined,
   illustrations?: readonly { product: string }[],
 ) {
-  return consumableSurface(product, illustrations, false)
+  return !!product && product.role === "theater" && !illustrations?.some((i) => i.product === product.id)
 }

@@ -1,5 +1,7 @@
 # 媒体呈现边界回调与流内派生视图壳 Brief（PR 2.5）
 
+> 2026-11-25 修订。#247 将视图归还 `Card.views`，移除了跨层覆盖和 Writing 页视图开关。见[视图与产物剪枝 brief](./view-and-product-prune-brief.md)。
+
 2026-11-25。承接 [Issue #237](https://github.com/piepiaspace/effect-tavern/issues/237)（父议题 [#228](https://github.com/piepiaspace/effect-tavern/issues/228)，关联 [#146](https://github.com/piepiaspace/effect-tavern/issues/146)、[#183](https://github.com/piepiaspace/effect-tavern/issues/183)、[#239](https://github.com/piepiaspace/effect-tavern/issues/239)）。在 `3277673` 完成桌面 `读数` 页左右双栏归位的基础上，本文定稿 **PR 2.5** 的完整架构边界、数据契约、受控模板语法与验收标准，并正式接替原定 PR 3（客户端音频播放器）的排期位置。
 
 ---

@@ -77,7 +77,6 @@ export const Product = Schema.Struct({
   shape: Shape,
   role: Schema.Literals(["world", "chronicle", "theater"]),
   initial: Schema.optionalKey(Schema.Unknown),
-  stage: Schema.optionalKey(Schema.Literals(["narrate", "record"])), // default record
   fold: Schema.optionalKey(Fold),
   when: Schema.optionalKey(Cond), // asked only when it holds on the post-settlement state
   on: Schema.optionalKey(Schema.Boolean), // default true; the later row wins (layer.ts)
@@ -319,7 +318,6 @@ export const validate = <P extends Partial<Product> & { id: string }>(p: P): P &
   if (!p.role) throw new Error(`${p.id}: a product needs an explicit role`)
   if (p.role === "world" && p.fold !== undefined)
     throw new Error(`${p.id}: world state uses transactions, not a fold policy`)
-  if (p.role === "world" && p.stage === "narrate") throw new Error(`${p.id}: world writes belong to record`)
   if (p.role === "world" && !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(p.id))
     throw new Error(`${p.id}: world product IDs must be tool-safe identifiers`)
   if (p.role === "world" && p.shape.kind === "table" && p.shape.columns.some((c) => c.key === "entityId"))
@@ -342,7 +340,6 @@ export const validate = <P extends Partial<Product> & { id: string }>(p: P): P &
     if (c.catalog !== undefined && p.role === "world")
       throw new Error(`${p.id}.${c.key}: a catalog pick is per turn (chronicle or theater), not world state`)
   }
-  if (p.stage === "narrate" && p.shape.kind !== "text") throw new Error(`${p.id}: a narrate product is text`)
   if (p.recall !== undefined) {
     if (p.shape.kind === "list" && p.recall !== true) throw new Error(`${p.id}: recall on a list is true`)
     if (p.shape.kind === "table" && !p.shape.columns.some((c) => c.key === p.recall))
@@ -352,20 +349,9 @@ export const validate = <P extends Partial<Product> & { id: string }>(p: P): P &
   return { ...(p as P & Product), on: p.on ?? true }
 }
 
-/** The automatic products a stage asks at this state; demand products have their own explicit invocation. */
-export const askedAt = (
-  products: readonly (Product & { unasked?: boolean })[],
-  stage: "narrate" | "record",
-  state: State,
-) =>
-  products.filter(
-    (p) =>
-      (p.stage ?? "record") === stage &&
-      p.on &&
-      p.trigger !== "demand" &&
-      !p.unasked &&
-      (!p.when || holds(p.when, state)),
-  )
+/** The automatic products record asks at this state; demand products have their own explicit invocation. */
+export const askedAt = (products: readonly (Product & { unasked?: boolean })[], state: State) =>
+  products.filter((p) => p.on && p.trigger !== "demand" && !p.unasked && (!p.when || holds(p.when, state)))
 export const productAsks = (products: readonly Product[], state: State, catalogs?: readonly Catalog[]): string[] =>
   products.map((p) => {
     const base = `${p.id}: ${expandState(p.text, state)}`

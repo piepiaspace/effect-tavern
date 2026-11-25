@@ -40,7 +40,6 @@ export const createStarterPack = (id = "starter"): Layer => ({
       role: "theater",
       surface: "composer",
       shape: { kind: "list", max: 4 },
-      stage: "record",
       on: true,
       text: "Four inputs that could come next, each one short line and distinct in kind: something the player character says (the exact words, in quotes) or does, or a direction for where the story goes next.",
     },
@@ -49,7 +48,6 @@ export const createStarterPack = (id = "starter"): Layer => ({
       label: "事件摘要",
       role: "chronicle",
       shape: { kind: "text" },
-      stage: "record",
       fold: "append",
       feed: true,
       on: false,
@@ -61,7 +59,6 @@ export const createStarterPack = (id = "starter"): Layer => ({
       role: "theater",
       surface: "theater",
       shape: { kind: "text" },
-      stage: "narrate", // the narrator's own voice, streamed, no extra call
       on: false,
       text: "What the character thought this scene but did not say, one short paragraph.",
     },

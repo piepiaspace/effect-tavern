@@ -29,9 +29,7 @@
 // before this turn's input. The transcript is append-only, so everything before the input is a cached read next turn;
 // no padding for the model's minimum prefix, which a head plus one turn crosses on its own.
 // Events: `stage` when a stage begins, `delta` for each narrate part as it streams, `call` when a call returns (the
-// request, the answer, the cost: what the inspector shows), `node` when a node is saved or amended. A product's road
-// is its stage: a narrate block streams as `product-delta` parts, split live off the prose (journal.ts `splitter`),
-// a record product arrives whole with record's `call`. The node's reply and blocks come from the landed split.
+// request, the answer, the cost: what the inspector shows), `node` when a node is saved or amended.
 // Errors: on the stream, a model failure is a `ModelError` and an action the story's state refuses now (empty input, a
 // terminal or unsettled parent, a settlement or passage already running or overtaken, an id not invocable here) is a
 // `Rejected`. An action the session refuses before any stream starts (an unknown product, a field outside its range) is
@@ -60,7 +58,6 @@ import {
   ModelError,
   modelError,
   streamed,
-  text as whole,
   type Message,
   type Model,
   type Part,
@@ -78,7 +75,7 @@ import { holds, expandState, type State as Paths } from "./cond.ts"
 import { gateOf, makeDerived, type Node } from "./derived.ts"
 import { head as headOf, type Hat } from "./fragment.ts"
 import { policyFor, type Policy } from "./history.ts"
-import { split, splitter, textOf as proseOf, type Brief, type Input, type Turn as TurnOf } from "./journal.ts"
+import { textOf as proseOf, type Brief, type Input, type Turn as TurnOf } from "./journal.ts"
 import * as Log from "./log.ts"
 import {
   catalogsOf,
@@ -91,13 +88,14 @@ import {
   type Rows,
 } from "./layer.ts"
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
-import { activeView, residency } from "./view-shell.ts"
+import { compileCardViews } from "./view-template.ts"
+import { residency } from "./view-shell.ts"
 import { displayedImages, viewBindings } from "./view-bindings.ts"
 import { nodeCondition, projectNodeMedia } from "./media.ts"
-import { lines, expand, fill, unfilled } from "./names.ts"
+import { lines, expand, unfilled } from "./names.ts"
 import { marked, scan, splice } from "./polish.ts"
 import { prepareHat, prepareNarrate, stripTraceRawText } from "./preview.ts"
-import { DEMAND, requestDetailed, worldBlock, type Ask, type DetailedRequest, type Told } from "./request.ts"
+import { request, worldBlock, type Ask, type DetailedRequest, type Told } from "./request.ts"
 import type { MessageTrace, WireErrorInfo, WrapTrace } from "./trace.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
 import { cap, shapeSchema, withCatalogs, askedAt, productAsks, type Catalog, type Product } from "./product.ts"
@@ -132,8 +130,8 @@ export type Pair = typeof Pair.Type
 export type { Node } from "./derived.ts" // internal complete projection; clients use projection.ts
 export type Event =
   | { kind: "exchange"; phase: Phase; attempt: number; model: string; exchange: Exchange }
-  | { kind: "stage"; phase: Phase; visibleViews?: readonly string[] }
-  | { kind: "delta"; part: Part | ProductDelta }
+  | { kind: "stage"; phase: Phase }
+  | { kind: "delta"; part: Part }
   // `via: "decision"`: lookup's or check's pass on the decision model (`decisionPass`), not a language model call
   // every call a stage makes, landed or failed: `model` the model's own id, `fault` (provider fault.ts) when it failed
   // (the stream fails right after); only an interrupted turn's call in flight may report nothing
@@ -158,8 +156,6 @@ export type Event =
       wrap?: WrapTrace
     }
   | ({ kind: "change" } & Change) // the log moved: a node landed or was amended, nodes dropped, and where head is now
-/** A narrate block's text as it streams, beside the provider's `text-delta`: the block `<<aside>> <id>` opened. */
-export type ProductDelta = { type: "product-delta"; id: string; text: string }
 /** An action the story's state refuses now; the message is the reason, shown as the turn's error. */
 export class Rejected extends Schema.TaggedError<Rejected>()("Rejected", { message: Schema.String }) {}
 /** What an action's stream can fail with. */
@@ -364,6 +360,7 @@ export const cardView = (card: Card, rows: Rows = {}) => {
     // the fiction's modules without their text: id, shown name, and the state condition that makes one a variant
     fiction: card.fiction.map(({ id, label, when }) => ({ id, label, when })),
     catalogs: catalogs.length ? catalogs : card.catalogs, // attachments by id as declared: a gallery draws them, a reader resolves a node's id
+    ...(card.views?.length && { views: compileCardViews(card.views) }),
     ...(card.media !== undefined && { media: card.media }),
     ...(card.products?.length && { cardProducts: card.products.map((p) => p.id) }),
     layer: shown(resolve(card, rows)),
@@ -441,15 +438,8 @@ export const makeSession = ({
   let policy: Policy | undefined // one read for a synchronous snapshot; never retained across requests
   const policyOf = () => (typeof P === "function" ? P() : P)
 
+  const views = compileCardViews(card.views)
   const products = () => layer().products
-  /** Narrate blocks under the declared product's cap; a block of an undeclared id is kept as written (the Inspector's). */
-  const capped = (bs: Readonly<Record<string, string>>) =>
-    Object.fromEntries(
-      Object.entries(bs).map(([id, v]) => {
-        const p = products().find((x) => x.id === id)
-        return [id, p ? cap(p.shape, v) : v]
-      }),
-    )
   // ───────── Derived facts along a path (src/derived.ts) ─────────
   const derived = makeDerived({
     rpg,
@@ -470,12 +460,12 @@ export const makeSession = ({
 
   // ───────── The document each stage reads (src/request.ts) ─────────
   /** A stage's document: the frame at this state, the input, then the stage's own ask. */
-  const asked = (state: Paths, input: Input, a: Ask) => {
+  const ask = (state: Paths, input: Input, a: Ask) => {
     const M = modelFor(a.stage)
     const { frame, tail, names: N } = layer()
     const worn = M.hat === undefined ? undefined : hat?.(M.hat)
     const prepHat = worn ? prepareHat(worn, N) : undefined
-    return requestDetailed(
+    return request(
       {
         frame: headOf(frame, { state }),
         world: headOf(worldOf(card, frame), { state }),
@@ -490,9 +480,6 @@ export const makeSession = ({
       },
     )
   }
-  const ask = (state: Paths, input: Input, a: Ask) => asked(state, input, a).messages
-  /** The fiction at this state, expanded: narrate's alone. */
-  const fictionAt = (state: Paths) => headOf(fill(card.fiction, layer().names, "card"), { state })
 
   // ───────── Calls, each announced before and reported after ─────────
   const obj = <S extends Schema.Top & Schema.Constraint & Schema.ConstraintDecoder<unknown>>(
@@ -677,68 +664,6 @@ export const makeSession = ({
       return result.value as RecordResult
     })
 
-  /** A narrate product demanded on a node: one prose call over narrate's view of the path up to and including the
-   *  node (its prose is the last reply), asking for that one block alone. A reply without the delimiter is the block. */
-  // ponytail: lands whole; stream the demand block as product deltas when a long one keeps the player waiting
-  const block = (emit: Emit, p: Product, path: readonly Turn[], state: State) =>
-    Effect.gen(function* () {
-      const here = derived.at(path)
-      const sum = here.summary()
-      // the hat's wrap and delivery tool hold here as on the turn (#220): `asked` is the same narrate document
-      const req = asked(
-        here.context(state),
-        { text: "", note: DEMAND },
-        {
-          stage: "narrate",
-          fiction: fictionAt(here.context(state)),
-          history: here.history(),
-          summarized: sum !== undefined,
-          told: here.resident(),
-          outcome: [],
-          current: here.known().current,
-          must: [],
-          may: [],
-          blocks: { asks: [`${p.id}: ${p.text}`] },
-        },
-      )
-      const msgs = req.messages
-      const M = modelFor("narrate", emit.observe("narrate"))
-      const worn = M.hat === undefined ? undefined : hat?.(M.hat)
-      const delivery = narrativeDelivery(worn, req)
-      yield* emit({ kind: "stage", phase: "narrate" })
-      const t0 = Date.now()
-      const model = nameOf(M.model)
-      const marked = deliveryMeta(delivery, req)
-      let callMeta: ({ out?: unknown; usage?: Usage } & DeliveryMeta) | undefined = marked
-      const demanded = yield* Effect.gen(function* () {
-        const invalid = checkDeliver(delivery, M, msgs)
-        if (invalid) return yield* Effect.fail(invalid)
-        const r = yield* whole(M, msgs, {
-          name: "narrate",
-          maxOutputTokens: M.maxOutputTokens,
-          effort: M.effort,
-          ...delivery,
-        })
-        callMeta = { out: r.text || undefined, usage: r.usage, ...marked }
-        if (r.finishReason === "content-filter") return yield* Effect.fail(contentFilterError(r, model))
-        const { reply, blocks } = split(r.parts)
-        const text = (blocks[p.id] ?? proseOf(reply)).trim()
-        if (!text) return yield* Effect.fail(emptyReplyError(r, model))
-        yield* emit({
-          kind: "call",
-          phase: "narrate",
-          msgs,
-          out: r.text,
-          usage: r.usage,
-          ms: Date.now() - t0,
-          ...(model && { model }),
-          ...marked,
-        })
-        return text
-      }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
-      return capped({ [p.id]: demanded })
-    })
-
   // An ungenerated passage contributes its digest and boundary to derived context, never to the transcript or log.
   const passageView = (path: readonly Turn[], seed: Partial<Turn>): readonly Turn[] => [
     ...path,
@@ -775,7 +700,6 @@ export const makeSession = ({
     const { view, pre, context } = sceneContext(path, node)
     const picks = askedAt(
       products().filter((p) => p.role !== "theater"),
-      "record",
       context,
     )
     const names = layer().names
@@ -785,10 +709,7 @@ export const makeSession = ({
       pre,
       context,
       picks: withCatalogs(picks, catalogs(), context),
-      theaters: products().filter(
-        (p) =>
-          p.role === "theater" && (p.stage ?? "record") === "record" && p.on && p.trigger !== "demand" && !p.unasked,
-      ),
+      theaters: products().filter((p) => p.role === "theater" && p.on && p.trigger !== "demand" && !p.unasked),
       questions: schema ? { schema, lines: rpg.questions(pre, names, context) } : undefined,
     }
   }
@@ -1025,36 +946,21 @@ export const makeSession = ({
       const fed = here.known()
       const transcript = transition ? derived.at(path) : here
       const sum = transcript.summary()
-      // the narrate products on this turn: one ask line each in narrate's tail, each block cut off the reply
-      const narrationState = here.context(s1)
-      const penned = askedAt(products(), "narrate", narrationState)
-      const guarded = layer().views?.filter((v) => activeView(v) && v.when)
-      const visibility = guarded?.length
-        ? {
-            visibleViews: guarded
-              .filter((v) => holds(v.when!, narrationState, [...o.events, ...events]))
-              .map((v) => v.id),
-          }
-        : {}
-
       // No output cap by default: the model's own limit (128k on Haiku) is the ceiling. A cap is connection config.
       const M = modelFor("narrate", emit.observe("narrate"))
       const opts = { name: "narrate", maxOutputTokens: M.maxOutputTokens, effort: M.effort }
       // A stopped stream ends after the current pull without the `finish` part: the text so far is the reply, usage unknown.
       let cut = false
-      // The deltas go out split live: prose as `text-delta`, a block's text as `product-delta`, the delimiter line never.
       const model = nameOf(M.model)
       const write = (
         msgs: Message[],
-        live: ReturnType<typeof splitter>,
         delivery: ReturnType<typeof narrativeDelivery>,
         req: Pick<DetailedRequest, "wrap">,
         meta?: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo },
         priorParts: readonly { type: "text" | "reasoning"; text: string }[] = [],
-        allowAsideOnlyForCheck = false,
       ) =>
         Effect.gen(function* () {
-          yield* emit({ kind: "stage", phase: "narrate", ...visibility })
+          yield* emit({ kind: "stage", phase: "narrate" })
           const t0 = Date.now()
           const marked = deliveryMeta(delivery, req)
           let callMeta:
@@ -1065,19 +971,17 @@ export const makeSession = ({
                 usage?: Usage
               } & DeliveryMeta)
             | undefined = { ...meta, ...marked }
-          return yield* writing(msgs, live, t0, delivery, marked, meta, priorParts, allowAsideOnlyForCheck, (extra) => {
+          return yield* writing(msgs, t0, delivery, marked, meta, priorParts, (extra) => {
             callMeta = { ...meta, ...marked, ...extra }
           }).pipe(Effect.tapError((e) => emit(failedCall("narrate", msgs, model, t0, e, callMeta))))
         })
       const writing = (
         msgs: Message[],
-        live: ReturnType<typeof splitter>,
         t0: number,
         delivery: ReturnType<typeof narrativeDelivery>,
         marked: DeliveryMeta | undefined,
         meta: { trace?: readonly MessageTrace[]; wireError?: WireErrorInfo } | undefined,
         priorParts: readonly { type: "text" | "reasoning"; text: string }[],
-        allowAsideOnlyForCheck: boolean,
         onReply: (extra: { out?: unknown; usage?: Usage }) => void,
       ) =>
         Effect.gen(function* () {
@@ -1089,26 +993,13 @@ export const makeSession = ({
           })
           let text = ""
           let finished = false
-          const pieces = (chunk: string, end?: boolean) =>
-            Effect.forEach(live(chunk, end), (p) =>
-              emit({
-                kind: "delta",
-                part:
-                  p.id === undefined
-                    ? { type: "text-delta", id: "0", text: p.text }
-                    : { type: "product-delta", id: p.id, text: p.text },
-              }),
-            )
           yield* Stream.runForEach(stop ? parts.pipe(Stream.haltWhen(stop)) : parts, (part) => {
             if (part.type === "text-delta") text += part.text
             if (part.type === "finish") finished = true
-            return part.type === "text-delta"
-              ? pieces(part.text)
-              : part.type === "reasoning-delta"
-                ? emit({ kind: "delta", part })
-                : Effect.void
+            return part.type === "text-delta" || part.type === "reasoning-delta"
+              ? emit({ kind: "delta", part })
+              : Effect.void
           })
-          yield* pieces("", true) // a line still held at the end resolves now
           cut = !finished
           const r = cut
             ? {
@@ -1129,10 +1020,7 @@ export const makeSession = ({
               r.text.trim().length > 0
             if (!willResume) {
               const allParts = [...priorParts, ...r.parts]
-              const combinedText = proseOf(allParts).trim()
-              const splitProse = proseOf(split(allParts).reply).trim()
-              if (!combinedText || (!splitProse && !allowAsideOnlyForCheck))
-                return yield* Effect.fail(emptyReplyError(r, model))
+              if (!proseOf(allParts).trim()) return yield* Effect.fail(emptyReplyError(r, model))
             }
           }
           yield* emit({
@@ -1152,7 +1040,6 @@ export const makeSession = ({
       const narrate = (correction?: string) =>
         Effect.gen(function* () {
           const worn = M.hat === undefined ? undefined : hat?.(M.hat)
-          const allowAsideOnlyForCheck = !correction && (guard.length > 0 || brief.must.length > 0)
           const prep = prepareNarrate({
             card,
             resolvedTrace: layerTrace(),
@@ -1175,41 +1062,25 @@ export const makeSession = ({
             tone: brief.tone,
             input,
             correction,
-            blocks: {
-              asks: penned.map((p) => `${p.id}: ${p.text}`),
-              sources: penned.map((p) => layerTrace().sources.products[p.id]),
-            },
             events: gateEvents,
             packNames: packNames(),
           })
           const delivery = narrativeDelivery(worn, prep)
-          const live = splitter() // one draft, one cut, across a resumed write
-          const r = yield* write(
-            prep.messages,
-            live,
-            delivery,
-            prep,
-            {
-              trace: stripTraceRawText(prep.traces),
-              wireError: prep.wireError,
-            },
-            [],
-            allowAsideOnlyForCheck,
-          )
-          if (r.finishReason !== "length" || !M.prefill || delivery) return split(r.parts)
+          const r = yield* write(prep.messages, delivery, prep, {
+            trace: stripTraceRawText(prep.traces),
+            wireError: prep.wireError,
+          })
+          if (r.finishReason !== "length" || !M.prefill || delivery) return r.parts
           const r2 = yield* write(
             [...prep.messages, { role: "assistant", content: r.text }],
-            live,
             delivery,
             prep,
             undefined,
             r.parts,
-            allowAsideOnlyForCheck,
           ) // resume with the partial as prefix
-          return split([...r.parts, ...r2.parts])
+          return [...r.parts, ...r2.parts]
         })
-      // an edit keeps the player's prose and writes no block
-      let { reply, blocks: written } = from === "check" ? { reply: base!.reply, blocks: {} } : yield* narrate()
+      let reply = from === "check" ? base!.reply : yield* narrate()
       let fired: Disclosure[] = []
       let violated: string[] = []
       if (!cut && (guard.length > 0 || open.length > 0)) {
@@ -1260,9 +1131,8 @@ export const makeSession = ({
           // A stop that fired while check ran halts the rewrite before its first character: the first draft stands,
           // stopped, with its verdict (the halted rewrite once became an empty stopped node).
           // A rewrite the player cut is not judged either (the first draft's verdict stands only when it stands).
-          if (!cut || proseOf(again.reply)) {
-            reply = again.reply
-            written = again.blocks
+          if (!cut || proseOf(again)) {
+            reply = again
             c = cut ? { fired: [], violated: [] } : yield* check(proseOf(reply))
           }
         }
@@ -1319,7 +1189,7 @@ export const makeSession = ({
         ...(base?.boundary && { boundary: true as const }),
         ...transition,
         ...(transition && { passageSeed: { products: transition.products ?? {}, changes: transition.changes ?? [] } }),
-        products: { ...capped(written), ...transition?.products },
+        products: transition?.products ?? {},
       }
       fresh()
       const parents = chain(parent)
@@ -1519,7 +1389,7 @@ export const makeSession = ({
             yield* settleRecord(emit, child.id)
         } else {
           const snapshot = chain(nodeId)
-          const asked = products().filter((q) => p.digest?.includes(q.id) && (q.stage ?? "record") === "record")
+          const asked = products().filter((q) => p.digest?.includes(q.id))
           // An explicit interval digest can name a theater too. Keep its transcript view
           // and store its independent output alongside the digest on the passage node.
           const digestScene = { input: { text: "" }, reply: [], deliveries: [] }
@@ -1600,7 +1470,7 @@ export const makeSession = ({
   const moveHead = (next: Parameters<typeof held.commit>[0]) => {
     const old = held.log.head
     const result = change(held.commit(next))
-    if (old === result.head || !layer().views?.some((v) => activeView(v) && residency(v) === "latest")) return result
+    if (old === result.head || !views.some((v) => residency(v) === "latest")) return result
     const affected = [old, result.head].filter((id): id is number => id !== null && held.log.nodes.has(id))
     return { ...result, invalidated: affected }
   }
@@ -1613,7 +1483,6 @@ export const makeSession = ({
     )
 
   const toTimeline = (parents: readonly Turn[], n: Node): TimelineNode => {
-    const views = (layer().views ?? []).filter(activeView)
     let state: ReturnType<ReturnType<typeof derived.at>["context"]> | undefined
     let world: Record<string, unknown> | undefined
     const context = () => (state ??= derived.at([...parents, n.turn]).context())
@@ -1630,7 +1499,7 @@ export const makeSession = ({
     })
     const node = timelineNode(n, derived.at(parents).state, card.rules, products(), media)
     const applicable = views.filter((v) => !v.when || matches(v.when))
-    const turnFields = views.some((v) => !v.playerTemplate && residency(v) === "turn")
+    const turnFields = views.some((v) => residency(v) === "turn")
     if (turnFields) node.fields = n.state
     const latestContext = {
       fields: n.state,
@@ -1644,26 +1513,24 @@ export const makeSession = ({
     const viewImages = gallery?.length
       ? applicable.flatMap((view) => {
           if (
-            view.playerTemplate ||
-            (residency(view) === "turn" &&
-              view.consumes?.length &&
-              view.consumes.every((id) => node.theater[id] === undefined))
+            residency(view) === "turn" &&
+            view.consumes?.length &&
+            view.consumes.every((id) => node.theater[id] === undefined)
           )
             return []
           const bindings = viewBindings({
             view,
             node,
             products: products(),
-            theater: node.theater,
             names: layer().names,
-            ...(!view.playerTemplate && residency(view) === "latest" && { context: latestContext }),
+            ...(residency(view) === "latest" && { context: latestContext }),
           })
           return displayedImages(view.tree, bindings).filter((hit) => gallery.includes(hit.catalog))
         })
       : []
     const head = n.id === held.log.head
     const rendered = applicable.filter((v) => head || residency(v) === "turn")
-    if (rendered.some((v) => !v.playerTemplate && residency(v) === "latest"))
+    if (rendered.some((v) => residency(v) === "latest"))
       node.latestContext = { fields: n.state, world: latestContext.world }
     if (views.some((v) => v.when)) node.visibleViews = rendered.filter((v) => v.when).map((v) => v.id)
     if (!head && media?.viewMedia) {
@@ -1878,10 +1745,7 @@ export const makeSession = ({
         Effect.gen(function* () {
           const up = chain(t.parent)
           const work = sceneContext(up, t)
-          const got =
-            p.stage === "narrate"
-              ? yield* block(emit, p, chain(nodeId), work.pre)
-              : yield* theater(emit, p, t, work, "demand")
+          const got = yield* theater(emit, p, t, work, "demand")
           yield* saveProducts(emit, nodeId, got)
         }),
       )

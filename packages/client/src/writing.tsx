@@ -3,7 +3,7 @@
 // mounting chips (`local.mounts`) with `管理 →` pinned to the block header's right, proper-noun inputs (`layer.names`
 // + `layer.holes`), and the per-card supplement (`extra` tail fragment in `local.fragments`). Right column: the 4
 // narration switches (`local.switches` + compiled `layer.switches.sentences` + `taken` grey-out) and a unified two-column
-// grid of outputs and in-stream views (`layer.products` + active `layer.views`).
+// grid of products.
 import type { Writing } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Layer, Local, Resolved } from "@effect-tavern/runtime/src/layer.ts"
 import { unfilled } from "@effect-tavern/runtime/src/names.ts"
@@ -106,7 +106,6 @@ const DROPPED: Record<Resolved["dropped"][number]["kind"], Key> = {
   name: "writing.droppedName",
   product: "writing.droppedProduct",
   entry: "writing.droppedEntry",
-  view: "writing.droppedView",
 }
 
 export const WritingPage = () => {
@@ -388,16 +387,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
   }
 
   const products = () => layer()?.products ?? []
-  const activeViews = () => (layer()?.views ?? []).filter((v) => !v.shadowed)
-  const lit = () => products().filter((p) => p.on).length + activeViews().filter((v) => v.on !== false).length
-  const totalOutputs = () => products().length + activeViews().length
-
-  const toggleViews = (ids: string[], on: boolean) =>
-    putLocalAndRefresh(cardId(), (l) => {
-      const patches = new Map(l.views?.map((v) => [v.id, v]))
-      for (const id of ids) patches.set(id, { ...patches.get(id), id, on })
-      return { ...l, views: [...patches.values()] }
-    })
+  const lit = () => products().filter((p) => p.on).length
 
   const flipProduct = (prod: { id: string; on: boolean }) => {
     const cid = cardId()
@@ -416,7 +406,6 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
       id: newId("th"),
       isNew: true,
       kind: "theater",
-      stage: "narrate",
       label: "",
       text: "",
       trigger: "demand",
@@ -429,7 +418,6 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     id: string
     role?: "world" | "chronicle" | "theater"
     surface?: "theater" | "composer"
-    stage?: "narrate" | "record"
     label?: string
     text?: string
     trigger?: "demand" | "turn"
@@ -441,7 +429,6 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
       id: p.id,
       isNew: false,
       kind,
-      stage: kind === "theater" && p.stage === "record" ? "record" : "narrate",
       label: own?.label ?? p.label ?? p.id,
       text: own?.text ?? p.text ?? "",
       trigger: own?.trigger ?? p.trigger ?? "turn",
@@ -455,7 +442,6 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
           from: string
           role?: "world" | "chronicle" | "theater"
           surface?: "theater" | "composer"
-          stage?: "narrate" | "record"
           label?: string
           text?: string
           trigger?: "demand" | "turn"
@@ -509,12 +495,6 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     return composer(p) ? t("writing.kindComposer") : t("writing.kindTheater")
   }
 
-  const viewPreview = (v: ReturnType<typeof activeViews>[number]): string => {
-    const ids = v.consumes ?? []
-    if (!ids.length) return t("common.status")
-    return ids.map((id) => shownProduct(id)?.label ?? id).join(" · ")
-  }
-
   const ProductCard = (cprops: { item: ReturnType<typeof products>[number] }) => {
     const p = () => cprops.item
     const textOf = () => (p() as { text?: string }).text
@@ -531,7 +511,6 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                 id: p().id,
                 role: p().role,
                 surface: p().surface,
-                stage: p().stage,
                 label: p().label,
                 text: textOf(),
                 trigger: p().trigger,
@@ -638,7 +617,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
           <h3>{t("writing.outputs")}</h3>
           <div class="right">
             <span class="tag mono">
-              {lit()} / {totalOutputs()}
+              {lit()} / {products().length}
             </span>
             <button type="button" class="btn sm" disabled={!cardId()} onClick={openNewTheater}>
               <Plus /> <span>{t("packs.addTheater")}</span>
@@ -649,22 +628,6 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
           <div class="prod-grid">
             <For each={products()} keyed={(p) => p.id}>
               {(p) => <ProductCard item={p()} />}
-            </For>
-            <For each={activeViews()} keyed={(v) => v.id}>
-              {(v) => (
-                <div class="tile prod-item">
-                  <div class="prod-top">
-                    <span class={{ pname: true, pid: !v().label }}>{v().label ?? v().id}</span>
-                    <span class="tag">{t("writing.views")}</span>
-                    <Switch
-                      on={v().on !== false}
-                      label={v().label ?? v().id}
-                      onFlip={() => void toggleViews([v().id], v().on === false)}
-                    />
-                  </div>
-                  <span class="prod-preview">{viewPreview(v())}</span>
-                </div>
-              )}
             </For>
           </div>
         </div>
@@ -688,12 +651,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                   />
                 </label>
                 <Show when={d().isNew || isLocalOnly(d().id)}>
-                  <KindPick
-                    value={d().kind}
-                    onPick={(kind) =>
-                      setEditingProd({ ...d(), kind, stage: kind === "theater" ? "narrate" : d().stage })
-                    }
-                  />
+                  <KindPick value={d().kind} onPick={(kind) => setEditingProd({ ...d(), kind })} />
                 </Show>
                 <Show when={canTrigger(d())}>
                   <TriggerPick value={d().trigger} onPick={(trigger) => setEditingProd({ ...d(), trigger })} />

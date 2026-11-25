@@ -42,7 +42,7 @@ const x: Exported = {
       turn(0, null, { text: "" }, [{ type: "text", text: "暮春的雨刚歇。\n\n竹叶间还在滴水。" }]),
       {
         ...turn(1, 0, { text: "我放下短剑。", note: "慢一点" }, [{ type: "text", text: "他看着剑。" }]),
-        // theater (inner, a narrate block), context (notes) and options: only the theater one is printed
+        // theater (inner), context (notes) and options: only the theater one is printed
         products: { inner: "远处有人。", notes: "李放下剑。", options: ["走"], stray: "undeclared" },
       },
       turn(2, 0, { text: "another branch" }, [{ type: "text", text: "never on the line" }]),

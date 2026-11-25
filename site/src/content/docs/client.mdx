@@ -24,7 +24,7 @@ On desktop viewports (`≥ 72rem`), `shell.tsx` organizes the workspace into thr
 
 - **Non-jumping streaming (`App.tsx`):** Sending pins the new turn to the top of the viewport above a full-screen runway, trading runway whitespace line-by-line as `narrate` streams. Scrolling upward detaches follow mode cleanly without yanking the viewport back.
 - **Zero-auto-send Composer (`composer.tsx`, `invocation-menu.tsx`, `ime.ts`):** Nothing in the interface sends behind the player's back—`options` chips, quick `snippets`, and punctuation `format` keys (`「」`, `『』`) only populate the input box, with full CJK IME composition protection. Players toggle between `act` and `note` channels (or revise past lines in place), while pressing `/` or `+` opens a `Popover` + multi-page `Command` palette searching across snippets, mounted pack `entries`, and unlocked `player: true` card `lore`.
-- **Readings, Ledger & Theater (`readings.tsx`, `record.ts`):** Inline `<<aside>>` blocks stream live beside prose; post-turn deltas condense into a one-line **Record** pill that opens into a detailed sheet; `demand`-triggered `theater` blocks are requested from the turn's menu; and scalar meters (`steps`, `gauge`, `scale`, `value`) plus `world` tables render on the **Readings** view.
+- **Readings, Ledger & Theater (`readings.tsx`, `record.ts`):** Theater products arrive through parallel `record` calls; post-turn deltas condense into a one-line **Record** pill that opens into a detailed sheet; `demand`-triggered `theater` blocks are requested from the turn's menu; and scalar meters (`steps`, `gauge`, `scale`, `value`) plus `world` tables render on the **Readings** view.
 
 ## 3. Timeline, Inspector & Workshop
 

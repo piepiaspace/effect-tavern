@@ -1,5 +1,4 @@
 import type { StageStep, StageEvent, StageBudget } from "@effect-tavern/provider/src/stage.ts"
-import { splitter } from "@effect-tavern/runtime/src/journal.ts"
 // The Inspect projection (docs/inspector-prototype.html is the page's shape): one turn's calls as the pipeline that
 // ran, a request as its cache regions, a turn's totals. `rows` names each call's place: a check followed by a narrate
 // failed into the second draft, the last narrate of a stopped turn is where the player halted. Stages without a call
@@ -20,19 +19,11 @@ export interface Row {
   draft?: number // narrate and check: which draft; set only when the turn had two
 }
 
-/** Where the prose's calls end: the first polish or record (the whole list when neither ran). A narrate after it is a
- *  demanded block (a narrate-stage product asked for later, session.ts `demand`), not a draft of the prose. */
-export const settledAt = (calls: readonly { phase: Phase }[]): number => {
-  const i = calls.findIndex((c) => c.phase === "polish" || c.phase === "record")
-  return i === -1 ? calls.length : i
-}
-
 export const rows = (calls: readonly Call[], turn: Pick<Turn<unknown>, "end">): Row[] => {
   let draft = 0
-  const settled = settledAt(calls)
-  const narrates = calls.filter((c, i) => c.phase === "narrate" && i < settled).length
+  const narrates = calls.filter((c) => c.phase === "narrate").length
   return calls.map((c, i) => {
-    const drafting = c.phase === "narrate" && i < settled
+    const drafting = c.phase === "narrate"
     if (drafting) draft++
     const native = nativeTrace(c.out)
     // a call that failed (its `fault`; a fast pass's failure is an escalation, not the stage's) is the turn's last
@@ -48,7 +39,7 @@ export const rows = (calls: readonly Call[], turn: Pick<Turn<unknown>, "end">): 
               : drafting && draft === narrates && turn.end === "stopped"
                 ? "stopped"
                 : "ok"
-    const drafted = narrates > 1 && i < settled && (c.phase === "narrate" || c.phase === "check")
+    const drafted = narrates > 1 && (c.phase === "narrate" || c.phase === "check")
     return { phase: c.phase, status, call: c, ...(drafted && { draft }) }
   })
 }
@@ -215,7 +206,8 @@ export const nativeTrace = (
 /** The ordinal after a stage's name, only when that stage ran more than once in the node; a stage's pre-check
  *  (`via: "decision"`) counts apart from its LLM call, and lookup's apart from check's. */
 export const ordinals = (rs: readonly Row[]): (number | undefined)[] => {
-  const key = (r: Row) => (r.call.via ? `${r.phase}:${r.call.via}` : r.phase)
+  const key = (r: Row) =>
+    r.call.product ? `${r.phase}:product:${r.call.product}` : r.call.via ? `${r.phase}:${r.call.via}` : r.phase
   return rs.map((r) => {
     const same = rs.filter((x) => key(x) === key(r))
     return same.length > 1 ? same.indexOf(r) + 1 : undefined
@@ -326,17 +318,6 @@ export const precheck = (
 // ponytail: a screen of lines; the stored row keeps them all (JSON view)
 const RANKED = 12
 
-/** A narrate answer as its prose and the blocks it opened (journal.ts `splitter`), each run of one kind merged. */
-export const pieces = (text: string): { id?: string; text: string }[] => {
-  const out: { id?: string; text: string }[] = []
-  for (const p of splitter()(text, true)) {
-    const last = out.at(-1)
-    if (last && last.id === p.id) last.text += p.text
-    else out.push({ ...(p.id !== undefined && { id: p.id }), text: p.text })
-  }
-  return out.map((p) => ({ ...p, text: p.text.trim() })).filter((p) => p.text)
-}
-
 const abnormal = (status: string): Pill | undefined =>
   status === "cancelled"
     ? { word: "stopped", tone: "warn" }
@@ -392,12 +373,15 @@ export const digest = (r: Row, nth: number, f: Facts): Digest => {
         ],
       }
     case "narrate": {
-      // the prose's first sentence; a demanded block has no prose, so its own first sentence stands in
-      const ps = pieces(typeof out === "string" ? out : "")
       return {
         pills: r.status === "stopped" ? [{ word: "stopped", tone: "warn" }] : [],
-        line: firstSentence(ps.find((x) => x.id === undefined)?.text || ps[0]?.text || ""),
+        line: firstSentence(typeof out === "string" ? out : ""),
       }
+    }
+    case "record": {
+      const value = r.call.product && o[r.call.product]
+      if (typeof value === "string" && value.trim()) return { pills: [], line: firstSentence(value) }
+      return { pills: Array.isArray(value) && value.length ? [{ text: String(value.length) }] : [] }
     }
     case "check": {
       const fired = ids(o.fired)

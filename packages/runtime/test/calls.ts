@@ -47,7 +47,7 @@ const run = async (fail?: Phase, demand = false) => {
   if (demand) {
     const node = events.flatMap((e) => (e.kind === "change" && e.node ? [e.node] : [])).at(-1)!
     events.length = 0
-    current = scripted("narrate")
+    current = scripted("record")
     exit = await collect(S.demand(node.id, "inner"))
   }
   return { events, exit }
@@ -94,7 +94,7 @@ for (const [phase, demand] of [
   ["check", false],
   ["polish", false],
   ["record", false],
-  ["narrate", true],
+  ["record", true],
 ] as const) {
   const { events, exit } = await run(phase, demand)
   const label = `${phase}${demand ? " (demand)" : ""}`
@@ -132,7 +132,6 @@ for (const [phase, demand] of [
   const baseFake = fake(() => ({ text: "ok" }))
   const customNarrateModel = (spec: {
     doStream?: (o: FakeCall) => Promise<{ stream: ReadableStream<unknown> }>
-    doGenerate?: (o: FakeCall) => Promise<unknown>
     prefill?: boolean
     tools?: boolean
     hat?: string
@@ -145,7 +144,6 @@ for (const [phase, demand] of [
     model: Object.assign(Object.create(Object.getPrototypeOf(baseFake.model)), baseFake.model, {
       modelId: "gemini-2.5-pro",
       ...(spec.doStream && { doStream: spec.doStream }),
-      ...(spec.doGenerate && { doGenerate: spec.doGenerate }),
     }),
   })
 
@@ -248,31 +246,6 @@ for (const [phase, demand] of [
     assert.match(call.fault?.message ?? "", /reasoning returned with no prose/)
   }
 
-  // 2b. HTTP-200 aside-only with 0 prose characters (`<<aside>> inner\n...` and no prose): fails instead of saving blank prose node
-  {
-    const M = customNarrateModel({
-      doStream: async () => ({
-        stream: streamFrom([
-          { type: "stream-start", warnings: [] },
-          { type: "text-start", id: "0" },
-          { type: "text-delta", id: "0", delta: "<<aside>> inner\nOnly an aside, forgot prose." },
-          { type: "text-end", id: "0" },
-          {
-            type: "finish",
-            finishReason: { unified: "stop", raw: "STOP" },
-            usage: v4Usage,
-          },
-        ]),
-      }),
-    })
-    const S = makeSession({ card: chat, rows: () => productsOff, model: () => M })
-    const root = S.greet({ text: "Opening." }).node!
-    const { events, exit } = await collectEvents(S.act(root.id, { text: "Hello?" }))
-    assert.ok(Exit.isFailure(exit))
-    assert.equal(S.log.nodes.size, 1)
-    assert.match(calls(events)[0]?.fault?.message ?? "", /empty reply/)
-  }
-
   // 2c. Player-initiated stop (`cut === true`) is NOT rejected by content-filter / empty-reply guard
   {
     const halt = Effect.runSync(Deferred.make<void>())
@@ -290,57 +263,6 @@ for (const [phase, demand] of [
     )
     assert.ok(Exit.isSuccess(exit))
     assert.equal(S.log.nodes.get(1)?.end, "stopped")
-  }
-
-  // 2d. `demand` (`block()`) rejects HTTP-200 content-filter & empty reply, while accepting `<<aside>> inner\n...`
-  {
-    let mode: "filter" | "empty" | "ok" = "filter"
-    const M = customNarrateModel({
-      doStream: async () => ({
-        stream: streamFrom([
-          { type: "stream-start", warnings: [] },
-          { type: "text-start", id: "0" },
-          { type: "text-delta", id: "0", delta: "Landed scene prose." },
-          { type: "text-end", id: "0" },
-          { type: "finish", finishReason: { unified: "stop", raw: "STOP" }, usage: v4Usage },
-        ]),
-      }),
-      doGenerate: async () => ({
-        content: [
-          {
-            type: "text",
-            text: mode === "ok" ? "<<aside>> inner\nQuiet thought." : "",
-          },
-        ],
-        finishReason:
-          mode === "filter"
-            ? { unified: "content-filter", raw: "PROHIBITED_CONTENT" }
-            : { unified: "stop", raw: "STOP" },
-        usage: v4Usage,
-        warnings: [],
-      }),
-    })
-    const S = makeSession({
-      card: chat,
-      rows: () => productsOff,
-      model: (phase) => (phase === "narrate" ? M : scripted()),
-    })
-    const root = S.greet({ text: "Opening." }).node!
-    await collectEvents(S.act(root.id, { text: "Hello." }))
-
-    const f1 = await collectEvents(S.demand(1, "inner"))
-    assert.ok(Exit.isFailure(f1.exit))
-    assert.match(calls(f1.events)[0]?.fault?.message ?? "", /PROHIBITED_CONTENT/)
-
-    mode = "empty"
-    const f2 = await collectEvents(S.demand(1, "inner"))
-    assert.ok(Exit.isFailure(f2.exit))
-    assert.match(calls(f2.events)[0]?.fault?.message ?? "", /empty reply/)
-
-    mode = "ok"
-    const okDemand = await collectEvents(S.demand(1, "inner"))
-    assert.ok(Exit.isSuccess(okDemand.exit))
-    assert.equal(S.log.nodes.get(1)?.products["inner"], "Quiet thought.")
   }
 
   // 3. Hat.deliver === "tool" fast-fails (`M.tools === false` and trailing assistant prefill) & skips `length` continuation
@@ -419,11 +341,9 @@ for (const [phase, demand] of [
     assert.equal(calls(lenRes.events)[0]?.deliver, "tool")
     assert.ok(JSON.stringify(calls(lenRes.events)[0]?.msgs[0]).includes("calling the narrative tool"))
 
-    // 3b. End-to-end `deliver: "tool"` over `narrative({ text })` in both streamed `narrate` and `demand` (`block()`)
-    const streamedArg = JSON.stringify({ text: "月光洒在屋檐上。\n<<aside>> inner\n她暗自思忖。" })
-    const demandArg = JSON.stringify({ text: "<<aside>> inner\n夜深人静时的念头。" })
+    // 3b. End-to-end `deliver: "tool"` over `narrative({ text })` in streamed `narrate`
+    const streamedArg = JSON.stringify({ text: "月光洒在屋檐上。" })
     let sawStreamNarrativeTool = false
-    let sawDemandNarrativeTool = false
     const toolModel = customNarrateModel({
       prefill: false,
       tools: true,
@@ -446,32 +366,9 @@ for (const [phase, demand] of [
           ]),
         }
       },
-      doGenerate: async (o) => {
-        assert.deepEqual(o.toolChoice, { type: "auto" })
-        sawDemandNarrativeTool = Boolean(o.tools?.some((t) => t.name === "narrative"))
-        return {
-          content: [{ type: "tool-call", toolCallId: "tc_2", toolName: "narrative", input: demandArg }],
-          finishReason: { unified: "tool-calls", raw: "STOP" },
-          usage: v4Usage,
-          warnings: [],
-        }
-      },
     })
-    const toolCard = {
-      ...chat,
-      products: [
-        {
-          id: "inner",
-          role: "theater" as const,
-          stage: "narrate" as const,
-          shape: { kind: "text" as const },
-          text: "Thought",
-          on: true,
-        },
-      ],
-    }
     const toolSession = makeSession({
-      card: toolCard,
+      card: chat,
       rows: () => productsOff,
       hat: (id) => hats[id],
       model: (phase) => (phase === "narrate" ? toolModel : scripted()),
@@ -488,13 +385,6 @@ for (const [phase, demand] of [
         .join(""),
       "月光洒在屋檐上。",
     )
-    assert.equal(landedNode.products["inner"], "她暗自思忖。")
-
-    const toolDemand = await collectEvents(toolSession.demand(1, "inner"))
-    assert.ok(Exit.isSuccess(toolDemand.exit))
-    assert.equal(sawDemandNarrativeTool, true)
-    assert.equal(toolSession.log.nodes.get(1)?.products["inner"], "夜深人静时的念头。")
-
     // 3c. Unescaped quote (`call.invalid`) on normal completion fails turn cleanly without committing half-sentence
     const malformedToolModel = customNarrateModel({
       prefill: false,
@@ -530,7 +420,7 @@ for (const [phase, demand] of [
     assert.match(malCall.fault?.message ?? "", /malformed narrative tool arguments/)
     assert.equal(malCall.usage.input, 120)
 
-    // 3d. The hat's wrap (#220): `auto` answered in plain text lands; `block()` wraps the same way; the outer shell is
+    // 3d. The hat's wrap (#220): `auto` answered in plain text lands; the outer shell is
     // what is sent, the context is in the description, and the call reports the tool and the wrap
     const wrapHats: Record<string, Hat> = {
       wrap: {
@@ -570,20 +460,9 @@ for (const [phase, demand] of [
             ]),
           }
         },
-        doGenerate: async (o) => {
-          seen.push(o)
-          return {
-            content: [
-              { type: "tool-call", toolCallId: "w1", toolName: "actual_content", input: '{"text":"Wrapped block."}' },
-            ],
-            finishReason: { unified: "tool-calls", raw: "STOP" },
-            usage: v4Usage,
-            warnings: [],
-          }
-        },
       })
     const wrapSession = makeSession({
-      card: { ...chat, products: toolCard.products },
+      card: chat,
       rows: () => productsOff,
       hat: (id) => wrapHats[id],
       model: (phase) => (phase === "narrate" ? wrapModel() : scripted()),
@@ -612,20 +491,6 @@ for (const [phase, demand] of [
       turnCall.msgs.map((m) => m.content),
       ["SHELL", "Go, actual_content."],
     )
-    // block() under the wrapping hat: the same shell, its own demand inside the description
-    const wrapDemand = await collectEvents(wrapSession.demand(1, "inner"))
-    assert.ok(Exit.isSuccess(wrapDemand.exit))
-    assert.equal(wrapSession.log.nodes.get(1)?.products["inner"], "Wrapped block.")
-    const demandReq = seen.at(-1)!
-    const demandTool = demandReq.tools?.find((t) => t.type === "function")
-    assert.ok(demandTool?.type === "function" && demandTool.description?.includes("Write no prose"))
-    assert.deepEqual(
-      demandReq.prompt.map((m) => m.role),
-      ["system", "user"],
-    )
-    const demandCall = calls(wrapDemand.events).find((c) => c.phase === "narrate")!
-    assert.ok(demandCall.wrap)
-    assert.ok(demandCall.wrap?.sections.length)
     // the outer shell ending on the assistant is refused before any request
     const before = seen.length
     wrapHat = "wrap-prefill"

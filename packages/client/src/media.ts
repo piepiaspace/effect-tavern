@@ -21,7 +21,7 @@ import {
 import type { Catalog, Product } from "@effect-tavern/runtime/src/product.ts"
 import { createMemo, createRoot, runWithOwner, type Accessor } from "solid-js"
 import { blocks } from "./markdown.ts"
-import { card, path, stories, type CardView, type Id, type StoryRow } from "./store.ts"
+import { card, path, stories, type Id, type StoryRow } from "./store.ts"
 
 export {
   hashMediaTuple,
@@ -123,7 +123,6 @@ export type MediaViewLike = {
   readonly media?: Media
   readonly layer?: {
     readonly names?: unknown
-    readonly views?: CardView["layer"]["views"]
     readonly products?: readonly Pick<Product, "id" | "role" | "on" | "shape">[]
   }
 }

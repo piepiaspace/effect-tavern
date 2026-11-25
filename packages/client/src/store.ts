@@ -380,7 +380,7 @@ const tick = () => {
 // nothing waits; behind a waiting event they wait too, in order.
 let held: Wire[] = []
 // A block's delta waits too: it is drawn under the prose, so it starts once the prose above it has played out.
-const flows = (e: Wire) => e.kind === "delta" && e.part.type !== "product-delta"
+const flows = (e: Wire) => e.kind === "delta"
 export const apply = (e: Wire): void => {
   // An attach is a full snapshot of server state. Anything queued before the disconnect is stale, including
   // streamEnd and events held behind unplayed graphemes, so the snapshot must start a new playout immediately.
@@ -451,12 +451,9 @@ const applyNow = (e: Wire): void => {
       // A narrate after check is a rewrite (first draft greys under it); a second narrate after narrate is a
       // truncation continuation (session.ts prefill resume) and appends to the prose already written.
       if (e.phase === "narrate") {
-        if (e.visibleViews) registry.update(draft, (d) => (d ? { ...d, visibleViews: e.visibleViews! } : d))
         if (prev === "check") {
           resetPlay()
-          registry.update(draft, (d) =>
-            d ? { ...d, text: "", prev: d.text || d.prev, products: undefined, thinking: undefined } : d,
-          )
+          registry.update(draft, (d) => (d ? { ...d, text: "", prev: d.text || d.prev, thinking: undefined } : d))
         } else if (prev !== "narrate") {
           resetPlay()
         }
@@ -471,13 +468,6 @@ const applyNow = (e: Wire): void => {
         if (d && !d.thinking && !d.text) registry.update(draft, (cur) => (cur ? { ...cur, thinking: true } : cur))
       }
       if (e.part.type === "text-delta") enqueue(e.part.text)
-      if (e.part.type === "product-delta") {
-        play.ended = true // a block comes after the prose: nothing more joins the queue, it plays out at the rate
-        const { id, text } = e.part
-        registry.update(draft, (d) =>
-          d ? { ...d, products: { ...d.products, [id]: (d.products?.[id] ?? "") + text } } : d,
-        )
-      }
       return
     case "change": {
       const amended = e.node !== undefined && registry.get(log).nodes.has(e.node.id)

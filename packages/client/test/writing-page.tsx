@@ -89,18 +89,16 @@ async function run() {
     button(root, t("switches.povFirst"))!.click()
     if (!(await until(() => saved.switches?.pov === "first" && saved.switches.povText === undefined)))
       throw Error("Changing perspective kept the local custom text")
-    const leftCol = root.querySelector<HTMLElement>(".wleft")!
     const rightCol = root.querySelector<HTMLElement>(".wright")!
-    if (leftCol.textContent?.includes(t("writing.views")))
-      throw Error("Left column still renders the in-stream views block")
     if (rightCol.querySelector(".prod-group, .prod-kind-bar, .theater-pager"))
       throw Error("Right column still renders grouped product subheaders or theater pager")
     const outputsSec = [...rightCol.querySelectorAll<HTMLElement>(".wsec")].find((sec) =>
       sec.querySelector("h3")?.textContent?.includes(t("writing.outputs")),
     )
-    if (!outputsSec) throw Error("Missing unified outputs & views section header")
+    if (!outputsSec) throw Error("Missing outputs section header")
     const outputsCount = () => outputsSec.querySelector(".block-title .tag.mono")?.textContent?.trim()
-    if (outputsCount() !== "2 / 4") throw Error(`Expected initial outputs count 2 / 4, got ${outputsCount()}`)
+    if (outputsCount() !== "1 / 3") throw Error(`Expected initial outputs count 1 / 3, got ${outputsCount()}`)
+    if (outputsSec.textContent?.includes("状态栏")) throw Error("Card view leaked into product grid")
     const prodBody = outputsSec.querySelector<HTMLElement>(".prod-body")!
     const firstTile = outputsSec.querySelector<HTMLElement>(".prod-grid .prod-item")!
     if (firstTile.getBoundingClientRect().top < prodBody.getBoundingClientRect().top)
@@ -109,21 +107,8 @@ async function run() {
     if (!toggle || toggle.disabled || toggle.getAttribute("aria-checked") !== "false")
       throw Error("Missing named, unchecked chronicle switch")
     toggle.click()
-    if (!(await until(() => saved?.products?.some((p) => p.id === "notes" && p.on) && outputsCount() === "3 / 4")))
+    if (!(await until(() => saved?.products?.some((p) => p.id === "notes" && p.on) && outputsCount() === "2 / 3")))
       throw Error("Enabling the chronicle did not save its patch or update outputs count")
-    const viewSwitch = outputsSec.querySelector<HTMLButtonElement>('[role="switch"][aria-label="状态栏"]')
-    const viewCard = viewSwitch?.closest<HTMLElement>(".prod-item")
-    if (
-      !viewSwitch ||
-      !viewCard ||
-      viewCard.querySelector(".pname")?.textContent !== "状态栏" ||
-      !viewCard.textContent?.includes(t("writing.views")) ||
-      viewCard.querySelector(".prod-preview")?.textContent !== t("common.status")
-    )
-      throw Error("Missing labelled view card in unified .prod-grid")
-    viewSwitch.click()
-    if (!(await until(() => saved?.views?.some((v) => v.id === "hud" && v.on === false) && outputsCount() === "2 / 4")))
-      throw Error("Toggling view switch did not save local view patch or update count")
     button(document, t("writing.overrides"))!.click()
     await until(() => button(document, t("writing.addRequirement")))
     const prose = () =>

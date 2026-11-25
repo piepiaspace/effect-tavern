@@ -62,13 +62,9 @@ apply({ kind: "stage", phase: "narrate" })
 apply({ kind: "delta", part: { type: "text-delta", id: "0", text: "!" } })
 while (registry.get(draft)!.text !== "hello!" && n++ < 200) tick()
 assert.deepEqual([registry.get(draft)!.text, registry.get(draft)!.prev], ["hello!", undefined])
-// a narrate block grows under its id, never in the prose
-apply({ kind: "delta", part: { type: "product-delta", id: "inner", text: "想" } })
-apply({ kind: "delta", part: { type: "product-delta", id: "inner", text: "说" } })
-assert.deepEqual([registry.get(draft)!.text, registry.get(draft)!.products], ["hello!", { inner: "想说" }])
 apply({ kind: "stage", phase: "check" })
 apply({ kind: "stage", phase: "narrate" }) // the rewrite
-assert.deepEqual([registry.get(draft)!.text, registry.get(draft)!.products], ["", undefined])
+assert.equal(registry.get(draft)!.text, "")
 apply({ kind: "delta", part: { type: "text-delta", id: "0", text: "again" } })
 apply({ kind: "change", node: node(3, 1, "again"), head: 3 })
 assert.notEqual(registry.get(draft), null) // the node waits behind the queued graphemes
@@ -156,10 +152,9 @@ console.log("ok")
   Object.defineProperty(globalThis, "document", { value: page, configurable: true })
   apply({ kind: "attach", phase: "narrate", draft: { parent: 1, input: { text: "go" }, text: "" } })
   apply({ kind: "delta", part: { type: "text-delta", id: "a", text: "甲" } })
-  apply({ kind: "delta", part: { type: "product-delta", id: "inner", text: "乙" } })
   page.hidden = true
   flushHiddenProse()
-  assert.deepEqual([registry.get(draft)?.text, registry.get(draft)?.products], ["甲", { inner: "乙" }])
+  assert.equal(registry.get(draft)?.text, "甲")
   apply({ kind: "delta", part: { type: "text-delta", id: "b", text: "丙" } })
   assert.equal(registry.get(draft)?.text, "甲丙")
   const latestContext = { fields: {}, world: {} }

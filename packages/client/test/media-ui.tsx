@@ -1131,33 +1131,25 @@ const runPhaseTwo = async (isDesktop: boolean) => {
     ...p,
     name: "心声信纸",
     products: [{ id: "postcard", label: "信纸", text: "写一封短信", trigger: "demand" }],
-    views: [{ id: "letter", consumes: ["postcard"], html: "<blockquote data-text='value'></blockquote>" }],
   }))
   await mount(true)
-  await modelControl({ clear: true, turns: [{ prose: "雨灯仍在。" }] })
+  await modelControl({ clear: true, demands: [{ postcard: "雨灯仍在。" }] })
   const gauge = () => sec1.querySelector("[data-view=gauge]")?.shadowRoot?.querySelector("details")
   check(await until(() => !!gauge()?.open), "gauge opens on the current turn")
   const folded = gauge()!
   folded.open = false
   turn.demand(0, "postcard")
-  const letter = () => sec1.querySelector("[data-view=letter]")?.shadowRoot
-  check(await until(() => letter()?.textContent === "雨灯仍在。"), "pack view draws the settled letter")
-  check(gauge() === folded && !folded.open, "demand keeps the same folded status view")
-  await putLocal(cardId, (l) => ({ ...l, views: [{ id: "letter", on: false }] }))
-  await refreshActiveCard()
-  await quiet()
-  check(!letter() && sec1.textContent?.includes("雨灯仍在。"), "disabled shell restores the recorded answer in Shaped")
+  const letter = () =>
+    [...sec1.querySelectorAll(".product.theater")].find((el) => el.textContent?.includes("雨灯仍在。"))
   check(
-    !![...sec1.querySelectorAll(".product.theater")]
-      .find((el) => el.textContent?.includes("雨灯仍在。"))
-      ?.querySelector(".acts button"),
-    "fallback keeps the reroll button",
+    await until(() => !!letter()?.querySelector(".acts button")),
+    "pack product renders its answer with a reroll button",
   )
+  check(gauge() === folded && !folded.open, "demand keeps the same folded status view")
   await mount(false)
   check(!sec1.textContent?.includes("雨灯仍在。"), "unmounted pack stops presenting its product")
-  await putLocal(cardId, (l) => ({ ...l, views: [{ id: "letter", on: true }] }))
   await mount(true)
-  check(await until(() => letter()?.textContent === "雨灯仍在。"), "remount restores the historical letter")
+  check(await until(() => !!letter()), "remount restores the historical letter")
 
   // ── (i) Final accessibility snapshot + Solid 2.0 diagnostics check ──
   visibleControlsHaveNames("final")

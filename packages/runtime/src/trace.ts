@@ -59,7 +59,6 @@ export type SpanKind =
   | "context"
   | "turn"
   | "correction"
-  | "block"
   | "tail"
   | "wrap" // `harness.narrate.wrap`: the user message the harness adds under a hat's wrap (#220)
 
@@ -86,7 +85,6 @@ export type MessageSubzone =
   | "context"
   | "turn"
   | "correction"
-  | "blocks"
   | "tail"
   | "hat-tail"
   | "wrap" // under a hat's wrap: the `narrate.wrap` user message, last, when the hat's lead and tail hold no user message

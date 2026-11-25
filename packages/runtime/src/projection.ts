@@ -156,12 +156,10 @@ export const turnDetail = (n: Node, before: State, rules: Rules): TurnDetail => 
 })
 
 export interface Draft {
-  visibleViews?: readonly string[]
   parent: Id | null
   input: Input
   invocations?: readonly InvocationToken[]
   text: string
-  products?: Record<string, string> // narrate blocks so far, by id
   prev?: string
   fresh?: boolean // the line is nowhere else (an act): a client that attaches and sees it fail puts it back in the box
 }

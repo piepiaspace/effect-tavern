@@ -16,7 +16,7 @@ import {
   type JSX,
 } from "@solidjs/web"
 import { createEffect, createMemo, For, Show, onSettled } from "solid-js"
-import { residency, type EffectiveView, type TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
+import { residency, type CompiledView, type TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
 import type { TimelineNode } from "@effect-tavern/runtime/src/projection.ts"
 import type { CardView } from "./store.ts"
 import { MediaFrame } from "./lightbox.tsx"
@@ -26,12 +26,10 @@ import frameCss from "./lightbox.css?inline"
 const scalar = (v: unknown) => (["string", "boolean", "number"].includes(typeof v) ? String(v) : undefined)
 
 interface Props {
-  view: EffectiveView
+  view: CompiledView
   card: CardView
-  node?: TimelineNode
-  draft?: boolean
+  node: TimelineNode
   latest: boolean
-  theater?: Readonly<Scope>
   context?: TimelineNode["latestContext"]
 }
 const stylesheet = (css: string) => {
@@ -39,9 +37,9 @@ const stylesheet = (css: string) => {
   s.replaceSync(css)
   return s
 }
-const sheets = new WeakMap<EffectiveView, CSSStyleSheet>()
+const sheets = new WeakMap<CompiledView, CSSStyleSheet>()
 let mediaSheet: CSSStyleSheet | undefined
-function viewSheet(view: EffectiveView) {
+function viewSheet(view: CompiledView) {
   let sheet = sheets.get(view)
   if (!sheet) sheets.set(view, (sheet = stylesheet(view.css ?? "")))
   return sheet
@@ -49,15 +47,11 @@ function viewSheet(view: EffectiveView) {
 
 export const ViewBlock = (props: Props) => {
   const bindings = createMemo(() => {
-    const context =
-      !props.view.playerTemplate && residency(props.view) === "latest"
-        ? (props.context ?? props.node?.latestContext)
-        : undefined
+    const context = residency(props.view) === "latest" ? (props.context ?? props.node.latestContext) : undefined
     return viewBindings({
       view: props.view,
       node: props.node,
       products: props.card.layer.products,
-      theater: props.theater ?? props.node?.theater,
       names: props.card.layer.names,
       ...(context && { context }),
     })
@@ -98,13 +92,7 @@ export const ViewBlock = (props: Props) => {
           } else if (key.startsWith("data-attr-")) out["data-" + key.slice(10)] = scalar(readPath(data(), value))
           else if (key === "checked") out.defaultChecked = true
           else if (key === "name" && a.type === "radio")
-            out.name =
-              String(props.draft ? "draft" : (props.node?.id ?? "draft")) +
-              "-" +
-              props.view.id +
-              "-" +
-              rowPrefix +
-              value
+            out.name = `${props.node.id}-${props.view.id}-${rowPrefix}${value}`
           else if (rowPrefix && ((n.tag === "input" && key === "id") || (n.tag === "label" && key === "for")))
             out[key] = rowPrefix + value
           else if (!key.startsWith("data-")) out[key] = key === "open" ? true : value

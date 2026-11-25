@@ -651,9 +651,7 @@ const en: Dict = {
     noLexiconMatch: "No banned phrase matches",
     droppedName: "The name “{id}” in {from} must be one line without {{, so it is left out",
     droppedProduct: "The theater “{id}” in {from} has no text, so it is left out",
-    droppedView: "The view “{id}” from {from} could not be applied",
-    outputs: "Outputs & views",
-    views: "In-stream views",
+    outputs: "Outputs",
     droppedEntry: "The entry “{id}” in {from} contains a /, so it is left out",
   },
   packs: {

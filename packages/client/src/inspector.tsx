@@ -15,12 +15,10 @@ import {
   nativeTrace,
   ordinals,
   pattern,
-  pieces,
   polishPairs,
   precheck,
   rowHits,
   rows,
-  settledAt,
   stepOps,
   totals,
   type Call,
@@ -30,6 +28,7 @@ import {
   type Row,
   type Tray,
 } from "./inspect.ts"
+import type { Shape } from "@effect-tavern/runtime/src/product.ts"
 import { KeyValues, Reading, Shaped } from "./readings.tsx"
 import { WrapMark } from "./controls.tsx"
 import { RequestView } from "./request-view.tsx"
@@ -220,6 +219,7 @@ const Steps = (props: { call: Call; facts: Facts; cache: boolean }) => (
 
 /** One call: the head in the row's slots, opening to its result, its prompt or the stored call. */
 const Step = (props: {
+  shapeOf: (id: string) => Shape | undefined
   row: Row
   facts: Facts
   nth: number
@@ -292,7 +292,8 @@ const Step = (props: {
         <span class="stage">
           <Next class="chev" aria-hidden="true" />
           <span class="nm">
-            {c().product ?? props.row.phase}
+            {props.row.phase}
+            <Show when={c().product}>{(id) => ` · ${props.facts.label(id())}`}</Show>
             <Show when={props.ord}>{(n) => <span class="ord">{n()}</span>}</Show>
             <Show when={c().wrap}>
               <WrapMark />
@@ -410,16 +411,9 @@ const Step = (props: {
                   </Show>
                 </Match>
                 <Match when={typeof c().out === "string"}>
-                  <For each={pieces(c().out as string)} keyed={false}>
-                    {(p) => (
-                      <div class="piece">
-                        <Show when={p().id}>{(id) => <span class="pill">{id()}</span>}</Show>
-                        <p class="ptext">
-                          <Marked text={p().text} q={props.q} />
-                        </p>
-                      </div>
-                    )}
-                  </For>
+                  <p class="ptext">
+                    <Marked text={c().out as string} q={props.q} />
+                  </p>
                 </Match>
                 <Match when={props.row.phase === "polish"}>
                   <For each={polishPairs(c())} keyed={false}>
@@ -441,6 +435,11 @@ const Step = (props: {
                       </div>
                     )}
                   </For>
+                </Match>
+                <Match when={c().product ? props.shapeOf(c().product!) : undefined}>
+                  {(shape) => (
+                    <Shaped shape={shape()} value={(c().out as Record<string, unknown> | undefined)?.[c().product!]} />
+                  )}
                 </Match>
                 <Match when={true}>
                   <KeyValues of={(c().out ?? {}) as Record<string, unknown>} />
@@ -495,10 +494,7 @@ const InspectBody = (props: { id: Id }) => {
     trows()
       .slice(0, trows().indexOf(r))
       .filter((x) => x.phase === r.phase).length
-  const lastNarrate = () =>
-    trows()
-      .slice(0, settledAt(trows()))
-      .findLast((r) => r.phase === "narrate")
+  const lastNarrate = () => trows().findLast((r) => r.phase === "narrate")
   // the one open step, by its index in trows(): the reader's pick holds on the node it was made on; elsewhere the
   // last narrate is open. undefined: every step closed
   const [picked, setPicked] = createSignal<{ id: Id; index: number | undefined }>()
@@ -548,6 +544,7 @@ const InspectBody = (props: { id: Id }) => {
   }))
   const One = (p: { row: Row }) => (
     <Step
+      shapeOf={shapeOf}
       row={p.row}
       facts={facts()}
       nth={nth(p.row)}
@@ -735,7 +732,7 @@ const InspectBody = (props: { id: Id }) => {
               <For each={Object.entries(x().products)} keyed={([k]) => k}>
                 {(e) => (
                   <div class="prod">
-                    <span class="pid">{e()[0]}</span>
+                    <span class="pid">{facts().label(e()[0])}</span>
                     <Show when={shapeOf(e()[0])} fallback={<KeyValues of={{ [e()[0]]: e()[1] }} />}>
                       {(sh) => <Shaped shape={sh()} value={e()[1]} />}
                     </Show>

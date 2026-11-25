@@ -57,7 +57,7 @@ const card: Card = {
   ],
   products: [
     { role: "theater" as const, id: "kept", text: "ASK {{char}}", shape: { kind: "text" } },
-    { role: "theater" as const, id: "blk", text: "BLOCK {{char}}", shape: { kind: "text" }, stage: "narrate" },
+    { role: "theater" as const, id: "blk", text: "BLOCK {{char}}", shape: { kind: "text" } },
   ],
 }
 const pack: Layer = {
@@ -91,6 +91,8 @@ const player: Rows = {
 let rows = player
 const picks: string[][] = []
 const canned = {
+  blk: "DEMANDED",
+  q: "Q",
   notes: "N",
   kept: "K",
   options: ["A", "B", "C", "D"],
@@ -139,7 +141,7 @@ const texts = (msgs: readonly Message[] | undefined) =>
     typeof m.content === "string" ? m.content : m.content.map((c) => ("text" in c ? c.text : "")).join(""),
   )
 const doc = (es: readonly Event[], phase: string) =>
-  texts(es.flatMap((e) => (e.kind === "call" && e.phase === phase ? [e.msgs] : [])).at(-1))
+  es.flatMap((e) => (e.kind === "call" && e.phase === phase ? texts(e.msgs) : []))
 const nodeOf = (es: readonly Event[]) => es.flatMap((e) => (e.kind === "change" && e.node ? [e.node] : [])).at(-1)!
 
 const S = session()
@@ -165,8 +167,6 @@ for (const s of [
   "DEEP 依瑞丝.",
   "SECTION 依瑞丝.", // a section, expanded like a layer
   "ENTRY 贝克兰德.", // a pack's entry
-  "blk: BLOCK 依瑞丝", // a narrate block's ask
-  "town: TOWN 贝克兰德",
   "G 依瑞丝", // the stored opening, as history
 ])
   assert.ok(has(narrate, s), s)
@@ -201,11 +201,9 @@ const n2 = nodeOf(second)
 
 // A demand: refused by name when the question has a hole unfilled; asked expanded otherwise
 assert.throws(() => S.demand(n2.id, "gone"), /gone: unfilled \{\{missing\}\}/)
-prose.text = "DEMANDED"
 const asked = await collect(S.demand(n2.id, "blk"))
-assert.ok(has(doc(asked, "narrate"), "blk: BLOCK 依瑞丝"))
+assert.ok(has(doc(asked, "record"), "blk: BLOCK 依瑞丝"))
 assert.equal(nodeOf(asked).turn.products.blk, "DEMANDED")
-prose.text = "said {{char}}"
 
 // Replay: the name that filled a told entry taken away, the old node keeps what it was told and nothing throws; the
 // card's own text now has an open hole, and the next turn still runs.
@@ -256,13 +254,12 @@ assert.ok(has(doc(third, "narrate"), "HELD 玩家给的."))
         id: "q",
         text: "Q {{missing}}",
         shape: { kind: "text" as const },
-        stage: "narrate" as const,
         on: false,
       },
     ],
   })
   const qn = nodeOf(await collect(Q.act(null, { text: "hi" })))
-  assert.ok(has(doc(await collect(Q.demand(qn.id, "q")), "narrate"), "q: Q {{missing}}"))
+  assert.ok(has(doc(await collect(Q.demand(qn.id, "q")), "record"), "q: Q {{missing}}"))
 
   // `{{user}}` has no fallback: no persona, no name, the static opening commits with the literal and the lists name it
   const hello = { greetings: [{ text: "早安，{{user}}" }] }

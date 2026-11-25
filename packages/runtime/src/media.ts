@@ -1,7 +1,7 @@
 // Browser-safe media schemas, node projection, deterministic variant selection, and HTTPS URL resolution.
 import { sha256 } from "@noble/hashes/sha2.js"
 import { Schema } from "effect"
-import { activeView, residency, type EffectiveView } from "./view-shell.ts"
+import { residency, type CompiledView } from "./view-shell.ts"
 import { holds, reads, type State } from "./cond.ts"
 import { rows, type Catalog, type Product } from "./product.ts"
 
@@ -58,7 +58,7 @@ export const projectNodeMedia = ({
   events,
   context,
 }: {
-  views?: readonly EffectiveView[] | undefined
+  views?: readonly CompiledView[] | undefined
   media: Media | undefined
   products: readonly Product[]
   catalogs: readonly Catalog[]
@@ -104,7 +104,6 @@ export const projectNodeMedia = ({
   const viewMedia = views
     ?.filter(
       (v) =>
-        activeView(v) &&
         (!v.when || matches(v.when)) &&
         (residency(v) === "latest" || !v.consumes?.length || v.consumes.some((id) => turnProducts[id] !== undefined)),
     )

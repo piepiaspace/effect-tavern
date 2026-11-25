@@ -3,7 +3,7 @@ import type { Shape, Catalog } from "./product.ts"
 import { parseFragment, type DefaultTreeAdapterTypes as Html } from "parse5"
 import parse from "css-tree/parser"
 import walk from "css-tree/walker"
-import type { TemplateNode, ViewShell } from "./view-shell.ts"
+import type { CompiledView, TemplateNode, ViewShell } from "./view-shell.ts"
 const words = (s: string) => new Set(s.split(" "))
 const tags = words(
   "div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i small sub sup code pre blockquote hr br figure figcaption details summary label input svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath",
@@ -156,4 +156,14 @@ export function checkMediaBindings(
     ),
   )
   return imageCatalogs
+}
+
+const compiledViews = new WeakMap<readonly ViewShell[], CompiledView[]>()
+export function compileCardViews(views: readonly ViewShell[] | undefined): CompiledView[] {
+  if (!views) return []
+  const cached = compiledViews.get(views)
+  if (cached) return cached
+  const compiled = views.map((view) => ({ ...view, tree: compileView(view) }))
+  compiledViews.set(views, compiled)
+  return compiled
 }

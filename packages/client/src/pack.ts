@@ -23,17 +23,11 @@ export const productKind = (p: Pick<ProductPatch, "role" | "surface">): ProductK
 /** The declaration a kind writes, every other structural key cleared (`withProductPatch` drops an undefined one): a
  *  chronicle is text folded into what the model is fed, a composer list four items asked at record, a 小剧场 text
  *  asked with the prose unless it already says otherwise, by turn or on demand. */
-export const kindFields = (
-  kind: ProductKind,
-  trigger: "demand" | "turn",
-  stage: "narrate" | "record" = "narrate",
-): Omit<ProductPatch, "id"> => {
+export const kindFields = (kind: ProductKind, trigger: "demand" | "turn"): Omit<ProductPatch, "id"> => {
   const none = { surface: undefined, fold: undefined, feed: undefined, trigger: undefined }
-  if (kind === "chronicle")
-    return { ...none, role: "chronicle", shape: { kind: "text" }, stage: "record", fold: "append", feed: true }
-  if (kind === "composer")
-    return { ...none, role: "theater", surface: "composer", shape: { kind: "list", max: 4 }, stage: "record" }
-  return { ...none, role: "theater", shape: { kind: "text" }, stage, trigger }
+  if (kind === "chronicle") return { ...none, role: "chronicle", shape: { kind: "text" }, fold: "append", feed: true }
+  if (kind === "composer") return { ...none, role: "theater", surface: "composer", shape: { kind: "list", max: 4 } }
+  return { ...none, role: "theater", shape: { kind: "text" }, trigger }
 }
 
 /** Fills every `{{key}}` that `names` has a value for, leaving any unfilled hole as written. */
@@ -128,7 +122,6 @@ export interface ProductEditDraft {
   id: string
   isNew: boolean
   kind: ProductKind
-  stage: "narrate" | "record"
   label: string
   text: string
   trigger: "demand" | "turn"
@@ -143,7 +136,7 @@ export function editedProduct(
 ): ProductPatch | undefined {
   const patch = productEdit(shown, draft.id, draft.label, draft.text, canSetTrigger ? draft.trigger : undefined)
   if (draft.isNew ? !!patch : canChangeKind && shown && draft.kind !== productKind(shown))
-    return { ...kindFields(draft.kind, draft.trigger, draft.stage), id: draft.id, ...patch }
+    return { ...kindFields(draft.kind, draft.trigger), id: draft.id, ...patch }
   return patch
 }
 

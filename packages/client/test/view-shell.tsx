@@ -6,13 +6,14 @@ import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import { createAgent } from "@ui-sdk/solid/agent"
 import { App } from "../src/App.tsx"
 import { flip, locale, t } from "../src/i18n.ts"
-import { boot, showCard } from "../src/pages.ts"
+import { boot, open, showCard } from "../src/pages.ts"
 import { ViewBlock } from "../src/view-shell.tsx"
 import { MediaFrame } from "../src/lightbox.tsx"
 import { apply, card, clear, log, openStreams, registry, working } from "../src/store.ts"
-import { importCard, fetchCardOf, putLocal, refreshActiveCard } from "../src/wire.ts"
-import type { EffectiveView } from "@effect-tavern/runtime/src/view-shell.ts"
+import { importCard, fetchCardOf } from "../src/wire.ts"
+import type { CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import { until, quiet, touch, tracked } from "./settle.ts"
+import { timelineNode } from "./fixtures.ts"
 import { postResult } from "./media-transport.ts"
 import "../src/app.css"
 
@@ -63,7 +64,6 @@ products:
     surface: theater
     label: 理的心声
     shape: { kind: text }
-    stage: narrate
     on: true
     text: 写一段{{char}}此刻未说出口的心声。
   - id: note_slip
@@ -71,7 +71,6 @@ products:
     surface: theater
     label: 祭坛便签
     shape: { kind: text }
-    stage: narrate
     on: true
     text: 写一张简短便签。
   - id: options
@@ -134,18 +133,22 @@ async function run() {
   const source = {
     id: "letter",
     consumes: ["inner"],
-    playerTemplate: true,
     css: ".panel { display:none } #next:checked ~ .panel { display:block }",
     html: '<details data-open="latest" data-attr-weather="value.weather" data-var-level="value.level"><summary>Log</summary><ol data-each="value.rows" data-as="row"><li><b data-text="row.$num"></b><span data-text="row"></span><input id="pick" type="checkbox"><label for="pick"></label></li></ol><label for="tab">Tab</label><input type="radio" name="tabs" id="tab" checked data-attr-weather="value.weather"><input type="radio" name="tabs" id="next"><em class="panel">Two</em><p data-if="fields.secret">private</p></details>',
   }
-  const [view, setView] = createSignal<EffectiveView>({ ...source, tree: compileView(source) })
+  const [view, setView] = createSignal<CompiledView>({ ...source, tree: compileView(source) })
   const [latest, setLatest] = createSignal(true)
   const ratios = ["3 / 1", "1 / 1", "1 / 3"]
   const mountRoot = document.getElementById("root")!
   const dispose = render(
     () => (
       <>
-        <ViewBlock card={cardView} view={view()} latest={latest()} theater={{ inner: value() }} />
+        <ViewBlock
+          card={cardView}
+          view={view()}
+          latest={latest()}
+          node={{ ...timelineNode(1, null, ""), theater: { inner: value() } }}
+        />
         <For each={ratios}>
           {(aspect, i) => (
             <MediaFrame
@@ -181,7 +184,7 @@ async function run() {
       details.dataset.weather === "rain" &&
       details.style.getPropertyValue("--level") === "2", "initial bindings")
     require(details.querySelectorAll("li")[1]?.textContent === "2second" &&
-      !details.querySelector("p"), "row scope and player lock")
+      !details.querySelector("p"), "row scope and conditional rendering")
     require(details.querySelector<HTMLLabelElement>('label[for="tab"]')?.control ===
       details.querySelector("#tab"), "namespaced radio and label")
     const boxes = details.querySelectorAll<HTMLInputElement>("li input")
@@ -256,7 +259,7 @@ async function run() {
     require(node0Hud()?.querySelector<HTMLInputElement>("#hudtab1")?.name ===
       "0-ri_hud-hudtab", "landed node scopes radio name to node ID")
 
-    // 1. `<Draft>` streaming: `latest` HUD stays retired (no stale snapshot), while `turn` view mounts only once its product streams
+    // 1. `<Draft>` streaming: `latest` HUD stays retired (no stale snapshot), along with all turn views
     registry.set(openStreams, 1)
     apply({
       kind: "attach",
@@ -265,34 +268,11 @@ async function run() {
     })
     const draftHudHost = () => document.querySelector<HTMLElement>(".draft .view-shell[data-view=ri_hud]")
     const draftSlipHost = () => document.querySelector<HTMLElement>(".draft .view-shell[data-view=slip_view]")
-    const draftSlip = () => draftSlipHost()?.shadowRoot
     require(await until(() => Boolean(document.querySelector(".draft"))), "Draft section mounts")
     await quiet()
     require(!document.querySelector("#node-0 .view-shell"), "parent node retires latest HUD during Draft")
     require(!draftHudHost(), "latest HUD does not mount stale snapshot under Draft")
-    require(!draftSlipHost(), "turn view does not mount before its aside streams")
-
-    apply({
-      kind: "delta",
-      part: { type: "product-delta", id: "inner", text: "  牧师先生今天真温柔……  " },
-    })
-    await quiet()
-    require(!draftHudHost(), "latest HUD stays retired even after consumed inner streams on Draft")
-    require(document.querySelectorAll(".draft .product.theater").length ===
-      0, "Draft suppresses fallback Theater for inner claimed by latest HUD")
-
-    apply({
-      kind: "delta",
-      part: { type: "product-delta", id: "note_slip", text: "  早课诗篇第七页  " },
-    })
-    require(await until(
-      () => draftSlip()?.querySelector(".slip-body")?.textContent === "早课诗篇第七页",
-    ), "turn view mounts and streams trimmed value once its aside arrives")
-    require(!draftSlipHost()!.closest(".product.theater"), "Draft slip_view has no .product.theater frame")
-    require(draftSlip()?.querySelector<HTMLInputElement>("#sliptab1")?.name ===
-      "draft-slip_view-sliptab", "Draft scopes radio input name to draft")
-    require(document.querySelectorAll(".draft .product.theater").length ===
-      0, "Draft suppresses fallback Theater for all claimed products")
+    require(!draftSlipHost(), "turn view does not mount on the prose draft")
 
     clear()
     registry.set(openStreams, 0)
@@ -303,7 +283,7 @@ async function run() {
       clear: true,
       turns: [
         {
-          prose: "她笑。\n\n<<aside>>inner\n他居然注意到了我的发箍……",
+          prose: "她笑。",
           canned: {
             place: { spot: "花园长廊" },
             answers: { affinity: "warm" },
@@ -311,7 +291,11 @@ async function run() {
           recordDelay: 750,
         },
       ],
-      demands: [{ options: ["递上热茶", "询问礼拜日程"] }],
+      demands: [
+        { inner: "他居然注意到了我的发箍……", delay: 1500 },
+        { note_slip: "便签" },
+        { options: ["递上热茶", "询问礼拜日程"] },
+      ],
     })
     const box = document.querySelector<HTMLTextAreaElement>(".composer textarea:not(.note)")!
     box.focus()
@@ -335,6 +319,11 @@ async function run() {
       0, "landed Turn 1 suppresses fallback .product.theater while pending")
 
     require(await until(
+      () => registry.get(log).nodes.get(1)?.settlementStatus === "committed" && registry.get(working),
+    ), "main record finishes before inner")
+    require(!node1HudHost() &&
+      !document.querySelector("#node-1 .product.theater"), "no partial HUD or fallback during parallel record")
+    require(await until(
       () => registry.get(log).nodes.get(1)?.settlementStatus === "committed" && !registry.get(working),
       5000,
     ), "Turn 1 record settlement commits")
@@ -356,8 +345,9 @@ async function run() {
     // 3. Consumed theater product remains re-rollable via footer `<Demand>` (`小剧场`)
     await modelControl({
       clear: true,
-      turns: [{ prose: "重抽后的心声：但愿他喜欢刚烤好的司康饼。" }],
+      demands: [{ inner: "重抽后的心声：但愿他喜欢刚烤好的司康饼。" }],
     })
+    const mountedHud = node1HudHost()
     const demandLabel = t("readings.asideOf", { n: 2 })
     const askInner = await agent.act({ steps: [{ ref: demandLabel, action: "press", args: ["理的心声"] }] })
     require(askInner.ok, `Demand re-roll 理的心声: ${askInner.error?.message}`)
@@ -371,21 +361,20 @@ async function run() {
     require(document.querySelectorAll("#node-1 .product.theater").length ===
       0, "re-rolled consumed inner still renders only inside ri_hud")
 
-    // 4. Turning `ri_hud` `on: false` restores default `.product.theater` `<Shaped>` + `<Options>` fallback
-    await putLocal(unifiedInstalled.id, (l) => ({ ...l, views: [{ id: "ri_hud", on: false }] }))
-    await refreshActiveCard()
-    await quiet()
-    require(!node1HudHost(), "turning ri_hud off unmounts the custom view")
-    const fallbackTheater = document.querySelector<HTMLElement>("#node-1 .product.theater")
-    require(Boolean(fallbackTheater) &&
-      fallbackTheater?.querySelector(".plabel")?.textContent === "理的心声" &&
-      fallbackTheater?.textContent?.includes("重抽后的心声：但愿他喜欢刚烤好的司康饼。") &&
-      Boolean(
-        fallbackTheater?.querySelector(".acts button"),
-      ), "turning ri_hud off restores default .product.theater Shaped rendering with reroll button")
-    require(document.querySelectorAll("#node-1 .options .option").length ===
-      2, "turning ri_hud off restores default Options fallback for consumed composer product")
-
+    require(mountedHud === node1HudHost(), "Demand preserves the HUD element")
+    open({ inspect: 1 })
+    const steps = () => [...document.querySelectorAll<HTMLDetailsElement>(".inspect .step")]
+    const named = (name: string) => steps().filter((el) => el.querySelector(".nm")?.textContent?.trim() === name)
+    require(await until(() => named("record · 理的心声2").length === 1), "Inspector numbers the second inner call")
+    const choices = named("record · 行动建议")[0]
+    require(choices?.querySelector(".digest .pill")?.textContent?.trim() === "2", "Inspector shows the list count")
+    choices.querySelector("summary")!.click()
+    require(await until(
+      () => choices.querySelector(".items li")?.textContent === "递上热茶",
+    ), "Inspector renders list items by shape")
+    require([...document.querySelectorAll(".inspect .prod .pid")].some(
+      (el) => el.textContent === "理的心声",
+    ), "Inspector labels node products")
     await postResult({ failures: diagnostics.end().diagnostics.map((d) => d.message) })
   } finally {
     disposeApp()

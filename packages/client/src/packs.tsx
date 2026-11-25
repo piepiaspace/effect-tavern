@@ -741,7 +741,6 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
       isNew: true,
       whole: true,
       kind: "theater",
-      stage: "narrate",
       label: "",
       trigger: "demand",
       text: "",
@@ -758,7 +757,6 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
       isNew: false,
       whole: p.role !== undefined && p.shape !== undefined,
       kind,
-      stage: kind === "theater" && p.stage === "record" ? "record" : "narrate",
       label: p.label ?? p.id,
       trigger: p.trigger ?? "turn",
       text: p.text ?? "",
@@ -858,10 +856,7 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
                   />
                 </label>
                 <Show when={d().whole}>
-                  <KindPick
-                    value={d().kind}
-                    onPick={(kind) => setEditing({ ...d(), kind, stage: kind === "theater" ? "narrate" : d().stage })}
-                  />
+                  <KindPick value={d().kind} onPick={(kind) => setEditing({ ...d(), kind })} />
                 </Show>
                 <Show when={d().kind === "theater"}>
                   <TriggerPick value={d().trigger} onPick={(trigger) => setEditing({ ...d(), trigger })} />

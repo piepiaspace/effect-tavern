@@ -104,20 +104,14 @@ export const makeTurn = (s: Session, observe: (action: Action, events: Events) =
     if (e.kind === "stage") {
       const prev = r.phase
       r.phase = e.phase
-      if (r.draft && e.visibleViews) r.draft = { ...r.draft, visibleViews: e.visibleViews }
       // a narrate after check is a rewrite (first draft kept as `prev`); narrate after narrate is a prefill resume
-      if (e.phase === "narrate" && prev === "check" && (r.draft?.text || r.draft?.products)) {
-        const { products: _, ...d } = r.draft // the rewrite writes its own blocks
-        r.draft = { ...d, text: "", prev: r.draft.text || r.draft.prev }
+      if (e.phase === "narrate" && prev === "check" && r.draft?.text) {
+        r.draft = { ...r.draft, text: "", prev: r.draft.text }
       }
     }
     if (e.kind === "delta" && e.part.type === "text-delta") {
       r.narrating = true // reasoning is not prose: the client counts the same
       if (r.draft) r.draft = { ...r.draft, text: r.draft.text + e.part.text }
-    }
-    if (e.kind === "delta" && e.part.type === "product-delta" && r.draft) {
-      const { id, text } = e.part
-      r.draft = { ...r.draft, products: { ...r.draft.products, [id]: (r.draft.products?.[id] ?? "") + text } }
     }
   }
   const skip = (node: Id): Event => {

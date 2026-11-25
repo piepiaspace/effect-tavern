@@ -332,16 +332,15 @@ assert.deepEqual(asTheater[0], {
   label: "行动选项",
   role: "theater",
   shape: { kind: "text" },
-  stage: "narrate",
   on: true,
   trigger: "demand",
   text: createStarterPack().products![0].text,
 })
 assert.deepEqual(withProductPatch([], { id: "n", ...kindFields("chronicle", "turn") }), [
-  { id: "n", role: "chronicle", shape: { kind: "text" }, stage: "record", fold: "append", feed: true },
+  { id: "n", role: "chronicle", shape: { kind: "text" }, fold: "append", feed: true },
 ])
 for (const declaration of [
-  { role: "theater", stage: "record", shape: { kind: "list", max: 2 }, text: "Two hints" },
+  { role: "theater", shape: { kind: "list", max: 2 }, text: "Two hints" },
   { role: "theater", surface: "composer", shape: { kind: "list", max: 6 }, text: "Options" },
   { role: "chronicle", shape: { kind: "list", max: 3 }, fold: "latest", feed: false, text: "Facts" },
   { trigger: "demand" },
@@ -353,7 +352,6 @@ for (const declaration of [
     kind: "role" in product ? productKind(product) : "theater",
     label: "Renamed",
     text: product.text ?? "",
-    stage: "record",
     trigger: product.trigger ?? "turn",
   } as const
   const patch = editedProduct(product, draft, "shape" in product, draft.kind === "theater")!

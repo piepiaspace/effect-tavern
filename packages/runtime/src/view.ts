@@ -180,15 +180,13 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   // a 小剧场 is narrate's, not this record document's; a catalog with no survivor drops what reads it (session `record`)
   const catalogs = catalogsOf(card, rows)
   const asked = withCatalogs(
-    askedAt(R.products, "record", gated).filter((p) => p.role !== "theater"),
+    askedAt(R.products, gated).filter((p) => p.role !== "theater"),
     catalogs,
     gated,
   )
   const asks = productAsks(asked, gated)
   const qs = rpg.questions(s, R.names, context)
   const questions = qs.length ? qs : undefined // none active: no Questions line, as the session sends none
-  // the narrate products on: one `<id>: <question>` line each after the prose directive (session.ts `penned`)
-  const penned = askedAt(R.products, "narrate", gated).map((p) => `${p.id}: ${p.text}`)
 
   // ───────── the document ─────────
   const ask: Ask =
@@ -229,7 +227,6 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
               outcome: events,
               must: [],
               may: offered.map((d) => ({ id: d.id, text: d.text })),
-              blocks: { asks: penned },
             }
   // a hat, when given, is worn as the session wears it (its names and delivery tool filled): narrate under its delivery
   // tool prints the tool, and under its wrap the description that carries the story context
@@ -283,7 +280,6 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
     },
     { name: "bands ↔ readouts", tokens: 0, text: bands.join("\n\n") },
     { name: "gates", tokens: 0, text: [...gates, ...(readsLore ? loreGates : [])].join("\n") },
-    { name: "narrate blocks", tokens: tokens(penned.join("\n")), text: penned.join("\n") },
   ]
   const text = [
     `${card.id} at ${JSON.stringify(s)}${g ? `, after greeting ${o.greeting}` : ""}`,

@@ -25,9 +25,7 @@ export type Fragment = typeof Fragment.Type
 export const SLOTS: readonly string[] = ["persona", "pov", "voice", "style", "setting", "language", "verbosity"]
 export const decodeFragments = Schema.decodeUnknownSync(Schema.Array(Fragment))
 
-/** What the model wrote, as parts: the prose, and reasoning carrying whatever the provider needs to take it back. A
- *  narrate block (`<<aside>> <id>`, src/journal.ts `split`) is a product on the turn, not a part: `prose(t)` and every
- *  stage reading prose never see it, and it never goes back to the model. */
+/** What the model wrote, as parts: the prose, and reasoning carrying whatever the provider needs to take it back. */
 export type Part =
   | { type: "text"; text: string }
   | { type: "reasoning"; text: string; providerOptions?: Record<string, Record<string, unknown>> }

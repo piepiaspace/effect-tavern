@@ -6,7 +6,6 @@ import type { FakeCall, Message } from "@effect-tavern/provider"
 import assert from "node:assert/strict"
 import type { Hat, Msg, Slotted } from "../src/fragment.ts"
 import {
-  BLOCKS,
   CHECK,
   CORRECTION,
   DECIDE,
@@ -469,7 +468,6 @@ for (const s of stages)
     withDeliver,
     {
       ...(asks.narrate as Extract<Ask, { stage: "narrate" }>),
-      blocks: { asks: ["inner: Thought"] },
     },
     { hat: toolHat },
   )
@@ -482,10 +480,6 @@ for (const s of stages)
   assert.equal(text(detailed.messages[0]).slice(deliverSpan.start, deliverSpan.end), deliverText)
   // Head cache breakpoint still covers the entire head prefix (including lead + hat-head)
   assert.equal(detailed.traces[6]?.breakpoint?.zone, "head")
-  // `narrate.blocks` stays intact in turn.blocks under deliver: "tool"
-  const blocksTrace = detailed.traces.find((t) => t.subzone === "blocks")
-  assert.ok(blocksTrace)
-  assert.equal(text(detailed.messages[blocksTrace.index]), `<aside_blocks>\n${BLOCKS}\ninner: Thought\n</aside_blocks>`)
   // Non-narrate stages never read `narrate.deliver`
   for (const s of stages.filter((s) => s !== "narrate")) {
     assert.deepEqual(request(withDeliver, asks[s], { hat: toolHat }), worn(s), s)
@@ -667,7 +661,6 @@ for (const s of stages)
     {
       ...(summarizedAsk as Extract<Ask, { stage: "narrate" }>),
       known: "Known: N1",
-      blocks: { asks: ["inner: Thought"] },
     },
     {
       hat: { ...hat, deliver: "tool", narrate: { ...hat.narrate, turn: [{ role: "system", text: "TURN" }] } },
@@ -713,8 +706,6 @@ for (const s of stages)
   assert.deepEqual(slice("world"), ["你是新来到小镇的牧师。", "边境小镇。", "Write in Chinese."])
   assert.deepEqual(slice("guidelines"), ["用第二人称写玩家。"])
   assert.deepEqual(slice("correction"), [CORRECTION, "rule"])
-  assert.deepEqual(slice("blocks"), [BLOCKS, "inner: Thought"])
-  assert.equal(at("blocks").spans[0].source.path, "harness.narrate.blocks")
   assert.deepEqual(
     rich.traces.filter((t) => t.subzone === "tail").map((t) => [t.role, text(rich.messages[t.index])]),
     [
@@ -743,7 +734,6 @@ for (const s of stages)
     { stage: "decide", ledger: [], state: "{}", menu: [] },
     { stage: "direct", ledger: [], rules: [], open: [], events: [] },
     bareNarrate,
-    { ...bareNarrate, blocks: { asks: [] } },
     { stage: "check", rules: [], open: [], must: [], prose: "P" },
     { stage: "polish", hints: [], prose: "P" },
     { stage: "record", known: "", asks: [], prose: "P", invoked: [] },

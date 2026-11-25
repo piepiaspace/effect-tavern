@@ -155,13 +155,13 @@ export const fetchPersonas = async (): Promise<void> => registry.set(personas, a
  *  snippets, format keys. A tab switched meanwhile keeps the read from landing on the wrong card. */
 export const refreshActiveCard = async (): Promise<void> => {
   const cur = activeOf(registry.get(tabs))
-  const before = registry.get(card)?.layer?.views
+  const before = registry.get(card)?.views
   await fetchTabCard(cur, () => activeOf(registry.get(tabs)) === cur)
   if (
     activeOf(registry.get(tabs)) === cur &&
     cur.story !== null &&
     // Names, product shapes and catalogs can change the projected images even with identical templates.
-    (before?.length || registry.get(card)?.layer?.views?.length)
+    (before?.length || registry.get(card)?.views?.length)
   )
     await fetchNodes()
 }

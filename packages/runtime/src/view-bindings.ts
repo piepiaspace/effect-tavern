@@ -1,4 +1,4 @@
-import type { EffectiveView, TemplateNode } from "./view-shell.ts"
+import type { CompiledView, TemplateNode } from "./view-shell.ts"
 import type { NodeMedia, MediaVariantTarget } from "./media.ts"
 import { rows, type Product, type Shape, type TableShape } from "./product.ts"
 export type Scope = Record<string, unknown>
@@ -42,18 +42,16 @@ export function viewBindings({
   view,
   node,
   products,
-  theater,
   names,
   context,
 }: {
-  view: EffectiveView
-  node: { id: number; media?: NodeMedia; fields?: Scope; theater?: Readonly<Scope> } | undefined
+  view: CompiledView
+  node: { id: number; media?: NodeMedia; fields?: Scope; theater?: Readonly<Scope> }
   products?: readonly Pick<Product, "id" | "shape">[]
-  theater?: Readonly<Scope>
   names: unknown
   context?: { fields?: unknown; world?: unknown }
 }) {
-  const allTheater = theater ?? node?.theater ?? {}
+  const allTheater = node.theater ?? {}
   const consumed = view.consumes ?? []
   const scope: Scope = {}
   let aliases: Record<string, string> = {}
@@ -80,17 +78,11 @@ export function viewBindings({
     scope.value = primaryValue
   }
   scope.names = names
-  const hits = node?.media?.viewMedia?.filter((m) => m.viewId === view.id) ?? []
-  if (!view.playerTemplate) {
-    scope.media = Object.fromEntries(hits.map((m) => [m.id, m]))
-    scope.fields = context?.fields ?? node?.fields
-    Object.defineProperty(scope, "world", { enumerable: true, configurable: true, get: () => context?.world })
-    scope.theater = allTheater
-  } else {
-    scope.theater = Object.fromEntries(
-      consumed.flatMap((id) => (Object.hasOwn(allTheater, id) ? [[id, allTheater[id]]] : [])),
-    )
-  }
+  const hits = node.media?.viewMedia?.filter((m) => m.viewId === view.id) ?? []
+  scope.media = Object.fromEntries(hits.map((m) => [m.id, m]))
+  scope.fields = context?.fields ?? node.fields
+  Object.defineProperty(scope, "world", { enumerable: true, configurable: true, get: () => context?.world })
+  scope.theater = allTheater
   let refs: ReturnType<typeof productImages> | undefined
   const collectRefs = () => {
     const out: ReturnType<typeof productImages> = []
@@ -101,7 +93,6 @@ export function viewBindings({
     return out
   }
   function image(binding: string, locals: Record<string, string>): MediaVariantTarget | undefined {
-    if (view.playerTemplate || !node) return
     if (binding.includes(":")) {
       const [catalog, path] = binding.split(":")
       const key = canonicalPath(path, locals)

@@ -11,12 +11,10 @@ import {
   groups,
   isTray,
   ordinals,
-  pieces,
   precheck,
   regions,
   rowHits,
   rows,
-  settledAt,
   stepOps,
   totals,
   type Call,
@@ -69,16 +67,6 @@ assert.deepEqual(shape(stopped), [
   ["narrate", "stopped"],
   ["record", "ok"],
 ])
-// a narrate after record is a demanded block (a narrate-stage product), not a second draft: no tray, and the stop
-// stays on the prose's narrate
-const demanded = rows([call("narrate"), call("check"), call("record"), call("narrate")], { end: "stopped" })
-assert.deepEqual(shape(demanded), [
-  ["narrate", "stopped"],
-  ["check", "ok"],
-  ["record", "ok"],
-  ["narrate", "ok"],
-])
-assert.equal(settledAt(demanded), 2)
 assert.ok(groups(stopped).every((g) => !isTray(g)))
 
 const bp = { anthropic: { cacheControl: { type: "ephemeral" } } }
@@ -199,6 +187,13 @@ assert.deepEqual(digest(row({ phase: "decide" }), 1, facts), {
   note: "0.32 / 65%",
 })
 assert.deepEqual(digest(row({ phase: "decide" }), 0, facts), { pills: [{ text: "talk" }] })
+const main = row({ phase: "record" })
+const options = row({ phase: "record", product: "options", out: { options: ["a", "b"] } })
+const inner = row({ phase: "record", product: "inner", out: { inner: "他想。走。" } })
+assert.deepEqual(ordinals([main, options, inner]), [undefined, undefined, undefined])
+assert.deepEqual(ordinals([main, options, inner, { ...inner }]), [undefined, undefined, 1, 2])
+assert.deepEqual(digest(options, 0, facts), { pills: [{ text: "2" }] })
+assert.deepEqual(digest(inner, 0, facts), { pills: [], line: "他想。" })
 // direct: must, then may lighter; nothing when the brief is empty
 assert.deepEqual(digest(row({ phase: "direct", out: { must: ["a"], may: ["c"], tone: "x" } }), 0, facts).pills, [
   { text: "a" },
@@ -210,11 +205,6 @@ assert.deepEqual(digest(row({ phase: "narrate", out: "门开了。风进来。" 
   pills: [{ word: "stopped", tone: "warn" }],
   line: "门开了。",
 })
-assert.deepEqual(pieces("门开了。\n风进来。\n<<aside>> inner\n他想。"), [
-  { text: "门开了。\n风进来。" },
-  { id: "inner", text: "他想。" },
-])
-assert.equal(digest(row({ phase: "narrate", out: "<<aside>> inner\n他想。走。" }), 0, facts).line, "他想。")
 // check: nothing on pass, red pills for the missed must and broken rules
 assert.deepEqual(digest(row({ phase: "check", out: { fired: ["a", "b"], violated: [] } }), 0, facts).pills, [])
 assert.deepEqual(digest(row({ phase: "check", out: { fired: ["a"], violated: ["no magic"] } }), 0, facts).pills, [

@@ -308,7 +308,6 @@ products:
     surface: theater
     label: 理的心声
     shape: { kind: text }
-    stage: narrate
     on: true
     text: |-
       这一幕里{{char}}藏在心底、没有说出口的真实想法与细微情绪，简短一两句，保持她温柔又容易害羞的口吻。
