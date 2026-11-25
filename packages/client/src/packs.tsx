@@ -769,7 +769,9 @@ const ProductsTab = (props: { pack: Layer; all: readonly Layer[]; onSave: Save }
     const d = editing()
     if (!d || !d.label.trim() || (d.whole && !d.text.trim())) return
     const original = products().find((p) => p.id === d.id)
-    const item = editedProduct(original, d, d.whole, d.kind === "theater")
+    const patch = editedProduct(original, d, d.whole, d.kind === "theater")
+    const clearText = !d.whole && !d.text.trim() && original?.text !== undefined
+    const item = clearText ? { ...patch, id: d.id, text: undefined } : patch
     if (item) void props.onSave((p) => ({ ...p, products: withProductPatch(p.products, item) }))
     dlg.close()
   }

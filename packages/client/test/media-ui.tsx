@@ -22,8 +22,8 @@ import { App } from "../src/App.tsx"
 import { flip, locale, t } from "../src/i18n.ts"
 import { boot, showCard, toReader } from "../src/pages.ts"
 import { openSettings } from "../src/settings-navigation.ts"
-import { log, page, path, registry, working } from "../src/store.ts"
-import { putPack, putLocal, refreshActiveCard } from "../src/wire.ts"
+import { apply, dismiss, log, openStreams, packs, page, path, registry, working } from "../src/store.ts"
+import { fetchPacks, pendingPackWrite, putPack, putLocal, refreshActiveCard } from "../src/wire.ts"
 import { turn } from "../src/turn.ts"
 import { installMediaTransport, mediaControl, postResult, waitForMedia } from "./media-transport.ts"
 import { quiet, touch, tracked, until } from "./settle.ts"
@@ -1073,6 +1073,69 @@ const runPhaseTwo = async (isDesktop: boolean) => {
   await putLocal(cardId, (l) => ({ ...l, views: [{ id: "letter", on: true }] }))
   await mount(true)
   check(await until(() => letter()?.textContent === "雨灯仍在。"), "remount restores the historical letter")
+
+  // A committed turn can spend several frames on automatic products before its choices appear.
+  const opening = registry.get(log).nodes.get(0)!
+  const longTurn = { ...opening, id: 1, parent: 0, prose: "对岸灯火渐近。\n\n".repeat(32), theater: {} }
+  registry.set(openStreams, 1)
+  apply({ kind: "stage", phase: "record" })
+  apply({ kind: "change", head: 1, node: longTurn })
+  const scroll = document.querySelector<HTMLElement>(".scroll")!
+  await quiet()
+  scroll.scrollTop = scroll.scrollHeight
+  await quiet()
+  const withChoices = { ...longTurn, theater: { options: ["招呼船家", "点灯", "登岸", "等候"] } }
+  apply({ kind: "change", head: 1, node: withChoices })
+  await quiet()
+  check(!document.querySelector("#node-1 .options"), "choices wait for the record stream to finish")
+  apply({ kind: "streamEnd" })
+  registry.set(openStreams, 0)
+  check(
+    await until(
+      () =>
+        document.querySelector("#node-1 .options") && scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight <= 2,
+    ),
+    "a reader at the bottom follows the late choices",
+  )
+
+  apply({ kind: "change", head: 2, node: { ...longTurn, id: 2, parent: 1 } })
+  apply({ kind: "attach", phase: "narrate", draft: { parent: 1, input: { text: "重写" }, text: "" } })
+  apply({ kind: "error", message: "rewrite failed" })
+  check(
+    await until(
+      () =>
+        document.querySelector(".draft.dead") && !document.querySelector("#node-1 [data-view=gauge], #node-1 .options"),
+    ),
+    "a failed sibling draft hides its historical parent's latest HUD and choices",
+  )
+  dismiss()
+  check(
+    await until(() => document.querySelector("#node-2 [data-view=gauge]")),
+    "dismissing the draft restores the head's HUD",
+  )
+
+  // Clear only the prompt through the pack dialog, then read the stored override back from the server.
+  openSettings("packs", packId)
+  await until(() => document.querySelector(".pack-detail-card .wtabs"))
+  await press(t("packs.tabProducts"), document.querySelector(".pack-detail-card .wtabs")!)
+  await press(t("packs.editTheater", { name: "信纸" }))
+  const prompt = document.querySelector<HTMLTextAreaElement>(".modal textarea")!
+  prompt.value = "  "
+  prompt.dispatchEvent(new Event("input", { bubbles: true }))
+  await quiet()
+  await press(t("common.save"), document.querySelector(".modal")!)
+  await pendingPackWrite()
+  await fetchPacks()
+  const savedProduct = registry
+    .get(packs)
+    .find((p) => p.id === packId)
+    ?.products?.find((p) => p.id === "postcard")
+  check(
+    savedProduct?.label === "信纸" && savedProduct.trigger === "demand" && !("text" in savedProduct),
+    `clearing a pack prompt drops its override and preserves the label and trigger: ${JSON.stringify(savedProduct)}`,
+  )
+  toReader()
+  await quiet()
 
   // ── (i) Final accessibility snapshot + Solid 2.0 diagnostics check ──
   visibleControlsHaveNames("final")

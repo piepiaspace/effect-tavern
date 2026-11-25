@@ -169,5 +169,26 @@ console.log("ok")
   assert.equal(registry.get(working), false)
   assert.equal(registry.get(log).nodes.get(11)?.latestContext, undefined)
   assert.deepEqual(registry.get(log).nodes.get(12)?.latestContext, latestContext)
+
+  page.hidden = false
+  apply({ kind: "attach", phase: "narrate", draft: { parent: 12, input: { text: "go" }, text: "" } })
+  apply({ kind: "delta", part: { type: "text-delta", id: "a", text: "甲乙" } })
+  page.hidden = true
+  flushHiddenProse()
+  page.hidden = false
+  apply({ kind: "delta", part: { type: "text-delta", id: "b", text: "丙" } })
+  tick()
+  tick()
+  assert.equal(registry.get(draft)?.text, "甲乙丙")
+  assert.ok(frames.length, "the foreground narrator keeps sampling gaps until its prose ends")
   Reflect.deleteProperty(globalThis, "document")
 }
+
+// A dynamic passage narrates after its parent lands. Its skip and stream end must take effect before another frame.
+apply({ kind: "attach", phase: "narrate", draft: null })
+apply({ kind: "delta", part: { type: "text-delta", id: "p", text: "尚未落地的过场" } })
+apply({ kind: "change", head: 12, node: { ...node(12, 11, "次"), settlementStatus: "skipped" } })
+apply({ kind: "streamEnd" })
+assert.equal(registry.get(log).nodes.get(12)?.settlementStatus, "skipped")
+assert.equal(registry.get(working), false)
+assert.equal(frames.length, 0)

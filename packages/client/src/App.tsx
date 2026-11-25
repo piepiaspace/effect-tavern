@@ -273,21 +273,30 @@ const Latest = () => {
     },
   )
   createEffect(
-    () => all(),
-    (curLog) => {
+    () => {
+      const curLog = all()
+      const { head, nodes } = curLog
+      const settled = head !== null && !working() && d() === null && nodes.get(head)?.settlementStatus !== "pending"
+      return { curLog, settled }
+    },
+    ({ curLog, settled }, prev) => {
       if (follow.landing) {
+        if (curLog === prev?.curLog) return
         follow.landing = false
-        settledHead = curLog.head
+        settledHead = settled ? curLog.head : null
         if (!hasSelection()) stick()
         return
       }
       if (!follow.checkout) {
-        if (settledHead === null && curLog.head !== null) {
+        // Automatic products can finish after the node commits. Follow once their controls have mounted,
+        // even when the section already fits and the ResizeObserver sees no change.
+        if (settled && settledHead !== curLog.head) {
           settledHead = curLog.head
-          if (follow.on && !hasSelection()) stick()
+          if (follow.on && !hasSelection() && performance.now() - follow.touched >= 150) stick()
         }
         return
       }
+      if (curLog === prev?.curLog) return
       const { index, top } = follow.checkout
       follow.checkout = null
       settledHead = curLog.head
@@ -365,7 +374,6 @@ const Latest = () => {
       const head = all().head
       const amendedSettledTurn = booted && d() === null && mainChanged && head !== null && head === settledHead
       booted = true
-      if (head !== null && d() === null && all().nodes.get(head)?.settlementStatus !== "pending") settledHead = head
       if (amendedSettledTurn) {
         follow.on = gap() <= 40
       } else if (follow.on && !hasSelection() && performance.now() - follow.touched >= 150) {
@@ -748,7 +756,7 @@ const Reader = () => {
                 view={storyView()}
                 node={n()}
                 n={i() + 1}
-                last={(!busy() || (d() === null && n().settlementStatus !== "pending")) && i() === shown().length - 1}
+                last={d() === null && (!busy() || n().settlementStatus !== "pending") && i() === shown().length - 1}
               />
             )}
           </For>

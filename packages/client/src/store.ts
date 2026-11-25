@@ -286,7 +286,7 @@ const play = {
   frame: undefined as number | undefined,
   ended: true, // nothing more to play: the loop stops when the queue is empty
 }
-const resetPlay = () => {
+const resetPlay = (ended = true) => {
   if (play.frame !== undefined) cancelAnimationFrame(play.frame)
   Object.assign(play, {
     queue: [],
@@ -299,7 +299,7 @@ const resetPlay = () => {
     credit: 0,
     at: 0,
     frame: undefined,
-    ended: true,
+    ended,
   })
 }
 /** Discard prose left from a stream that can no longer be resumed. */
@@ -312,6 +312,7 @@ const appendProse = (text: string) =>
   registry.update(draft, (d) => (d ? { ...d, text: d.text + text, thinking: undefined } : d))
 
 const enqueue = (chunk: string) => {
+  if (!registry.get(draft)) return
   if (hiddenPage()) {
     appendProse(chunk)
     return
@@ -399,7 +400,7 @@ const drain = () => {
 export const flushHiddenProse = () => {
   if (!hiddenPage() || (!play.queue.length && !held.length && play.frame === undefined)) return
   if (play.queue.length) appendProse(play.queue.join(""))
-  resetPlay()
+  resetPlay(play.ended)
   drain()
 }
 export const updateTimeline = (e: L.Change<Node> & { updated?: readonly Node[] }) => {
