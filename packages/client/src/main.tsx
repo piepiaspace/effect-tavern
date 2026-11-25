@@ -1,8 +1,11 @@
 import "./theme.ts"
 import { render } from "@solidjs/web"
 import { App } from "./App.tsx"
+import { flushHiddenProse } from "./store.ts"
 import { boot } from "./pages.ts"
 import "./app.css"
+
+document.addEventListener("visibilitychange", flushHiddenProse)
 
 if (import.meta.env.DEV && "serviceWorker" in navigator) {
   await navigator.serviceWorker

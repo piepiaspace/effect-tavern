@@ -40,7 +40,10 @@ function templateNode(n: Html.ChildNode): TemplateNode[] {
     )
       fail("invalid media binding")
     if (name === "data-fit" && !["natural", "cover", "contain"].includes(value)) fail("invalid media fit")
-    if (["stroke", "fill", "stop-color"].includes(name) && !/^(?:#[a-f\d]{3,8}|[a-z]+|url\(#[\w-]+\))$/i.test(value))
+    if (
+      ["stroke", "fill", "stop-color"].includes(name) &&
+      !/^(?:#[a-f\d]{3,8}|[a-z]+|url\(#[\w-]+\)|var\(--[\w-]+\))$/i.test(value)
+    )
       fail("invalid SVG paint")
     if (name === "clip-path" && !/^url\(#[\w-]+\)$/.test(value)) fail("invalid SVG clip path")
     attrs[name] = value

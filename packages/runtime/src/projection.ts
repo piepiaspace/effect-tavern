@@ -25,6 +25,7 @@ export interface PlayerCatalogItem extends InvocationToken {
   available: boolean
 }
 export interface TimelineNode {
+  latestContext?: { fields: State; world: Record<string, unknown> }
   fields?: State
   visibleViews?: readonly string[] // conditional views whose guard held at this node
   id: number

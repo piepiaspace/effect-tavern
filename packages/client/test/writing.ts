@@ -8,6 +8,7 @@ import { cleanLex, mergeLexicon, parseLexicon, serializeLexicon } from "../src/l
 import {
   cardNameKeys,
   fillKnown,
+  editedProduct,
   kindFields,
   orderedPacks,
   packHoles,
@@ -339,6 +340,25 @@ assert.deepEqual(asTheater[0], {
 assert.deepEqual(withProductPatch([], { id: "n", ...kindFields("chronicle", "turn") }), [
   { id: "n", role: "chronicle", shape: { kind: "text" }, stage: "record", fold: "append", feed: true },
 ])
+for (const declaration of [
+  { role: "theater", stage: "record", shape: { kind: "list", max: 2 }, text: "Two hints" },
+  { role: "theater", surface: "composer", shape: { kind: "list", max: 6 }, text: "Options" },
+  { role: "chronicle", shape: { kind: "list", max: 3 }, fold: "latest", feed: false, text: "Facts" },
+  { trigger: "demand" },
+] as const) {
+  const product = { id: "custom", ...declaration }
+  const draft = {
+    id: "custom",
+    isNew: false,
+    kind: "role" in product ? productKind(product) : "theater",
+    label: "Renamed",
+    text: product.text ?? "",
+    stage: "record",
+    trigger: product.trigger ?? "turn",
+  } as const
+  const patch = editedProduct(product, draft, "shape" in product, draft.kind === "theater")!
+  assert.deepEqual(withProductPatch([product], patch), [{ ...product, label: "Renamed" }])
+}
 // an export carries neither the id nor the install's default mark
 assert.deepEqual(JSON.parse(serializePack({ id: "starter", name: "N", default: true })), { name: "N" })
 

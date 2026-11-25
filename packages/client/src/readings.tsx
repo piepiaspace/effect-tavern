@@ -608,23 +608,9 @@ export const StateViews = (props: { node: Node; last: boolean; view: CardView | 
     () => props.view?.layer.views?.filter((v) => !v.product && eligible(v, props.node.visibleViews, props.last)) ?? [],
     { equals: (a, b) => a.length === b.length && a.every((v, i) => v === b[i]) },
   )
-  const current = createMemo(() => {
-    if (views().some((v) => residency(v) === "latest")) return fetchContext(props.node.id)
-    return undefined
-  })
   return (
     <For each={views()} keyed={(v) => v.id}>
-      {(v) => (
-        <AsyncView>
-          <ViewBlock
-            view={v()}
-            card={props.view!}
-            node={props.node}
-            latest={props.last}
-            context={residency(v()) === "latest" ? current() : undefined}
-          />
-        </AsyncView>
-      )}
+      {(v) => <ViewBlock view={v()} card={props.view!} node={props.node} latest={props.last} />}
     </For>
   )
 }

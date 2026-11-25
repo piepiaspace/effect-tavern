@@ -122,11 +122,12 @@ export const makeTurn = (s: Session, observe: (action: Action, events: Events) =
   }
   const skip = (node: Id): Event => {
     const r = run
-    if (!r || r.phase !== "record" || r.node !== node)
+    if (!r || r.node !== node || (r.phase !== "record" && s.log.nodes.get(node)?.passageStatus !== "pending"))
       throw new Error("this settlement is not the active record attempt")
-    const event: Event = { kind: "change", ...s.skipRecord(node) }
-    for (const q of r.subs) Queue.offerUnsafe(q, event)
-    return event
+    const change = s.skipRecord(node, (c) => {
+      for (const q of r.subs) Queue.offerUnsafe(q, { kind: "change", ...c })
+    })
+    return { kind: "change", ...change }
   }
   return {
     /** The phase of the turn in flight, or null. */

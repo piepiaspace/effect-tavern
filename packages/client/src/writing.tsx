@@ -16,16 +16,15 @@ import { blurField, Modal, newId, Switch, dialogHandle } from "./controls.tsx"
 import { Back, Next, Prev, Stack, Snippets as Plus, StarFill, User } from "./icons.tsx"
 import {
   cardNameKeys,
-  kindFields,
   orderedPacks,
-  productEdit,
+  editedProduct,
+  type ProductEditDraft,
   productKind,
   toggleMount,
   withoutProductPatch,
   withoutProductText,
   withPackName,
   withProductPatch,
-  type ProductKind,
 } from "./pack.ts"
 import { KindPick, ProseTab, TriggerPick } from "./layer-tabs.tsx"
 import { EXTRA, atOf, extraOf, withExtra } from "./requirements.ts"
@@ -357,16 +356,6 @@ export const WritingPage = () => {
   )
 }
 
-interface ProductEditDraft {
-  id: string
-  isNew: boolean
-  kind: ProductKind // a new or local-only one's pick; an inherited one keeps its declarer's
-  stage: "narrate" | "record"
-  label: string
-  text: string
-  trigger: "demand" | "turn"
-}
-
 const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => {
   const view = read(card)
   const allPacks = read(packs)
@@ -530,10 +519,8 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     if (!d || !cid) return
     const shown = d.isNew ? undefined : shownProduct(d.id)
     const localOwn = !d.isNew && isLocalOnly(d.id)
-    const kindChanged = localOwn && !!shown && d.kind !== productKind(shown)
-    const patch = productEdit(shown, d.id, d.label, d.text, canTrigger(d) ? d.trigger : undefined)
-    if (patch || kindChanged) {
-      const item = d.isNew || kindChanged ? { ...kindFields(d.kind, d.trigger, d.stage), id: d.id, ...patch } : patch!
+    const item = editedProduct(shown, d, localOwn, canTrigger(d))
+    if (item) {
       const nextPage = d.isNew ? Math.floor(theaters().length / THEATER_PAGE_SIZE) : curThPage()
       void putLocalAndRefresh(cid, (l) => ({ ...l, products: withProductPatch(l.products, item) }))
       if (d.isNew && d.kind === "theater") setThPage(nextPage)
