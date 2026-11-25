@@ -6,48 +6,45 @@
 import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import { HOLE, holes } from "@effect-tavern/runtime/src/names.ts"
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
-import { t } from "./i18n.ts"
+import type { Key } from "./i18n.ts"
 
-export const stageAskLabels = (): [string, string][] => [
-  ["stage.role", t("packs.askStageRole")],
-  ["lookup", t("settings.stageLookup")],
-  ["direct", t("settings.stageDirect")],
-  ["decide.first", t("packs.askDecideFirst")],
-  ["decide.again", t("packs.askDecideAgain")],
-  ["check", t("settings.stageCheck")],
-  ["check.decision.rule", t("packs.askCheckRule")],
-  ["check.decision.open", t("packs.askCheckOpen")],
-  ["polish", t("settings.stagePolish")],
-  ["record.tools", t("packs.askRecordTools")],
-  ["record.readout", t("packs.askRecordReadout")],
-  ["narrate.persona", t("packs.askPersona")],
-  ["narrate.deliver", t("packs.askNarrateDeliver")],
-  ["narrate.deliver.tool", t("packs.askNarrateDeliverTool")],
-  ["narrate.deliver.param", t("packs.askNarrateDeliverParam")],
-  ["narrate.wrap", t("packs.askNarrateWrap")],
-  ["narrate.context", t("packs.askContext")],
-  ["lookup.decision", t("packs.askDecision")],
-  ["narrate.role", t("packs.askNarrateRole")],
-  ["narrate.turn", t("packs.askNarrateTurn")],
-  ["narrate.correction", t("packs.askNarrateCorrection")],
-  ["narrate.blocks", t("packs.askNarrateBlocks")],
-  ["narrate.demand", t("packs.askNarrateDemand")],
-  ["input.thought", t("packs.askInputThought")],
-]
+/** What a player's product is for (docs/harness-neutralization-brief.md §4.2): 记忆摘要 (a chronicle), 输入建议 (a
+ *  theater list offered above the input box) or 小剧场 (any other theater). */
+export type ProductKind = "chronicle" | "composer" | "theater"
+export const PRODUCT_KINDS: readonly ProductKind[] = ["chronicle", "composer", "theater"]
+export const KIND_LABEL: Record<ProductKind, Key> = {
+  chronicle: "writing.kindContext",
+  composer: "writing.kindComposer",
+  theater: "writing.kindTheater",
+}
+/** A row's kind by its declaration; a patch, which declares nothing, is a 小剧场 as a new id is (layer.ts `patched`). */
+export const productKind = (p: Pick<ProductPatch, "role" | "surface">): ProductKind =>
+  p.role === "chronicle" ? "chronicle" : p.surface === "composer" ? "composer" : "theater"
+/** The declaration a kind writes, every other structural key cleared (`withProductPatch` drops an undefined one): a
+ *  chronicle is text folded into what the model is fed, a composer list four items asked at record, a 小剧场 text
+ *  asked with the prose unless it already says otherwise, by turn or on demand. */
+export const kindFields = (
+  kind: ProductKind,
+  trigger: "demand" | "turn",
+  stage: "narrate" | "record" = "narrate",
+): Omit<ProductPatch, "id"> => {
+  const none = { surface: undefined, fold: undefined, feed: undefined, trigger: undefined }
+  if (kind === "chronicle")
+    return { ...none, role: "chronicle", shape: { kind: "text" }, stage: "record", fold: "append", feed: true }
+  if (kind === "composer")
+    return { ...none, role: "theater", surface: "composer", shape: { kind: "list", max: 4 }, stage: "record" }
+  return { ...none, role: "theater", shape: { kind: "text" }, stage, trigger }
+}
 
 /** Fills every `{{key}}` that `names` has a value for, leaving any unfilled hole as written. */
 export const fillKnown = (text: string, names?: Readonly<Record<string, string>>): string =>
   !names ? text : text.replace(HOLE, (raw, k: string) => (Object.hasOwn(names, k) ? names[k] : raw))
-
-/** `harness` is a fixed rank in `GET /packs`, not a user-deletable or card-mounted pack. */
-export const isReservedPack = (id: string): boolean => id === "harness"
 
 /** The proper-noun holes in a row's own texts, plus any keys already in `p.names`. */
 export const packHoles = (p: Partial<Layer>): string[] => {
   const text = [
     ...(p.fragments ?? []).map((x) => x.text ?? ""),
     ...(p.entries ?? []).map((x) => x.text),
-    ...(p.asks ?? []).map((x) => x.text),
     ...(p.products ?? []).map((x) => x.text ?? ""),
     ...(p.snippets ?? []).flatMap((x) => [x.text, x.after ?? ""]),
   ].join("\n")
@@ -71,13 +68,12 @@ export const cardNameKeys = (
   mergedNames: Readonly<Record<string, string>> | undefined,
 ): string[] => [...new Set([...(unfilledHoles ?? []), ...Object.keys(mergedNames ?? {})])].sort()
 
-/** Mountable user packs (`all` excluding `harness`): mounted first in their mount order, then the rest. */
-export const orderedPacks = (all: readonly Layer[], mountedIds: readonly string[] = []): Layer[] => {
-  const pool = all.filter((p) => !isReservedPack(p.id))
-  const byId = new Map(pool.map((p) => [p.id, p]))
-  const mounted = mountedIds.map((id) => byId.get(id)).filter((p): p is Layer => p !== undefined)
+/** The install's packs, mounted first in their mount order, then the rest. */
+export const orderedPacks = <P extends Layer>(all: readonly P[], mountedIds: readonly string[] = []): P[] => {
+  const byId = new Map(all.map((p) => [p.id, p]))
+  const mounted = mountedIds.map((id) => byId.get(id)).filter((p): p is P => p !== undefined)
   const seen = new Set(mounted.map((p) => p.id))
-  return [...mounted, ...pool.filter((p) => !seen.has(p.id))]
+  return [...mounted, ...all.filter((p) => !seen.has(p.id))]
 }
 
 export const toggleMount = (l: Local, packId: string): Local => {
@@ -128,5 +124,7 @@ export const productEdit = (
   return Object.keys(patch).length ? { id, ...patch } : undefined
 }
 
-/** The row without its id (JSON drops an undefined key): what an import sends back under a new id. */
-export const serializePack = (p: Layer): string => JSON.stringify({ ...p, id: undefined }, null, 2) + "\n"
+/** The row without its id or the install's default mark (JSON drops an undefined key): what an import sends back
+ *  under a new id. */
+export const serializePack = (p: Layer & { default?: boolean }): string =>
+  JSON.stringify({ ...p, id: undefined, default: undefined }, null, 2) + "\n"

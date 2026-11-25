@@ -7,7 +7,11 @@
 // four icons. Escape or Back returns to the page that opened it. The page holds only the nav, which section is open,
 // which record each section has picked, and the phone's pane; every edit is one write the server answers with the list
 // it changed (wire.ts), text committing on change (blur or Enter). The shared controls and shells are controls.tsx.
-import { NARRATIVE_TOOL } from "@effect-tavern/provider/src/deliver.ts"
+import {
+  NARRATIVE_PARAM_DESCRIPTION,
+  NARRATIVE_TOOL,
+  NARRATIVE_TOOL_DESCRIPTION,
+} from "@effect-tavern/provider/src/deliver.ts"
 import { hatEntryActive, hatToolName, hatWraps, type Hat, type HatEntry } from "@effect-tavern/runtime/src/fragment.ts"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { Dynamic, type JSX } from "@solidjs/web"
@@ -95,7 +99,7 @@ import {
   type HatStage,
 } from "./connections.ts"
 import { Cards } from "./cards.tsx"
-import { DEFAULT_ASKS, leaveArea, leaveInput } from "./layer-tabs.tsx"
+import { leaveArea, leaveInput } from "./layer-tabs.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
 import { close } from "./pages.ts"
@@ -108,7 +112,6 @@ import {
   decision,
   hats,
   locals,
-  packs,
   personas,
   providers,
   registry,
@@ -1029,25 +1032,21 @@ const Templates = (props: Pane) => {
   )
 }
 
-/** The ask a blank tool field follows, as the install's harness row holds it (its overlay, else the code default): the
- *  writing layer a card mounts may still override it, which the hint says. */
-const harnessAsk = (rows: readonly { id: string; asks?: readonly { id: string; text: string }[] }[], id: string) =>
-  rows.find((p) => p.id === "harness")?.asks?.find((a) => a.id === id)?.text ?? DEFAULT_ASKS.get(id) ?? ""
-
 /** Under tool delivery: the wrap (#220), then the delivery tool (#221) as the model receives it, a writable capsule
  *  like the messages below, folded under its name: `name(text)`, its description, its parameter. Every field shows the wording in force as
  *  text to edit, the default included; text equal to that default, or none, is stored blank (the default follows).
  *  Fields stage as typed and write on change (or by the page's `commitPending` before a tap elsewhere: touch WebKit
  *  fires no change then); a name no vendor accepts is shown with why and never staged. */
 export const DeliveryTool = (props: { hat: Hat; onStage: (next: Hat) => void; onSave: (next: Hat) => void }) => {
-  const rows = read(packs)
   type Field = keyof NonNullable<Hat["tool"]>
   // what is typed, held until written, so a field cleared mid-edit does not snap back to its default under the caret
   const [typed, setTyped] = createSignal<{ id: string; field: Field; raw: string } | null>(null)
   const fallback = (field: Field) =>
     field === "name"
       ? NARRATIVE_TOOL
-      : harnessAsk(rows(), field === "description" ? "narrate.deliver.tool" : "narrate.deliver.param")
+      : field === "description"
+        ? NARRATIVE_TOOL_DESCRIPTION
+        : NARRATIVE_PARAM_DESCRIPTION
   const shown = (field: Field) => {
     const cur = typed()
     return cur && cur.id === props.hat.id && cur.field === field ? cur.raw : props.hat.tool?.[field] || fallback(field)
