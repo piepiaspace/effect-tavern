@@ -1,13 +1,10 @@
-// Content addresses, persisted trace envelopes and checkpoint wire contracts shared across hosts.
+// Content addresses and checkpoint wire contracts shared across hosts.
 import { sha256 } from "@noble/hashes/sha2.js"
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js"
 import { Schema } from "effect"
 
 export const ObjectId = Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)).pipe(Schema.brand("ObjectId"))
 export type ObjectId = typeof ObjectId.Type
-
-export const BlobEncoding = Schema.Literals(["utf8", "deflate-b64"])
-export type BlobEncoding = typeof BlobEncoding.Type
 
 const sortedJson = (value: Schema.Json): string => {
   if (Array.isArray(value)) return "[" + value.map(sortedJson).join(",") + "]"
@@ -87,9 +84,3 @@ export const CheckpointConflict = Schema.Union([
   }),
 ])
 export type CheckpointConflict = typeof CheckpointConflict.Type
-
-export const MIN_BLOB_BYTES = 128
-export const TextBlobRef = Schema.Struct({ $text: ObjectId })
-export const TextSlicesEnvelope = Schema.Struct({ $slices: Schema.Array(Schema.Union([Schema.String, TextBlobRef])) })
-export const EscapedObjectEnvelope = Schema.Struct({ $esc: Schema.JsonObject })
-export const StoredCallV1 = Schema.Struct({ $v: Schema.Literal(1), call: Schema.JsonObject })

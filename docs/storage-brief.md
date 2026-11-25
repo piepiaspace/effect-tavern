@@ -124,7 +124,7 @@ stateDiagram-v2
      - **`card`**：校验非 `builtin` 且通过 `validateCard`，写回卡片正文并重算 `summary` 与 `facets(card)`，按 `checkpoint.origin_edited` 恢复锚点当时的 `origin.edited` 位（改卡后 `Pin` 会记下 `origin_edited = 1`，故再改再回退仍保持相对上游 `edited: true`；而未 `Pin` 直接回退到干净安装基线则恢复 `origin_edited = 0`），事务提交后调用 `changed(card.id)` 刷新空闲缓存 `Session` 并返回最新 `rev`。
      - **`persona`**：快照仅含纯文本载荷 `{ id, name, text }`，回退时只恢复该三元组，绝不触碰全局默认标记表 `persona_default`。
 3. **双侧乐观并发校验 `(expectedWorkingHash, expectedAnchorHash)`**：
-   - `pin` 与 `revert` 均在同一数据库事务内校验客户端看到的当前 `workingHash` 与 `anchorHash`（卡片同时兼容校验 `rev`）：任一侧已被其他标签页改动（例如另一页刚自动保存了新内容，或刚点了一次 `Pin` 改变了回退目的地），立即拒绝并返回 `409 checkpoint-changed` 及最新状态，防止盲盖。
+   - `pin` 与 `revert` 均在同一数据库事务内校验客户端看到的当前 `workingHash` 与 `anchorHash`（卡片的状态响应同时返回当前 `rev`，所有卡片变更请求须回传该值）：任一侧已被其他标签页改动（例如另一页刚自动保存了新内容，或刚点了一次 `Pin` 改变了回退目的地），立即拒绝并返回 `409 checkpoint-changed` 及最新状态，防止盲盖。
 
 ---
 
@@ -213,7 +213,7 @@ erDiagram
 
 [server/checkpoint.ts](../packages/server/src/checkpoint.ts) 在两侧哈希及卡片必填的 `rev` 相符时决策，版本冲突返回最新状态与卡片当前的 `rev`。已经 clean 的 Pin 与 Revert 幂等完成。稀疏覆盖编码剥离身份与空的顶层集合，保留显式的 `persona: null`；解码由所属实体补回身份，空差集恢复为物理缺行。
 
-[server/stored-call.ts](../packages/server/src/stored-call.ts) 使用共享的 `TextBlobRef`、`TextSlicesEnvelope`、`EscapedObjectEnvelope` 与 `StoredCallV1`。顶层版本信封仅含 `$v` 和 `call`，解码后的根对象须有 `kind: "call"`。
+[server/stored-call.ts](../packages/server/src/stored-call.ts) 在服务端校验版本信封、正文引用、切片与转义对象，递归还原时逐一处理子值。顶层版本信封仅含 `$v` 和 `call`，解码后的根对象须有 `kind: "call"`。
 
 #### `tool.description` 按 `WrapSection.body` 切片与全结构双射准则
 
@@ -255,6 +255,7 @@ CLI 默认使用 `~/.tavern/tavern.db`，可用 `--data` 指定数据目录。De
 1. **业务操作决定快照转移（采纳方案 A）**：新建、安装与同 ID 覆盖安装（`cards.install` / `importLink` / `depots.pull` 含 `replace: true`）同时设定工作态与锚点（`Clean`）；日常编辑、自动保存及未来编辑器内「用文件内容覆盖当前项」只改工作态；手动 `Pin` 推进锚点，`Revert` 恢复锚点。
 2. **`Revert` 精确性承诺与双侧并发锁**：`Revert` 成功即保证落盘后 `workingHash === anchorHash`（`Clean`）；遇到 Hat 重名占用或 Local 缺失写作包/人设引用时拒绝静默改写，返回 `409 checkpoint-conflict` 保留现场。`Pin` 与 `Revert` 在单事务内同时校验 `expectedWorkingHash` 与 `expectedAnchorHash`。
 3. **存量库一次性打底初始化（消除 `Unanchored`）**：`sqlite.ts` 升级步骤将库内现存 `hat`、普通 `pack`、`card`、`persona` 及已存在的 `harness` / `local` 覆盖行一次性写入 `blob` + `checkpoint`（卡片同步记录当时的 `origin.edited` 位）；无覆盖的 `harness` 与现存卡 `local` 天然锚定 `EMPTY_OVERLAY_HASH`。
+   - 迁移与运行时按同一 `kind` 规范化后取哈希。卡片从行主键补回 `id`，Hat 统一执行 `normalizeHatDelivery`，Persona 仅取 `{ id, name, text }`。普通 Pack 使用解码后的可写层，harness 和 Local 使用 `layerDelta`。验收时用同一资产的存量行与业务读取值分别建锚，断言地址相等。
 4. **分期节奏与延迟启用压缩**：
    - **压缩策略**：一期 `blob` 表包含 `encoding` 列但仅写 `"utf8"`（零压缩耗时、100% 透明）；二期依据真实长故事体积测量决定是否对超阈值块启用 `"deflate-b64"`。
    - **Phase 1（Layer 1 + Layer 3 + 通用桥接批处理）**：落地 `blob` 与 `checkpoint` 表、迁移一次性打底、`/checkpoints/:kind/:id` 接口与五类可编辑资产业务接缝、`db.go` / `web/sqlite.ts` 通用 `batch` 模式、可达性 GC + `incremental_vacuum` 及 `tavern doctor` 存储诊断，接通编辑页快照顶栏。

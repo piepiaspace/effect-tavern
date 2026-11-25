@@ -5,7 +5,7 @@ import { requestDetailed, type Common, type Ask } from "@effect-tavern/runtime/s
 import { stripTraceRawText } from "@effect-tavern/runtime/src/preview.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { overlaid } from "@effect-tavern/runtime/src/layer.ts"
-import { checkpointMutation, overlayDelta, restoreOverlay } from "../src/checkpoint.ts"
+import { decideCheckpoint, layerDelta, restoreLayerDelta } from "../src/checkpoint.ts"
 import { dehydrateCall, hydrateCall } from "../src/stored-call.ts"
 import type { Call } from "../src/turn.ts"
 
@@ -18,8 +18,8 @@ const revert = CheckpointMutation.make({
   expectedAnchorHash: anchor.hash,
   rev: state.rev,
 })
-assert.deepEqual(checkpointMutation(state, revert, 5), { action: "revert", hash: anchor.hash, originEdited: false })
-assert.deepEqual(checkpointMutation(state, { ...revert, action: "pin" }, 5), {
+assert.deepEqual(decideCheckpoint(state, revert, 5), { action: "revert", hash: anchor.hash, originEdited: false })
+assert.deepEqual(decideCheckpoint(state, { ...revert, action: "pin" }, 5), {
   action: "pin",
   ...working,
   updatedAt: 5,
@@ -27,40 +27,50 @@ assert.deepEqual(checkpointMutation(state, { ...revert, action: "pin" }, 5), {
 const pinned = { ...state, anchor: { ...working, updatedAt: 5 } }
 const clean = { ...revert, expectedAnchorHash: working.hash }
 for (const action of ["pin", "revert"] as const)
-  assert.deepEqual(checkpointMutation(pinned, { ...clean, action }, 6), { action: "unchanged" })
+  assert.deepEqual(decideCheckpoint(pinned, { ...clean, action }, 6), { action: "unchanged" })
 for (const stale of [
   { ...revert, rev: "v1" },
   { ...revert, rev: undefined },
   { ...revert, expectedAnchorHash: working.hash },
   { ...revert, expectedWorkingHash: anchor.hash },
 ]) {
-  const result = checkpointMutation(state, stale, 6)
+  const result = decideCheckpoint(state, stale, 6)
   assert.equal(result.code, "checkpoint-changed")
   assert.equal(result.rev, "v2")
 }
-assert.deepEqual(
-  checkpointMutation({ ...pinned, working: anchor }, { ...clean, expectedWorkingHash: anchor.hash }, 7),
-  { action: "revert", hash: working.hash, originEdited: true },
-)
+assert.deepEqual(decideCheckpoint({ ...pinned, working: anchor }, { ...clean, expectedWorkingHash: anchor.hash }, 7), {
+  action: "revert",
+  hash: working.hash,
+  originEdited: true,
+})
 const conflict = { reason: "missing-references", missingPacks: ["first"], missingPersona: null } as const
-assert.deepEqual(checkpointMutation(state, revert, 6, conflict), { code: "checkpoint-conflict", conflict })
+assert.deepEqual(decideCheckpoint(state, revert, 6, conflict), { code: "checkpoint-conflict", conflict })
 
 const local = { id: "local", name: "c", card: "c", tags: [], switches: {}, mounts: [] }
 const localOwner = { kind: "local", card: "c" } as const
 const harnessOwner = { kind: "harness" } as const
 for (const row of [undefined, local, { ...overlaid("act"), fragments: [], switches: {} }]) {
-  const delta = overlayDelta(row)
+  const delta = layerDelta(row)
   assert.equal(hashUtf8(canonicalJson(delta)), EMPTY_OVERLAY_HASH)
-  assert.equal(restoreOverlay(delta, localOwner), undefined)
-  assert.equal(restoreOverlay(delta, harnessOwner), undefined)
+  assert.equal(restoreLayerDelta(delta, localOwner), undefined)
+  assert.equal(restoreLayerDelta(delta, harnessOwner), undefined)
 }
 const picked = { ...local, persona: null, switches: { polish: false }, names: { user: "" } }
-const delta = overlayDelta(picked)
+const delta = layerDelta(picked)
 assert.deepEqual(delta, { persona: null, switches: { polish: false }, names: { user: "" } })
-assert.deepEqual(overlayDelta(restoreOverlay(delta, localOwner)), delta)
-const changedHarness = overlayDelta({ ...overlaid("act"), asks: [{ id: "stage.role", text: "Changed" }] })
+assert.deepEqual(layerDelta(restoreLayerDelta(delta, localOwner)), delta)
+// The decoder locks player fields, and JSON drops undefined switch values before an empty collection is tested.
+const editable = {
+  ...picked,
+  switches: { polish: undefined },
+  fragments: [{ id: "voice", text: "quiet", role: "user" as const }],
+}
+const writableDelta = layerDelta(editable)
+assert.deepEqual(writableDelta, { persona: null, names: { user: "" }, fragments: [{ id: "voice", text: "quiet" }] })
+assert.deepEqual(layerDelta(restoreLayerDelta(writableDelta, localOwner)), writableDelta)
+const changedHarness = layerDelta({ ...overlaid("act"), asks: [{ id: "stage.role", text: "Changed" }] })
 assert.deepEqual(changedHarness, { asks: [{ id: "stage.role", text: "Changed" }] })
-assert.deepEqual(overlayDelta(restoreOverlay(changedHarness, harnessOwner)), changedHarness)
+assert.deepEqual(layerDelta(restoreLayerDelta(changedHarness, harnessOwner)), changedHarness)
 
 const body = "正文😀".repeat(40)
 const prefix = "剧场🎭\n<message>\n"
@@ -98,6 +108,7 @@ const { envelope, objects } = dehydrateCall(call)
 assert.deepEqual([...objects], [[hashUtf8(body), body]])
 const stored = JSON.stringify(envelope)
 assert.equal(stored.split(hashUtf8(body)).length - 1, 5)
+assert.throws(() => hydrateCall(null, objects), /Invalid stored call envelope/)
 const original = JSON.parse(JSON.stringify(call))
 assert.deepEqual(hydrateCall(JSON.parse(stored), objects), original)
 assert.deepEqual(hydrateCall(original, new Map()), original)

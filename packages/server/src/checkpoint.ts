@@ -10,6 +10,7 @@ import {
   decodeLocal,
   harness,
   overlayOf,
+  locked,
   type Layer,
   type Local,
 } from "@effect-tavern/runtime/src/layer.ts"
@@ -18,13 +19,13 @@ interface Version {
   hash: ObjectId
   originEdited?: boolean
 }
-interface CheckpointState {
+export interface CheckpointState {
   working: Version
   anchor: Version & { updatedAt: number | null }
   rev?: string
 }
 
-export function checkpointMutation(
+export function decideCheckpoint(
   state: CheckpointState,
   request: CheckpointMutation,
   now: number,
@@ -45,24 +46,25 @@ export function checkpointMutation(
 
 /** Identity comes from the checkpoint owner. Empty top-level collections have no effect;
  * nested values (including false, empty names and an explicit null persona) are user data. */
-export function overlayDelta(row: Layer | Local | undefined) {
+export function layerDelta(row: Layer | Local | undefined): Record<string, unknown> {
   if (!row) return {}
-  const overlay = "card" in row ? row : overlayOf("act", row)
+  const writable = locked(row)
+  const overlay = "card" in row ? writable : overlayOf("act", writable)
+  const fields: Record<string, unknown> = JSON.parse(JSON.stringify(overlay))
   return Object.fromEntries(
-    Object.entries(overlay).filter(
+    Object.entries(fields).filter(
       ([key, value]) =>
         key !== "id" &&
         key !== "name" &&
         key !== "card" &&
-        value !== undefined &&
         (value === null || typeof value !== "object" || Object.keys(value).length > 0),
     ),
   )
 }
 
 /** An empty delta restores the absent physical row. */
-export function restoreOverlay(
-  delta: ReturnType<typeof overlayDelta>,
+export function restoreLayerDelta(
+  delta: ReturnType<typeof layerDelta>,
   owner: { kind: "local"; card: string } | { kind: "harness" },
 ) {
   if (!Object.keys(delta).length) return undefined
