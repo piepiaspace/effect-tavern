@@ -3,10 +3,12 @@
 // mounting chips (`local.mounts`) with `管理 →` pinned to the block header's right, proper-noun inputs (`layer.names`
 // + `layer.holes`), and the per-card supplement (`extra` tail fragment in `local.fragments`). Right column: the 4
 // narration switches (`local.switches` + compiled `layer.switches.sentences` + `taken` grey-out) and the per-turn
-// record products (`layer.products` with `from`, `on`, `text`, and modal prompt override in `local.products`).
+// record products (`layer.products` with `from`, `on`, `text`, and modal prompt override in `local.products`), grouped
+// by what they are for: state, 记忆摘要, 输入建议, 小剧场.
 import type { Writing } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Layer, Local, Resolved } from "@effect-tavern/runtime/src/layer.ts"
 import { unfilled } from "@effect-tavern/runtime/src/names.ts"
+import { composer } from "@effect-tavern/runtime/src/product.ts"
 import { createSignal, For, Show } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
@@ -14,6 +16,7 @@ import { blurField, Modal, newId, Switch, dialogHandle } from "./controls.tsx"
 import { Back, Next, Prev, Stack, Snippets as Plus, User } from "./icons.tsx"
 import {
   cardNameKeys,
+  kindFields,
   orderedPacks,
   productEdit,
   toggleMount,
@@ -21,15 +24,16 @@ import {
   withoutProductText,
   withPackName,
   withProductPatch,
+  type ProductKind,
 } from "./pack.ts"
-import { AsksTab, ProseTab } from "./layer-tabs.tsx"
+import { KindPick, ProseTab, TriggerPick } from "./layer-tabs.tsx"
 import { EXTRA, atOf, extraOf, withExtra } from "./requirements.ts"
 import { openSettings } from "./settings-navigation.ts"
 import { close } from "./pages.ts"
 import { activeOf, tabs, registry, card, cardTitle, isFreeChat, packs, page, personas, stories } from "./store.ts"
 import { personaOn } from "./stories.ts"
 import { openPicker } from "./dialogs.tsx"
-import { kindOf } from "./record.ts"
+import { kindOf, theater } from "./record.ts"
 import { moot, pressing, sentence, SWITCHES, takenBy, type SwitchKey } from "./switches.ts"
 import { previewFromPlay } from "./prompt-tree-state.ts"
 import { pendingLocalWrite, putLocal, refreshActiveCard } from "./wire.ts"
@@ -128,14 +132,12 @@ export const WritingPage = () => {
   const layer = () => view()?.layer
 
   const fromLabel = (from: string): string => {
-    if (from === "harness") return t("writing.builtin")
     if (from === "card") return title() || t("side.cardDefault")
     if (from === "local") return t("packs.local")
     return allPacks().find((p) => p.id === from)?.name ?? from
   }
 
   const overrides = dialogHandle()
-  const [editor, setEditor] = createSignal<"prose" | "asks">("prose")
   const saveLayer = (edit: (row: Layer) => Layer) => putLocalAndRefresh(cardId(), (l) => ({ ...edit(l), card: l.card }))
   const mountedIds = () => loc()?.mounts ?? []
   const chips = () => orderedPacks(allPacks(), mountedIds())
@@ -293,33 +295,8 @@ export const WritingPage = () => {
           </div>
           <Modal title={t("writing.overrides")} controller={overrides}>
             <div class="modal-body">
-              <div class="wtabs" role="tablist" aria-label={t("writing.overrides")}>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={editor() === "prose" ? "true" : "false"}
-                  onClick={() => setEditor("prose")}
-                >
-                  {t("writing.tabProse")}
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={editor() === "asks" ? "true" : "false"}
-                  onClick={() => setEditor("asks")}
-                >
-                  {t("packs.tabAsks")}
-                </button>
-              </div>
               <Show when={loc()}>
-                {(local) => (
-                  <Show
-                    when={editor() === "asks"}
-                    fallback={<ProseTab pack={local()} onSave={saveLayer} inherited={inheritedSlots()} />}
-                  >
-                    <AsksTab pack={local()} onSave={saveLayer} inherited={layer()?.asks} />
-                  </Show>
-                )}
+                {(local) => <ProseTab pack={local()} onSave={saveLayer} inherited={inheritedSlots()} />}
               </Show>
             </div>
           </Modal>
@@ -337,6 +314,7 @@ export const WritingPage = () => {
 interface ProductEditDraft {
   id: string
   isNew: boolean
+  kind: ProductKind // a new one's pick; an existing one keeps its declarer's
   label: string
   text: string
   trigger: "demand" | "turn"
@@ -404,7 +382,8 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
   const lit = () => products().filter((p) => p.on).length
   const worldProducts = () => products().filter((p) => kindOf(p) === "world")
   const contextProducts = () => products().filter((p) => kindOf(p) === "context")
-  const theaters = () => products().filter((p) => kindOf(p) === "theater")
+  const composers = () => products().filter((p) => kindOf(p) === "theater" && composer(p))
+  const theaters = () => theater(products())
 
   const THEATER_PAGE_SIZE = 4
   const [thPage, setThPage] = createSignal(0)
@@ -438,7 +417,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
   const prodDlg = dialogHandle()
 
   const openNewTheater = () => {
-    setEditingProd({ id: newId("th"), isNew: true, label: "", text: "", trigger: "demand" })
+    setEditingProd({ id: newId("th"), isNew: true, kind: "theater", label: "", text: "", trigger: "demand" })
     void prodDlg.open()
   }
   // the stored name the edit dialog's title says, kept through its close (the draft goes null as the dialog leaves)
@@ -449,6 +428,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     setEditingProd({
       id: p.id,
       isNew: false,
+      kind: "theater",
       label: own?.label ?? p.label ?? p.id,
       text: own?.text ?? p.text ?? "",
       trigger: own?.trigger ?? p.trigger ?? "turn",
@@ -461,12 +441,16 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
           id: string
           from: string
           role?: "world" | "chronicle" | "theater"
+          surface?: "theater" | "composer"
           label?: string
           text?: string
           trigger?: "demand" | "turn"
         }
       | undefined
-  const canTrigger = (d: ProductEditDraft) => d.isNew || (shownProduct(d.id)?.role === "theater" && d.id !== "options")
+  const canTrigger = (d: ProductEditDraft) => {
+    const p = d.isNew ? undefined : shownProduct(d.id)
+    return p ? p.role === "theater" && !composer(p) : d.kind === "theater"
+  }
   const saveProduct = () => {
     const d = editingProd()
     const cid = cardId()
@@ -479,9 +463,10 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
       canTrigger(d) ? d.trigger : undefined,
     )
     if (patch) {
+      const item = d.isNew ? { ...kindFields(d.kind, d.trigger), ...patch } : patch
       const nextPage = d.isNew ? Math.floor(theaters().length / THEATER_PAGE_SIZE) : curThPage()
-      void putLocalAndRefresh(cid, (l) => ({ ...l, products: withProductPatch(l.products, patch) }))
-      if (d.isNew) setThPage(nextPage)
+      void putLocalAndRefresh(cid, (l) => ({ ...l, products: withProductPatch(l.products, item) }))
+      if (d.isNew && d.kind === "theater") setThPage(nextPage)
     }
     prodDlg.close()
   }
@@ -526,7 +511,7 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
           </button>
           <For each={missing()}>{(m) => <span class="tag warn mono">{`{{${m}}}`}</span>}</For>
           <span class="tag">{props.fromLabel(p().from)}</span>
-          <Show when={p().role === "theater" && p().id !== "options"}>
+          <Show when={p().role === "theater" && !composer(p())}>
             <span class="tag">{p().trigger === "demand" ? t("packs.onDemand") : t("packs.everyTurn")}</span>
           </Show>
 
@@ -653,6 +638,18 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
               </div>
             </div>
           </Show>
+          <Show when={composers().length}>
+            <div class="prod-group">
+              <div class="prod-kind-bar">
+                <h4 class="prod-kind">{t("writing.kindComposer")}</h4>
+              </div>
+              <div class="prod-grid">
+                <For each={composers()} keyed={(p) => p.id}>
+                  {(p) => <ProductCard item={p()} />}
+                </For>
+              </div>
+            </div>
+          </Show>
           <Show when={theaters().length}>
             <div class="prod-group">
               <div class="prod-kind-bar">
@@ -710,26 +707,11 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                     onInput={(e) => setEditingProd({ ...d(), label: e.currentTarget.value })}
                   />
                 </label>
+                <Show when={d().isNew}>
+                  <KindPick value={d().kind} onPick={(kind) => setEditingProd({ ...d(), kind })} />
+                </Show>
                 <Show when={canTrigger(d())}>
-                  <div class="mfield">
-                    <span>{t("packs.trigger")}</span>
-                    <div class="at-toggle" role="group" aria-label={t("packs.trigger")}>
-                      <button
-                        type="button"
-                        aria-pressed={d().trigger === "demand" ? "true" : "false"}
-                        onClick={() => setEditingProd({ ...d(), trigger: "demand" })}
-                      >
-                        {t("packs.onDemand")}
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={d().trigger === "turn" ? "true" : "false"}
-                        onClick={() => setEditingProd({ ...d(), trigger: "turn" })}
-                      >
-                        {t("packs.everyTurn")}
-                      </button>
-                    </div>
-                  </div>
+                  <TriggerPick value={d().trigger} onPick={(trigger) => setEditingProd({ ...d(), trigger })} />
                 </Show>
                 <label class="mfield">
                   <span>{t("packs.prompt")}</span>

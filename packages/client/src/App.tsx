@@ -29,7 +29,7 @@ import { blocks } from "./markdown.ts"
 import { activePortraits, activeStoryMatchesCard } from "./media.ts"
 import { plain, Prose } from "./prose.tsx"
 import { Demand, Failed, RecordSheet, Settlement, Rewrite, SiblingKind, StatusPage, Theater } from "./readings.tsx"
-import { apart, lineOf, versions } from "./record.ts"
+import { apart, lineOf, suggestions, versions } from "./record.ts"
 import { Shell } from "./shell.tsx"
 import { shrinkwrap } from "./shrinkwrap.ts"
 import { Swipe } from "./swipe.ts"
@@ -619,7 +619,7 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
     }
     turn.checkout(siblings()[i].id)
   }
-  const options = () => props.node.theater.options as readonly string[] | undefined
+  const options = () => suggestions(props.view?.layer.products, props.node)
   // the editor's close: with text, the edit is sent; without (Escape, unchanged, empty), it is only closed
   const done = (text?: string) => {
     registry.set(editing, null)
@@ -705,8 +705,8 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
         </Show>
         <Rewrite rerun={!!lineOf(props.node) || !!props.node.input.invoke?.length} node={props.node.id} />
       </footer>
-      <Show when={props.last && options()?.length}>
-        <Options items={options()!} />
+      <Show when={props.last && options().length}>
+        <Options items={options()} />
       </Show>
     </section>
   )

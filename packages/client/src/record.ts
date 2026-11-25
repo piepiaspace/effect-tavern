@@ -12,7 +12,7 @@
 // the versions, the scene.
 import { drawn, type Check, type Field, type Rules, type State } from "@effect-tavern/runtime/src/card.ts"
 import type { Cond } from "@effect-tavern/runtime/src/cond.ts"
-import { kindOf, type Catalog, type Product, type Shape } from "@effect-tavern/runtime/src/product.ts"
+import { composer, kindOf, type Catalog, type Product, type Shape } from "@effect-tavern/runtime/src/product.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { TimelineNode as Node, TurnDetail } from "@effect-tavern/runtime/src/projection.ts"
 import { countEffectiveIllustrations, illustrationTheaterIds, type Media } from "./media.ts"
@@ -87,11 +87,24 @@ export const fields = (rules: Rules, detail: TurnDetail, whens: readonly (Cond |
 export const fieldChanged = (node: Node): boolean => node.changeSummary.fields > 0
 
 /** Product presentation declarations carried by the card view. */
-export type Declared = Pick<Product, "id" | "label" | "shape" | "fold" | "feed" | "recall" | "role" | "on" | "trigger">
+export type Declared = Pick<
+  Product,
+  "id" | "label" | "shape" | "fold" | "feed" | "recall" | "role" | "on" | "trigger" | "surface"
+>
 
-/** A card's 小剧场: its theater products (`kindOf`) except `options`, which has its own container. */
-export const theater = (products: readonly Declared[]) =>
-  products.filter((p) => p.id !== "options" && kindOf(p) === "theater")
+/** A card's 小剧场: its theater products (`kindOf`) drawn on the page, not the ones offered above the input box. */
+export const theater = <P extends Declared>(products: readonly P[]): P[] =>
+  products.filter((p) => kindOf(p) === "theater" && !composer(p))
+
+/** A node's next-input suggestions: every item of the composer lists it holds, in the card's product order. */
+export const suggestions = (
+  products: readonly Declared[] | undefined,
+  node: { readonly theater: Readonly<Record<string, unknown>> },
+): string[] =>
+  (products ?? []).flatMap((p) => {
+    const v = node.theater[p.id]
+    return kindOf(p) === "theater" && composer(p) && Array.isArray(v) ? v.filter((x) => typeof x === "string") : []
+  })
 
 /** The 小剧场 a node can still be asked for (the `demand` action): theater, enabled on this card (`on !== false`), and
  *  not on the node yet; illustration-bound theater products stay demandable whenever they have 0 effective in-range

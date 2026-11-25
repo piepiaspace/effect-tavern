@@ -1,9 +1,9 @@
 // The writing switches as the client draws them (the Writing page, the session's summary chips): each switch is a key
-// of `Writing`, the values named in the language of the sentences they compile to (layer.ts `harness`, shown on the
-// switch card). A value not set leaves the card's or lower rank's text in force, and pressing the set one again unsets
-// it. Pure data and helpers, so a test and the side panel read them without the page.
+// of `Writing`, the values named in the language of the sentences they compile to (layer.ts SWITCH_SENTENCES, read
+// through the resolved layer's `switches.sentences`, shown on the switch card). A value not set leaves the card's or
+// lower rank's text in force, and pressing the set one again unsets it. Pure data and helpers, so a test and the side panel read them without the page.
 import type { Writing } from "@effect-tavern/runtime/src/fragment.ts"
-import { harness, type From, type Local } from "@effect-tavern/runtime/src/layer.ts"
+import type { From, Local } from "@effect-tavern/runtime/src/layer.ts"
 import { type Key, t } from "./i18n.ts"
 
 export type SwitchKey = "pov" | "echo" | "agency" | "verbosity"
@@ -49,17 +49,12 @@ export const SWITCHES: Switch[] = [
     ],
   },
 ]
-const defaults = new Map((harness("act").asks ?? []).map((a) => [a.id, a.text]))
-
-/** The sentence a value compiles to: from the resolved `sentences` map when given, else the code's default. */
+/** The sentence a value compiles to, from the resolved layer's `switches.sentences`. */
 export const sentence = (
   key: SwitchKey,
   value: string | boolean,
-  sentences?: Readonly<Record<string, string>>,
-): string => {
-  const id = `switch.${key}.${String(value)}`
-  return sentences?.[id] ?? defaults.get(id) ?? ""
-}
+  sentences: Readonly<Record<string, string>> | undefined,
+): string => sentences?.[`switch.${key}.${String(value)}`] ?? ""
 /** Which frame slot a switch compiles into (`pov` holds pov, echo, agency; `verbosity` holds verbosity). */
 const slotOfSwitch = (key: SwitchKey): "pov" | "verbosity" => (key === "verbosity" ? "verbosity" : "pov")
 /** Who took over the switch's slot with free text (card or a fragment that is not `compiled: true`), or null when the

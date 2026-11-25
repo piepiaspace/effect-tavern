@@ -1,16 +1,19 @@
 // The Writing page's and pack workbench's pure parts: the switch table against the sentences it compiles to, the
 // lexicon file format, and the prose requirements and proper-noun holes over `Layer` and `Local`.
-import { harness, type Layer, type Local } from "@effect-tavern/runtime/src/layer.ts"
+import { resolve, type Layer, type Local } from "@effect-tavern/runtime/src/layer.ts"
+import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
 import assert from "node:assert/strict"
-import { caretOf, defaultsOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf } from "../src/inserts.ts"
+import { caretOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf } from "../src/inserts.ts"
 import { cleanLex, mergeLexicon, parseLexicon, serializeLexicon } from "../src/lexicon.ts"
 import {
   cardNameKeys,
   fillKnown,
+  kindFields,
   orderedPacks,
   packHoles,
   productEdit,
-  stageAskLabels,
+  productKind,
+  serializePack,
   toggleMount,
   withoutProductPatch,
   withoutProductText,
@@ -28,34 +31,29 @@ import {
 } from "../src/requirements.ts"
 import { chosen, moot, pressing, sentence, SWITCHES, takenBy, writingLine } from "../src/switches.ts"
 
-// stageAskLabels covers every non-switch ask in `harness`, with `narrate.deliver` right after `narrate.persona`
-const askPairs = stageAskLabels()
-const personaIdx = askPairs.findIndex(([id]) => id === "narrate.persona")
-assert.ok(personaIdx >= 0 && askPairs[personaIdx + 1]?.[0] === "narrate.deliver")
-assert.equal(askPairs[personaIdx + 1]?.[1], "工具交付指令")
-assert.deepEqual(
-  new Set(askPairs.map(([id]) => id)),
-  new Set(
-    harness("act")
-      .asks!.filter((a) => !a.id.startsWith("switch."))
-      .map((a) => a.id),
-  ),
-)
-
-// every value the table offers compiles to a sentence in `harness`, and only those values do
+// every value the table offers compiles to a sentence the resolved layer carries, and only those values do
+const blank = {
+  id: "blank",
+  frame: [],
+  fiction: [],
+  greetings: [],
+  lore: [],
+  guard: [],
+  rules: { fields: [], actions: [] },
+}
+const sentences = resolve(blank, {}).switches.sentences
 for (const s of SWITCHES)
-  for (const [v] of s.values) assert.ok(sentence(s.key, v), `${s.key}=${String(v)} has a sentence`)
-assert.equal(sentence("pov", "unknown"), "")
-assert.equal(sentence("pov", "first"), harness("act").asks?.find((a) => a.id === "switch.pov.first")?.text)
-assert.equal(sentence("pov", "second"), harness("act").asks?.find((a) => a.id === "switch.pov.second")?.text)
-assert.equal(sentence("pov", "second", { "switch.pov.second": "自定义第二人称" }), "自定义第二人称")
+  for (const [v] of s.values) assert.ok(sentence(s.key, v, sentences), `${s.key}=${String(v)} has a sentence`)
+assert.equal(sentence("pov", "unknown", sentences), "")
+assert.equal(sentence("pov", "first", sentences), sentences["switch.pov.first"])
+assert.equal(sentence("pov", "first", undefined), "")
 
 // takenBy: null when compiled, `From` when taken over by free text
 assert.equal(
   takenBy("pov", {
-    frame: [{ id: "pov", text: "x", from: "harness", compiled: true }],
+    frame: [{ id: "pov", text: "x", from: "starter", compiled: true }],
     tail: [],
-    switches: { taken: { pov: "harness", verbosity: null } },
+    switches: { taken: { pov: "starter", verbosity: null } },
   }),
   null,
 )
@@ -92,7 +90,7 @@ assert.ok(moot("echo", { pov: "none" }) && !moot("echo", { pov: "third" }) && !m
     id: "wuxia",
     local,
     layer: {
-      frame: taken ? [{ id: "pov", from: taken }] : [{ id: "pov", from: "harness", compiled: true as const }],
+      frame: taken ? [{ id: "pov", from: taken }] : [{ id: "pov", from: "starter", compiled: true as const }],
       tail: [],
       switches: { value: value ?? {}, taken: { pov: taken, verbosity: null } },
     },
@@ -194,8 +192,8 @@ assert.equal(withExtra(withExtra(bareLocal, "x"), "").fragments, undefined)
 
 // fragment list helpers on a Layer: new ones go first, text edits keep the fragment's other keys, a cleared text removes it
 const g0: Layer = {
-  id: "harness",
-  name: "内置",
+  id: "starter",
+  name: "基础写作包",
   fragments: [{ id: "language", text: "L", mode: "override" }],
 }
 const g1 = addFragment(g0, "req-1", " 白描 ", "tail")
@@ -235,10 +233,6 @@ assert.deepEqual(snippetOf({ ...emptyDraft(true), label: "x", text: "a", after: 
   text: "a",
 })
 assert.equal(snippetOf(emptyDraft(true)), undefined)
-assert.deepEqual(
-  defaultsOf(["m1", "d1", "d2"], ["m1", "m2"], (x) => x),
-  ["d1", "d2"],
-)
 assert.equal(caretOf({ text: "「", after: "」" }), "「」")
 assert.equal(caretOf({ text: "继续。" }), "继续。")
 
@@ -275,12 +269,11 @@ assert.deepEqual(cardNameKeys(["npc"], { place: "临安" }), cardNameKeys(["plac
 assert.deepEqual(cardNameKeys([], { user: "林默", char: "伴星" }), ["char", "user"])
 assert.deepEqual(cardNameKeys(undefined, undefined), [])
 
-const pkHarness: Layer = { id: "harness", name: "内置" }
 const pkA: Layer = { id: "a", name: "A" }
 const pkB: Layer = { id: "b", name: "B" }
 const pkC: Layer = { id: "c", name: "C" }
 assert.deepEqual(
-  orderedPacks([pkHarness, pkA, pkB, pkC], ["c", "a"]).map((p) => p.id),
+  orderedPacks([pkA, pkB, pkC], ["c", "a"]).map((p) => p.id),
   ["c", "a", "b"],
 )
 const mounted1 = toggleMount(bareLocal, "b")
@@ -321,5 +314,32 @@ assert.deepEqual(productEdit(undefined, "th-1", "", "写", "demand"), {
   trigger: "demand",
   on: false,
 })
+
+// a product's kind by its declaration, never its id; each kind writes its whole structure, clearing the others'
+assert.deepEqual(
+  createStarterPack().products!.map((p) => [p.id, productKind(p)]),
+  [
+    ["options", "composer"],
+    ["notes", "chronicle"],
+    ["inner", "theater"],
+  ],
+)
+assert.equal(productKind({}), "theater")
+const asTheater = withProductPatch(createStarterPack().products, { id: "options", ...kindFields("theater", "demand") })
+assert.deepEqual(asTheater[0], {
+  id: "options",
+  label: "行动选项",
+  role: "theater",
+  shape: { kind: "text" },
+  stage: "narrate",
+  on: true,
+  trigger: "demand",
+  text: createStarterPack().products![0].text,
+})
+assert.deepEqual(withProductPatch([], { id: "n", ...kindFields("chronicle", "turn") }), [
+  { id: "n", role: "chronicle", shape: { kind: "text" }, stage: "record", fold: "append", feed: true },
+])
+// an export carries neither the id nor the install's default mark
+assert.deepEqual(JSON.parse(serializePack({ id: "starter", name: "N", default: true })), { name: "N" })
 
 console.log("writing ok")
