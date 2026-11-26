@@ -364,6 +364,48 @@ async function run() {
 
     require(mountedHud === node1HudHost(), "Demand preserves the HUD element")
     require(registry.get(demanded) === null, "successful Demand releases its node")
+
+    // 4. Turn 2 lands: Turn 1 is history, where `latest` ri_hud does not mount yet still claims `inner` (#248)
+    await modelControl({
+      clear: true,
+      turns: [
+        { prose: "她低头。", canned: { place: { spot: "钟楼" }, answers: { affinity: "flat" } }, recordDelay: 750 },
+      ],
+      demands: [{ inner: "第二轮心声", delay: 750 }, { note_slip: "第二张便签" }, { options: ["告辞", "留下"] }],
+    })
+    box.focus()
+    box.value = "道别"
+    box.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    require(await until(() => !sendBtn()?.disabled), "composer send button enabled for Turn 2")
+    sendBtn()!.click()
+    const node2HudHost = () => document.querySelector<HTMLElement>("#node-2 .view-shell[data-view=ri_hud]")
+    require(await until(
+      () => registry.get(log).nodes.get(2)?.settlementStatus === "pending",
+      5000,
+    ), "Turn 2 lands with pending record settlement")
+    require(!node1HudHost() &&
+      !document.querySelector(
+        "#node-1 .product.theater",
+      ), "Turn 1 shows no HUD and no fallback inner while Turn 2 records")
+    require(await until(
+      () => registry.get(log).nodes.get(2)?.settlementStatus === "committed" && !registry.get(working),
+      5000,
+    ), "Turn 2 record settlement commits")
+    await quiet()
+    require(Boolean(node2HudHost()) && !node1HudHost(), "ri_hud moves to Turn 2 and stays off history")
+    require(registry.get(log).nodes.get(1)?.theater.inner !== undefined &&
+      document.querySelectorAll(".product.theater").length === 0, "historical Turn 1 keeps inner claimed, no grey box")
+    await modelControl({ clear: true, demands: [{ inner: "旧轮重抽的心声" }] })
+    const askOld = await agent.act({ steps: [{ ref: demandLabel, action: "press", args: ["理的心声"] }] })
+    require(askOld.ok, `historical Turn 1 Demand still offers 理的心声: ${askOld.error?.message}`)
+    require(await until(
+      () => !registry.get(working) && registry.get(log).nodes.get(1)?.theater.inner === "旧轮重抽的心声",
+      5000,
+    ), "re-rolling inner on history lands")
+    await quiet()
+    require(!node1HudHost() &&
+      document.querySelectorAll(".product.theater").length === 0, "re-rolled historical inner draws no grey box")
+
     await modelControl({ demands: [{ options: [], fail: "choices unavailable" }] })
     turn.demand(1, "options")
     require(await until(() => !!registry.get(error) && !registry.get(working)), "failed Demand finishes")
