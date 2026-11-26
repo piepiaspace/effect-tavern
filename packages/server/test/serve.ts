@@ -676,14 +676,33 @@ const sse = (text: string) =>
 
 // A body over its route's limit (1 MB; a card route has the card ceiling, 32 MB) is heard out and answered 413 with a
 // code the client words. One that keeps coming far past the limit is cut off: its socket closes, and the handler must
-// finish without writing headers to that closed response. A card just under the ceiling goes in whole, through the
-// node bridge and called directly alike.
+// finish without writing headers to that closed response. On a card route a card past 1 MB goes in, a body of exactly
+// the ceiling is read whole and judged by the gate, and one byte more is a 413 with nothing installed, through the node
+// bridge and called directly alike. The ceiling's bodies are streamed, one 1 MB buffer sent again and again, so this
+// process never holds 32 MB (#254).
 {
   const big = (id: string, bytes: number) => {
     const card = { ...chat, id, fiction: [{ id: "f", text: "" }] }
     const text = "x".repeat(bytes - Buffer.byteLength(JSON.stringify(card)))
     return JSON.stringify({ ...card, fiction: [{ id: "f", text }] })
   }
+  const X = new Uint8Array(1 << 20).fill(0x78) // "x"
+  /** Exactly `bytes` bytes: an opening that is no card (`[` and a line break), then x's. */
+  const ceiling = function* (bytes: number) {
+    yield new TextEncoder().encode("[\n")
+    for (let left = bytes - 2; left > 0; left -= X.length) yield left < X.length ? X.subarray(0, left) : X
+  }
+  const stream = (chunks: Iterable<Uint8Array>) => {
+    const it = chunks[Symbol.iterator]()
+    return new ReadableStream<Uint8Array>({
+      pull: (c) => {
+        const next = it.next()
+        if (next.done) c.close()
+        else c.enqueue(next.value)
+      },
+    })
+  }
+  const shelved = () => lib.cards.list().map((row) => row.id)
   let writes = 0
   let done = Promise.withResolvers<void>()
   const api = node(app(handle(lib)))
@@ -696,7 +715,7 @@ const sse = (text: string) =>
     void api(req, res).then(done.resolve, done.reject)
   }).listen(0, "127.0.0.1")
   await new Promise<void>((resolve) => server.once("listening", resolve))
-  const send = (body: string, path = "/api/stories") =>
+  const send = (body: string | Iterable<Uint8Array>, path = "/api/stories") =>
     new Promise<{ status?: number; body?: string; code?: string }>((resolve) => {
       const req = request(
         { host: "127.0.0.1", port: (server.address() as AddressInfo).port, path, method: "POST" },
@@ -708,7 +727,14 @@ const sse = (text: string) =>
         },
       )
       req.on("error", (e: NodeJS.ErrnoException) => resolve({ code: e.code }))
-      req.end(body)
+      if (typeof body === "string") return void req.end(body)
+      const it = body[Symbol.iterator]()
+      const pump = () => {
+        for (let next = it.next(); !next.done; next = it.next())
+          if (!req.write(next.value)) return void req.once("drain", pump)
+        req.end()
+      }
+      pump()
     })
   const story = (bytes: number) => JSON.stringify({ card: "x".repeat(bytes) })
   try {
@@ -724,27 +750,42 @@ const sse = (text: string) =>
     // the client learns of the cut on its next read (ECONNRESET) or its next write (EPIPE), whichever the race gives
     assert.ok(flood.code === "ECONNRESET" || flood.code === "EPIPE", `flood ended with ${flood.code}`)
     assert.equal(writes, 1)
-    // the card ceiling: a card of nearly 32 MB is installed; one byte past the ceiling is heard out and refused
+    // the card ceiling: a card past the ordinary 1 MB goes in; a body of exactly 32 MB is read and refused by the gate,
+    // not by its size; one byte more is heard out and refused in words, and neither leaves anything on the shelf
     done = Promise.withResolvers<void>()
-    const whole = await send(big("big", CARD_BYTES - 1024), "/api/cards?replace=1")
+    const whole = await send(big("big", (1 << 20) + (64 << 10)), "/api/cards?replace=1")
     await done.promise
     assert.deepEqual([whole.status, (JSON.parse(whole.body!) as { card: { id: string } }).card.id], [200, "big"])
-    assert.ok(JSON.stringify(lib.cards.get("big")).length > CARD_BYTES - 4096)
+    assert.ok(lib.cards.get("big").fiction[0].text!.length > 1 << 20)
+    const shelf = shelved()
     done = Promise.withResolvers<void>()
-    const past = await send(big("past", CARD_BYTES + 1), "/api/cards?replace=1")
+    const full = await send(ceiling(CARD_BYTES), "/api/cards?replace=1")
+    await done.promise
+    assert.deepEqual([full.status, (JSON.parse(full.body!) as { code: string }).code], [400, "card-invalid"])
+    done = Promise.withResolvers<void>()
+    const past = await send(ceiling(CARD_BYTES + 1), "/api/cards?replace=1")
     await done.promise
     assert.deepEqual([past.status, JSON.parse(past.body!)], [413, { error: "body over 32 MB", code: "too-large" }])
-    assert.equal(lib.cards.has("past"), false)
+    assert.deepEqual(shelved(), shelf)
     // called directly: the same answers
     const direct = handle(lib)
-    const post = (path: string, body: string) => direct(new Request(`http://tavern${path}`, { method: "POST", body }))
+    const post = (path: string, body: string | Iterable<Uint8Array>) =>
+      direct(
+        new Request(`http://tavern${path}`, {
+          method: "POST",
+          ...(typeof body === "string" ? { body } : { body: stream(body), duplex: "half" }),
+        }),
+      )
     const refused = await post("/stories", story((1 << 20) + 1))
     assert.deepEqual([refused.status, await refused.json()], [413, { error: "body over 1 MB", code: "too-large" }])
     const flooded = await post("/stories", story(10 << 20))
     assert.equal(flooded.status, 413)
-    assert.equal((await post("/cards?replace=1", big("big", CARD_BYTES - 1024))).status, 200)
-    const tooBig = await post("/cards?replace=1", big("past", CARD_BYTES + 1))
-    assert.deepEqual([tooBig.status, ((await tooBig.json()) as { code: string }).code], [413, "too-large"])
+    assert.equal((await post("/cards?replace=1", big("big", (1 << 20) + (64 << 10)))).status, 200)
+    const read = await post("/cards?replace=1", ceiling(CARD_BYTES))
+    assert.deepEqual([read.status, ((await read.json()) as { code: string }).code], [400, "card-invalid"])
+    const tooBig = await post("/cards?replace=1", ceiling(CARD_BYTES + 1))
+    assert.deepEqual([tooBig.status, await tooBig.json()], [413, { error: "body over 32 MB", code: "too-large" }])
+    assert.deepEqual(shelved(), shelf)
     assert.deepEqual(await (await direct(new Request("http://tavern/host"))).json(), {
       version: "dev",
       scripted: false,
