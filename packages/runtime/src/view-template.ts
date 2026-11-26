@@ -402,23 +402,38 @@ function checkStructure(html: string, fragment: Html.DocumentFragment, problems:
   }
 }
 
-/** `{{…}}` in a view is shown as written: a view's html is never name-filled and runs no macro. */
-function checkMacros(html: string, problems: ViewProblem[]) {
-  const comments = [...html.matchAll(/<!--[^]*?-->/g)].map((m) => [m.index, m.index + m[0].length])
-  for (const m of html.matchAll(/\{\{.*?\}\}/gs)) {
-    if (comments.some(([a, b]) => m.index >= a && m.index < b)) continue
-    const name = new RegExp(`^${HOLE.source}$`).exec(m[0])
-    const state = new RegExp(`^${STATE_HOLE.source}$`).exec(m[0])
+/** Each `open…close` span in `source`, left to right; an unclosed one ends the scan. Linear in `source`, where a lazy
+ *  regex would rescan the rest of the author's block from every unclosed opener. */
+function* spans(source: string, open: string, close: string) {
+  for (let from = 0; ;) {
+    const start = source.indexOf(open, from)
+    const end = start < 0 ? -1 : source.indexOf(close, start + open.length)
+    if (end < 0) return
+    yield [start, end + close.length] as const
+    from = end + close.length
+  }
+}
+/** `{{…}}` in a view is shown as written: neither its html nor its css (a `content:` string, a custom property) is
+ *  ever name-filled, and neither runs a macro. A comment is left alone. */
+function checkMacros(source: string, block: "html" | "css", problems: ViewProblem[]) {
+  const comments = [...(block === "html" ? spans(source, "<!--", "-->") : spans(source, "/*", "*/"))]
+  for (const [start, end] of spans(source, "{{", "}}")) {
+    if (comments.some(([a, b]) => start >= a && start < b)) continue
+    const text = source.slice(start, end)
+    const name = new RegExp(`^${HOLE.source}$`).exec(text)
+    const state = new RegExp(`^${STATE_HOLE.source}$`).exec(text)
+    const path = name ? `names.${name[1]}` : state?.[1]
     problems.push({
       level: "error",
-      block: "html",
-      ...placeOf(html, m.index),
-      message: `${m[0]} is shown as written: a view does not interpolate${name || state ? "" : " or run macros"}`,
-      hint: name
-        ? `write <span data-text="names.${name[1]}"></span>`
-        : state
-          ? `write <span data-text="${state[1]}"></span>`
-          : 'read a field with data-text="fields.<x>"; state and randomness are fields, actions and products',
+      block,
+      ...placeOf(source, start),
+      message: `${text} is shown as written: a view does not interpolate${path ? "" : " or run macros"}`,
+      hint:
+        block === "css"
+          ? `css holds no data: put the text in the html with data-text="${path ?? "fields.<x>"}", or bind a number with data-var-<name> and read var(--<name>)`
+          : path
+            ? `write <span data-text="${path}"></span>`
+            : 'read a field with data-text="fields.<x>"; state and randomness are fields, actions and products',
     })
   }
 }
@@ -455,7 +470,8 @@ export function inspectView(v: Pick<ViewShell, "css" | "html">, { lint = true } 
   const tree = fragment.childNodes.flatMap((n) => templateNode(n, { html: v.html, problems, places }))
   if (lint) {
     checkStructure(v.html, fragment, problems)
-    checkMacros(v.html, problems)
+    checkMacros(v.html, "html", problems)
+    if (v.css) checkMacros(v.css, "css", problems)
   }
   return { tree, problems, places }
 }

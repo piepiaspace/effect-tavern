@@ -234,6 +234,29 @@ assert.deepEqual(
     "error! css:4:1 unsupported view CSS: @import | a view loads no stylesheet: put the rules in its css block",
   ],
 )
+// The css is never name-filled either: a macro in a string or a custom property is placed in the css block.
+assert.deepEqual(
+  said({
+    html: "<p class='pct'></p>",
+    css: '.pct::after { content: "{{getvar::hp}}%"; }\n/* {{note}} */\n:host { --who: "{{char}}"; --tide: "{{ fields.潮位 }}"; }',
+  }),
+  [
+    'error css:1:25 {{getvar::hp}} is shown as written: a view does not interpolate or run macros | css holds no data: put the text in the html with data-text="fields.<x>", or bind a number with data-var-<name> and read var(--<name>)',
+    'error css:3:17 {{char}} is shown as written: a view does not interpolate | css holds no data: put the text in the html with data-text="names.char", or bind a number with data-var-<name> and read var(--<name>)',
+    'error css:3:37 {{ fields.潮位 }} is shown as written: a view does not interpolate | css holds no data: put the text in the html with data-text="fields.潮位", or bind a number with data-var-<name> and read var(--<name>)',
+  ],
+)
+// Unclosed openers and comments are scanned once, not once per opener.
+{
+  const start = performance.now()
+  inspectView({ html: "{{".repeat(20_000) + "<!--".repeat(10_000), css: "{{".repeat(20_000) + "/*" })
+  assert.ok(performance.now() - start < 200, "macro scan is linear")
+}
+// An element on the wrong side of <svg> says which side it belongs on.
+assert.deepEqual(said({ html: "<svg><section></section></svg><g></g>" }), [
+  "error! html:1:6 <section> is not a view element inside <svg> | inside <svg> only SVG elements draw: close the </svg> before HTML, or write SVG <text>",
+  "error! html:1:31 <g> is not a view element | SVG elements draw only inside an <svg>",
+])
 // Lint's checks never reach the session: a card that passed the gate before compiles the tree it did.
 assert.doesNotThrow(() => compileView({ html: "<div>{{char}}<p><div>x</div></p>" }))
 assert.deepEqual(JSON.parse(JSON.stringify(compileView({ html: "<ul><li data-text='a'>x<li>y</ul>" }))), [
