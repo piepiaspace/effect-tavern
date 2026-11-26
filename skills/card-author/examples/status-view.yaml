@@ -111,7 +111,7 @@ products:
     label: 接下来
     shape: { kind: list, max: 3 }
     text: |-
-      玩家接下来可以做的三件事，每条一句，用玩家的口吻。
+      玩家角色接下来可以说或做的三件事，每条一句，用玩家角色的口吻。
 views:
   # The HUD: on the newest turn only (`latest`), so it may read `world`. It consumes the composer options and draws
   # them as buttons that fill the input box. `residency: latest` is written out because a view with `consumes`

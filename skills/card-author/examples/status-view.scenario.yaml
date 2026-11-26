@@ -19,10 +19,9 @@ steps:
       products:
         voices: [{ who: 山下的主持人, says: 今晚山口风力九级，请不要出门。, face: host }]
         options: [问她这电台还能收到哪里, 去搁板上找点吃的, 靠着炉子睡一会]
-      # expect.world arrives with #252 (feat/card-view-preview); uncomment these three lines once it is merged:
-      # world:
-      #   hut: { door: 关着, lit: true }
-      #   supplies: [{ name: 柴, count: 6 }, { name: 茶砖, count: 1 }]
+      world:
+        hut: { door: 关着, lit: true }
+        supplies: [{ name: 柴, count: 6 }, { name: 茶砖, count: 1 }]
   - text: 门外好像有人敲门，我去把门打开。
     replies:
       narrate:
@@ -37,7 +36,6 @@ steps:
           answers: { fire: down, sky: clear }
     expect:
       state: { warmth: 6, weather: 晴 }
-      # expect.world arrives with #252 (feat/card-view-preview); uncomment these three lines once it is merged:
-      # world:
-      #   hut: { door: 开着, lit: false }
-      #   supplies: [{ name: 柴, count: 6 }, { name: 茶砖, count: 1 }, { name: 罐头, count: 2 }]
+      world:
+        hut: { door: 开着, lit: false }
+        supplies: [{ name: 柴, count: 6 }, { name: 茶砖, count: 1 }, { name: 罐头, count: 2 }]
