@@ -440,6 +440,17 @@ try {
     }
   }
 
+  // the new file is run the moment it is unpacked: its write descriptor is closed by then, every time, or Linux refuses
+  // to run it (ETXTBSY), as it did for one update in a few when the unpack's close came late (#260)
+  for (let i = 0; i < 30; i++) {
+    const again = await updating(`again-${i}`, ["--yes"], { terminal: false })
+    assert.deepEqual(
+      [again.code, answers(again.self.path), beside(again.self)],
+      [0, "tavern 0.9.2", "tavern"],
+      again.err,
+    )
+  }
+
   // ---- doctor, with a mix of findings ---------------------------------------------------------------------------
   {
     const data = join(root, "doctored")

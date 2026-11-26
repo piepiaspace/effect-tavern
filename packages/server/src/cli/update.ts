@@ -6,7 +6,17 @@
 // until it is started again: the last lines say so.
 //
 // What a person reads goes to stderr; under --json, stdout gets one value: {current, latest, newer, updated, notes}.
-import { chmodSync, existsSync, realpathSync, renameSync, rmSync, statSync } from "node:fs"
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  openSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeSync,
+} from "node:fs"
 import { dirname, extname, join } from "node:path"
 import { announced } from "../announce.ts"
 import { cells, wrap, type Screen } from "../term/index.ts"
@@ -22,6 +32,23 @@ import { words } from "./words.ts"
 const NOTES = 15
 /** What an update needs beside the binary: the archive and the unpacked file, each about the binary's size at most. */
 export const needFor = (binary: number) => 2 * binary
+
+/**
+ * Unpacks `gz` into `part` through a descriptor closed here, before this returns. The file is executed next, and Linux
+ * refuses to execute a file open for writing anywhere (ETXTBSY), including in a child forked meanwhile: `Bun.write`
+ * of a streamed Response resolves before its descriptor is closed on another thread, so a spawn right after it could
+ * hand the child a copy of that descriptor (#260). Streamed chunk by chunk: a release binary is ~50 MB packed.
+ */
+const unpack = async (gz: string, part: string) => {
+  const fd = openSync(part, "w", 0o755)
+  try {
+    for await (const chunk of Bun.file(gz).stream().pipeThrough(new DecompressionStream("gzip"))) {
+      for (let at = 0; at < chunk.length;) at += writeSync(fd, chunk, at)
+    }
+  } finally {
+    closeSync(fd)
+  }
+}
 
 export interface Asked {
   /** --yes: no question. */
@@ -125,8 +152,7 @@ export const update = async (c: Config, world: World, asked: Asked): Promise<0 |
     if (screen.live) screen.write("\r\x1b[K")
     say([`  ${w.downloaded(mb(statSync(gz).size))}`])
     try {
-      const stream = Bun.file(gz).stream().pipeThrough(new DecompressionStream("gzip"))
-      await Bun.write(part, new Response(stream))
+      await unpack(gz, part)
     } catch (e) {
       throw new Failed("download-failed", `${asset}.gz does not unpack: ${(e as Error).message}`, {
         ...(errno(e) && { errno: errno(e) }),
