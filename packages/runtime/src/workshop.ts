@@ -4,6 +4,7 @@ import { type Card, Field } from "./card.ts"
 import { type Cond } from "./cond.ts"
 import { identifier } from "./lint.ts"
 import { Product, Col, type RecordShape } from "./product.ts"
+import { residency } from "./view-shell.ts"
 
 /** The model sees wiring and empty prose slots; authored values are only sent through an explicit selection. */
 export const mechanical = (card: Card) => {
@@ -47,6 +48,17 @@ export const mechanical = (card: Card) => {
           portraits: card.media.portraits.map(({ label: _l, ...wiring }) => wiring),
         }),
       },
+    }),
+    // What each view reads, so an edit that renames or drops a product sees the view it would leave empty. The markup
+    // and the label are the author's and stay home; applying a candidate carries `views` through untouched.
+    ...(card.views?.length && {
+      views: card.views.map((v) => ({
+        id: v.id,
+        consumes: v.consumes ?? [],
+        residency: residency(v),
+        ...(v.when && { when: v.when }),
+        ...(v.media?.length && { media: v.media.map(({ id, catalog }) => ({ id, catalog })) }),
+      })),
     }),
   }
 }

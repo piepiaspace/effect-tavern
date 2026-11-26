@@ -22,7 +22,7 @@ const SortRequest = Schema.Struct({
 const ReviewRequest = Schema.Struct({ card: Card })
 const prompts = {
   compile:
-    "Compile mechanical increments and bindings from selected prose and intent; judged:true creates an empty author rubric, and slots are created only when explicitly requested.",
+    "Compile mechanical increments and bindings from selected prose and intent; judged:true creates an empty author rubric, and slots are created only when explicitly requested. `views` names the products each view consumes (and a latest view reads world products): renaming or dropping one leaves that view empty.",
   sort: "Place whole paragraph indices at frame.<id>, fiction.<new-id>, greetings[n], or lore.<id>.layers[n]; append only and combine paragraphs in source order.",
   review: "Report consistency warnings at existing card paths.",
 }
