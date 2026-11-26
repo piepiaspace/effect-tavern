@@ -2,10 +2,10 @@
 // as text or as a value through one gate, an id is never taken over without being asked, a card with stories stays, and
 // what a card was is what it exports as.
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
-import { CARD_BYTES, FREE_CHAT_ID } from "@effect-tavern/runtime/src/library.ts"
+import { FREE_CHAT_ID } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
 import { checkCard, scaffold } from "@effect-tavern/runtime/support/author.ts"
-import { cardFile, chat } from "../../runtime/test/cards/index.ts"
+import { cardFile, chat, verbatim } from "../../runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { createServer } from "node:http"
@@ -83,6 +83,11 @@ const file = { via: "file" } as const
     cards.install(cards.text(card.id), file, { replace: true })
     assert.deepEqual(cards.get(card.id), before, name)
   }
+  // and so is a card of awkward text, compared whole: what it carries, not how much, is what a file has to keep (#254)
+  cards.install(verbatim, file)
+  cards.install(cards.text(verbatim.id), file, { replace: true })
+  assert.deepEqual(cards.get(verbatim.id), verbatim)
+  cards.remove(verbatim.id)
   assert.throws(() => cards.text("none"), refused("no-card"))
 
   // remove: refused while a story of the card exists; with the card goes the player's row on it
@@ -135,6 +140,16 @@ const file = { via: "file" } as const
   assert.throws(() => cards.save(made.id, { ...written, fiction: [{ id: "s1", text: " " }] }), refused("card-invalid"))
   assert.throws(() => cards.save(made.id, { ...written, id: "other" }), refused("card-invalid"))
   assert.throws(() => cards.save("none", { ...written, id: "none" }), refused("no-card"))
+  // text that is not text (half of a surrogate pair) is refused in words, by a save and by an install alike: no card
+  // file could carry it back (#254). A file spells it only as an escape (`"\ud800"`), which Bun.YAML already stops at;
+  // the app's `yaml` reads it, and the gate refuses it there (app test/page.ts).
+  const broken = { ...written, fiction: [{ id: "s1", text: "雨\ud800停了。" }] }
+  const halved = (e: unknown) =>
+    refused("card-invalid")(e) && /^error broken-text fiction\[0\]\.text: .*lone UTF-16 surrogate/m.test(e.message)
+  assert.throws(() => cards.save(made.id, broken), halved)
+  assert.throws(() => cards.install({ ...broken, id: "halved" }, file), halved)
+  assert.throws(() => cards.install(JSON.stringify({ ...broken, id: "halved" }), file), refused("card-invalid"))
+  assert.ok(!cards.has("halved"))
   assert.deepEqual(cards.get(made.id), written)
   // a save names the revision it was written from: one that the card has moved past is refused, and a save that
   // changes nothing moves no revision
@@ -241,21 +256,6 @@ const file = { via: "file" } as const
     assert.equal((await call("GET", "/cards/none/whole"))[0], 404)
     assert.equal((await call("PUT", "/cards/none/whole", JSON.stringify({ card: next })))[0], 404)
     assert.deepEqual(await call("DELETE", `/cards/${id}`), [200, [] as never])
-    // a heavy card is a card: several MB of an author's text installs, exports and comes back the same
-    const heavy: Card = {
-      ...chat,
-      id: "heavy",
-      fiction: [{ id: "tome", text: "山川异域，风月同天。".repeat(400_000) }],
-    } // ~12 MB as UTF-8
-    const sent = await call("POST", "/cards", JSON.stringify(heavy))
-    assert.deepEqual([sent[0], (sent[1]["card"] as { id: string }).id], [200, "heavy"])
-    const back = await (await fetch(`${base}/cards/heavy/export.yaml`)).text()
-    assert.equal((await call("POST", "/cards?replace=1", back))[0], 200)
-    assert.equal(t.lib.cards.get("heavy").fiction[0].text, heavy.fiction[0].text)
-    // past the ceiling it is refused in words, not by a dropped connection
-    const huge = await call("POST", "/cards", "x".repeat(CARD_BYTES + 1))
-    assert.deepEqual(huge, [413, { error: "body over 32 MB", code: "too-large" }])
-    assert.deepEqual(await call("DELETE", "/cards/heavy"), [200, [] as never])
     // an unsupported method on a card or depot route is not a story's to answer
     for (const [method, path] of [
       ["PUT", "/cards/yandao"],

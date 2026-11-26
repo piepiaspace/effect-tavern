@@ -146,7 +146,7 @@ export const ViewShellPatch = Schema.Struct({
    - 差分选择新增稳定键 `["view", viewId, slotId, catalog, item]`（同立绘一样绑定槽位与命中条目而非 `nodeId`，避免无关回合推进导致背景/徽章无故跳变）。
 3. **分支画廊防剧透唯一真相源**：
    - `resolveGallery` 沿当前激活分支 `root → head` 收集已现身素材时，统一合并三处合法展示源：`node.media.illustrations`、`node.media.portraits`、**当前处于启用态的视图所命中的 `node.media.viewMedia`**（以及当前生效 `theater` 产物中带 `catalog` 列的有效引用）；
-   - 保证**「读者在当前分支流内合法见过的图，进画廊必定已揭开遮罩；切去未触发该条件的兄弟分支，画廊恢复点阵遮罩；视图模板本身绝无旁路绕过 `when` 提前剧透未解锁 CG」**。
+   - 保证「**读者在当前分支流内合法见过的图，进画廊必定已揭开遮罩；切去未触发该条件的兄弟分支，画廊恢复点阵遮罩；视图模板本身绝无旁路绕过 `when` 提前剧透未解锁 CG**」。
 
 ---
 

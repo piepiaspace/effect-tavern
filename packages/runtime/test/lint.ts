@@ -30,6 +30,39 @@ const said = (card: Card, rule: string) =>
   lint(card)
     .filter((d) => d.rule === rule)
     .map((d) => `${d.level} ${d.path}: ${d.message}`)
+// broken-text: a lone surrogate anywhere in the card is an error at its place; a whole pair (an emoji) is text (#254)
+assert.deepEqual(of({ ...base, title: "a\udc00", greetings: [{ text: "开场\ud83d" }, { text: "😀" }] }), [
+  "error broken-text greetings[0].text",
+  "error broken-text title",
+])
+// a key the author names is text too: a `names` key, a world table's entity id, a record's key (#254)
+assert.deepEqual(
+  lint({
+    ...base,
+    names: { "a\ud800": "Alice", b: "Bob" },
+    products: [
+      {
+        id: "people",
+        role: "world",
+        text: "人物",
+        shape: { kind: "table", columns: [{ key: "name", type: "text" }] },
+        initial: { "e\udc01": { name: "甲" }, "e😀": { name: "乙" } },
+      },
+      {
+        id: "scene",
+        role: "world",
+        text: "场景",
+        shape: { kind: "record", keys: [{ key: "open", type: "boolean" }] },
+        initial: { "open\ud83d": true },
+      },
+    ],
+  })
+    .filter((d) => d.rule === "broken-text")
+    .map((d) => `${d.path}: ${d.message}`),
+  ["names.a\ud800", "products[0].initial.e\udc01", "products[1].initial.open\ud83d"].map(
+    (p) => `${p}: the key holds half of a character (a lone UTF-16 surrogate), which no card file can carry`,
+  ),
+)
 const bond = { path: "bond", type: "int", min: 0, max: 20, initial: 0 } as const
 const readout = {
   id: "warmth",

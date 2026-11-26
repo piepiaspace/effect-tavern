@@ -831,6 +831,118 @@ const packs = [packB, packA]
   )
 }
 
+// ───────── PackEntry front matter, sections validation, and hole expansion (#245) ─────────
+{
+  const decoded = decodeLayer({
+    id: "skills",
+    name: "Skills",
+    entries: [
+      {
+        id: "cinema",
+        title: "电影化场景调度",
+        summary: "当场景涉及潜台词冲突或空间走位时读取",
+        text: "主正文总纲。",
+        sections: [
+          { id: "subtext", title: "潜台词节奏", text: "子节一正文。" },
+          { id: "blocking", text: "子节二正文。" },
+        ],
+      },
+    ],
+  })
+  assert.equal(decoded.entries?.[0]?.title, "电影化场景调度")
+  assert.equal(decoded.entries?.[0]?.summary, "当场景涉及潜台词冲突或空间走位时读取")
+  assert.equal(decoded.entries?.[0]?.sections?.length, 2)
+
+  // Invalid entry ids and invalid sections never throw: they land in dropped + omitted, while valid siblings stand.
+  const eight = Array.from({ length: 8 }, (_, i) => ({ id: `s${i}`, text: `S${i}` }))
+  const nine = Array.from({ length: 9 }, (_, i) => ({ id: `s${i}`, text: `S${i}` }))
+  const T = resolveWithTrace(chat, {
+    packs: [
+      row("p", {
+        entries: [
+          { id: "", text: "Empty id" },
+          { id: "has#hash", text: "Hash in entry id" },
+          { id: "too-many", text: "Nine sections", sections: nine },
+          { id: "empty-sec-id", text: "Body", sections: [{ id: "  ", text: "Sec" }] },
+          { id: "hash-sec-id", text: "Body", sections: [{ id: "a#b", text: "Sec" }] },
+          {
+            id: "dup-sec-id",
+            text: "Body",
+            sections: [
+              { id: "dup", text: "One" },
+              { id: "dup", text: "Two" },
+            ],
+          },
+          { id: "empty-sec-text", text: "Body", sections: [{ id: "s1", text: "   " }] },
+          { id: "ok-eight", title: "Eight Sections", text: "Body", sections: eight },
+        ],
+      }),
+    ],
+    local: here({ mounts: ["p"] }),
+  })
+  assert.deepEqual(
+    T.resolved.entries.map((e) => e.id),
+    ["p/ok-eight"],
+  )
+  assert.deepEqual(
+    T.resolved.dropped.map((d) => [d.kind, d.id, d.why]),
+    [
+      ["entry", "", "an entry id is empty"],
+      ["entry", "has#hash", "an entry id has no #"],
+      ["entry", "too-many", "9 sections (ceiling 8)"],
+      ["entry", "empty-sec-id", "a section id is empty"],
+      ["entry", "hash-sec-id", "a section id has no #"],
+      ["entry", "dup-sec-id", "dup is declared twice"],
+      ["entry", "empty-sec-text", "section s1 text is empty"],
+    ],
+  )
+  assert.equal(T.omitted.filter((o) => o.category === "entry" && o.reason === "invalid").length, 7)
+
+  // Hole expansion across title, summary, text, section.title, section.text:
+  // all filled -> all expanded; any unfilled -> whole entry omitted with all missingHoles, and Resolved.holes lists them.
+  const unfilledTrace = resolveWithTrace(
+    { ...chat, frame: [], lore: [] },
+    {
+      packs: [
+        row("p", {
+          names: { char: "林默" },
+          entries: [
+            {
+              id: "filled",
+              title: "{{char}} 的镜头",
+              summary: "围绕 {{char}} 展开",
+              text: "总纲：{{char}}。",
+              sections: [{ id: "s1", title: "{{char}} 特写", text: "细节：{{char}}。" }],
+            },
+            {
+              id: "partial",
+              title: "{{h_title}} 标题",
+              summary: "{{char}} 与 {{h_sum}}",
+              text: "正文 {{h_body}}",
+              sections: [{ id: "s1", title: "{{h_stitle}}", text: "{{h_stext}}" }],
+            },
+          ],
+        }),
+      ],
+      local: here({ mounts: ["p"] }),
+    },
+  )
+  assert.deepEqual(unfilledTrace.resolved.entries, [
+    {
+      id: "p/filled",
+      from: "p",
+      title: "林默 的镜头",
+      summary: "围绕 林默 展开",
+      text: "总纲：林默。",
+      sections: [{ id: "s1", title: "林默 特写", text: "细节：林默。" }],
+    },
+  ])
+  const om = unfilledTrace.omitted.find((o) => o.category === "entry" && o.id === "p/partial")!
+  assert.equal(om.reason, "unfilled_hole")
+  assert.deepEqual(om.missingHoles, ["h_title", "h_sum", "h_body", "h_stitle", "h_stext"])
+  assert.deepEqual(unfilledTrace.resolved.holes, ["h_title", "h_sum", "h_body", "h_stitle", "h_stext"])
+}
+
 // ───────── The holes, four ways ─────────
 {
   const rows: Rows = {

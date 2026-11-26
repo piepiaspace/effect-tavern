@@ -24,7 +24,7 @@ Web 客户端（`packages/client`）是基于 **Solid 2.0** 与 **UI SDK（`@ui-
 
 - **流式输出零跳变（`App.tsx`）：** 发送后新回合锚定至视口顶部并在下方预留整屏留白跑道，正文每增长一行即等量消耗留白，视口稳如书页；用户主动上滚阅读前文时立即解除跟随，绝不强行拉回底部。
 - **零自动发送输入框（`composer.tsx`、`invocation-menu.tsx`、`ime.ts`）：** 界面中没有任何按钮会在玩家不知情时直接发消息——`options` 建议芯片、快捷片段（`snippets`）与直角引号等标点键（`format`）一律只填入输入框，并内置完整的中文输入法（IME）选词回车保护。支持场内 `act` / 场外 `note` 通道切换与历史台词原位修订；输入 `/` 或点击 `+` 唤出基于 `Popover` + 多页 `Command` 的统一面板，跨快捷片段、已挂载写作包 `entries` 与已解锁 `player: true` 卡片 `lore` 即时检索调用。
-- **读数、本轮账本与小剧场（`readings.tsx`、`record.ts`）：** 小剧场通过并行 `record` 调用生成；写后结算增量折叠为正文底部的单行 **Record** 药丸（点开展开详情面板）；`demand` 按需小剧场从回合菜单直接点单；标量量表（`steps`、`gauge`、`scale`、`value`）与 `world` 实体表集中呈现在**读数（Readings）**视图。
+- **读数、本轮账本与小剧场（`readings.tsx`、`record.ts`）：** 小剧场通过并行 `record` 调用生成；写后结算增量折叠为正文底部的单行 **Record** 药丸（点开展开详情面板）；`demand` 按需小剧场从回合菜单直接点单；标量量表（`steps`、`gauge`、`scale`、`value`）与 `world` 实体表集中呈现在**读数**（Readings）视图。
 
 ## 3. 时间轴、检查器与卡片工坊
 

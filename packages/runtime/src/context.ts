@@ -24,11 +24,12 @@ export interface DeliverySnapshot {
   readonly superseded?: string
 }
 export interface Resource extends DeliverySnapshot {
+  summary?: string
   access: { model: boolean; player: boolean }
   activation: "always" | "on_demand"
   disclosures: readonly Disclosure[]
   product?: string
-  of?: string // a section's entry resource (`card:<entry>`); never frozen into the snapshot
+  of?: string // a section's entry resource (`card:<entry>` or `pack:<row>/<entry>`); never frozen into the snapshot
 }
 export const revision = (value: unknown): string =>
   bytesToHex(
@@ -51,16 +52,30 @@ export const policy = (source: Source, p: ContextPolicy = {}) => ({
   activation: p.activation ?? "on_demand",
   residency: p.residency ?? "window",
 })
+const shortEntryId = (id: string) => {
+  const slash = id.indexOf("/")
+  return slash >= 0 ? id.slice(slash + 1) : id
+}
 export const loreResource = (
-  entry: ContextPolicy & { id: string; source?: "card" | "pack"; layers: readonly string[] },
+  entry: ContextPolicy & {
+    id: string
+    title?: string
+    summary?: string
+    source?: "card" | "pack"
+    layers: readonly string[]
+  },
   depth: number,
 ): Resource => {
   const source = entry.source ?? "card"
   const text = entry.layers.slice(0, depth).join("\n\n")
+  const explicitTitle = entry.title?.trim()
+  const summary = entry.summary?.trim()
   return {
     resourceId: `${source}:${entry.id}`,
-    revision: revision({ text, depth }),
-    title: hook(entry.layers[0]),
+    revision:
+      source === "pack" && explicitTitle ? revision({ title: explicitTitle, text, depth }) : revision({ text, depth }),
+    title: explicitTitle || (source === "pack" ? shortEntryId(entry.id) : hook(entry.layers[0])),
+    ...(summary ? { summary } : {}),
     text,
     source,
     ...policy(source, entry),
@@ -70,25 +85,32 @@ export const loreResource = (
 /** An entry's sections, one resource each (docs/sections-brief.md §2): visible with the entry, read on demand only,
  *  never by the player, no disclosure. The entry's own resource stays loreResource's, byte for byte. */
 export const sectionResources = (
-  entry: ContextPolicy & { id: string; source?: "card" | "pack"; sections?: readonly { id: string; text: string }[] },
+  entry: ContextPolicy & {
+    id: string
+    source?: "card" | "pack"
+    sections?: readonly { id: string; title?: string; text: string }[]
+  },
   depth: number,
 ): Resource[] => {
   const source = entry.source ?? "card"
   const p = policy(source, entry)
   return depth < 1
     ? []
-    : (entry.sections ?? []).map((x) => ({
-        resourceId: `${source}:${entry.id}#${x.id}`,
-        revision: revision({ text: x.text }),
-        title: hook(x.text),
-        text: x.text,
-        source,
-        access: { model: p.access.model, player: false },
-        activation: "on_demand",
-        residency: p.residency,
-        disclosures: [],
-        of: `${source}:${entry.id}`,
-      }))
+    : (entry.sections ?? []).map((x) => {
+        const explicitTitle = x.title?.trim()
+        return {
+          resourceId: `${source}:${entry.id}#${x.id}`,
+          revision: explicitTitle ? revision({ title: explicitTitle, text: x.text }) : revision({ text: x.text }),
+          title: explicitTitle || (source === "pack" ? x.id : hook(x.text)),
+          text: x.text,
+          source,
+          access: { model: p.access.model, player: false },
+          activation: "on_demand",
+          residency: p.residency,
+          disclosures: [],
+          of: `${source}:${entry.id}`,
+        }
+      })
 }
 /** Preserve every delivered version in the journal, while request assembly selects the latest. */
 export const uniqueDeliveries = (snapshots: readonly DeliverySnapshot[]) => [
@@ -104,14 +126,22 @@ export const freeze = (r: Resource, previous?: DeliverySnapshot): DeliverySnapsh
   residency: r.residency,
   ...(previous && previous.revision !== r.revision ? { superseded: previous.revision } : {}),
 })
-export const catalogEntry = (r: Resource): PlayerCatalogItem => ({
-  resourceId: r.resourceId,
-  title: r.title.slice(0, 160),
-  summary: (r.text.slice(r.title.length).trim() || r.title).replace(/\s+/g, " ").slice(0, 240),
-  category: r.source === "pack" ? r.resourceId.slice(5).split("/")[0] : "card",
-  source: r.source,
-  available: true,
-})
+export const catalogEntry = (r: Resource): PlayerCatalogItem => {
+  const title = r.title.slice(0, 160)
+  const summary = r.summary
+    ? r.summary.replace(/\s+/g, " ").slice(0, 240)
+    : r.source === "pack"
+      ? ""
+      : (r.text.slice(r.title.length).trim() || r.title).replace(/\s+/g, " ").slice(0, 240)
+  return {
+    resourceId: r.resourceId,
+    title,
+    summary,
+    category: r.source === "pack" ? r.resourceId.slice(5).split("/")[0] : "card",
+    source: r.source,
+    available: true,
+  }
+}
 /** The latest actually injected snapshot per identity; a logical ID alone never means resident. */
 export const latest = (snapshots: readonly DeliverySnapshot[]) => [
   ...new Map(snapshots.map((s) => [s.resourceId, s])).values(),
@@ -147,11 +177,12 @@ const termsOf = (q: string, haystacks: readonly string[]) => [
 ]
 const count = (h: string, t: string) => h.split(t).length - 1
 
-/** A catalog line: an entry by id and title (its hook; never a second cut of its text). `resident`: the request holds
- *  its face, and only its unread sections, listed under it, are left to read; an unread entry lists none. */
+/** A catalog line: an entry by id, title and optional front-matter summary. `resident`: the request holds its face,
+ *  and only its unread sections, listed under it, are left to read; an unread entry lists none. */
 export interface Unit {
   resourceId: string
   title: string
+  summary?: string
   resident?: boolean
   sections?: readonly { resourceId: string; title: string }[]
 }
@@ -166,9 +197,10 @@ export type Catalog =
 // instrument, not by feel.
 export const CATALOG_UNITS = 256
 export const CATALOG_CHARS = 10000
+const headOf = (u: { title: string; summary?: string }) => (u.summary ? `${u.title} — ${u.summary}` : u.title)
 const lineOf = (u: Unit) =>
   [
-    `${u.resourceId} ${u.title}${u.resident ? " (resident: sections only)" : ""}`,
+    `${u.resourceId} ${headOf(u)}${u.resident ? " (resident: sections only)" : ""}`,
     ...(u.sections ?? []).map((x) => `  ${x.resourceId} ${x.title}`),
   ].join("\n")
 /** The catalog as the LLM loop's first request reads it (and `card view --stage lookup`). */
@@ -204,9 +236,14 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
           r,
           sections,
           name: r.resourceId.toLowerCase().replace(/^.*[:/]/, ""),
-          anchor: `${r.resourceId}\n${r.title}`.toLowerCase(),
+          anchor: [r.resourceId, r.title, ...(r.summary ? [r.summary] : [])].join("\n").toLowerCase(),
           // a resident face is already in the request: only its name and its unread sections can match
-          text: [...(unheld(r) ? [r.text] : []), ...sections.map((x) => x.text)].join("\n").toLowerCase(),
+          text: [
+            ...(unheld(r) ? [r.text] : []),
+            ...sections.map((x) => (x.text.startsWith(x.title) ? x.text : `${x.title}\n${x.text}`)),
+          ]
+            .join("\n")
+            .toLowerCase(),
         }
       })
     const terms = termsOf(
@@ -221,24 +258,28 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
       terms.filter((t) => text.includes(t)).length,
       terms.reduce((n, t) => n + count(text, t), 0),
     ]
-    const hit = (x: Resource) => terms.some((t) => x.text.toLowerCase().includes(t))
+    const hit = (x: Resource) => terms.some((t) => `${x.title}\n${x.text}`.toLowerCase().includes(t))
     return pool
       .map((x) => ({ ...x, s: score(x) }))
       .filter(({ s }) => s[0] + s[2] > 0)
       .sort((a, b) => b.s.reduce((d, n, i) => d || n - a.s[i], 0))
       .slice(0, 8)
-      .map(({ r, sections }) => ({
-        title: r.title.slice(0, 160),
-        source: r.source,
-        resourceId: r.resourceId,
-        revision: r.revision,
-        ...(held.has(r.resourceId) && unheld(r) ? { supersedes: held.get(r.resourceId)!.revision } : {}),
-        ...(unheld(r) ? {} : { resident: true }), // only its sections are left to read
-        // ponytail: every unread section, bounded by lint's 8 per entry; page them when an entry may hold more
-        ...(sections.length
-          ? { sections: directory([...sections.filter(hit), ...sections.filter((x) => !hit(x))]) }
-          : {}),
-      }))
+      .map(({ r, sections }) => {
+        const summary = r.summary?.replace(/\s+/g, " ").slice(0, 240)
+        return {
+          title: r.title.slice(0, 160),
+          ...(summary ? { summary } : {}),
+          source: r.source,
+          resourceId: r.resourceId,
+          revision: r.revision,
+          ...(held.has(r.resourceId) && unheld(r) ? { supersedes: held.get(r.resourceId)!.revision } : {}),
+          ...(unheld(r) ? {} : { resident: true }), // only its sections are left to read
+          // ponytail: every unread section, bounded by lint's 8 per entry; page them when an entry may hold more
+          ...(sections.length
+            ? { sections: directory([...sections.filter(hit), ...sections.filter((x) => !hit(x))]) }
+            : {}),
+        }
+      })
   }
   /** A told snapshot as lookup reads it: narrate's line, then the entry's unread sections, if any. */
   const told = (s: DeliverySnapshot) => {
@@ -295,9 +336,11 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
   const units = (): Unit[] =>
     readable().map((r) => {
       const xs = sectionsOf(r.resourceId)
+      const summary = r.summary?.replace(/\s+/g, " ").slice(0, 240)
       return {
         resourceId: r.resourceId,
         title: r.title.slice(0, 160),
+        ...(summary ? { summary } : {}),
         // Sections are listed only under a face the request already holds: an unread entry shows its face alone, and
         // its sections come back on its read (the tool result) or enter the catalog the turn after. The reading
         // economy of sections (docs/sections-brief.md), and what keeps an encyclopedia card's catalog complete: the
@@ -350,7 +393,12 @@ export const resourcesAt = ({
     if (!depth) return []
     return [loreResource(e, depth), ...sectionResources(e, depth)]
   })
-  entries.push(...packs.map((e) => loreResource({ ...e, source: "pack", layers: [e.text] }, 1)))
+  entries.push(
+    ...packs.flatMap((e) => {
+      const packEntry = { ...e, source: "pack" as const, layers: [e.text] }
+      return [loreResource(packEntry, 1), ...sectionResources(packEntry, 1)]
+    }),
+  )
   const ps = products.filter((p) => p.on && p.recall !== undefined)
   const memory: Resource[] = ps.flatMap((p) => {
     const value = p.role === "world" ? worldValue(p, s.world[p.id]) : chronicle[p.id]

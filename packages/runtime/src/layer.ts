@@ -27,11 +27,20 @@ import { Entry as LexiconEntry } from "./polish.ts"
 import { ProductPatch, validate, type Catalog, type Product } from "./product.ts"
 import { sourceKindFrom, type OmittedItem, type SourceRef } from "./trace.ts"
 
+export const PackSection = Schema.Struct({
+  id: Schema.String,
+  title: Schema.optionalKey(Schema.String),
+  text: Schema.String,
+})
+export type PackSection = typeof PackSection.Type
 export const PackEntry = Schema.Struct({
   id: Schema.String,
+  title: Schema.optionalKey(Schema.String),
+  summary: Schema.optionalKey(Schema.String),
   text: Schema.String,
+  sections: Schema.optionalKey(Schema.Array(PackSection)),
   ...ContextPolicy.fields,
-}) // one layer; its first sentence is the hook (lore.ts `hook`)
+}) // one layer + optional on-demand sections; explicit front matter (`title`, `summary`)
 export type PackEntry = typeof PackEntry.Type
 export const Layer = Schema.Struct({
   id: Schema.String,
@@ -592,43 +601,118 @@ export const resolveWithTrace = (
   })
 
   // ───────── entries, the quick inputs, the format keys, the lexicon ─────────
-  // `/` joins row and entry: an entry id holding one would alias another row's entry, so it is refused (the server refuses
-  // a pack id with one)
+  // `/` joins row and entry, `#` joins entry and section: an entry id holding either is refused; sections mirror card
+  // lore's ceiling (8) and non-empty unique `#`-free ids with non-empty text.
+  const entryTexts = (e: PackEntry): string[] => [
+    ...(e.title !== undefined ? [e.title] : []),
+    ...(e.summary !== undefined ? [e.summary] : []),
+    e.text,
+    ...(e.sections ?? []).flatMap((s) => [...(s.title !== undefined ? [s.title] : []), s.text]),
+  ]
+  const entryProblem = (e: PackEntry): string | undefined => {
+    if (!e.id.trim()) return "an entry id is empty"
+    if (e.id.includes("/")) return "an entry id has no /"
+    if (e.id.includes("#")) return "an entry id has no #"
+    const secs = e.sections ?? []
+    if (secs.length > 8) return `${secs.length} sections (ceiling 8)`
+    const seen = new Set<string>()
+    for (const s of secs) {
+      if (!s.id.trim()) return "a section id is empty"
+      if (s.id.includes("#")) return "a section id has no #"
+      if (seen.has(s.id)) return `${s.id} is declared twice`
+      seen.add(s.id)
+      if (!s.text.trim()) return `section ${s.id} text is empty`
+    }
+    return undefined
+  }
   const written = up.flatMap(({ from, row }) =>
     (row.entries ?? []).flatMap((e) => {
-      if (!e.id.includes("/")) return [{ ...e, id: `${from}/${e.id}`, from }]
-      const why = "an entry id has no /"
+      const why = entryProblem(e)
+      if (!why) return [{ ...e, id: `${from}/${e.id}`, from }]
+      const label = e.title?.trim()
       dropped.push({ from, kind: "entry", id: e.id, why })
       omitted.push({
         category: "entry",
         id: e.id,
+        ...(label && { label }),
         reason: "invalid",
         detail: why,
         preview: e.text,
-        source: sourceOf(from, `entries.${e.id}`, { entryId: e.id, rawText: e.text }),
+        source: sourceOf(from, `entries.${e.id}`, { ...(label && { label }), entryId: e.id, rawText: e.text }),
       })
       return []
     }),
   )
   const declared = [...new Map(written.map((e) => [e.id, e])).values()]
   const entrySources = Object.fromEntries(
-    declared.map((e) => [
-      e.id,
-      sourceOf(e.from, `entries.${e.id.slice(e.from.length + 1)}`, {
-        entryId: e.id,
-        resourceId: `pack:${e.id}`,
-        rawText: e.text,
-      }),
-    ]),
+    declared.flatMap((e) => {
+      const short = e.id.slice(e.from.length + 1)
+      const label = e.title?.trim()
+      return [
+        [
+          e.id,
+          sourceOf(e.from, `entries.${short}`, {
+            ...(label && { label }),
+            entryId: e.id,
+            resourceId: `pack:${e.id}`,
+            rawText: e.text,
+          }),
+        ],
+        ...(e.sections ?? []).map((s) => {
+          const secLabel = s.title?.trim()
+          return [
+            `${e.id}#${s.id}`,
+            sourceOf(e.from, `entries.${short}.sections.${s.id}`, {
+              ...(secLabel && { label: secLabel }),
+              entryId: e.id,
+              sectionId: s.id,
+              resourceId: `pack:${e.id}#${s.id}`,
+              rawText: s.text,
+            }),
+          ] as const
+        }),
+      ]
+    }),
   )
   const entries = declared.flatMap((e) => {
+    const title = e.title === undefined ? undefined : expand(e.title, names, e.from)
+    const summary = e.summary === undefined ? undefined : expand(e.summary, names, e.from)
     const text = expand(e.text, names, e.from)
-    if (text !== undefined) return [{ ...e, text }]
+    const sections = e.sections?.map((s) => ({
+      id: s.id,
+      title: s.title === undefined ? undefined : expand(s.title, names, e.from),
+      text: expand(s.text, names, e.from),
+    }))
+    const ok =
+      (e.title === undefined || title !== undefined) &&
+      (e.summary === undefined || summary !== undefined) &&
+      text !== undefined &&
+      (sections ?? []).every(
+        (s, i) => (e.sections![i].title === undefined || s.title !== undefined) && s.text !== undefined,
+      )
+    if (ok)
+      return [
+        {
+          ...e,
+          ...(title !== undefined && { title }),
+          ...(summary !== undefined && { summary }),
+          text: text,
+          ...(sections !== undefined && {
+            sections: sections.map((s) => ({
+              id: s.id,
+              ...(s.title !== undefined && { title: s.title }),
+              text: s.text!,
+            })),
+          }),
+        },
+      ]
+    const label = e.title?.trim()
     omitted.push({
       category: "entry",
       id: e.id,
+      ...(label && { label }),
       reason: "unfilled_hole",
-      missingHoles: unfilled(e.text, names),
+      missingHoles: unfilled(entryTexts(e).join("\n"), names),
       preview: e.text,
       source: entrySources[e.id],
     })
@@ -660,7 +744,7 @@ export const resolveWithTrace = (
     ...card.greetings.flatMap((g) => [g.text ?? "", g.note ?? ""]),
     ...(card.passages ?? []).flatMap((g) => [g.text ?? "", g.note ?? ""]),
     ...card.lore.flatMap((e) => [...e.layers, ...(e.sections ?? []).map((x) => x.text)]),
-    ...written.map((e) => e.text),
+    ...written.flatMap(entryTexts),
     ...card.guard,
     ...(card.rules.readouts ?? []).flatMap((q) => [q.text, ...q.options.map((o) => o.text)]),
     ...raw.map((p) => p.text),
