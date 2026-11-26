@@ -1,7 +1,12 @@
 // src/polish.ts: the sentence splitter, the wildcard, the dialogue skip, the floor, density ceiling, switch, and splice.
 import { Schema } from "effect"
 import assert from "node:assert/strict"
+import { readFileSync, writeFileSync } from "node:fs"
+import type { Card } from "../src/card.ts"
 import { Entry, FLOOR, marked, scan, sentences, splice } from "../src/polish.ts"
+import { createStarterPack } from "../src/starter-pack.ts"
+import { readCard } from "../support/author.ts"
+import { cardNames, loadCard } from "./cards/index.ts"
 
 const spans = (t: string) => sentences(t).map(([a, b]) => t.slice(a, b))
 // Sentence bounds: CJK and ASCII terminators (a run counts once), the closing quote after a terminator, a line break.
@@ -120,5 +125,101 @@ const padTo = (s: string, len: number) => `${"雨".repeat(len - s.length - 1)}�
   const hugeHits = scan(huge, [{ pattern: "像" }], 0)
   assert.equal(hugeHits.length, 1)
   assert.equal(hugeHits[0].hits.length, 250_000)
+}
+
+// The corpus (#254): what scan finds in real prose (the four fixture cards, the two samples) and in prose written to
+// trip it, under a slop lexicon (wildcards, `max`, an apostrophe) and each card's field-in-prose lexicon as lint builds
+// it, is pinned in polish-corpus.json, so a change to how scan works cannot change what it finds. A line is
+// `<text>:<start>-<end> <hits> # <hints>`. `GOLDEN_WRITE=1 bun test/polish.ts` writes the file anew.
+{
+  const prose = (card: Card) => [
+    ...[...card.frame, ...card.fiction].flatMap((f) => (f.text ? [f.text] : [])),
+    ...card.lore.flatMap((e) => [...e.layers, ...(e.sections ?? []).map((x) => x.text)]),
+    ...[...card.greetings, ...(card.passages ?? [])].flatMap((g) => [g.text ?? "", g.note ?? ""]).filter(Boolean),
+  ]
+  const DIGITS = "0123456789".split("") // lint.ts `field-in-prose`, as it builds its lexicon
+  const COMPARE = ["大于", "小于", "高于", "低于", "超过", "不足", "达到", "不到", ">=", "<=", "≥", "≤", ">", "<"]
+  const fieldsOf = (card: Card): Entry[] =>
+    card.rules.fields.flatMap((f) => [
+      ...[...DIGITS, ...COMPARE].map((w) => ({ pattern: `${f.path}*${w}`, hint: f.path })),
+      ...DIGITS.map((d) => ({ pattern: `${d}*${f.path}` })),
+    ])
+  const 他 = { path: "他", type: "int", initial: 0 } as const // a field named so that prose is full of it
+  const 你 = { path: "你", type: "int", initial: 0 } as const
+  const slop: Entry[] = [
+    ...createStarterPack().lexicon!,
+    { pattern: "像", hint: "比喻过多", max: 3 },
+    { pattern: "仿佛", max: 1 },
+    { pattern: "的", hint: "的字", max: 40 },
+    { pattern: "了", max: 1000 }, // never over: counted, never marked
+    { pattern: "他*她" },
+    { pattern: "*的眼" },
+    { pattern: "*" }, // no literal: skipped
+    { pattern: "状态栏", enabled: false },
+    { pattern: "don’t" },
+    { pattern: "a*e" },
+    { pattern: "。」" },
+    { pattern: "1*2" },
+  ]
+  const tricky = [
+    "他说：「她说过『不是我，而是他』。」然后他的指节发白。“外‘内不是，而是’外”像刀。他看她。",
+    "He don’t know. 她说：“Don’t 像 that, rock ’n’ roll.” 他像风。rock ’n’ roll 像 a game. don’t",
+    "」像刀。』指节发白。”他不是你，而是我。’像。",
+    "「没关上的引号\n他的指节发白。「又一个『嵌套\n像风像雨像雾。",
+    "他指节发白像风不是我而是他的的的".repeat(300), // no sentence punctuation at all
+    "😀指节发白。𝒜像风，像雨，像雾，像云。👩‍👩‍👧不是你而是我。🀄他的她。\r\n像。",
+    "It is 3.5 miles. 像 a.b. 1 2 1、2。hp 3。hp超过3。「hp大于2」。",
+    `${"雨".repeat(400)}。风像刀，也像刃。雨像针。雪像盐。${"雨".repeat(400)}。仿佛，仿佛。`,
+    "你有3点体力，他超过你2倍，不到1刻钟他就≥你了；「你大于3」，他说。5个你，7他。",
+    "",
+  ]
+  const cards: [string, Card][] = [
+    ...(await Promise.all(cardNames.map(async (n): Promise<[string, Card]> => [n, await loadCard(n)]))),
+    ...(await Promise.all(
+      ["ferry", "life-of-pi"].map(async (n): Promise<[string, Card]> => [
+        n,
+        await readCard(new URL(`../../../samples/${n}/${n}.yaml`, import.meta.url)),
+      ]),
+    )),
+  ]
+  const cases: [string, string[], Entry[], number][] = [
+    ...cards.flatMap(([n, card]): [string, string[], Entry[], number][] => [
+      [`${n} slop`, prose(card), slop, 0],
+      [`${n} slop floor`, prose(card), slop, FLOOR], // as the polish stage scans a turn
+      [`${n} fields`, prose(card), fieldsOf(card), 0],
+      [`${n} fields 他 你`, prose(card), fieldsOf({ ...card, rules: { ...card.rules, fields: [他, 你] } }), 0],
+    ]),
+    ["tricky slop", tricky, slop, 0],
+    ["tricky fields", tricky, fieldsOf(cards[0][1]), 0],
+    ["tricky fields 他 你", tricky, fieldsOf({ ...cards[0][1], rules: { ...cards[0][1].rules, fields: [他, 你] } }), 0],
+  ]
+  const found = Object.fromEntries(
+    cases.map(([name, texts, lexicon, floor]) => [
+      name,
+      texts.flatMap((t, i) =>
+        scan(t, lexicon, floor).map((x) => `${i}:${x.start}-${x.end} ${x.hits.join("|")} # ${x.hints.join("|")}`),
+      ),
+    ]),
+  )
+  const golden = new URL("polish-corpus.json", import.meta.url)
+  if (process.env["GOLDEN_WRITE"] === "1") writeFileSync(golden, `${JSON.stringify(found, null, 2)}\n`)
+  const pinned = JSON.parse(readFileSync(golden, "utf8")) as Record<string, string[]>
+  for (const [name] of cases) assert.deepEqual(found[name], pinned[name], name)
+  assert.deepEqual(Object.keys(found), Object.keys(pinned))
+  assert.ok(Object.values(pinned).flat().length > 200) // the corpus finds plenty: it pins something
+}
+
+// An emoji inside dialogue is two code units: the hit after it belongs to the sentence it is in.
+// KNOWN WRONG until the mask keeps code units (#254): today's scan names the first sentence. This is the one case the
+// fix is allowed to change; the fix changes `today` to `right`.
+{
+  const t = "「😀😀😀😀😀😀」第一句没事。状态栏在第二句。"
+  const right = "状态栏在第二句。"
+  const today = "「😀😀😀😀😀😀」第一句没事。"
+  assert.notEqual(today, right)
+  assert.deepEqual(
+    scan(t, [{ pattern: "状态栏" }], 0).map((x) => [t.slice(x.start, x.end), x.hits]),
+    [[today, ["状态栏"]]],
+  )
 }
 console.log("polish ok")
