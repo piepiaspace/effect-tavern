@@ -219,7 +219,24 @@ export const Prose = (props: {
   )
   const last = createMemo(() => bs().length - 1)
   const nodeId = createMemo(() => props.node?.id)
-  const illustrations = createMemo(() => props.node?.media?.illustrations)
+  // equal by its picks: a node read back (a reload, a reconnect, a sibling's record landing) carries a fresh but same
+  // array, and resolving the same pictures again is the costly part ([WASTED_RECOMPUTE] on `byParagraph`)
+  const illustrations = createMemo(() => props.node?.media?.illustrations, {
+    equals: (a, b) =>
+      a === b ||
+      (!!a &&
+        !!b &&
+        a.length === b.length &&
+        a.every((x, i) => {
+          const y = b[i]
+          return (
+            x.productId === y.productId &&
+            x.catalog === y.catalog &&
+            x.id === y.id &&
+            x.afterParagraph === y.afterParagraph
+          )
+        })),
+  })
   const catalogs = createMemo(() => props.view?.catalogs, {
     equals: (a, b) => a === b || (!!a && !!b && JSON.stringify(a) === JSON.stringify(b)),
   })

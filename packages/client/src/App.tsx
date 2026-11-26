@@ -53,6 +53,8 @@ import {
   latestViewsReady,
   dismiss,
   draft,
+  draftParent,
+  drafting,
   drawn,
   editing,
   error,
@@ -260,7 +262,7 @@ const Latest = () => {
   const [away, setAway] = createSignal(false)
   const lib = read(stories)
   const all = read(log)
-  const d = read(draft)
+  const open = read(drafting)
   let settledHead: Id | null = null
   // another story opened: the reader lands at its live edge whatever the hand was doing (the row was just clicked):
   // following is on when its nodes arrive, and that arrival sticks by itself (two stories of one opening are the same
@@ -281,7 +283,7 @@ const Latest = () => {
     () => {
       const curLog = all()
       const { head, nodes } = curLog
-      const settled = head !== null && !working() && d() === null && nodes.get(head)?.settlementStatus !== "pending"
+      const settled = head !== null && !working() && !open() && nodes.get(head)?.settlementStatus !== "pending"
       return { curLog, settled }
     },
     ({ curLog, settled }, prev) => {
@@ -369,7 +371,7 @@ const Latest = () => {
     }
     // opening included: the first growth is the story loading, and following from the start lands at its live edge;
     // the scroller shrinking is the same event from the other side. Late record/demand amendments on an already-landed
-    // turn (`d() === null && head === settledHead`) or an active text selection never yank scroll: CSS overflow-anchor
+    // turn (no draft and `head === settledHead`) or an active text selection never yank scroll: CSS overflow-anchor
     // keeps the visible prose paragraph stationary.
     const ro = new ResizeObserver(() => {
       fit()
@@ -377,7 +379,7 @@ const Latest = () => {
       const mainChanged = booted && mainHeight !== lastMainHeight
       lastMainHeight = mainHeight
       const head = all().head
-      const amendedSettledTurn = booted && d() === null && mainChanged && head !== null && head === settledHead
+      const amendedSettledTurn = booted && !open() && mainChanged && head !== null && head === settledHead
       booted = true
       if (amendedSettledTurn) {
         follow.on = gap() <= 40
@@ -746,7 +748,9 @@ const Reader = () => {
   // the draft hangs under its parent: a sibling of a past turn cuts the line there while it is written
   // equal by its nodes: the draft changes every frame while prose streams, and a fresh but same slice must not
   // re-run every section ([UNSTABLE_MEMO_OUTPUT] under the diagnostics)
-  const shown = createMemo(() => drawn(line(), d()), {
+  const parent = read(draftParent)
+  const open = read(drafting)
+  const shown = createMemo(() => drawn(line(), parent() === undefined ? null : { parent: parent()! }), {
     equals: (a, b) => a.length === b.length && a.every((n, i) => n === b[i]),
   })
   const storyView = createMemo(() => {
@@ -760,7 +764,7 @@ const Reader = () => {
           {/* keyed by id: a snapshot read back (after a stop) refreshes each section in place instead of rebuilding them */}
           <For each={shown()} keyed={(n) => n.id}>
             {(n, i) => (
-              <Section view={storyView()} node={n()} n={i() + 1} last={d() === null && i() === shown().length - 1} />
+              <Section view={storyView()} node={n()} n={i() + 1} last={!open() && i() === shown().length - 1} />
             )}
           </For>
           <Show when={d()}>{(dr) => <Draft d={dr()} phase={phase()} error={err()} lost={gone()} />}</Show>
