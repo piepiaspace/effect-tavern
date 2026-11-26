@@ -98,7 +98,7 @@ try {
     writeFileSync(join(dir, "bad.yml"), source)
     const result = await run("check", "bad.yml", "--json")
     assert.equal(result.exitCode, 1)
-    assert.equal(JSON.parse(result.stdout).diagnostics[0].rule, "schema")
+    assert.equal(JSON.parse(result.stdout).diagnostics[0].rule, source === "foo: [" ? "yaml" : "schema")
   }
   assert.equal(JSON.parse((await run("check", "missing.yml", "--json")).stdout).diagnostics[0].rule, "io")
   const card: Card = {

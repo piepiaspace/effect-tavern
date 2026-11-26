@@ -1,5 +1,6 @@
-import { compileView, checkMediaBindings } from "./view-template.ts"
-import { checkConsumesIds, consumableSurface } from "./view-shell.ts"
+import { inspectView, type ViewProblem } from "./view-template.ts"
+import { checkViewBindings, closest } from "./view-check.ts"
+import { consumableSurface } from "./view-shell.ts"
 // Card lint (issue #27): what a card author's type checker says about a card. Pure: a card in, facts and fixes out; no
 // I/O, no console. The throws in `makeCard` / `resolve` stay decode-time invariants; lint reports what decodes but is
 // wired wrong (topology: events, fields, bands, layers) or written where code should do the work (prose: numbers and
@@ -10,7 +11,7 @@ import { type Cond, holds, reads, STATE_HOLE } from "./cond.ts"
 import { SLOTS } from "./fragment.ts"
 import { hook } from "./lore.ts"
 import { mediaBaseUrlError, mediaFileError } from "./media.ts"
-import { colsAt, type Product, type Shape } from "./product.ts"
+import { colsAt, type Product, type RecordShape, type Shape } from "./product.ts"
 import { HOLE, unfilled } from "./names.ts"
 import { type Entry, scan } from "./polish.ts"
 
@@ -388,23 +389,50 @@ const rules: Rule[] = [
     // heading may also name `<product>.<key>`, a key of one of the card's record products
     const heading = card.heading?.replace(/^world\./, "").split(".")[0]
     if (card.heading && !(card.products ?? []).some((p) => p.id === heading)) used.push(["heading", card.heading])
-    return used
-      .filter(([path, r]) => {
-        if (known.has(r)) return false
-        const read = conds(card).some(([p]) => p === path)
-        return !(
-          read &&
-          r.startsWith("world.") &&
-          (card.products ?? []).some((p) => p.role === "world" && p.id === r.split(".")[1])
-        )
-      })
-      .map(([path, r]) => ({
-        rule: "unknown-path",
-        level: "error" as const,
-        path,
-        message: `${r} is not a declared field (nor lore.<id>.since / .shown)`,
-        hint: "declare it in rules.fields, or fix the spelling",
-      }))
+    // A condition may read a world product: a record's keys are checked, nested records followed; a table's rows are
+    // addressed by entity id, which no card knows, so a path into a table is left alone.
+    const worldMiss = (r: string): { at?: string; key?: string; own?: string[] } | undefined => {
+      const [, id, ...keys] = r.split(".")
+      const product = (card.products ?? []).find((p) => p.role === "world" && p.id === id)
+      if (!product) return {}
+      let shape: Shape | undefined = product.shape
+      let at = `world.${id}`
+      for (const k of keys) {
+        if (!shape) return { at, key: k, own: [] } // a column holds a value, no keys
+        if (shape.kind !== "record") return
+        const key: RecordShape["keys"][number] | undefined = shape.keys.find((x) => x.key === k)
+        if (!key) return { at, key: k, own: shape.keys.map((x) => x.key) }
+        shape = "shape" in key ? key.shape : undefined
+        at += "." + k
+      }
+    }
+    return used.flatMap(([path, r]): Diagnostic[] => {
+      if (known.has(r)) return []
+      const read = conds(card).some(([p]) => p === path)
+      const miss = read && r.startsWith("world.") ? worldMiss(r) : {}
+      if (!miss) return []
+      if (miss.key !== undefined && miss.at && miss.own) {
+        const near = closest(miss.key, miss.own)
+        return [
+          {
+            rule: "unknown-path",
+            level: "error",
+            path,
+            message: `${r}: ${miss.key} is not a key of ${miss.at}${miss.own.length ? ` (keys ${miss.own.join(", ")})` : ""}${near ? `: did you mean ${miss.at}.${near}?` : ""}`,
+            hint: "the condition never holds on a key the product does not have",
+          },
+        ]
+      }
+      return [
+        {
+          rule: "unknown-path",
+          level: "error",
+          path,
+          message: `${r} is not a declared field (nor lore.<id>.since / .shown)`,
+          hint: "declare it in rules.fields, or fix the spelling",
+        },
+      ]
+    })
   },
   // A lore offer, a fiction band or an unlock that reads an event nothing emits never holds (b52f7db deleted such an
   // action by hand). The reverse is a warn: the event still reaches the narrator and the ledger, nothing else reads it.
@@ -681,31 +709,57 @@ const rules: Rule[] = [
     const consumers: { catalog: string; expected: "image" | "audio"; path: string }[] = []
 
     const consumed = new Set<string>()
+    const viewIds = (card.views ?? []).map((v) => v.id)
     for (const view of card.views ?? []) {
       const path = "views." + view.id
-      try {
-        const tree = compileView(view)
-        if (
-          dupes((card.views ?? []).map((v) => v.id)).includes(view.id) ||
-          dupes((view.media ?? []).map((s) => s.id)).length
-        )
-          throw new Error("duplicate view or media slot")
-        checkConsumesIds(view.consumes)
-        for (const cid of view.consumes ?? []) {
-          if (consumed.has(cid)) throw new Error("duplicate consumed product across views: " + cid)
-          consumed.add(cid)
-          if (!consumableSurface(products.get(cid), media.illustrations))
-            throw new Error("expected an available consumable product: " + cid)
+      const bad = (message: string, at = path, hint?: string, level: Diagnostic["level"] = "error") =>
+        out.push({ rule: "bad-view", level, path: at, message, ...(hint && { hint }) })
+      if (dupes(viewIds).includes(view.id)) bad(`${view.id} is declared twice`, path, "give each view its own id")
+      for (const slot of dupes((view.media ?? []).map((s) => s.id)))
+        bad(`media slot ${slot} is declared twice`, `${path}.media`, "give each slot of a view its own id")
+      for (const [i, cid] of (view.consumes ?? []).entries()) {
+        const at = `${path}.consumes[${i}]`
+        if (!cid.trim()) {
+          bad("consumes holds an empty product id", at)
+          continue
         }
-        const bound = checkMediaBindings(tree, view, media.portraits ?? [], catalogs, [...products.values()])
-        for (const catalog of bound) consumers.push({ catalog, expected: "image", path })
-        for (const slot of view.media ?? []) {
-          if (!catalogs.has(slot.catalog)) throw new Error("unknown view catalog " + slot.catalog)
-          consumers.push({ catalog: slot.catalog, expected: "image", path })
+        if (consumed.has(cid)) {
+          if (view.consumes!.indexOf(cid) !== i) bad(`${cid} is listed twice in consumes`, at)
+          else bad(`duplicate consumed product across views: ${cid}`, at, "a product is drawn by one view only")
+          continue
         }
-      } catch (error) {
-        out.push({ rule: "bad-view", level: "error", path, message: String(error) })
+        consumed.add(cid)
+        const p = products.get(cid)
+        if (!consumableSurface(p, media.illustrations))
+          bad(
+            !p
+              ? `${cid} is not a product of this card: a view consumes a role: theater product the card declares`
+              : p.role !== "theater"
+                ? `${cid} has role: ${p.role}, and only role: theater products can be consumed`
+                : `${cid} is bound in media.illustrations, which draws it as pictures in the prose; a view cannot consume it too`,
+            at,
+            p?.role === "world" ? `read it as world.${cid} in a residency: latest view` : undefined,
+          )
       }
+      for (const [i, slot] of (view.media ?? []).entries()) {
+        if (!catalogs.has(slot.catalog))
+          bad(
+            `${slot.catalog} is not a catalog of this card`,
+            `${path}.media[${i}].catalog`,
+            "declare it in catalogs, or fix the spelling",
+          )
+        else consumers.push({ catalog: slot.catalog, expected: "image", path })
+      }
+      const inspected = inspectView(view)
+      const bound = checkViewBindings(inspected, view, card)
+      for (const catalog of bound.imageCatalogs) consumers.push({ catalog, expected: "image", path })
+      const order = (p: ViewProblem) => [p.block === "css" ? 1 : 0, p.line ?? 0, p.column ?? 0]
+      const byPlace = (a: ViewProblem, b: ViewProblem) => {
+        const [x, y] = [order(a), order(b)]
+        return x[0] - y[0] || x[1] - y[1] || x[2] - y[2]
+      }
+      for (const p of [...inspected.problems, ...bound.problems].sort(byPlace))
+        bad(p.message, p.block ? `${path}.${p.block}${p.line ? `:${p.line}:${p.column}` : ""}` : path, p.hint, p.level)
     }
     const illustrationShapeOk = (s: Shape | undefined): boolean => {
       if (s?.kind !== "table" || s.columns.length !== 2) return false

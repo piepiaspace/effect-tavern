@@ -1,6 +1,6 @@
 // compileView's whitelist (#248): what a view may write, and the fetch and escape paths that stay shut.
 import assert from "node:assert/strict"
-import { compileView } from "../src/view-template.ts"
+import { compileView, inspectView } from "../src/view-template.ts"
 
 const css = (rule: string) => () => compileView({ html: "<p></p>", css: rule })
 const html = (markup: string) => () => compileView({ html: markup })
@@ -123,5 +123,121 @@ for (const markup of [
   ].map((v) => `<svg><path fill="${v}"/></svg>`),
 ])
   assert.throws(html(markup), markup)
+
+// inspectView (#248): every problem, each placed in its block; `fatal` is exactly what compileView throws on.
+const said = (v: { html: string; css?: string }) =>
+  inspectView(v).problems.map(
+    (p) => `${p.level}${p.fatal ? "!" : ""} ${p.block}:${p.line}:${p.column} ${p.message} | ${p.hint ?? ""}`,
+  )
+for (const [markup, want] of [
+  // Structure: parse5 raises no parse error for any of these; they are read off the tree's source locations.
+  ["<div>a", ["error html:1:1 <div> is never closed: the browser closes it at the end of the html"]],
+  [
+    "<div></dvi>",
+    [
+      "error html:1:1 <div> is never closed",
+      "error html:1:6 </dvi> does not close the open <div> (from 1:1), so the browser ignores it",
+    ],
+  ],
+  [
+    "<span><div></span></div>",
+    ["error html:1:1 <span> is never closed", "error html:1:12 </span> does not close the open <div> (from 1:7)"],
+  ],
+  [
+    "<b><i>x</b></i>",
+    [
+      "error html:1:4 <i> is never closed: the browser closes it at 1:8",
+      "error html:1:12 </i> has nothing open to close",
+    ],
+  ],
+  [
+    "<p><div>x</div></p>",
+    [
+      "warn html:1:1 <p> has no end tag, and the browser closes it at 1:4, before <div> | write </p>: a <p> cannot hold a block element",
+      "error html:1:16 </p> has nothing open to close",
+    ],
+  ],
+  [
+    "<table><div>x</div></table>",
+    [
+      "error html:1:8 <div> cannot sit inside <table> where it is written, so the browser moves it out | a table holds only rows and cells",
+      "error html:1:13 text 「x」 cannot sit inside <table>",
+    ],
+  ],
+  [
+    "<body><div></div></body>",
+    ["error html:1:1 <body> is dropped", "error html:1:18 </body> has nothing open to close"],
+  ],
+  ["<div></br></div>", ["warn html:1:6 </br> is read as a line break <br> | write <br>"]],
+  // An end tag the HTML makes optional, closed by a sibling or the parent's end, is how a browser reads it: silent.
+  ["<ul>\n  <li>a\n  <li>b\n</ul><dl><dt>a<dd>b</dl><table><tr><td>a<td>b</tr></table><p>a<p>b", []],
+  ["<svg><path/><path></path><g><rect></g></svg>", []],
+  // Macros: a view's html is never name-filled and runs none.
+  [
+    "<p title='{{user}}'>{{char}} {{getvar::hp}} {{ fields.潮位 }}</p><!-- {{note}} -->",
+    [
+      'error html:1:11 {{user}} is shown as written: a view does not interpolate | write <span data-text="names.user"></span>',
+      'error html:1:21 {{char}} is shown as written: a view does not interpolate | write <span data-text="names.char"></span>',
+      "error html:1:30 {{getvar::hp}} is shown as written: a view does not interpolate or run macros",
+      'error html:1:45 {{ fields.潮位 }} is shown as written: a view does not interpolate | write <span data-text="fields.潮位"></span>',
+    ],
+  ],
+  // The whitelist: every rejection placed (an attribute at the attribute) and each common one with its replacement.
+  [
+    "<div class='a'\n     style='color: red' onclick='x()' data-foo='1'>\n  <img src='x.png'><a href='#x'>a</a><script>a</b></script><button>b</button><style>p{}</style>\n</div>",
+    [
+      "error! html:2:6 <div>: style is not allowed in a view | give the element a class and style it in the view's css block, or bind a number with data-var-<name>",
+      "error! html:2:25 <div>: onclick is not allowed in a view | a view runs no code: build tabs from radio inputs and :checked in css, folding from <details>",
+      "error! html:2:39 <div>: data-foo is not a view directive | static data-* attributes are not allowed: use a class",
+      "error! html:3:3 <img> is not a view element | show a catalog image with data-media",
+      "error! html:3:20 <a> is not a view element | a view links nowhere",
+      "error! html:3:38 <script> is not a view element | a view runs no code",
+      "error! html:3:60 <button> is not a view element | a view has no buttons yet",
+      "error! html:3:78 <style> is not a view element | move these rules into the view's css block",
+    ],
+  ],
+  [
+    "<p data-text='fields.hp < 20'></p><p data-if='!x'></p><p data-var-w='a / b'></p>",
+    [
+      '!error! html:1:4 <p>: data-text="fields.hp < 20" is not a path | views take plain paths only, no expressions',
+      '!error! html:1:38 <p>: data-if="!x" is not a path',
+      '!error! html:1:58 <p>: data-var-w="a / b" is not a path',
+    ],
+  ],
+] as [string, string[]][]) {
+  const got = said({ html: markup })
+  const strip = (w: string) => w.replace(/^!/, "")
+  for (const w of want.map(strip))
+    assert.ok(
+      got.some((g) => g.startsWith(w.split(" | ")[0]) && (!w.includes(" | ") || g.includes(w.split(" | ")[1]))),
+      `${markup}\nwant: ${w}\ngot:\n${got.join("\n")}`,
+    )
+  assert.equal(got.length, want.length, `${markup}\n${got.join("\n")}`)
+}
+assert.deepEqual(
+  said({
+    html: "<p></p>",
+    css: "p { color: red; }\n.a { background: url(https://x.example/a.png); }\n@font-face { font-family: x; }\n@import 'x.css';",
+  }),
+  [
+    "error! css:2:18 unsupported view CSS: url(https://x.example/a.png) | a view loads no file: an image comes from a catalog through data-media; for a background, put a data-media element behind the content with position: absolute",
+    "error! css:3:1 unsupported view CSS: @font-face | a view loads no font: use the host's fonts through var(--font-sans), var(--font-prose) or var(--font-mono)",
+    "error! css:4:1 unsupported view CSS: @import | a view loads no stylesheet: put the rules in its css block",
+  ],
+)
+// Lint's checks never reach the session: a card that passed the gate before compiles the tree it did.
+assert.doesNotThrow(() => compileView({ html: "<div>{{char}}<p><div>x</div></p>" }))
+assert.deepEqual(JSON.parse(JSON.stringify(compileView({ html: "<ul><li data-text='a'>x<li>y</ul>" }))), [
+  {
+    tag: "ul",
+    svg: false,
+    attrs: {},
+    children: [
+      { tag: "li", svg: false, attrs: { "data-text": "a" }, children: ["x"] },
+      { tag: "li", svg: false, attrs: {}, children: ["y"] },
+    ],
+  },
+])
+assert.throws(() => compileView({ html: "<p style='x'></p>" }), /^Error: <p>: style is not allowed in a view at 1:4$/)
 
 console.log("view template ok")
