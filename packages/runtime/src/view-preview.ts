@@ -2,15 +2,23 @@
 // drawn as static HTML. Pure and browser-safe; the CLI builds the node through a real session (support/scenario.ts) and
 // hands it in as the reader receives it (session `timelineNode`, `cardView`). Every rule of what a view shows comes from
 // view-bindings.ts, the functions the client's ViewBlock (packages/client/src/view-shell.tsx) draws with, so the preview
-// cannot drift from the app. The mount rule mirrors the client's `eligibleNodeViews` (readings.tsx).
+// cannot drift from the app. Whether a view is mounted (`viewMount`), the default rules of its shadow root
+// (`VIEW_DEFAULTS`) and the void elements are view-shell.ts's, the reader's own. The MediaFrame markup at rest
+// (lightbox.tsx) is drawn here as a string, as is a fill button (`@ui-sdk`'s Button renders a native one).
+//
+// The page is inert whatever the card says: `card view` reads a card undecoded by the gate, so nothing from the card or
+// the model reaches the page but as escaped text or an escaped attribute value of an element and attribute this file
+// names; a catalog item's `aspect` and `focus` are drawn only when the gate would take them, an image only at a URL
+// `resolveCatalogUrl` builds, and no stylesheet can close its <style> (test/view-preview-hostile.ts).
 //
 // What the static page does not reproduce: the lightbox (`data-lightbox` draws the frame but opens nothing), a masked
-// gallery image (always shown), the media frame's dot placeholder and reveal, interaction state across re-renders, and
-// the host's own fonts beyond the token stacks.
-import { resolveCatalogUrl, type MediaVariantTarget } from "./media.ts"
+// gallery image (always shown), the media frame's dot placeholder and reveal, pressing a fill button, interaction state
+// across re-renders, and the host's own fonts beyond the token stacks.
+import { mediaAspectError, mediaFocusError, resolveCatalogUrl, type MediaVariantTarget } from "./media.ts"
 import type { Catalog, Product } from "./product.ts"
 import type { TimelineNode } from "./projection.ts"
 import {
+  accessibleName,
   contentDirective,
   readPath,
   rowAliases,
@@ -20,7 +28,16 @@ import {
   visibleElement,
   type Scope,
 } from "./view-bindings.ts"
-import { residency, type CompiledView, type TemplateNode } from "./view-shell.ts"
+import {
+  residency,
+  VIEW_DEFAULTS,
+  viewApplies,
+  viewMount,
+  voidElements,
+  type CompiledView,
+  type MountReason,
+  type TemplateNode,
+} from "./view-shell.ts"
 
 export interface PreviewInput {
   views: readonly CompiledView[]
@@ -62,6 +79,7 @@ export type Directive =
   | "data-unless"
   | "data-each"
   | "data-media"
+  | "data-fill"
   | `data-attr-${string}`
   | `data-var-${string}`
 export interface Binding {
@@ -81,8 +99,13 @@ export interface Binding {
   rows?: number // data-each
   rowKeys?: string[] // data-each: the first row's keys
   media?: { catalog: string; item: string; url?: string } | null // data-media: the hit, or null for no hit
+  /** data-fill: the words a press puts in the composer, and why the button is disabled here (absent: live). */
+  fill?: { text: string; disabled?: FillReason }
 }
-export type Reason = "guard-false" | "turn-nothing" | "latest-not-head"
+/** Why a view's fill button is drawn disabled: not on the head (the latest turn), nothing but blank at its path, or no
+ *  accessible name with this data. The client also disables it while a turn is in flight, which a preview never is. */
+export type FillReason = "not-latest" | "blank" | "unnamed"
+export type Reason = MountReason
 export interface ViewReport {
   id: string
   label?: string
@@ -117,18 +140,33 @@ const bindingsOf = (input: PreviewInput, view: CompiledView) => {
   })
 }
 
-/** Whether the reader mounts `view` on this node, and why not: `eligibleNodeViews` in the client. */
+/** Whether the reader mounts `view` on this node, and why not: view-shell.ts `viewMount`, as the client's
+ *  `eligibleNodeViews` and the session decide it. */
 export const mountOf = (
   view: CompiledView,
   node: TimelineNode,
   head: boolean,
 ): { mounted: boolean; when?: boolean; reason?: Reason } => {
-  const when = view.when ? !!node.applicableViews?.includes(view.id) : undefined
-  if (when === false) return { mounted: false, when, reason: head ? "guard-false" : "latest-not-head" }
-  if (residency(view) === "latest")
-    return head ? { mounted: true, when } : { mounted: false, when, reason: "latest-not-head" }
-  const some = !view.consumes?.length || view.consumes.some((id) => node.theater[id] !== undefined)
-  return some ? { mounted: true, when } : { mounted: false, when, reason: "turn-nothing" }
+  const applies = viewApplies(view, node)
+  const reason = viewMount(view, { applies, head, theater: node.theater })
+  return { mounted: !reason, ...(view.when && { when: applies }), ...(reason && { reason }) }
+}
+
+/** A view's fill button on this node, as the client draws it: what a press fills, and why it is disabled if it is. */
+export const fillOf = (
+  n: Exclude<TemplateNode, string>,
+  scope: Scope,
+  latest: boolean,
+): { text: string; disabled?: FillReason } => {
+  const text = scalar(readPath(scope, n.attrs["data-fill"])) ?? ""
+  const disabled: FillReason | undefined = !latest
+    ? "not-latest"
+    : !text.trim()
+      ? "blank"
+      : accessibleName(n, scope) === ""
+        ? "unnamed"
+        : undefined
+  return { text, ...(disabled && { disabled }) }
 }
 
 /** Every binding of the template in order, resolved against the scope the client would build. A `data-each` body is
@@ -137,6 +175,7 @@ export const bindingReport = (
   view: CompiledView,
   bindings: ReturnType<typeof viewBindings>,
   catalogs: readonly Catalog[] | undefined,
+  latest = false,
 ): Binding[] => {
   const out: Binding[] = []
   const visit = (
@@ -169,6 +208,15 @@ export const bindingReport = (
           add(d, a[d], v, { effect: truth(v) === (d === "data-if") ? "shows" : "hides" })
         }
       const visible = shown && visibleElement(a, scope)
+      if (a["data-fill"] !== undefined) {
+        const fill = fillOf(n, scope, latest)
+        add("data-fill", a["data-fill"], readPath(scope, a["data-fill"]), {
+          fill,
+          effect: fill.disabled
+            ? `disabled: ${fillWords[fill.disabled]}`
+            : `fills the composer with ${JSON.stringify(fill.text.length > 40 ? fill.text.slice(0, 39) + "…" : fill.text)}`,
+        })
+      }
       for (const [key, path] of Object.entries(a)) {
         if (key.startsWith("data-attr-")) {
           const v = readPath(scope, path)
@@ -306,20 +354,26 @@ export const previewViews = (input: PreviewInput): ViewReport[] =>
       mounted: m.mounted,
       ...(m.reason && { reason: m.reason }),
       notes,
-      bindings: bindingReport(view, b, input.catalogs),
+      bindings: bindingReport(view, b, input.catalogs, input.head),
       scope: scopeShape(view, b.scope, b.aliases),
     }
   })
 
 // ───────── static HTML ─────────
 
+// Every string from the card or the model reaches the page through one of these: text through `escapeText`, an attribute
+// value through `attrs` (always double-quoted), a stylesheet through `styleText`. An attribute name or a tag is the
+// compiled template's (the gate's whitelist, enforced by compileView) or one written here.
 const escapeText = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-const escapeAttr = (s: string) => escapeText(s).replace(/"/g, "&quot;")
-const voids = new Set(["input", "br", "hr"])
-const attrs = (o: Record<string, string | true>) =>
+const escapeAttr = (s: string) => escapeText(s).replace(/"/g, "&quot;").replace(/'/g, "&#39;")
+const attrs = (o: Record<string, string | true | undefined>) =>
   Object.entries(o)
-    .map(([k, v]) => (v === true ? ` ${k}` : ` ${k}="${escapeAttr(v)}"`))
+    .map(([k, v]) => (v === undefined ? "" : v === true ? ` ${k}` : ` ${k}="${escapeAttr(v)}"`))
     .join("")
+/** A stylesheet's text inside a <style> element, which ends at the first `</style` whatever follows (RAWTEXT): any
+ *  `<` becomes the CSS escape `\3c `, which is the same character in a string or an identifier and nowhere else valid
+ *  CSS, so no sheet can close the element or open another one. */
+const styleText = (css: string) => css.replace(/</g, "\\3c ")
 
 /** One view's template drawn on the node as static markup: ViewBlock's `branch` as a string. `latest` is whether the
  *  node is the head, for a view of any residency (`data-open="latest"` opens there, as in the client). */
@@ -337,25 +391,42 @@ export const renderView = (
       entry && {
         src: safeUrl(catalogs, target),
         label: entry.label ?? entry.id,
-        focus: entry.focus,
-        aspect: entry.aspect,
+        // drawn only as the gate takes them: `card view` reads a card the gate never saw
+        focus: entry.focus && !mediaFocusError(entry.focus) ? entry.focus : undefined,
+        // as the client's `presentation` writes it: `W / H`
+        aspect:
+          entry.aspect !== undefined && !mediaAspectError(entry.aspect)
+            ? entry.aspect
+                .split("/")
+                .map((s) => s.trim())
+                .join(" / ")
+            : undefined,
       }
     )
   }
   const frame = (m: NonNullable<ReturnType<typeof image>>, fit: string) => {
     // MediaFrame (lightbox.tsx) at rest: the frame, then the image when it has a file, else the label as its fallback
-    const aspect = m.aspect
-      ?.split("/")
-      .map((s) => s.trim())
-      .join(" / ")
-    const style = fit === "natural" && aspect ? `aspect-ratio:${aspect}` : undefined
     const fallback = (hidden: boolean) =>
-      `<span class="media-fallback" role="img" aria-label="${escapeAttr(m.label)}"${hidden ? " hidden" : ""}><span class="media-alt">${escapeText(m.label)}</span></span>`
-    // a file that fails to load turns the frame to its fallback, as MediaFrame does
+      `<span${attrs({ class: "media-fallback", role: "img", "aria-label": m.label, hidden: hidden || undefined })}><span class="media-alt">${escapeText(m.label)}</span></span>`
+    // a file that fails to load turns the frame to its fallback, as MediaFrame does (the handler is this file's text)
     const inner = m.src
-      ? `<img class="media-img" src="${escapeAttr(m.src)}" alt="${escapeAttr(m.label)}"${m.focus ? ` style="object-position: ${m.focus.map((n) => `${n * 100}%`).join(" ")}"` : ""} decoding="async" draggable="false" onerror="this.parentNode.dataset.state='error';this.nextElementSibling.hidden=false;this.remove()">${fallback(true)}`
+      ? `<img${attrs({
+          class: "media-img",
+          src: m.src,
+          alt: m.label,
+          style: m.focus && `object-position: ${m.focus.map((n) => `${n * 100}%`).join(" ")}`,
+          decoding: "async",
+          draggable: "false",
+          onerror: "this.parentNode.dataset.state='error';this.nextElementSibling.hidden=false;this.remove()",
+        })}>${fallback(true)}`
       : fallback(false)
-    return `<div class="media-frame view-image"${style ? ` style="${style}"` : ""}${aspect ? ` data-aspect="${escapeAttr(aspect)}"` : ""} data-state="${m.src ? "ready" : "error"}" data-fit="${fit}">${inner}</div>`
+    return `<div${attrs({
+      class: "media-frame view-image",
+      style: fit === "natural" && m.aspect ? `aspect-ratio:${m.aspect}` : undefined,
+      "data-aspect": m.aspect,
+      "data-state": m.src ? "ready" : "error",
+      "data-fit": fit,
+    })}>${inner}</div>`
   }
   const branch = (nodes: TemplateNode[], scope: Scope, aliases: Record<string, string>, rowPrefix = ""): string =>
     nodes
@@ -366,7 +437,7 @@ export const renderView = (
         const loop = directive === "each" ? ++loopSequence : 0
         const media = a["data-media"] ? image(a["data-media"], aliases) : undefined
         if (!visibleElement(a, scope) || (a["data-media"] && !media)) return ""
-        const out: Record<string, string | true> = n.svg ? { xmlns: "http://www.w3.org/2000/svg" } : {}
+        const out: Record<string, string | true | undefined> = n.svg ? { xmlns: "http://www.w3.org/2000/svg" } : {}
         const style: string[] = []
         for (const [key, value] of Object.entries(a)) {
           if (key.startsWith("data-var-")) {
@@ -386,6 +457,11 @@ export const renderView = (
           else delete out.open
         }
         if (style.length) out.style = style.join("; ")
+        if (n.tag === "button") {
+          // ViewBlock's Button: always type="button", disabled unless a press would fill the composer here
+          out.type = "button"
+          if (fillOf(n, scope, latest).disabled) out.disabled = true
+        }
         let body: string
         if (directive === "text") body = escapeText(scalar(readPath(scope, a["data-text"])) ?? "")
         else if (directive === "media") body = frame(media!, a["data-fit"] ?? "cover")
@@ -403,14 +479,11 @@ export const renderView = (
             )
             .join("")
         } else body = branch(n.children, scope, aliases, rowPrefix)
-        return voids.has(n.tag) ? `<${n.tag}${attrs(out)}>` : `<${n.tag}${attrs(out)}>${body}</${n.tag}>`
+        return voidElements.has(n.tag) ? `<${n.tag}${attrs(out)}>` : `<${n.tag}${attrs(out)}>${body}</${n.tag}>`
       })
       .join("")
   return branch(view.tree, bindings.scope, bindings.aliases)
 }
-
-/** The client's own rule beside the frame stylesheet (view-shell.tsx): a framed view image fills its box. */
-const FRAME_FILL = ".view-image:not([data-fit=natural]) { width:100%;height:100% }"
 
 /** One self-contained page drawing each mounted view inside a declarative shadow root, the view's CSS scoped to it as
  *  in the app. `tokens` is the host's token sheet (client tokens.css) and `frame` the media frame's (lightbox.css), read
@@ -428,8 +501,9 @@ export const previewPage = (
     // the client passes `latest` (the newest landed turn) to every view of a section, whatever its residency
     const latest = input.head
     const body = renderView(view, b, { nodeId: input.node.id, latest, catalogs: input.catalogs })
-    const sheets = `<style>${(frame ?? "").replace(/<\/style/gi, "<\\/style")}\n${FRAME_FILL}</style><style>${(view.css ?? "").replace(/<\/style/gi, "<\\/style")}</style>`
-    return `<section class="preview-view">${head}<div class="view-boundary"><div class="view-shell" data-view="${escapeAttr(view.id)}"${latest ? " data-latest" : ""}><template shadowrootmode="open">${sheets}${body}</template></div></div></section>`
+    // the shadow root's sheets in the reader's order (view-shell.tsx): the media frame's with VIEW_DEFAULTS, then the view's
+    const sheets = `<style>${styleText((frame ?? "") + VIEW_DEFAULTS)}</style><style>${styleText(view.css ?? "")}</style>`
+    return `<section class="preview-view">${head}<div class="view-boundary"><div${attrs({ class: "view-shell", "data-view": view.id, "data-latest": latest || undefined })}><template shadowrootmode="open">${sheets}${body}</template></div></div></section>`
   })
   const missing = tokens
     ? ""
@@ -440,7 +514,7 @@ export const previewPage = (
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeText(title)}</title>
-<style>${(tokens ?? "").replace(/<\/style/gi, "<\\/style")}</style>
+<style>${styleText(tokens ?? "")}</style>
 <style>
 body { margin: 0; background: var(--surface-1, Canvas); color: var(--ink, CanvasText); font-family: var(--font-sans, system-ui, sans-serif); }
 main { box-sizing: border-box; max-width: var(--measure, 42rem); margin: 0 auto; padding: 24px 16px 64px; }
@@ -476,6 +550,11 @@ ${missing}${blocks.join("\n")}
 `
 }
 
+export const fillWords: Record<FillReason, string> = {
+  "not-latest": "a fill button is live only on the latest turn",
+  blank: "nothing but blank at its path",
+  unnamed: "it has no accessible name with this data",
+}
 export const reasonWords: Record<Reason, string> = {
   "guard-false": "its when guard does not hold",
   "turn-nothing": "a turn view with nothing to show: none of its consumed products has a value on this node",

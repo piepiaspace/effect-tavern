@@ -10,7 +10,7 @@ import type { Card, Effect_, Field } from "./card.ts"
 import { type Cond, holds, reads, STATE_HOLE } from "./cond.ts"
 import { SLOTS } from "./fragment.ts"
 import { hook } from "./lore.ts"
-import { mediaBaseUrlError, mediaFileError } from "./media.ts"
+import { mediaAspectError, mediaBaseUrlError, mediaFileError, mediaFocusError } from "./media.ts"
 import { colsAt, type Product, type Shape } from "./product.ts"
 import { HOLE, unfilled } from "./names.ts"
 import { type Entry, scan } from "./polish.ts"
@@ -664,19 +664,10 @@ const rules: Rule[] = [
     for (const catalog of card.catalogs ?? []) {
       for (const item of catalog.items) {
         const path = ["catalogs", catalog.id, "items", item.id].join(".")
-        if (item.focus?.some((x) => !Number.isFinite(x) || x < 0 || x > 1))
-          out.push({ rule: "media-focus", level: "error", path, message: "focus coordinates must be in [0, 1]" })
-        if (item.aspect !== undefined) {
-          const parts = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(item.aspect)
-          const ratio = parts ? Number(parts[1]) / Number(parts[2]) : NaN
-          if (!(ratio >= 0.25 && ratio <= 4))
-            out.push({
-              rule: "media-aspect",
-              level: "error",
-              path,
-              message: "aspect must be a positive W / H ratio between 1 / 4 and 4 / 1",
-            })
-        }
+        const focus = item.focus && mediaFocusError(item.focus)
+        if (focus) out.push({ rule: "media-focus", level: "error", path, message: focus })
+        const aspect = item.aspect !== undefined && mediaAspectError(item.aspect)
+        if (aspect) out.push({ rule: "media-aspect", level: "error", path, message: aspect })
       }
     }
     return out
