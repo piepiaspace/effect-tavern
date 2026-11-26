@@ -121,7 +121,65 @@ for (const markup of [
     "attr(data-x)",
     "light-dark(red, blue)",
   ].map((v) => `<svg><path fill="${v}"/></svg>`),
+  // Inside <svg> only SVG elements: an HTML name there would be a dead SVG-namespace node.
+  ...["section", "details", "input", "label", "summary", "article", "time", "mark"].map(
+    (tag) => `<svg><g><${tag}>x</${tag}></g></svg>`,
+  ),
+  // And SVG-only names stay out of HTML.
+  "<g></g>",
+  "<path d='M0 0'></path>",
+  "<circle r='1'></circle>",
+  "<p><use href='#a'></use></p>",
 ])
   assert.throws(html(markup), markup)
+
+// A paint's numeric color: every CSS spelling still accepted, near-misses refused.
+const paintOf = (v: string) => () => compileView({ html: `<svg><path fill="${v}"/></svg>` })
+for (const v of [
+  "rgb(1 2 3)",
+  "rgb(1,2,3)",
+  "rgb( 1 , 2 , 3 )",
+  "rgba(0, 0, 0, .5)",
+  "rgba(0 0 0 / 50%)",
+  "RGB(1 2 3)",
+  "rgb(-1 +2 3.5)",
+  "hsl(120deg 50% 50% / 0.3)",
+  "hsla(120,50%,50%,0.3)",
+  "var(--x, rgb(1 2 3))",
+  "var(--x,hsl(1deg 2% 3%))",
+])
+  assert.doesNotThrow(paintOf(v), v)
+for (const v of [
+  "rgb()",
+  "rgb(,1,2,3)",
+  "rgb(1,,2,3)",
+  "rgb(1 2 3,)",
+  "rgb(1 2 3 /)",
+  "rgb(1.)",
+  "rgb(1px 2 3)",
+  "rgb(a b c)",
+  "rgb(1 2 3",
+  "rgb(1 2 3) x",
+  "var(--x, rgb(1 2 3)",
+])
+  assert.throws(paintOf(v), v)
+// The author writes the value and the server judges it on its main thread: a near-miss of 10,000 characters is refused
+// in linear time, never by trying every way to split it (the old pattern took 1.4 s at 20 digits and doubled per digit).
+paintOf("rgb(1 2 3)")()
+for (const v of [
+  "rgb(" + "1".repeat(10_000) + "x)",
+  "rgb(" + "1.".repeat(5_000) + "x)",
+  "rgb(" + "1 ".repeat(5_000) + "x)",
+  "rgb(" + "1, ".repeat(3_333) + "x)",
+  "hsl(" + "1% ".repeat(3_333) + "x)",
+  "rgb(1" + " ".repeat(10_000) + "x)",
+  "var(--a, rgb(" + "1".repeat(10_000) + "x))",
+  "var(--a" + " ".repeat(10_000) + "x",
+]) {
+  const start = performance.now()
+  assert.throws(paintOf(v))
+  const ms = performance.now() - start
+  assert.ok(ms < 50, `${v.slice(0, 12)}… (${v.length} chars) took ${ms.toFixed(1)} ms`)
+}
 
 console.log("view template ok")
