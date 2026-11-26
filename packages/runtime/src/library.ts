@@ -7,10 +7,12 @@ import type { Id } from "./log.ts"
 import type { Local, shown } from "./layer.ts"
 import type { Facets, Phase } from "./session.ts"
 
-/** The most a card file may weigh, in bytes, wherever one travels: an upload, a link, a card library's file. Not a
- *  limit of anything underneath (the store and the gate take more): a ceiling so that no request can ask the host to
- *  hold an unbounded body. Cards in the wild run to several MB, a dozen with what some authors inline; this is well
- *  clear of them. */
+/** The most a card file may weigh, in bytes, wherever one travels: an upload, a link, a card library's file. A
+ *  ceiling so that no request can ask the host to hold an unbounded body, read whole and judged by the gate up to the
+ *  last byte (server test/serve.ts). Cards in the wild run to several MB, a dozen with what some authors inline; this
+ *  is well clear of them. What the gate is held to is 4,000,000 characters of prose within 512 MB of memory
+ *  (test/gate-budget.ts, about 12 MB of Chinese text); a card of 32 MB of prose is let in by the ceiling but is not
+ *  what that budget covers. */
 export const CARD_BYTES = 32 * 1024 * 1024
 /** Preferred card id for home-tab free chat: lazily created on first send and reused across free-chat stories. */
 export const FREE_CHAT_ID = "_free-chat"
