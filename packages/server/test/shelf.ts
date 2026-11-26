@@ -5,7 +5,7 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { FREE_CHAT_ID } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
 import { checkCard, scaffold } from "@effect-tavern/runtime/support/author.ts"
-import { cardFile, chat } from "../../runtime/test/cards/index.ts"
+import { cardFile, chat, verbatim } from "../../runtime/test/cards/index.ts"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { createServer } from "node:http"
@@ -83,6 +83,11 @@ const file = { via: "file" } as const
     cards.install(cards.text(card.id), file, { replace: true })
     assert.deepEqual(cards.get(card.id), before, name)
   }
+  // and so is a card of awkward text, compared whole: what it carries, not how much, is what a file has to keep (#254)
+  cards.install(verbatim, file)
+  cards.install(cards.text(verbatim.id), file, { replace: true })
+  assert.deepEqual(cards.get(verbatim.id), verbatim)
+  cards.remove(verbatim.id)
   assert.throws(() => cards.text("none"), refused("no-card"))
 
   // remove: refused while a story of the card exists; with the card goes the player's row on it
@@ -135,6 +140,16 @@ const file = { via: "file" } as const
   assert.throws(() => cards.save(made.id, { ...written, fiction: [{ id: "s1", text: " " }] }), refused("card-invalid"))
   assert.throws(() => cards.save(made.id, { ...written, id: "other" }), refused("card-invalid"))
   assert.throws(() => cards.save("none", { ...written, id: "none" }), refused("no-card"))
+  // text that is not text (half of a surrogate pair) is refused in words, by a save and by an install alike: no card
+  // file could carry it back (#254). A file spells it only as an escape (`"\ud800"`), which Bun.YAML already stops at;
+  // the app's `yaml` reads it, and the gate refuses it there (app test/page.ts).
+  const broken = { ...written, fiction: [{ id: "s1", text: "雨\ud800停了。" }] }
+  const halved = (e: unknown) =>
+    refused("card-invalid")(e) && /^error broken-text fiction\[0\]\.text: .*lone UTF-16 surrogate/m.test(e.message)
+  assert.throws(() => cards.save(made.id, broken), halved)
+  assert.throws(() => cards.install({ ...broken, id: "halved" }, file), halved)
+  assert.throws(() => cards.install(JSON.stringify({ ...broken, id: "halved" }), file), refused("card-invalid"))
+  assert.ok(!cards.has("halved"))
   assert.deepEqual(cards.get(made.id), written)
   // a save names the revision it was written from: one that the card has moved past is refused, and a save that
   // changes nothing moves no revision

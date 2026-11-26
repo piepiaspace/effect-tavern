@@ -11,6 +11,7 @@ import { join } from "node:path"
 import { Database } from "bun:sqlite"
 import { runInNewContext } from "node:vm"
 import { bundleGuard, bundleServer, withServer } from "../web/bundle.ts"
+import { verbatim } from "../../runtime/test/cards/index.ts"
 
 // Include a space in outdir so percent-encoded URL pathnames fail here rather than in a spaced checkout.
 const outdir = mkdtempSync(join(tmpdir(), "tavern app "))
@@ -278,6 +279,21 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   assert.match(await exported.text(), /^id: wuxia$/m)
   const whole = (await (await api("/cards/wuxia/whole")).json()) as { rev: string }
   assert.match(whole.rev, /^[0-9a-f]{40}$/)
+  // a card of awkward text through the page's `yaml` (not Bun.YAML): exported and installed over itself, it reads
+  // back whole as the same card, as on the shelf (server test/shelf.ts)
+  const sent = await api("/cards?replace=1", { method: "POST", headers: json, body: JSON.stringify(verbatim) })
+  assert.equal(sent.status, 200)
+  const exportedVerbatim = await (await api(`/cards/${verbatim.id}/export.yaml`)).text()
+  assert.equal((await api("/cards?replace=1", { method: "POST", body: exportedVerbatim })).status, 200)
+  assert.deepEqual(((await (await api(`/cards/${verbatim.id}/whole`)).json()) as { card: unknown }).card, verbatim)
+  assert.equal((await api(`/cards/${verbatim.id}`, { method: "DELETE" })).status, 200)
+  // half of a surrogate pair, escaped in a file: `yaml` reads it (Bun.YAML stops at it), and the gate refuses it in words
+  const halved = await api("/cards", {
+    method: "POST",
+    body: JSON.stringify({ ...verbatim, id: "halved", fiction: [{ id: "f", text: "雨\ud800停了。" }] }),
+  })
+  assert.equal(halved.status, 400)
+  assert.match(((await halved.json()) as { error: string }).error, /^error broken-text fiction\[0\]\.text: /m)
 
   // HTTPS card link import streams multi-chunk response through @mygo-plugins/fetch + remote.ts getReader() loop.
   const proxy = "socks5://proxy.example:1080"

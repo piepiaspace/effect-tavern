@@ -231,6 +231,16 @@ const rules: Rule[] = [
   (card) => {
     const out: Diagnostic[] = []
     const visit = (v: unknown, path: string, key = "") => {
+      // half of a surrogate pair alone is no character: a file cannot carry it (YAML writes it as U+FFFD) (#254). In a
+      // /u pattern \p{Cs} matches only an unpaired surrogate.
+      if (typeof v === "string" && /\p{Cs}/u.test(v))
+        out.push({
+          rule: "broken-text",
+          level: "error",
+          path,
+          message: "text holds half of a character (a lone UTF-16 surrogate), which no card file can carry",
+          hint: "Retype or paste the text again around the broken character.",
+        })
       if (typeof v === "string" && ["id", "path", "event", "options", "key"].includes(key) && !identifier.test(v))
         out.push({
           rule: "bad-identifier",

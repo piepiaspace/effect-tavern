@@ -30,6 +30,11 @@ const said = (card: Card, rule: string) =>
   lint(card)
     .filter((d) => d.rule === rule)
     .map((d) => `${d.level} ${d.path}: ${d.message}`)
+// broken-text: a lone surrogate anywhere in the card is an error at its place; a whole pair (an emoji) is text (#254)
+assert.deepEqual(of({ ...base, title: "a\udc00", greetings: [{ text: "开场\ud83d" }, { text: "😀" }] }), [
+  "error broken-text greetings[0].text",
+  "error broken-text title",
+])
 const bond = { path: "bond", type: "int", min: 0, max: 20, initial: 0 } as const
 const readout = {
   id: "warmth",
