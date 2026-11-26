@@ -600,9 +600,9 @@ export const consumedProducts = (views: readonly CompiledView[]): ReadonlySet<st
   }
   return ids.size ? ids : emptyConsumed
 }
-/** The card's views that apply at a node: no `when`, or its guard held there (`visibleViews`), mounted or not. */
+/** The card's views that apply at a node: no `when`, or its guard held there (`applicableViews`), mounted or not. */
 const applicableNodeViews = (view: CardView | null | undefined, node: Node): CompiledView[] =>
-  view?.views?.filter((v) => !v.when || node.visibleViews?.includes(v.id)) ?? []
+  view?.views?.filter((v) => !v.when || node.applicableViews?.includes(v.id)) ?? []
 /** The views mounted on a node: a `latest` one on the last node once `record` settles, a `turn` one where it has data. */
 export const eligibleNodeViews = (
   view: CardView | null | undefined,
