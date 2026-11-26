@@ -90,6 +90,7 @@ export interface ResourceEntryView {
   resourceId: string
   origin: "card" | "pack" | "local" | "memory"
   title: string
+  summary?: string
   text: string
   access: { model: boolean; player: boolean }
   activation: "always" | "on_demand"
@@ -593,18 +594,22 @@ export const sourceForDelivery = (
   }
   if (d.resourceId.startsWith("pack:")) {
     const rest = d.resourceId.slice("pack:".length)
-    const slash = rest.indexOf("/")
-    const from = slash >= 0 ? rest.slice(0, slash) : rest
-    const entry = slash >= 0 ? rest.slice(slash + 1) : rest
+    const hash = rest.indexOf("#")
+    const entryId = hash >= 0 ? rest.slice(0, hash) : rest
+    const sectionId = hash >= 0 ? rest.slice(hash + 1) : undefined
+    const slash = entryId.indexOf("/")
+    const from = slash >= 0 ? entryId.slice(0, slash) : entryId
+    const entry = slash >= 0 ? entryId.slice(slash + 1) : entryId
     const kind = sourceKindFrom(from)
     return {
       kind,
       from,
       ...(kind === "pack" && { packId: from, ...(packNames?.[from] && { packName: packNames[from] }) }),
-      entryId: rest,
+      entryId,
+      ...(sectionId && { sectionId }),
       resourceId: d.resourceId,
       label: d.title,
-      path: `entries.${entry}`,
+      path: sectionId ? `entries.${entry}.sections.${sectionId}` : `entries.${entry}`,
       ...(rawText !== undefined && { rawText }),
     }
   }
@@ -752,6 +757,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     told: o.told.map((d) => ({
       title: d.title,
       text: d.text,
+      source: d.source,
       sourceRef: sourceForDelivery(cardId, d, o.packNames, rawDelivery(d)),
     })),
     known: o.known,
@@ -1339,6 +1345,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   // Pack & local & harness entries
   for (const e of R.entries) {
     const rid = `pack:${e.id}`
+    const liveRes = resourceMap.get(rid)
     const pol = policyDefaults("pack", e)
     const resSnap = residentMap.get(rid)
     const delivSnap = deliveredMap.get(rid)
@@ -1353,10 +1360,29 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     const origin = sourceKindFrom(e.from) as "pack" | "local"
     const slash = e.id.indexOf("/")
     const entryName = slash >= 0 ? e.id.slice(slash + 1) : e.id
+    const title = liveRes?.title ?? (e.title?.trim() || entryName)
+    const summary = liveRes?.summary ?? (e.summary?.trim() || undefined)
+    const sections: ResourceSectionView[] = sectionResources({ ...e, source: "pack" }, 1).map((sec) => {
+      const secId = sec.resourceId.slice(rid.length + 1)
+      const sDeliv = deliveredMap.get(sec.resourceId)
+      const sRes = residentMap.get(sec.resourceId)
+      const secUnit = u?.sections?.some((x) => x.resourceId === sec.resourceId) ?? false
+      return {
+        resourceId: sec.resourceId,
+        sectionId: secId,
+        title: sec.title,
+        text: sec.text,
+        inCatalog: secUnit,
+        deliveredThisTurn: !!sDeliv,
+        resident: !!sRes,
+        ...(sDeliv?.superseded && { supersededRevision: sDeliv.superseded }),
+      }
+    })
     resourceViews.push({
       resourceId: rid,
       origin,
-      title: hook(e.text),
+      title,
+      ...(summary && { summary }),
       text: e.text,
       access: pol.access,
       activation: pol.activation,
@@ -1365,17 +1391,18 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
       totalLayers: 1,
       residencyStatus,
       residentRevision: delivSnap?.revision ?? resSnap?.revision,
+      ...(delivSnap?.superseded || resSnap?.superseded
+        ? { supersededRevision: delivSnap?.superseded ?? resSnap?.superseded }
+        : {}),
       fellOutOfWindow: seenIds.has(rid) && !resSnap && !delivSnap,
       windowOpen: false,
       inCatalog: !!u && !u.resident,
       modelSelectable:
-        pol.access.model &&
-        pol.activation === "on_demand" &&
-        postHeld.get(rid)?.revision !== resourceMap.get(rid)?.revision,
+        pol.access.model && pol.activation === "on_demand" && postHeld.get(rid)?.revision !== liveRes?.revision,
       playerSelectable: pol.access.player,
-      simulatedRead: assumedReads.includes(rid),
+      simulatedRead: assumedReads.includes(rid) || sections.some((s) => assumedReads.includes(s.resourceId)),
       playerInvoked: invokedIds.includes(rid),
-      sections: [],
+      sections,
       unlockGates: [],
       source: RT.sources.entries[e.id] ?? {
         kind: origin,

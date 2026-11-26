@@ -106,6 +106,8 @@ export const Menu = <T extends string>(props: {
   value: T | undefined
   options: readonly Option<T>[]
   onPick: (v: T) => void
+  onOpenChange?: (open: boolean) => void
+  onOpenChangeComplete?: (open: boolean) => void
   placeholder?: string
   // what the trigger shows when the value is set but not among the options (a dangling pick); its reason is a warn tag
   // after the label, which truncates first
@@ -123,6 +125,8 @@ export const Menu = <T extends string>(props: {
       value={props.value ?? null}
       items={props.options.map((o) => ({ value: o.value, label: o.label }))}
       onValueChange={(v) => v !== null && props.onPick(v)}
+      onOpenChange={(open) => props.onOpenChange?.(open)}
+      onOpenChangeComplete={(open) => props.onOpenChangeComplete?.(open)}
       disabled={!!props.disabled || props.options.length === 0}
       presentation="auto"
     >

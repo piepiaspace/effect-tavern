@@ -4,10 +4,10 @@
 
 ## 职责边界
 
-- **Go 薄宿主（`packages/app`）**持有三态主题偏好（`system | light | dark`），在创建窗口前调用 `mygo.Theme.SetSource` 使首帧窗口背景、状态栏、软键盘与页面一致；按平台区分初始 `BackgroundColor`（移动端 `--surface-1`，桌面端 `--surface-0`），移除 `mygo.json` 写死的浅色启动屏配置；在 `save.go` 落盘临时文件后、唤起系统保存面板前先 `Flush()` 响应头以规避 Android 自定义协议 60 秒响应头超时，并在响应体返回保存或取消状态、清洗 Windows 保留文件名；提供原生剪贴板写入桥；在 iOS 前台激活（`App.OnDidBecomeActive` / `Power.OnResume`）时复查并在内容进程被回收后通过 `LoadURL("/")` 恢复；在桌面端通过 `Page.OnContextMenu` 移除 WebView 默认的刷新/前进后退/检查菜单，补齐应用菜单与 macOS Dock `App.OnActivate` 重开窗口。
-- **服务端（`packages/server`）**提供卡片本地覆盖层的批量读取接口，替代客户端冷启动逐卡请求导致的 Android 主线程同步 SQLite 往返阻塞。因 Android 请求体桥 `mygoAndroid.putBody` 绑定在主 frame 上，SQLite 不拆入 Worker。
-- **客户端宿主缝隙（`packages/client/src/host.ts`）**集中封装 `tavernHost` 暴露的保存、剪贴板、外观同步与窗口活跃信号，替代散落的全局对象探测；`theme.ts` 升级为显式三态模型，不再依赖被 `Theme.SetSource` 同步改写后的 `prefers-color-scheme` 媒体查询反推系统状态；`packages/app/web/entry.ts` 增加启动异常可见兜底。
-- **客户端导航、布局与触控层（`packages/client/src/*`）**通过显式注册表统一管理返回栈与 `stepBack()`，收敛 `< 72rem` 下的弹窗、侧抽屉、顶层底色与横竖屏安全区，补齐粗指针触控细节、前后台音频/动画生命周期，以及基于 `@ui-sdk/core` 原语的页面级横向滑动导航。
+- **Go 薄宿主**（`packages/app`）持有三态主题偏好（`system | light | dark`），在创建窗口前调用 `mygo.Theme.SetSource` 使首帧窗口背景、状态栏、软键盘与页面一致；按平台区分初始 `BackgroundColor`（移动端 `--surface-1`，桌面端 `--surface-0`），移除 `mygo.json` 写死的浅色启动屏配置；在 `save.go` 落盘临时文件后、唤起系统保存面板前先 `Flush()` 响应头以规避 Android 自定义协议 60 秒响应头超时，并在响应体返回保存或取消状态、清洗 Windows 保留文件名；提供原生剪贴板写入桥；在 iOS 前台激活（`App.OnDidBecomeActive` / `Power.OnResume`）时复查并在内容进程被回收后通过 `LoadURL("/")` 恢复；在桌面端通过 `Page.OnContextMenu` 移除 WebView 默认的刷新/前进后退/检查菜单，补齐应用菜单与 macOS Dock `App.OnActivate` 重开窗口。
+- **服务端**（`packages/server`）提供卡片本地覆盖层的批量读取接口，替代客户端冷启动逐卡请求导致的 Android 主线程同步 SQLite 往返阻塞。因 Android 请求体桥 `mygoAndroid.putBody` 绑定在主 frame 上，SQLite 不拆入 Worker。
+- **客户端宿主缝隙**（`packages/client/src/host.ts`）集中封装 `tavernHost` 暴露的保存、剪贴板、外观同步与窗口活跃信号，替代散落的全局对象探测；`theme.ts` 升级为显式三态模型，不再依赖被 `Theme.SetSource` 同步改写后的 `prefers-color-scheme` 媒体查询反推系统状态；`packages/app/web/entry.ts` 增加启动异常可见兜底。
+- **客户端导航、布局与触控层**（`packages/client/src/*`）通过显式注册表统一管理返回栈与 `stepBack()`，收敛 `< 72rem` 下的弹窗、侧抽屉、顶层底色与横竖屏安全区，补齐粗指针触控细节、前后台音频/动画生命周期，以及基于 `@ui-sdk/core` 原语的页面级横向滑动导航。
 
 ## 交互与视觉契约
 

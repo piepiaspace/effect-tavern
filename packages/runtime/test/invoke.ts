@@ -47,8 +47,16 @@ let rows: Rows = {
       id: "p",
       name: "P",
       entries: [
-        { id: "always", text: "ALWAYS BODY", activation: "always" },
-        { id: "manual", text: "MANUAL BODY", access: { model: false, player: true }, residency: "turn" },
+        { id: "always", title: "常驻规范", summary: "每轮驻留的叙事底线", text: "ALWAYS BODY", activation: "always" },
+        {
+          id: "manual",
+          title: "手动小剧场",
+          summary: "仅玩家通过菜单调用",
+          text: "MANUAL BODY",
+          access: { model: false, player: true },
+          residency: "turn",
+          sections: [{ id: "s1", title: "子节", text: "MANUAL SECTION" }],
+        },
         { id: "auto", text: "AUTO BODY" },
         { id: "permanent", text: "PERMANENT BODY", residency: "permanent" },
       ],
@@ -78,8 +86,14 @@ await Effect.runPromise(
   Effect.gen(function* () {
     const g = S.greet({ text: "Opening" }).node!
     assert.deepEqual(
-      S.node(g.id).playerCatalog.map((e) => e.resourceId),
-      ["card:guide", "pack:p/always", "pack:p/manual", "pack:p/auto", "pack:p/permanent"],
+      S.node(g.id).playerCatalog.map((e) => [e.resourceId, e.title, e.summary]),
+      [
+        ["card:guide", "GUIDE ONE", "GUIDE TWO"],
+        ["pack:p/always", "常驻规范", "每轮驻留的叙事底线"],
+        ["pack:p/manual", "手动小剧场", "仅玩家通过菜单调用"],
+        ["pack:p/auto", "auto", ""],
+        ["pack:p/permanent", "permanent", ""],
+      ],
     )
     for (const id of ["card:secret", "card:locked", "missing"]) {
       assert.equal((yield* Effect.exit(go(S.act(g.id, { text: "", invoke: [id] }))))._tag, "Failure")
