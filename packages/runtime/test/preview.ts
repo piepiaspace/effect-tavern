@@ -1226,4 +1226,80 @@ console.log("preview: ok")
   assert.ok(call.wrap?.traces.every((t) => t.spans.every((sp) => sp.source.rawText === undefined)))
   assert.equal(s.log.nodes.get(1)?.reply.find((p) => p.type === "text")?.text, "Lanterns sway.")
 }
+
+// Pack entries in Prompt Tree preview: explicit title/summary, sections lifecycle, and template rawText on pack sections (#245)
+{
+  const card: Card = {
+    id: "pack-sec-preview",
+    title: "Pack Section Preview",
+    frame: [{ id: "setting", text: "Harbor." }],
+    fiction: [],
+    greetings: [{ text: "Opening." }],
+    lore: [],
+    guard: [],
+    rules: { fields: [], actions: [] },
+    names: { char: "Marin" },
+  }
+  const rows: Rows = {
+    packs: [
+      {
+        id: "craft",
+        name: "Craft",
+        entries: [
+          {
+            id: "outline",
+            title: "叙事总纲 ({{char}})",
+            summary: "围绕 {{char}} 的核心节奏规范",
+            text: "常驻总纲：观察 {{char}} 的动作。",
+            activation: "always",
+            sections: [
+              { id: "pacing", title: "快节奏切镜", text: "切镜聚焦 {{char}} 的手指细节。" },
+              { id: "silence", title: "留白张力", text: "沉默三拍后再接台词。" },
+            ],
+          },
+          {
+            id: "cinema",
+            title: "潜台词调度",
+            summary: "用于试探对白",
+            text: "潜台词主文。",
+            sections: [{ id: "prop", title: "道具借代", text: "借茶杯冷暖写 {{char}} 心绪。" }],
+          },
+        ],
+      },
+    ],
+    local: { id: "local", name: "Local", card: card.id, mounts: ["craft"] },
+  }
+  const res = previewNarrate({
+    card,
+    rows,
+    connection: { format: "openai-compatible", prefill: true, reasoningBack: true },
+    mode: "sandbox",
+    input: { text: "Talk." },
+    assumedReads: ["pack:craft/outline#pacing", "pack:craft/cinema#prop"],
+  })
+  const outlineView = res.resources.find((r) => r.resourceId === "pack:craft/outline")!
+  assert.equal(outlineView.title, "叙事总纲 (Marin)")
+  assert.equal(outlineView.summary, "围绕 Marin 的核心节奏规范")
+  assert.equal(outlineView.residencyStatus, "delivered_this_turn")
+  assert.equal(outlineView.inCatalog, false)
+  assert.equal(outlineView.simulatedRead, true)
+  assert.deepEqual(
+    outlineView.sections.map((s) => [s.resourceId, s.title, s.deliveredThisTurn, s.inCatalog]),
+    [
+      ["pack:craft/outline#pacing", "快节奏切镜", true, false],
+      ["pack:craft/outline#silence", "留白张力", false, true],
+    ],
+  )
+  // Simulating section read on an on_demand pack entry auto-pulls its parent face just like card lore sections
+  const cinemaView = res.resources.find((r) => r.resourceId === "pack:craft/cinema")!
+  assert.equal(cinemaView.title, "潜台词调度")
+  assert.equal(cinemaView.summary, "用于试探对白")
+  assert.equal(cinemaView.residencyStatus, "delivered_this_turn")
+  assert.equal(cinemaView.sections[0]?.deliveredThisTurn, true)
+  const spans = res.traces.flatMap((t) => t.spans)
+  const secSpan = spans.find((s) => s.source.resourceId === "pack:craft/outline#pacing")!
+  assert.equal(secSpan.source.sectionId, "pacing")
+  assert.equal(secSpan.source.path, "entries.outline.sections.pacing")
+  assert.equal(secSpan.source.rawText, "切镜聚焦 {{char}} 的手指细节。")
+}
 console.log("preview wrap: ok")

@@ -1,13 +1,14 @@
-// What the pack editor (packs.tsx) and the Writing page (writing.tsx) share: the 文风与要求 tab (`Layer.fragments`) and
+// What the pack editor (packs.tsx) and the Writing page (writing.tsx) share: the 常驻指令 tab (`Layer.fragments`) and
 // the product dialog's kind and trigger picks. Their own module, so the lazily loaded Writing page does not carry the
 // rest of the pack editor.
 import { SLOTS, type Fragment } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Layer } from "@effect-tavern/runtime/src/layer.ts"
 import { createSignal, For, Show } from "solid-js"
-import { Menu, newId, Switch, Well } from "./controls.tsx"
+import { autosize } from "./autosize.ts"
+import { blurField, Menu, newId, Switch, Well } from "./controls.tsx"
 import { Close, Snippets as Plus } from "./icons.tsx"
 import { KIND_LABEL, PRODUCT_KINDS, type ProductKind } from "./pack.ts"
-import { EXTRA, addFragment, atOf, removeFragment, setFragmentAt, setFragmentText } from "./requirements.ts"
+import { EXTRA, addFragment, atOf, removeFragment, setFragmentAt, setFragmentText, type At } from "./requirements.ts"
 import type { Pack } from "./store.ts"
 import { t } from "./i18n.ts"
 
@@ -36,18 +37,49 @@ export const leaveInput = (e: KeyboardEvent & { currentTarget: HTMLInputElement 
   e.currentTarget.blur()
 }
 
-// ───────── 1. 文风与要求 (`Layer.fragments`) ─────────
+interface FragmentDraft {
+  packId: string
+  id: string
+  at: At
+  mode?: Exclude<Fragment["mode"], "mute">
+  text: string
+}
+
+// ───────── 1. 常驻指令 (`Layer.fragments`) ─────────
 export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly Fragment[] }) => {
   const frags = () => props.pack.fragments ?? []
   const visible = (f: Fragment) => !props.inherited || f.id !== EXTRA
   const noMode = () => (props.pack.default ? "yield" : "override") // what a fragment with no `mode` does (layer.ts)
-  const [draft, setDraft] = createSignal<string | null>(null)
-  const commitDraft = () => {
+  const [draft, setDraft] = createSignal<FragmentDraft | null>(null)
+  const shownDraft = () => {
     const d = draft()
+    return d && d.packId === props.pack.id ? d : null
+  }
+  const slotOptions = () => [
+    { value: "custom", label: t("packs.slotCustom") },
+    ...SLOTS.map((s) => ({ value: s, label: slotName(s) })),
+  ]
+  const modeOptions = (id: string) => [
+    { value: "override" as const, label: t("packs.modeOverride") },
+    { value: "yield" as const, label: t("packs.modeYield") },
+    { value: "both" as const, label: t("packs.modeBoth") },
+    ...(SLOTS.includes(id) ? [{ value: "mute" as const, label: t("packs.muteSlot") }] : []),
+  ]
+  let draftArea: HTMLTextAreaElement | undefined
+  const commitDraft = () => {
+    const d = shownDraft()
     if (d === null) return
+    const text = draftArea?.isConnected ? draftArea.value : d.text
+    draftArea = undefined
     setDraft(null)
-    const mode = props.pack.default ? ("yield" as const) : undefined
-    if (d.trim()) void props.onSave((p) => addFragment(p, newId("req"), d, "tail", mode))
+    const effective = d.mode ?? (props.pack.default ? ("yield" as const) : undefined)
+    const mode = !props.pack.default && effective === "override" ? undefined : effective
+    if (text.trim()) void props.onSave((p) => addFragment(p, d.id, text, d.at, mode))
+  }
+  const startDraft = () => {
+    blurField()
+    if (shownDraft()?.text.trim()) commitDraft()
+    setDraft({ packId: props.pack.id, id: newId("req"), at: "tail", text: "" })
   }
   const updateFrag = (idx: number, patch: Partial<Fragment>) =>
     void props.onSave((p) => {
@@ -58,57 +90,136 @@ export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly
       return { ...p, fragments: cur }
     })
   return (
-    <section class="wpanel" role="tabpanel" aria-label={t("writing.tabProse")}>
-      <div class="prose-card grow">
-        <div class="block-title">
-          <h3>{t("writing.tabProse")}</h3>
-          <span class="tag mono">{frags().filter(visible).length}</span>
-          <div class="right">
-            <button type="button" class="btn sm" disabled={draft() !== null} onClick={() => setDraft("")}>
-              <Plus /> <span>{t("writing.addRequirement")}</span>
-            </button>
-          </div>
+    <section class="wpanel prose-panel" role="tabpanel" aria-label={t("writing.tabProse")}>
+      <div class="block-title prose-head">
+        <h3>{t("writing.tabProse")}</h3>
+        <span class="tag mono">{frags().filter(visible).length}</span>
+        <div class="right">
+          <button
+            type="button"
+            class="btn sm"
+            disabled={shownDraft() !== null && !shownDraft()!.text.trim()}
+            onClick={startDraft}
+          >
+            <Plus /> <span>{t("writing.addRequirement")}</span>
+          </button>
         </div>
-        <div class="frag-list scroller fade">
-          <Show when={draft() !== null}>
-            <div
-              class="frag-row"
-              onFocusOut={(e) => {
-                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commitDraft()
-              }}
-            >
-              <div class="frag-bar">
-                <div class="at-toggle" role="group" aria-label={t("writing.position")}>
-                  <button type="button" aria-pressed="true" tabindex="-1">
-                    {t("writing.atTail")}
-                  </button>
-                  <button type="button" aria-pressed="false" disabled>
-                    {t("writing.atHead")}
+      </div>
+      <div class="prose-list scroller">
+        <Show when={shownDraft()}>
+          {(d) => {
+            const size = autosize(() => d().text)
+            const openMenus = new Set<"slot" | "mode">()
+            const menuOpen = () => openMenus.has("mode") || (d().at === "head" && openMenus.has("slot"))
+            return (
+              <div
+                class="frag-row draft"
+                onFocusOut={(e) => {
+                  const row = e.currentTarget
+                  const next = e.relatedTarget
+                  if (menuOpen() || row.closest("[inert]") || row.contains(next as Node | null)) return
+                  if (next instanceof Element && next.closest(".popup-list, .modal")) return
+                  if (row.querySelector("[data-open], .modal:not([data-closed])")) return
+                  commitDraft()
+                }}
+              >
+                <div class="frag-bar">
+                  <div class="at-toggle" role="group" aria-label={t("writing.position")}>
+                    <button
+                      type="button"
+                      aria-pressed={d().at === "tail" ? "true" : "false"}
+                      onClick={() =>
+                        setDraft((cur) =>
+                          cur ? { ...cur, at: "tail", id: SLOTS.includes(cur.id) ? newId("req") : cur.id } : cur,
+                        )
+                      }
+                    >
+                      {t("writing.atTail")}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={d().at === "head" ? "true" : "false"}
+                      onClick={() => setDraft((cur) => (cur ? { ...cur, at: "head" } : cur))}
+                    >
+                      {t("writing.atHead")}
+                    </button>
+                  </div>
+                  <Show when={d().at === "head"}>
+                    <Menu
+                      small
+                      label={t("packs.slot")}
+                      value={SLOTS.includes(d().id) ? d().id : "custom"}
+                      options={slotOptions()}
+                      onOpenChange={(open) => open && openMenus.add("slot")}
+                      onOpenChangeComplete={(open) => !open && queueMicrotask(() => openMenus.delete("slot"))}
+                      onPick={(v) => setDraft((cur) => (cur ? { ...cur, id: v === "custom" ? newId("req") : v } : cur))}
+                    />
+                  </Show>
+                  <Menu
+                    small
+                    label={t("packs.mode")}
+                    value={d().mode ?? noMode()}
+                    options={modeOptions(d().id)}
+                    onOpenChange={(open) => open && openMenus.add("mode")}
+                    onOpenChangeComplete={(open) => !open && queueMicrotask(() => openMenus.delete("mode"))}
+                    onPick={(v) => {
+                      if (v === "mute") {
+                        const { id, at } = d()
+                        setDraft(null)
+                        void props.onSave((p) => ({
+                          ...p,
+                          fragments: [
+                            { id, ...(at === "tail" ? { at: "tail" as const } : {}), mode: "mute" },
+                            ...(p.fragments ?? []),
+                          ],
+                        }))
+                        return
+                      }
+                      setDraft((cur) => (cur ? { ...cur, mode: v } : cur))
+                    }}
+                  />
+                  <span class="spacer" />
+                  <Show when={d().text.length > 0}>
+                    <span class="frag-count">{t("common.chars", { n: d().text.length })}</span>
+                  </Show>
+                  <button
+                    type="button"
+                    class="icon sm"
+                    aria-label={t("writing.discard")}
+                    onClick={() => setDraft(null)}
+                  >
+                    <Close />
                   </button>
                 </div>
-                <span class="spacer" />
-                <button type="button" class="icon sm" aria-label={t("writing.discard")} onClick={() => setDraft(null)}>
-                  <Close />
-                </button>
+                <Well label={t("writing.requirement")}>
+                  <textarea
+                    aria-label={t("writing.requirement")}
+                    placeholder={t("writing.requirementPlaceholder")}
+                    value={d().text}
+                    ref={(el) => {
+                      draftArea = el
+                      size(el)
+                      requestAnimationFrame(() => el.focus())
+                    }}
+                    onInput={(e) => {
+                      const text = e.currentTarget.value
+                      setDraft((cur) => (cur ? { ...cur, text } : cur))
+                    }}
+                    onKeyDown={leaveArea}
+                  />
+                </Well>
               </div>
-              <Well label={t("writing.requirement")}>
-                <textarea
-                  aria-label={t("writing.requirement")}
-                  placeholder={t("writing.requirementPlaceholder")}
-                  value={draft() ?? ""}
-                  ref={(el) => requestAnimationFrame(() => el.focus())}
-                  onInput={(e) => setDraft(e.currentTarget.value)}
-                  onKeyDown={leaveArea}
-                />
-              </Well>
-            </div>
-          </Show>
-          <For each={props.inherited ?? []} keyed={(f) => atOf(f) + ":" + f.id}>
-            {(f) => (
+            )
+          }}
+        </Show>
+        <For each={props.inherited ?? []} keyed={(f) => atOf(f) + ":" + f.id}>
+          {(f) => (
+            <div class="frag-row frag-compact">
               <div class="frag-bar">
                 <span class="d-name">{slotName(f().id)}</span>
                 <span class="tag">{atOf(f()) === "tail" ? t("writing.atTail") : t("writing.atHead")}</span>
                 <span class="tag">{t("packs.inherited")}</span>
+                <span class="spacer" />
                 <button
                   type="button"
                   class="btn xs ghost"
@@ -128,116 +239,115 @@ export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly
                   {t("packs.muteSlot")}
                 </button>
               </div>
-            )}
-          </For>
-          <For each={frags()} keyed={false}>
-            {(f, i) => (
-              <Show when={visible(f())}>
-                <Show
-                  when={f().mode !== "mute"}
-                  fallback={
-                    <div class="frag-row">
-                      <div class="frag-bar">
-                        <span class="d-name">{slotName(f().id)}</span>
-                        <span class="tag">{atOf(f()) === "tail" ? t("writing.atTail") : t("writing.atHead")}</span>
-                        <span class="tag">{t("packs.disabled")}</span>
-                        <span class="spacer" />
-                        <button
-                          type="button"
-                          class="btn xs ghost"
-                          onClick={() => void props.onSave((p) => removeFragment(p, i))}
-                        >
-                          {t("packs.restoreInheritance")}
-                        </button>
-                      </div>
-                    </div>
-                  }
-                >
-                  <div class="frag-row" data-off={f().enabled === false ? "true" : "false"}>
+            </div>
+          )}
+        </For>
+        <For each={frags()} keyed={false}>
+          {(f, i) => (
+            <Show when={visible(f())}>
+              <Show
+                when={f().mode !== "mute"}
+                fallback={
+                  <div class="frag-row frag-compact">
                     <div class="frag-bar">
-                      <div class="at-toggle" role="group" aria-label={t("writing.position")}>
-                        <button
-                          type="button"
-                          aria-pressed={atOf(f()) === "tail" ? "true" : "false"}
-                          onClick={() => void props.onSave((p) => setFragmentAt(p, i, "tail"))}
-                        >
-                          {t("writing.atTail")}
-                        </button>
-                        <button
-                          type="button"
-                          aria-pressed={atOf(f()) === "head" ? "true" : "false"}
-                          onClick={() => void props.onSave((p) => setFragmentAt(p, i, "head"))}
-                        >
-                          {t("writing.atHead")}
-                        </button>
-                      </div>
-                      <Show when={atOf(f()) === "head"}>
-                        <Menu
-                          small
-                          label={t("packs.slot")}
-                          value={SLOTS.includes(f().id) ? f().id : "custom"}
-                          options={[
-                            { value: "custom", label: t("packs.slotCustom") },
-                            ...SLOTS.map((s) => ({ value: s, label: slotName(s) })),
-                          ]}
-                          onPick={(v) => updateFrag(i, { id: v === "custom" ? newId("req") : v })}
-                        />
-                      </Show>
-                      <Menu
-                        small
-                        label={t("packs.mode")}
-                        value={f().mode ?? noMode()}
-                        options={[
-                          { value: "override", label: t("packs.modeOverride") },
-                          { value: "yield", label: t("packs.modeYield") },
-                          { value: "both", label: t("packs.modeBoth") },
-                          ...(SLOTS.includes(f().id) ? [{ value: "mute" as const, label: t("packs.muteSlot") }] : []),
-                        ]}
-                        onPick={(v) =>
-                          updateFrag(
-                            i,
-                            v === "mute"
-                              ? { mode: v, text: undefined, enabled: undefined }
-                              : { mode: !props.pack.default && v === "override" ? undefined : v },
-                          )
-                        }
-                      />
+                      <span class="d-name">{slotName(f().id)}</span>
+                      <span class="tag">{atOf(f()) === "tail" ? t("writing.atTail") : t("writing.atHead")}</span>
+                      <span class="tag">{t("packs.disabled")}</span>
                       <span class="spacer" />
-                      <Switch
-                        on={f().enabled !== false}
-                        label={f().id}
-                        onFlip={() => updateFrag(i, { enabled: f().enabled === false ? undefined : false })}
-                      />
                       <button
                         type="button"
-                        class="icon sm"
-                        aria-label={t("writing.removeRequirement")}
+                        class="btn xs ghost"
                         onClick={() => void props.onSave((p) => removeFragment(p, i))}
                       >
-                        <Close />
+                        {t("packs.restoreInheritance")}
                       </button>
                     </div>
-                    <Well label={t("writing.requirement")}>
-                      <textarea
-                        aria-label={t("writing.requirement")}
-                        value={f().text ?? ""}
-                        onChange={(e) => {
-                          const text = e.currentTarget.value
-                          void props.onSave((p) => setFragmentText(p, i, text))
-                        }}
-                        onKeyDown={leaveArea}
-                      />
-                    </Well>
-                    <span class="frag-count">{t("common.chars", { n: (f().text ?? "").length })}</span>
                   </div>
-                </Show>
+                }
+              >
+                <div class="frag-row" data-off={f().enabled === false ? "true" : "false"}>
+                  <div class="frag-bar">
+                    <div class="at-toggle" role="group" aria-label={t("writing.position")}>
+                      <button
+                        type="button"
+                        aria-pressed={atOf(f()) === "tail" ? "true" : "false"}
+                        onClick={() => (blurField(), void props.onSave((p) => setFragmentAt(p, i, "tail")))}
+                      >
+                        {t("writing.atTail")}
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={atOf(f()) === "head" ? "true" : "false"}
+                        onClick={() => (blurField(), void props.onSave((p) => setFragmentAt(p, i, "head")))}
+                      >
+                        {t("writing.atHead")}
+                      </button>
+                    </div>
+                    <Show when={atOf(f()) === "head"}>
+                      <Menu
+                        small
+                        label={t("packs.slot")}
+                        value={SLOTS.includes(f().id) ? f().id : "custom"}
+                        options={slotOptions()}
+                        onPick={(v) => (blurField(), updateFrag(i, { id: v === "custom" ? newId("req") : v }))}
+                      />
+                    </Show>
+                    <Menu
+                      small
+                      label={t("packs.mode")}
+                      value={f().mode ?? noMode()}
+                      options={modeOptions(f().id)}
+                      onPick={(v) => {
+                        blurField()
+                        updateFrag(
+                          i,
+                          v === "mute"
+                            ? { mode: v, text: undefined, enabled: undefined }
+                            : { mode: !props.pack.default && v === "override" ? undefined : v },
+                        )
+                      }}
+                    />
+                    <span class="spacer" />
+                    <Show when={(f().text ?? "").length > 0}>
+                      <span class="frag-count">{t("common.chars", { n: (f().text ?? "").length })}</span>
+                    </Show>
+                    <Switch
+                      on={f().enabled !== false}
+                      label={f().id}
+                      onFlip={() => (
+                        blurField(),
+                        updateFrag(i, { enabled: f().enabled === false ? undefined : false })
+                      )}
+                    />
+                    <button
+                      type="button"
+                      class="icon sm"
+                      aria-label={t("writing.removeRequirement")}
+                      onClick={() => (blurField(), void props.onSave((p) => removeFragment(p, i)))}
+                    >
+                      <Close />
+                    </button>
+                  </div>
+                  <Well label={t("writing.requirement")}>
+                    <textarea
+                      ref={autosize(() => f().text ?? "")}
+                      aria-label={t("writing.requirement")}
+                      value={f().text ?? ""}
+                      onChange={(e) => {
+                        const text = e.currentTarget.value
+                        void props.onSave((p) => setFragmentText(p, i, text))
+                      }}
+                      onKeyDown={leaveArea}
+                    />
+                  </Well>
+                </div>
               </Show>
-            )}
-          </For>
-          <Show when={!frags().some(visible) && !props.inherited?.length && draft() === null}>
-            <p class="none">{t("writing.noRequirement")}</p>
-          </Show>
-        </div>
+            </Show>
+          )}
+        </For>
+        <Show when={!frags().some(visible) && !props.inherited?.length && shownDraft() === null}>
+          <p class="none">{t("writing.noRequirement")}</p>
+        </Show>
       </div>
     </section>
   )

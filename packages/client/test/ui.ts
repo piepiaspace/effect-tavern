@@ -440,6 +440,10 @@ const fixtures: FixtureEntry[] = [
     () => "chronicles and per-card wording and slot overrides save and restore through the writing page",
   ],
   [
+    "test/packs-entries.tsx",
+    () => "pack reference entries expand with sections and surface in the composer invocation menu",
+  ],
+  [
     "test/play-sheet.tsx",
     (s) => `the reader's play sheet routes, holds while running and stacks the picker, in ${s.length} writes`,
   ],

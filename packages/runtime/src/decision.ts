@@ -42,7 +42,11 @@ export const lookupQuestions = (o: {
   scene: string
   input: { text?: string; note?: string }
   units: readonly Unit[]
-}): { state: string; questions: Record<string, Question>; asked: { resourceId: string; title: string }[] } => {
+}): {
+  state: string
+  questions: Record<string, Question>
+  asked: { resourceId: string; title: string; summary?: string }[]
+} => {
   const asked = askedOf(o.units)
   return {
     state: [
@@ -52,14 +56,19 @@ export const lookupQuestions = (o: {
       .filter(Boolean)
       .join("\n\n"),
     questions: Object.fromEntries(
-      asked.map((u, i) => [`u${i}`, { type: "boolean", instructions: `${LOOKUP_ASK}${u.title}` }]),
+      asked.map((u, i) => [`u${i}`, { type: "boolean", instructions: `${LOOKUP_ASK}${unitLabel(u)}` }]),
     ),
     asked,
   }
 }
-// an unread entry's face, or the unread sections of a face the request holds (context.ts `units` lists no others)
-const askedOf = (units: readonly Unit[]) =>
-  units.flatMap((u) => (u.resident ? (u.sections ?? []) : [{ resourceId: u.resourceId, title: u.title }]))
+const unitLabel = (u: { title: string; summary?: string }) => (u.summary ? `${u.title} — ${u.summary}` : u.title)
+// an unread entry's face (with optional front-matter summary), or the unread sections of a face the request holds
+const askedOf = (units: readonly Unit[]): { resourceId: string; title: string; summary?: string }[] =>
+  units.flatMap((u) =>
+    u.resident
+      ? (u.sections ?? []).map((s) => ({ resourceId: s.resourceId, title: s.title }))
+      : [{ resourceId: u.resourceId, title: u.title, ...(u.summary ? { summary: u.summary } : {}) }],
+  )
 /** The answers read back per unit (`asked` order) and what to read: over `LOOKUP`, highest first, at most `TOP` ids;
  *  the lines to be read are marked. `ids` is undefined when an answer has no probability: the pass does not settle
  *  then. */
@@ -68,7 +77,7 @@ export const lookupSelect = (
   units: readonly Unit[],
 ): { lines: Line[]; ids?: string[] } => {
   const asked = askedOf(units)
-  const lines: Line[] = asked.map((u, i) => ({ label: u.title, p: p(answers[`u${i}`]) }))
+  const lines: Line[] = asked.map((u, i) => ({ label: unitLabel(u), p: p(answers[`u${i}`]) }))
   if (lines.some((l) => l.p === null)) return { lines }
   const picked = asked
     .map((_, i) => i)

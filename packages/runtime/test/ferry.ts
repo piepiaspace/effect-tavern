@@ -521,6 +521,24 @@ assert.deepEqual(sorted.media, ferry.media)
   hidden = false
   assert.equal(hits(sunny1.id).length, 1)
 
+  // A guarded `latest` view: `applicableViews` says where its guard held, head or history (its consumes hold there), while
+  // history carries no `latestContext` and no `viewMedia` of it, since it mounts only on the head.
+  const guarded = makeSession({
+    card: { ...ferry, views: [{ ...lantern, when: { path: "天气", is: "晴" } }] },
+    rows: () => ({}),
+    model: () => scripted,
+    store,
+  })
+  const at = (id: number) => guarded.timelineNode(id)
+  assert.notEqual(sunny1.id, checkedOut.head)
+  assert.deepEqual(at(sunny1.id).applicableViews, ["lantern"])
+  assert.deepEqual(at(rainy1.id).applicableViews, [])
+  assert.equal(at(sunny1.id).latestContext, undefined)
+  assert.equal(at(sunny1.id).media?.viewMedia, undefined)
+  assert.equal(at(rainy1.id).latestContext, undefined)
+  assert.deepEqual(at(checkedOut.head).applicableViews, ["lantern"])
+  assert.ok(at(checkedOut.head).latestContext)
+
   // Ancestor `setField` on `sunny0` (`潮位` 1 -> 0): `sunny1` (`潮位` becomes 1 < 2) loses `passenger` and `high_tide`!
   const amended = S.setField(sunny0.id, [{ path: "潮位", set: 0 }])
   assert.deepEqual(amended.invalidated, [sunny1.id, sunny2.id, sunny3.id])

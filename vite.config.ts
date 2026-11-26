@@ -9,7 +9,14 @@ export default defineConfig({
   fmt: {
     printWidth: 120,
     semi: false,
-    ignorePatterns: ["docs/**", "review/**", "site/**", "packages/server/src/names.json", "tools/oxlint/**"], // archived research, reviews, standalone Astro docs site, generated name table, and vendored lint rules stay verbatim
+    ignorePatterns: [
+      "docs/**",
+      "review/**",
+      "site/**",
+      "packages/server/src/names.json",
+      "packages/runtime/test/polish-corpus.json",
+      "tools/oxlint/**",
+    ], // archived research, reviews, standalone Astro docs site, generated name table and polish corpus, and vendored lint rules stay verbatim
   },
   lint: {
     ignorePatterns: ["**/dist/**", "site/**", "tools/oxlint/**"],
