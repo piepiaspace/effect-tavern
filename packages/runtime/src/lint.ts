@@ -194,6 +194,12 @@ const prose = (card: Card, rule: string, lexicon: readonly Entry[], message: str
   )
 const DIGITS = "0123456789".split("")
 const COMPARE = ["大于", "小于", "高于", "低于", "超过", "不足", "达到", "不到", ">=", "<=", "≥", "≤", ">", "<"]
+/** The lexicon `field-in-prose` scans the card's prose with: each field next to a digit or a comparison. */
+export const fieldLexicon = (fields: Card["rules"]["fields"]): Entry[] =>
+  fields.flatMap((f) => [
+    ...[...DIGITS, ...COMPARE].map((w) => ({ pattern: `${f.path}*${w}` })),
+    ...DIGITS.map((d) => ({ pattern: `${d}*${f.path}` })),
+  ])
 const STATUS = "state is a field the client draws, a record or table product, or the card's `heading`"
 const MENU = "options are the `options` product, asked in record after the prose"
 const TAIL = "what comes after the prose each turn is a product (record stage), never an ask in the text"
@@ -634,10 +640,7 @@ const rules: Rule[] = [
     prose(
       card,
       "field-in-prose",
-      card.rules.fields.flatMap((f) => [
-        ...[...DIGITS, ...COMPARE].map((w) => ({ pattern: `${f.path}*${w}` })),
-        ...DIGITS.map((d) => ({ pattern: `${d}*${f.path}` })),
-      ]),
+      fieldLexicon(card.rules.fields),
       "a field next to a number or a comparison",
       "the narrator never sees numbers: put the text in a fiction variant with `when`, or in a readout",
     ),

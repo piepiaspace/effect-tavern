@@ -3,6 +3,7 @@ import { Schema } from "effect"
 import assert from "node:assert/strict"
 import { readFileSync, writeFileSync } from "node:fs"
 import type { Card } from "../src/card.ts"
+import { fieldLexicon } from "../src/lint.ts"
 import { Entry, FLOOR, marked, scan, sentences, splice } from "../src/polish.ts"
 import { createStarterPack } from "../src/starter-pack.ts"
 import { readCard } from "../support/author.ts"
@@ -137,13 +138,7 @@ const padTo = (s: string, len: number) => `${"雨".repeat(len - s.length - 1)}�
     ...card.lore.flatMap((e) => [...e.layers, ...(e.sections ?? []).map((x) => x.text)]),
     ...[...card.greetings, ...(card.passages ?? [])].flatMap((g) => [g.text ?? "", g.note ?? ""]).filter(Boolean),
   ]
-  const DIGITS = "0123456789".split("") // lint.ts `field-in-prose`, as it builds its lexicon
-  const COMPARE = ["大于", "小于", "高于", "低于", "超过", "不足", "达到", "不到", ">=", "<=", "≥", "≤", ">", "<"]
-  const fieldsOf = (card: Card): Entry[] =>
-    card.rules.fields.flatMap((f) => [
-      ...[...DIGITS, ...COMPARE].map((w) => ({ pattern: `${f.path}*${w}`, hint: f.path })),
-      ...DIGITS.map((d) => ({ pattern: `${d}*${f.path}` })),
-    ])
+  const fieldsOf = (card: Card) => fieldLexicon(card.rules.fields) // the very lexicon `field-in-prose` scans with
   const 他 = { path: "他", type: "int", initial: 0 } as const // a field named so that prose is full of it
   const 你 = { path: "你", type: "int", initial: 0 } as const
   const slop: Entry[] = [
