@@ -1,5 +1,6 @@
 // bun tools/mdlint/index.ts [--fix] [paths…]: Markdown emphasis GitHub shows as asterisks (`emphasis.ts`).
 // No paths: every tracked *.md and *.mdx. A path may be anywhere, a PR or issue body under /tmp included.
+// A *.mdx path is read as MDX (imports, JSX attributes and {expressions} are not prose).
 // Exit 1 when a finding is left, 0 otherwise; --fix rewrites in place and names each move.
 import { readFileSync, writeFileSync } from "node:fs"
 import { isAbsolute, relative } from "node:path"
@@ -38,8 +39,9 @@ for (const path of paths) {
     continue
   }
   // the check runs the fix dry, so a span that pairs wrongly only because of a neighbour reads as fixable too
-  const found = check(text)
-  const out = fix(text)
+  const options = { mdx: path.endsWith(".mdx") }
+  const found = check(text, options)
+  const out = fix(text, options)
   const fixedBy = new Map(out.fixed.map((f) => [`${f.type}@${f.start}`, f]))
   const stays = new Set(out.left.map((f) => `${f.type}@${f.start}`))
   for (const f of found) {
@@ -49,7 +51,8 @@ for (const path of paths) {
       ? f.remedy
       : (fixedBy.get(k)?.remedy ?? "pairs right once the span before it is fixed; nothing of its own moves")
     const head = write && !stays.has(k) ? "fixed: " : ""
-    console.log(`${name(path)}:${line}:${column}: ${head}${f.problem} (GitHub shows the asterisks); ${remedy}`)
+    const shown = f.type === "mdx" ? "" : " (GitHub shows the asterisks)"
+    console.log(`${name(path)}:${line}:${column}: ${head}${f.problem}${shown}; ${remedy}`)
   }
   if (write) {
     if (out.text !== text) writeFileSync(path, out.text)
