@@ -1,0 +1,43 @@
+# Two scripted turns for status-view.yaml:
+#   bun run tavern card test skills/card-author/examples/status-view.yaml skills/card-author/examples/status-view.scenario.yaml
+# Each `record` reply holds, by product id, what the model would have produced: theater values as they are (`voices`, `options`), a world record whole (`hut`, replaced), and world table rows to
+# add (`supplies`, each row inserted with a new entityId). `answers` picks each readout's option by id.
+seed: 1
+greeting: 0
+steps:
+  - text: 我往炉子里添了一块柴，问她电台还有声音吗。
+    replies:
+      narrate:
+        - 火苗舔上新柴，噼啪作响。阿岚把电台的旋钮拧了半圈，杂音里浮出一个人声。
+      record:
+        - voices:
+            - { who: 山下的主持人, says: 今晚山口风力九级，请不要出门。, face: host }
+          options: [问她这电台还能收到哪里, 去搁板上找点吃的, 靠着炉子睡一会]
+          answers: { fire: up, sky: storm }
+    expect:
+      state: { warmth: 8, weather: 暴雪 }
+      products:
+        voices: [{ who: 山下的主持人, says: 今晚山口风力九级，请不要出门。, face: host }]
+        options: [问她这电台还能收到哪里, 去搁板上找点吃的, 靠着炉子睡一会]
+      # expect.world arrives with #252 (feat/card-view-preview); uncomment these three lines once it is merged:
+      # world:
+      #   hut: { door: 关着, lit: true }
+      #   supplies: [{ name: 柴, count: 6 }, { name: 茶砖, count: 1 }]
+  - text: 门外好像有人敲门，我去把门打开。
+    replies:
+      narrate:
+        - 门一开，风就灌进来，把灯吹灭了。门口站着一个护林员，手里拎着一袋罐头。
+      record:
+        - hut: { door: 开着, lit: false }
+          supplies: [{ name: 罐头, count: 2 }]
+          voices:
+            - { who: 护林员, says: 东坡塌了，我从那边绕过来的。, face: ranger }
+            - { who: 电台里的陌生人, says: 有人听得见吗？, face: stranger }
+          options: [请护林员进屋, 把门关上, 重新点灯]
+          answers: { fire: down, sky: clear }
+    expect:
+      state: { warmth: 6, weather: 晴 }
+      # expect.world arrives with #252 (feat/card-view-preview); uncomment these three lines once it is merged:
+      # world:
+      #   hut: { door: 开着, lit: false }
+      #   supplies: [{ name: 柴, count: 6 }, { name: 茶砖, count: 1 }, { name: 罐头, count: 2 }]

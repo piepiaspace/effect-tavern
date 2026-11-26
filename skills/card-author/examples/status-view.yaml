@@ -1,0 +1,213 @@
+# A complete in-stream view example for the card-author skill (skills/card-author/references/views.md).
+# Two views: `hud` (residency: latest) and `radio` (residency: turn). `bun run tavern card check` passes it with no
+# errors and no warnings, and packages/runtime/test/status-view.ts plays status-view.scenario.yaml on it, so a change
+# that breaks this example breaks the build.
+#
+# The catalogs' baseUrl (https://media.example.org/…) is a placeholder on a reserved example domain: no image is
+# served there. Put your own https host in its place; everything else works as written.
+id: status-view
+title: 雪线小屋
+summary: |-
+  暴风雪里的山口小屋：炉火、存货和一台只收得到一个频道的旧电台。示例卡，演示状态栏视图与每轮视图。
+version: "1.0"
+source: hand
+names:
+  char: 阿岚
+frame:
+  - id: setting
+    text: |-
+      海拔三千米的山口上有一间石砌小屋，屋里一只铸铁炉、一架木搁板、一台旧电台。风雪封山的日子，过路人只能在这里等。
+fiction:
+  - id: keeper
+    label: 守屋人
+    text: |-
+      {{char}}守这间小屋第七个冬天了。她话少，手却不停：添柴、补门缝、隔一阵把电台的旋钮拧回那个唯一有人说话的频道。
+greetings:
+  - text: |-
+      门被风顶开一道缝，雪粉扑进来。{{char}}抬头看了你一眼，把炉门拉开，往里塞了一块柴。“坐近点，”她说，“今晚不会停。”
+rules:
+  fields:
+    - { path: warmth, type: int, initial: 6, min: 0, max: 10, label: 炉温 }
+    - { path: weather, type: enum, options: [晴, 风雪, 暴雪], initial: 风雪, label: 天气 }
+  actions: []
+  readouts:
+    - id: fire
+      text: 这一幕之后，炉火怎样了？
+      options:
+        - { id: up, text: 添了柴，火旺了, do: [{ path: warmth, add: 2 }] }
+        - { id: down, text: 火势变弱了, do: [{ path: warmth, add: -2 }] }
+        - { id: same, text: 没有变化, do: [] }
+    - id: sky
+      text: 这一幕结束时，窗外是什么天气？
+      options:
+        - { id: clear, text: 雪停了，天放晴, do: [{ path: weather, set: 晴 }] }
+        - { id: snow, text: 风雪, do: [{ path: weather, set: 风雪 }] }
+        - { id: storm, text: 暴雪, do: [{ path: weather, set: 暴雪 }] }
+lore: []
+guard: []
+catalogs:
+  # A state-driven image: the first item whose `when` holds is the view's `scene` slot.
+  - id: hut_scenes
+    kind: image
+    baseUrl: https://media.example.org/snowline/scenes
+    items:
+      - { id: clear, label: 晴夜, when: { path: weather, is: 晴 }, variants: [clear.webp] }
+      - { id: storm, label: 暴雪, when: { path: weather, is: 暴雪 }, variants: [storm.webp] }
+      - { id: snow, label: 风雪, variants: [snow.webp] }
+  # A constant image: one item and no `when`, so the slot always has it.
+  - id: crest
+    kind: image
+    baseUrl: https://media.example.org/snowline
+    items:
+      - { id: map, label: 山口地图, variants: [map.webp], aspect: 3 / 2 }
+  # Pictures the model picks through the `face` column of the `voices` product.
+  - id: faces
+    kind: image
+    baseUrl: https://media.example.org/snowline/faces
+    items:
+      - { id: host, label: 电台主持人, variants: [host.webp], focus: [0.5, 0.3] }
+      - { id: ranger, label: 护林员, variants: [ranger.webp] }
+      - { id: stranger, label: 陌生的声音, variants: [stranger.webp] }
+products:
+  - id: hut
+    role: world
+    label: 小屋
+    shape:
+      kind: record
+      keys:
+        - { key: door, type: enum, options: [关着, 开着] }
+        - { key: lit, type: boolean }
+    initial: { door: 关着, lit: true }
+    text: |-
+      小屋此刻的样子：door 是门关着还是开着，lit 是屋里的灯是否亮着。本轮没有变化时不要修改。
+  - id: supplies
+    role: world
+    label: 存货
+    shape:
+      kind: table
+      columns:
+        - { key: name, type: text }
+        - { key: count, type: int }
+    initial:
+      wood: { name: 柴, count: 6 }
+      tea: { name: 茶砖, count: 1 }
+    text: |-
+      搁板上的存货，每样一行：name 是东西的名字，count 是剩下的数量。本轮新出现的东西加一行，用掉或变少的改它的 count。
+  - id: voices
+    role: theater
+    label: 电台
+    shape:
+      kind: table
+      max: 2
+      columns:
+        - { key: who, type: text }
+        - { key: says, type: text }
+        - { key: face, type: enum, catalog: faces }
+    text: |-
+      这一幕里旧电台传出的声音，至多两段：who 是说话的人，says 是一句话，face 是最接近说话人的那张图。
+  - id: options
+    role: theater
+    surface: composer
+    label: 接下来
+    shape: { kind: list, max: 3 }
+    text: |-
+      玩家接下来可以做的三件事，每条一句，用玩家的口吻。
+views:
+  # The HUD: on the newest turn only (`latest`), so it may read `world`. It consumes the composer options and draws
+  # them as buttons that fill the input box. `residency: latest` is written out because a view with `consumes`
+  # defaults to `turn`.
+  - id: hud
+    label: 小屋状态
+    residency: latest
+    consumes: [options]
+    media:
+      - { id: scene, catalog: hut_scenes }
+      - { id: crest, catalog: crest }
+    css: |
+      :host { display: block; font-family: var(--font-sans); color: var(--ink); }
+      .hud {
+        position: relative;
+        isolation: isolate;
+        overflow: hidden;
+        padding: 10px 14px;
+        border-radius: var(--radius-card);
+        background: light-dark(#f4f1ea, #1d1b18);
+        box-shadow: inset 0 0 0 1px var(--line);
+      }
+      .hud[data-weather="暴雪"] { background: light-dark(#e6edf5, #18202b); }
+      .hud[data-weather="晴"] { background: light-dark(#fbf3df, #262014); }
+      .backdrop { position: absolute; inset: 0; z-index: -1; opacity: 0.12; }
+      header { display: flex; align-items: center; gap: 8px; font-size: var(--text-body); }
+      .badge { padding: 1px 8px; border-radius: var(--radius-pill); background: var(--alpha-2); color: var(--ink-2); }
+      .gauge { position: relative; height: 6px; margin: 8px 0; border-radius: var(--radius-pill); background: var(--alpha-2); overflow: hidden; }
+      .fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--warmth, 0) / 10 * 100%); background: var(--ok); }
+      /* red below 20%: opacity is 1 at warmth 0 and 1, 0 from 2 up; no comparison needed */
+      .fill::after { content: ""; position: absolute; inset: 0; background: var(--danger); opacity: clamp(0, 2 - var(--warmth, 0), 1); }
+      .tabs input { position: absolute; opacity: 0; }
+      .tabs label { padding: 2px 10px; border-radius: var(--radius-pill); cursor: pointer; color: var(--ink-2); }
+      .tabs input:checked + label { background: var(--alpha-2); color: var(--ink); }
+      .panel { display: none; padding-top: 8px; }
+      #tab-room:checked ~ .room, #tab-store:checked ~ .store { display: block; }
+      .scene { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; }
+      ul { margin: 0; padding-left: 1.2em; }
+      .moves { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .moves button { padding: 4px 10px; border: 0; border-radius: var(--radius-pill); background: var(--fill); }
+      .moves button:disabled { opacity: 0.5; }
+    html: |
+      <section class="hud" data-attr-weather="fields.weather" data-var-warmth="fields.warmth">
+        <div class="backdrop" data-media="media.crest" data-fit="cover"></div>
+        <header>
+          <strong data-text="names.char"></strong>
+          <span class="badge" data-text="fields.weather"></span>
+          <span class="badge" data-if="world.hut.lit">灯亮着</span>
+          <span class="badge" data-unless="world.hut.lit">灯灭了</span>
+        </header>
+        <div class="gauge" role="meter" aria-label="炉温"><span class="fill"></span></div>
+        <div class="tabs">
+          <input type="radio" name="tab" id="tab-room" checked>
+          <label for="tab-room">屋内</label>
+          <input type="radio" name="tab" id="tab-store">
+          <label for="tab-store">存货</label>
+          <div class="panel room">
+            <div class="scene" data-media="media.scene" data-lightbox></div>
+            <p>门<span data-text="world.hut.door"></span>。</p>
+          </div>
+          <div class="panel store">
+            <ul data-each="world.supplies" data-as="item">
+              <li><span data-text="item.name"></span> × <span data-text="item.count"></span></li>
+            </ul>
+          </div>
+        </div>
+        <details>
+          <summary>炉温读数</summary>
+          <p><span data-text="fields.warmth"></span> / 10</p>
+        </details>
+        <div class="moves" data-each="value" data-as="move">
+          <button data-fill="move" data-text="move"></button>
+        </div>
+      </section>
+  # The radio: one per turn that has `voices` (`residency` defaults to `turn` because it consumes a product), so every
+  # past turn keeps what its radio said. A turn view reads its own turn's `fields` and `theater`, never `world`.
+  - id: radio
+    label: 电台
+    consumes: [voices]
+    css: |
+      :host { display: block; font-family: var(--font-sans); color: var(--ink); }
+      details { padding: 8px 12px; border-left: 2px solid var(--line-strong); }
+      summary { cursor: pointer; color: var(--ink-2); font-size: var(--text-footnote); }
+      li { display: flex; gap: 10px; align-items: flex-start; margin-top: 8px; }
+      .face { width: 40px; height: 40px; flex: none; border-radius: var(--radius-sm); overflow: hidden; }
+      p { margin: 2px 0 0; }
+    html: |
+      <details data-open="latest">
+        <summary>电台 · <span data-text="value.length"></span> 段 · 窗外<span data-text="fields.weather"></span></summary>
+        <ul data-each="value" data-as="voice">
+          <li>
+            <div class="face" data-media="faces:voice.face" data-lightbox></div>
+            <div>
+              <strong><span data-text="voice.$num"></span>. <span data-text="voice.who"></span></strong>
+              <p data-text="voice.says"></p>
+            </div>
+          </li>
+        </ul>
+      </details>
