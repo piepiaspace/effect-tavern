@@ -23,6 +23,12 @@ import { t } from "./i18n.ts"
 
 const keep = (e: Event) => e.preventDefault() // a press on a row must not take the focus from the box
 
+const entrySlug = (resourceId: string): string => {
+  const raw = resourceId.replace(/^(?:pack|card):/, "")
+  const slash = raw.indexOf("/")
+  return slash >= 0 ? raw.slice(slash + 1) : raw
+}
+
 /** The only source is the authorized player catalog. Model lore and memory indexes never reach this menu. */
 export const InvocationMenu = (props: {
   /** The card's snippets as rows, each valued `snippet/<name>`; `insert` gets the name of the one that ran. */
@@ -60,20 +66,23 @@ export const InvocationMenu = (props: {
     const p = page()
     return p === "pack" ? t("settings.packs") : p === "card" ? t("card.card") : p ? label(p.slice(5)) : ""
   }
-  const Entry = (p: { item: PlayerCatalogItem }) => (
-    <CommandItem
-      class="item asset"
-      value={p.item.resourceId}
-      label={p.item.title}
-      keywords={[p.item.summary]}
-      onPointerDown={keep}
-    >
-      <span class="name">{p.item.title}</span>
-      <Show when={p.item.summary !== p.item.title}>
-        <span class="hint">{p.item.summary}</span>
-      </Show>
-    </CommandItem>
-  )
+  const Entry = (p: { item: PlayerCatalogItem }) => {
+    const slug = () => entrySlug(p.item.resourceId)
+    return (
+      <CommandItem
+        class="item asset"
+        value={p.item.resourceId}
+        label={p.item.title}
+        keywords={[p.item.summary, slug()]}
+        onPointerDown={keep}
+      >
+        <span class="name">{p.item.title}</span>
+        <Show when={p.item.summary && p.item.summary !== p.item.title}>
+          <span class="hint">{p.item.summary}</span>
+        </Show>
+      </CommandItem>
+    )
+  }
   return (
     <Command
       class="invocation-menu"
@@ -128,7 +137,7 @@ export const InvocationMenu = (props: {
               <Show when={from(s).length}>
                 <CommandItem class="item" value={s} page={s} onPointerDown={keep}>
                   <span class="name">{s === "pack" ? t("settings.packs") : t("card.card")}</span>
-                  <span class="hint" />
+                  <span class="hint mono">{from(s).length}</span>
                   <span aria-hidden="true">›</span>
                 </CommandItem>
               </Show>
@@ -154,7 +163,7 @@ export const InvocationMenu = (props: {
               {(g) => (
                 <CommandItem class="item" value={`pack/${g}`} page={`pack/${g}`} onPointerDown={keep}>
                   <span class="name">{label(g)}</span>
-                  <span class="hint" />
+                  <span class="hint mono">{from("pack").filter((i) => i.category === g).length}</span>
                   <span aria-hidden="true">›</span>
                 </CommandItem>
               )}

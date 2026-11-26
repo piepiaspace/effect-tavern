@@ -188,6 +188,40 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
   )
   const narrated = preview("narrate").doc.map(text).join("\n")
   assert.ok(narrated.includes("The keeper of the salt road.") && !narrated.includes("#past"))
+
+  // Pack entry front matter + sections in CLI view (`lore` section and `lookup` document)
+  const withPack = (stage: "narrate" | "lookup") =>
+    view(
+      card,
+      {
+        ...player,
+        packs: [
+          {
+            id: "craft",
+            name: "Craft",
+            entries: [
+              {
+                id: "cinema",
+                title: "电影化场景调度",
+                summary: "潜台词与空间张力",
+                text: "正文第一句。",
+                sections: [
+                  { id: "subtext", title: "潜台词节奏", text: "子节一。" },
+                  { id: "blocking", text: "子节二。" },
+                ],
+              },
+            ],
+          },
+        ],
+        local: { id: "local", name: "local", card: card.id, mounts: ["craft"] },
+      },
+      { stage },
+    )
+  assert.match(
+    withPack("lookup").sections.find((s) => s.name === "lore")!.text,
+    /craft\/cinema {2}\(craft\) {2}2 sections {2}in the index\n {4}电影化场景调度 — 潜台词与空间张力\n {4}#subtext 潜台词节奏\n {4}#blocking$/m,
+  )
+  assert.match(withPack("lookup").doc.map(text).join("\n"), /pack:craft\/cinema 电影化场景调度 — 潜台词与空间张力/)
 }
 // Empty-history preview uses the same world, permissions and state-expanded asks as a real turn.
 {

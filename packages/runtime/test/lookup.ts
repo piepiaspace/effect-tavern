@@ -4,10 +4,13 @@ import { Effect, Stream } from "effect"
 import { makeSession, outcome, type Event } from "../src/session.ts"
 import {
   CATALOG_CHARS,
+  catalogBlock,
+  catalogEntry,
   contextLookup,
   deliveryText,
   freeze,
   loreResource,
+  resourcesAt,
   revision,
   residentOn,
   sectionResources,
@@ -15,7 +18,8 @@ import {
   type Unit,
 } from "../src/context.ts"
 import type { Card } from "../src/card.ts"
-import { lookupSelect } from "../src/decision.ts"
+import { lookupQuestions, lookupSelect } from "../src/decision.ts"
+import { makeLore } from "../src/lore.ts"
 import { chat } from "./cards/index.ts"
 import { defaultAnswer, readStage } from "../support/script.ts"
 
@@ -499,6 +503,188 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   assert.deepEqual(
     t.deliveries.map((d) => d.resourceId),
     ["card:c"],
+  )
+}
+// ───────── PackEntry Skill front matter (`title` / `summary`) & `sections` modes (#245) ─────────
+{
+  const packs = [
+    {
+      id: "craft/cinema",
+      title: "电影化场景调度",
+      summary: "当对白存在潜台词博弈、视线交锋或留白张力时读取",
+      text: "第一句不作为标题切分。用动作停顿替代心理直白解释。",
+      sections: [
+        { id: "subtext", title: "潜台词与停顿", text: "借器物传递未说出口的态度。" },
+        { id: "blocking", text: "空间距离决定人物压迫感。" },
+      ],
+    },
+    {
+      id: "craft/bare",
+      text: "一段没有显式标题和摘要的正文。第二句。",
+    },
+    {
+      id: "craft/outline",
+      title: "叙事节奏总纲",
+      summary: "全篇节奏控制核心原则",
+      text: "总纲常驻：先立感官锚点，再推进冲突。",
+      activation: "always" as const,
+      sections: [
+        { id: "climax", title: "高潮收束技法", text: "高潮处缩短句长，留出呼吸余地。" },
+        { id: "transition", title: "转场切镜", text: "切镜直接落入下一幕动作。" },
+      ],
+    },
+    {
+      id: "craft/manual",
+      title: "黑色幽默小剧场",
+      summary: "仅玩家主动点名触发的荒诞旁白模板",
+      text: "手动模板正文。",
+      access: { model: false, player: true },
+      residency: "turn" as const,
+      sections: [{ id: "extra", title: "隐藏附录", text: "不应进入模型检索。" }],
+    },
+  ]
+  const res = resourcesAt({
+    lore: makeLore([]),
+    state: { fields: {}, world: {}, lore: {} },
+    seen: [],
+    packs,
+    products: [],
+  })
+  const byId = new Map(res.map((x) => [x.resourceId, x]))
+  // Explicit title vs short-id fallback (never sentence-hooked from prose); section explicit title vs section id fallback
+  assert.equal(byId.get("pack:craft/cinema")!.title, "电影化场景调度")
+  assert.equal(byId.get("pack:craft/cinema")!.summary, "当对白存在潜台词博弈、视线交锋或留白张力时读取")
+  assert.equal(byId.get("pack:craft/bare")!.title, "bare")
+  assert.equal(byId.get("pack:craft/bare")!.summary, undefined)
+  assert.equal(byId.get("pack:craft/cinema#subtext")!.title, "潜台词与停顿")
+  assert.equal(byId.get("pack:craft/cinema#blocking")!.title, "blocking")
+
+  // Player `/` catalog: explicit summary preserved; bare pack entry gets clean "" instead of slicing prose; sections excluded
+  const playerItems = res.filter((x) => x.access.player).map(catalogEntry)
+  assert.deepEqual(
+    playerItems.map((x) => [x.resourceId, x.title, x.summary]),
+    [
+      ["pack:craft/cinema", "电影化场景调度", "当对白存在潜台词博弈、视线交锋或留白张力时读取"],
+      ["pack:craft/bare", "bare", ""],
+      ["pack:craft/outline", "叙事节奏总纲", "全篇节奏控制核心原则"],
+      ["pack:craft/manual", "黑色幽默小剧场", "仅玩家主动点名触发的荒诞旁白模板"],
+    ],
+  )
+
+  // Always-on main entry (`craft/outline`) is pre-injected; its sections remain on-demand in lookup (`resident: sections only`).
+  // Manual-only entry (`craft/manual`) and its sections are completely invisible to model lookup.
+  const alwaysHeld = res.filter((x) => x.access.model && x.activation === "always").map((x) => freeze(x))
+  const l = contextLookup(res, alwaysHeld)
+  assert.deepEqual(
+    l.readable().map((x) => x.resourceId),
+    ["pack:craft/cinema", "pack:craft/bare", "pack:craft/outline"],
+  )
+  const block = catalogBlock(l.catalog(""))
+  assert.ok(block.includes("pack:craft/cinema 电影化场景调度 — 当对白存在潜台词博弈、视线交锋或留白张力时读取"))
+  assert.ok(block.includes("pack:craft/bare bare\n"))
+  assert.ok(
+    block.includes(
+      "pack:craft/outline 叙事节奏总纲 — 全篇节奏控制核心原则 (resident: sections only)\n  pack:craft/outline#climax 高潮收束技法\n  pack:craft/outline#transition 转场切镜",
+    ),
+  )
+  assert.ok(!block.includes("craft/manual"))
+
+  // `summary` participates in anchor search ranking; section `title` participates in section hit ordering
+  const sumHit = l.search("视线交锋")
+  assert.equal(sumHit[0]?.resourceId, "pack:craft/cinema")
+  assert.equal(sumHit[0]?.summary, "当对白存在潜台词博弈、视线交锋或留白张力时读取")
+  const secTitleHit = l.search("转场切镜")
+  assert.equal(secTitleHit[0]?.resourceId, "pack:craft/outline")
+  assert.equal(secTitleHit[0]?.resident, true)
+  assert.deepEqual(
+    secTitleHit[0]?.sections?.map((s) => s.resourceId),
+    ["pack:craft/outline#transition", "pack:craft/outline#climax"],
+  )
+
+  // Decision model `lookupQuestions` receives `title — summary` for unread faces, and unread section titles for resident outline
+  const q = lookupQuestions({ scene: "", input: { text: "两人隔桌对视，谁都没先开口" }, units: l.units() })
+  assert.deepEqual(
+    q.asked.map((a) => a.resourceId),
+    ["pack:craft/cinema", "pack:craft/bare", "pack:craft/outline#climax", "pack:craft/outline#transition"],
+  )
+  assert.ok(
+    (q.questions.u0.instructions as string).includes("电影化场景调度 — 当对白存在潜台词博弈、视线交锋或留白张力时读取"),
+  )
+  assert.ok((q.questions.u2.instructions as string).includes("高潮收束技法"))
+
+  // End-to-end session: always-on outline injects body every turn while lookup drills down into `outline#climax` on turn 1
+  const calls: Extract<Event, { kind: "call" }>[] = []
+  let step = 0
+  const lookupModel = fake(() =>
+    step++ === 0 ? call("read_context", { refs: ["pack:craft/outline#climax", "pack:craft/cinema"] }) : done,
+  )
+  const otherModel = fake((o) => defaultAnswer(readStage(o), { notes: "n" }))
+  const S = makeSession({
+    card: { ...chat, lore: [], products: [] },
+    rows: () => ({
+      packs: [
+        {
+          id: "craft",
+          name: "Craft",
+          entries: packs.map((e) => ({ ...e, id: e.id.slice("craft/".length) })),
+        },
+      ],
+      local: { id: "local", name: "Local", card: chat.id, mounts: ["craft"] },
+    }),
+    model: (p) => (p === "lookup" ? lookupModel : otherModel),
+  })
+  const g = S.greet({ text: "开场" }).node!
+  const t1 = await Effect.runPromise(
+    outcome(
+      S.act(g.id, { text: "高潮对峙" }).pipe(
+        Stream.tap((e) =>
+          Effect.sync(() => {
+            if (e.kind === "call") calls.push(e)
+          }),
+        ),
+      ),
+    ),
+  )
+  assert.deepEqual(
+    t1.deliveries.map((d) => d.resourceId),
+    ["pack:craft/outline", "pack:craft/outline#climax", "pack:craft/cinema"],
+  )
+  const narrateDoc = JSON.stringify(calls.find((c) => c.phase === "narrate")!.msgs)
+  assert.ok(narrateDoc.includes("总纲常驻：先立感官锚点，再推进冲突。"))
+  assert.ok(narrateDoc.includes("高潮处缩短句长，留出呼吸余地。"))
+  assert.ok(narrateDoc.includes("第一句不作为标题切分。用动作停顿替代心理直白解释。"))
+  assert.ok(!narrateDoc.includes("手动模板正文。"))
+  // Turn 2: `craft/cinema` is now resident in window, so lookup lists `craft/cinema#subtext` & `#blocking` as `resident: sections only`
+  calls.length = 0
+  step = 0
+  const lookupModel2 = fake(() => (step++ === 0 ? call("read_context", { refs: ["pack:craft/cinema#subtext"] }) : done))
+  const S2 = makeSession({
+    card: { ...chat, lore: [], products: [] },
+    rows: () => ({
+      packs: [{ id: "craft", name: "Craft", entries: packs.map((e) => ({ ...e, id: e.id.slice("craft/".length) })) }],
+      local: { id: "local", name: "Local", card: chat.id, mounts: ["craft"] },
+    }),
+    model: (p) => (p === "lookup" ? lookupModel2 : otherModel),
+    store: { read: () => ({ nodes: [...S.log.nodes.values()], head: t1.id }), write: () => {} },
+  })
+  const t2 = await Effect.runPromise(
+    outcome(
+      S2.act(t1.id, { text: "继续试探" }).pipe(
+        Stream.tap((e) =>
+          Effect.sync(() => {
+            if (e.kind === "call") calls.push(e)
+          }),
+        ),
+      ),
+    ),
+  )
+  const lookupPrompt2 = JSON.stringify(calls.find((c) => c.phase === "lookup")!.msgs)
+  assert.ok(lookupPrompt2.includes("pack:craft/cinema 电影化场景调度 — 当对白存在潜台词博弈"))
+  assert.ok(lookupPrompt2.includes("(resident: sections only)"))
+  assert.ok(lookupPrompt2.includes("pack:craft/cinema#subtext 潜台词与停顿"))
+  assert.deepEqual(
+    t2.deliveries.map((d) => d.resourceId),
+    ["pack:craft/outline", "pack:craft/cinema#subtext"],
   )
 }
 console.log("lookup ok")

@@ -31,7 +31,7 @@ lookup → decide → settle → gate → direct → narrate → check → polis
 
 ### 决策模型预检（`lookup` 与 `check`）
 
-除常规语言模型连接（`Connection`）外，Effect Tavern 支持配置一个安装级**决策模型（`DecisionModel`）**（`/decision`：支持 Google Gemini Decisions、OpenAI Decisions 与 TypeSafe Jev），在默认模型页通过统一的**预检（Pre-check）**开关启停：
+除常规语言模型连接（`Connection`）外，Effect Tavern 支持配置一个安装级**决策模型（`DecisionModel`）**（`/decision`：支持 Google Gemini Decisions、OpenAI Decisions 与 TypeSafe Jev），在默认模型页通过统一的**预检**（Pre-check）开关启停：
 
 - **完整目录 `lookup` 直出：** 宿主每轮构建一份 `catalog` 目录视图（`context.ts`）。当目录满足完整条件（`≤ 256` 单元且 `≤ 10,000` 字符）且启用了决策模型时，直接对未读条目钩子与驻留条目的未读节做概率打分（`p > 0.5`，至多 8 项），零语言模型调用完成检索；超大目录或接口不可用时无感回退至语言模型工具循环。
 - **`check` 快速放行：** 将 `guard` 禁令与开窗披露转化为布尔概率问题（`LO = 0.25`、`HI = 0.75`）。仅当所有问题分界清晰且无违规时直接放行结算；决策模型**绝不自行触发纠错重写**，任何边界模糊或异常均交由语言模型 `check` 裁定。

@@ -21,7 +21,7 @@ CLI 入口：`bun run tavern`，支持 `card init|check|view|test|install`、`pl
 
 ## 2. 核心设计不变式与边界约定
 
-在演进过程中严格遵守 [`README.md`](../README.md) 的立项原则（尤其是**“核心有上限，`runtime/src/` 保持一两千行量级”**），确立以下四条边界不变式：
+在演进过程中严格遵守 [`README.md`](../README.md) 的立项原则（尤其是“**核心有上限，`runtime/src/` 保持一两千行量级**”），确立以下四条边界不变式：
 
 ### 2.1 保持 `runtime/src/` 的核心职责
 * **进核心（`runtime/src/`）**：保留领域计算与 Session 回合执行；不混入文件 I/O、启动配置或测试驱动。将客户端现有的纯函数规则短语模块 [`phrase.ts`](../packages/runtime/src/phrase.ts) 下沉至 `packages/runtime/src/phrase.ts`，供 CLI 与前端共同调用。

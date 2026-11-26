@@ -1,41 +1,34 @@
 // Settings → 写作包 (docs/packs-brief.md §九 §7, §十, docs/harness-neutralization-brief.md §4): every pack is one row
-// shape (`Layer`) in one 5-tab full-height workbench (文风与要求, 线索词条, 润色禁词, 记录与小剧场, 快捷输入). One pack may
+// shape (`Layer`) in one 5-tab full-height workbench (常驻指令, 参考词条, 润色禁词, 小剧场, 快捷输入). One pack may
 // be the install's default (starred, as a persona is). Every edit is one `PUT /packs/<id>` and a re-read of the active
 // card.
 import { uniqueHatName } from "@effect-tavern/runtime/src/fragment.ts"
 import type { Format, Snippet } from "@effect-tavern/runtime/src/fragment.ts"
-import type { Layer, PackEntry } from "@effect-tavern/runtime/src/layer.ts"
+import type { Layer } from "@effect-tavern/runtime/src/layer.ts"
 import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
-import { hook } from "@effect-tavern/runtime/src/lore.ts"
 import type { Entry } from "@effect-tavern/runtime/src/polish.ts"
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
+import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
-import {
-  ask,
-  blurField,
-  Menu,
-  Modal,
-  Name,
-  newId,
-  Switch,
-  Tick,
-  ToList,
-  type Pane,
-  dialogHandle,
-  Well,
-} from "./controls.tsx"
-import { Clue, Close, Export, Import, Package, Snippets as Plus, Star, StarFill, Trash } from "./icons.tsx"
+import { ask, blurField, Menu, Modal, Name, newId, Switch, ToList, Well, type Pane, dialogHandle } from "./controls.tsx"
+import { Clue, Close, Export, Import, Next, Package, Snippets as Plus, Star, StarFill, Trash } from "./icons.tsx"
 import { caretOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf, type InsertDraft } from "./inserts.ts"
 import { cleanLex, FILE, mergeLexicon, parseLexicon, serializeLexicon } from "./lexicon.ts"
 import {
-  KIND_LABEL,
+  cleanReferenceEntry,
   editedProduct,
+  entryModeOf,
+  KIND_LABEL,
+  MAX_ENTRY_SECTIONS,
+  type EntryMode,
   type ProductEditDraft,
+  type ReferenceEntry,
   PRODUCT_KINDS,
   productKind,
   packHoles,
   serializePack,
+  withEntryMode,
   withoutProductPatch,
   withPackName,
   withProductPatch,
@@ -292,49 +285,252 @@ export const Packs = (props: Pane) => {
   )
 }
 
-// ───────── 2. 线索词条 (`Layer.entries`) ─────────
+// ───────── 2. 参考词条 (`Layer.entries`) ─────────
+interface SectionDraft {
+  key: number
+  id: string
+  title: string
+  text: string
+}
+
+interface EntryDraft {
+  key: number
+  id: string
+  title: string
+  summary: string
+  text: string
+  sections: SectionDraft[]
+  access?: { model: boolean; player: boolean }
+  activation?: "always" | "on_demand"
+  residency?: "permanent" | "window" | "turn"
+}
+
+let refSeq = 1
+const nextRefKey = () => refSeq++
+
+const isGeneratedSlug = (id: string) => /^(ref|entry|sec)-[0-9a-z-]+$/i.test(id)
+
+const draftFromEntry = (e: ReferenceEntry, prev?: EntryDraft): EntryDraft => ({
+  key: prev?.key ?? nextRefKey(),
+  id: e.id,
+  title: e.title ?? (!isGeneratedSlug(e.id) ? e.id : ""),
+  summary: e.summary ?? "",
+  text: e.text,
+  sections: (e.sections ?? []).map((s) => ({
+    key: prev?.sections.find((ps) => ps.id === s.id)?.key ?? nextRefKey(),
+    id: s.id,
+    title: s.title ?? (!isGeneratedSlug(s.id) ? s.id : ""),
+    text: s.text,
+  })),
+  ...(e.access && { access: { ...e.access } }),
+  ...(e.activation && { activation: e.activation }),
+  ...(e.residency && { residency: e.residency }),
+})
+
+const entryFromDraft = (d: EntryDraft): ReferenceEntry => ({
+  id: d.id,
+  ...(d.title.trim() && { title: d.title.trim() }),
+  ...(d.summary.trim() && { summary: d.summary.trim() }),
+  text: d.text,
+  ...(d.sections.length && {
+    sections: d.sections.map((s) => ({
+      id: s.id,
+      ...(s.title.trim() && { title: s.title.trim() }),
+      text: s.text,
+    })),
+  }),
+  ...(d.access && { access: d.access }),
+  ...(d.activation && { activation: d.activation }),
+  ...(d.residency && { residency: d.residency }),
+})
+
+const ENTRY_MODES: readonly EntryMode[] = ["auto", "manual", "always"]
+
 const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
-  const entries = () => props.pack.entries ?? []
+  const [items, setItems] = createSignal<EntryDraft[]>([])
+  const [openKey, setOpenKey] = createSignal<number | null>(null)
+  const [openSecKey, setOpenSecKey] = createSignal<number | null>(null)
   const [q, setQ] = createSignal("")
   const [searching, setSearching] = createSignal(false)
-  const [draft, setDraft] = createSignal<{ id: string; text: string } | null>(null)
-  const shown = () => {
-    const s = q().trim()
-    return entries()
-      .map((e, i) => ({ e, i }))
-      .filter(({ e }) => !s || e.id.includes(s) || e.text.includes(s))
+
+  let live: EntryDraft[] = []
+  const writeItems = (next: EntryDraft[]) => {
+    live = next
+    setItems(next)
   }
-  const setEntries = (edit: (list: readonly PackEntry[]) => PackEntry[]) =>
+
+  let focusNextEntry = false
+  let focusNextSec = false
+  let syncedPackId = ""
+  let lastSavedSig = ""
+  const sigOf = (list: readonly ReferenceEntry[]) => JSON.stringify(list)
+
+  createEffect(
+    () => [props.pack.id, props.pack.entries ?? []] as const,
+    ([id, raw]) => {
+      const incomingSig = sigOf(raw)
+      if (id !== syncedPackId) {
+        syncedPackId = id
+        lastSavedSig = incomingSig
+        writeItems(raw.map((e) => draftFromEntry(e)))
+        setOpenKey(null)
+        setOpenSecKey(null)
+        setQ("")
+        return
+      }
+      if (incomingSig !== lastSavedSig) {
+        lastSavedSig = incomingSig
+        writeItems(
+          raw.map((e) =>
+            draftFromEntry(
+              e,
+              live.find((x) => x.id === e.id),
+            ),
+          ),
+        )
+      }
+    },
+  )
+
+  const persist = (nextItems: readonly EntryDraft[]) => {
+    const cleaned: ReferenceEntry[] = []
+    const usedIds = new Set<string>()
+    for (let i = 0; i < nextItems.length; i++) {
+      const c = cleanReferenceEntry(entryFromDraft(nextItems[i]), `entry-${cleaned.length + 1}`)
+      if (!c) continue
+      let uid = c.id
+      let n = 2
+      while (usedIds.has(uid)) uid = `${c.id}-${n++}`
+      usedIds.add(uid)
+      cleaned.push(uid === c.id ? c : { ...c, id: uid })
+    }
+    const nextSig = sigOf(cleaned)
+    if (nextSig === lastSavedSig) return
+    lastSavedSig = nextSig
     void props.onSave((p) => {
-      const next = edit(p.entries ?? [])
       const { entries: _, ...rest } = p
-      return next.length ? { ...rest, entries: next } : rest
+      return cleaned.length ? { ...rest, entries: cleaned } : rest
     })
-  const commitDraft = () => {
-    const d = draft()
-    if (!d) return
-    setDraft(null)
-    const text = d.text.trim()
-    if (!text) return
-    setEntries((list) => [{ id: d.id.trim() || hook(text).slice(0, 16) || `entry-${list.length + 1}`, text }, ...list])
   }
-  const updateEntry = (idx: number, patch: Partial<PackEntry>) =>
-    setEntries((list) => {
-      const cur = [...list]
-      const now = cur[idx]
-      if (!now) return cur
-      const text = (patch.text ?? now.text).trim()
-      if (!text) return cur.filter((_, j) => j !== idx)
-      const id = (patch.id ?? now.id).trim() || hook(text).slice(0, 16) || now.id
-      cur[idx] = { ...now, ...patch, id, text }
-      return cur
-    })
+
+  const commitItem = (key: number, fn: (cur: EntryDraft) => EntryDraft) => {
+    const next = live.map((x) => (x.key === key ? fn(x) : x))
+    writeItems(next)
+    persist(next)
+  }
+
+  const commitSection = (entryKey: number, secKey: number, fn: (cur: SectionDraft) => SectionDraft) =>
+    commitItem(entryKey, (cur) => ({
+      ...cur,
+      sections: cur.sections.map((s) => (s.key === secKey ? fn(s) : s)),
+    }))
+
+  const isBlankEntry = (x: EntryDraft) =>
+    !x.title.trim() &&
+    !x.summary.trim() &&
+    !x.text.trim() &&
+    !x.sections.some((s) => Boolean(s.title.trim() || s.text.trim()))
+
+  const switchOpenEntry = (nextKey: number | null) => {
+    blurField()
+    const pruned = live
+      .map((x) =>
+        x.key === nextKey ? x : { ...x, sections: x.sections.filter((s) => Boolean(s.title.trim() || s.text.trim())) },
+      )
+      .filter((x) => x.key === nextKey || !isBlankEntry(x))
+    if (pruned.length !== live.length || pruned.some((x, i) => x.sections.length !== live[i]?.sections.length)) {
+      writeItems(pruned)
+    }
+    persist(pruned)
+    setOpenKey(nextKey)
+    setOpenSecKey(null)
+  }
+
+  const createEntry = () => {
+    blurField()
+    const kept = live.filter((x) => !isBlankEntry(x))
+    const fresh: EntryDraft = {
+      key: nextRefKey(),
+      id: newId("ref"),
+      title: "",
+      summary: "",
+      text: "",
+      sections: [],
+      access: { model: true, player: true },
+      activation: "on_demand",
+      residency: "window",
+    }
+    focusNextEntry = true
+    setQ("")
+    writeItems([fresh, ...kept])
+    setOpenKey(fresh.key)
+    setOpenSecKey(null)
+  }
+
+  const removeEntry = (target: EntryDraft) => {
+    blurField()
+    const latest = live.find((x) => x.key === target.key) ?? target
+    const run = () => {
+      const next = live.filter((x) => x.key !== latest.key)
+      writeItems(next)
+      if (openKey() === latest.key) setOpenKey(null)
+      persist(next)
+    }
+    const hasBody =
+      Boolean(latest.title.trim() || latest.summary.trim() || latest.text.trim()) || latest.sections.length > 0
+    if (hasBody) {
+      ask(t("packs.confirmDeleteEntry", { name: latest.title.trim() || latest.id }), run)
+    } else {
+      run()
+    }
+  }
+
+  const addSection = (entryKey: number) => {
+    blurField()
+    const current = live.find((x) => x.key === entryKey)
+    if (!current || current.sections.length >= MAX_ENTRY_SECTIONS) return
+    focusNextSec = true
+    const sec: SectionDraft = { key: nextRefKey(), id: newId("sec"), title: "", text: "" }
+    writeItems(live.map((x) => (x.key === entryKey ? { ...x, sections: [...x.sections, sec] } : x)))
+    setOpenSecKey(sec.key)
+  }
+
+  const removeSection = (entryKey: number, secKey: number) => {
+    blurField()
+    const entry = live.find((x) => x.key === entryKey)
+    const sec = entry?.sections.find((s) => s.key === secKey)
+    if (!sec) return
+    const run = () => {
+      if (openSecKey() === secKey) setOpenSecKey(null)
+      commitItem(entryKey, (cur) => ({ ...cur, sections: cur.sections.filter((s) => s.key !== secKey) }))
+    }
+    if (sec.text.trim() || sec.title.trim()) {
+      ask(t("packs.confirmDeleteSection", { name: sec.title.trim() || t("packs.untitledSection") }), run)
+    } else {
+      run()
+    }
+  }
+
+  const shown = createMemo(() => {
+    const needle = q().trim().toLowerCase()
+    if (!needle) return items()
+    return items().filter((x) =>
+      [x.id, x.title, x.summary, x.text, ...x.sections.flatMap((s) => [s.id, s.title, s.text])]
+        .join("\n")
+        .toLowerCase()
+        .includes(needle),
+    )
+  })
+
+  const modeLabel = (m: EntryMode) =>
+    m === "manual" ? t("invoke.manual") : m === "always" ? t("invoke.always") : t("invoke.auto")
+
   return (
-    <section class="wpanel" role="tabpanel" aria-label={t("packs.entries")}>
-      <div class="prose-card grow">
-        <div class="block-title lex-title">
-          <h3>{t("packs.entries")}</h3>
-          <span class="tag mono">{entries().length}</span>
+    <section class="wpanel prose-panel" role="tabpanel" aria-label={t("packs.entries")}>
+      <div class="block-title prose-head">
+        <h3>{t("packs.entries")}</h3>
+        <span class="tag mono">{items().length}</span>
+        <Show when={items().length > 0}>
           <label class="inline-search" data-open={searching() || !!q() ? "true" : "false"}>
             <Clue aria-hidden="true" />
             <input
@@ -354,152 +550,314 @@ const EntriesTab = (props: { pack: Layer; onSave: Save }) => {
               }}
             />
           </label>
-          <div class="right">
-            <button
-              type="button"
-              class="btn sm"
-              disabled={draft() !== null}
-              onClick={() => setDraft({ id: "", text: "" })}
-            >
-              <Plus /> <span>{t("packs.addEntry")}</span>
-            </button>
-          </div>
+        </Show>
+        <div class="right">
+          <button type="button" class="btn sm" onClick={createEntry}>
+            <Plus /> <span>{t("packs.addEntry")}</span>
+          </button>
         </div>
-        <div class="frag-list scroller fade">
-          <Show when={draft()}>
-            {(d) => (
-              <div
-                class="frag-row"
-                onFocusOut={(e) => {
-                  if (!e.currentTarget.contains(e.relatedTarget as Node | null)) commitDraft()
-                }}
-              >
-                <div class="frag-bar">
-                  <input
-                    class="field sm mono"
-                    autocapitalize="none"
-                    autocorrect="off"
-                    spellcheck="false"
-                    enterkeyhint="done"
-                    placeholder={t("writing.name")}
-                    aria-label={t("writing.name")}
-                    value={d().id}
-                    ref={(el) => requestAnimationFrame(() => el.focus())}
-                    onInput={(e) => setDraft({ ...d(), id: e.currentTarget.value })}
-                    onKeyDown={leaveInput}
-                  />
-                  <span class="spacer" />
-                  <button
-                    type="button"
-                    class="icon sm"
-                    aria-label={t("writing.discard")}
-                    onClick={() => setDraft(null)}
-                  >
-                    <Close />
-                  </button>
-                </div>
-                <Well label={t("packs.content")}>
-                  <textarea
-                    aria-label={t("packs.content")}
-                    placeholder={t("packs.content")}
-                    value={d().text}
-                    onInput={(e) => setDraft({ ...d(), text: e.currentTarget.value })}
-                    onKeyDown={leaveArea}
-                  />
-                </Well>
-              </div>
-            )}
-          </Show>
-          <For each={shown()} keyed={(x) => x.i}>
-            {(x) => (
-              <div class="frag-row">
-                <div class="frag-bar">
-                  <input
-                    class="field sm mono"
-                    autocapitalize="none"
-                    autocorrect="off"
-                    spellcheck="false"
-                    enterkeyhint="done"
-                    aria-label={t("writing.name")}
-                    value={x().e.id}
-                    onChange={(e) => updateEntry(x().i, { id: e.currentTarget.value })}
-                    onKeyDown={leaveInput}
-                  />
-                  <Tick
-                    class="tag"
-                    on={x().e.access?.model ?? true}
-                    onFlip={() =>
-                      updateEntry(x().i, {
-                        access: { model: !(x().e.access?.model ?? true), player: x().e.access?.player ?? true },
-                      })
+      </div>
+
+      <div class="prose-list scroller">
+        <Show when={items().length > 0} fallback={<p class="none">{t("packs.noEntries")}</p>}>
+          <Show when={shown().length > 0} fallback={<p class="none">{t("writing.noEntries")}</p>}>
+            <For each={shown()} keyed={(x) => x.key}>
+              {(x) => {
+                const isOpen = () => openKey() === x().key
+                const mode = () => entryModeOf(x())
+                const displayTitle = () => x().title.trim() || (!isGeneratedSlug(x().id) ? x().id : "")
+                return (
+                  <Show
+                    when={isOpen()}
+                    fallback={
+                      <div class="ref-item">
+                        <div class="ref-row-wrap">
+                          <button
+                            type="button"
+                            class="ref-row"
+                            aria-expanded="false"
+                            onClick={() => switchOpenEntry(x().key)}
+                          >
+                            <span class="ref-row-top">
+                              <span class="ref-icon-slot" aria-hidden="true">
+                                <Next class="ref-chev" />
+                              </span>
+                              <span class={{ "ref-row-title": true, untitled: !displayTitle() }}>
+                                {displayTitle() || t("packs.entryTitle")}
+                              </span>
+                              <span class="spacer" />
+                              <Show when={x().sections.length > 0}>
+                                <span class="ref-meta mono">
+                                  {t("packs.sectionsCount", { n: x().sections.length })}
+                                </span>
+                              </Show>
+                              <span class="tag ref-mode-tag">{modeLabel(mode())}</span>
+                            </span>
+                            <Show when={x().summary.trim()}>
+                              {(sum) => <span class="ref-row-summary">{sum()}</span>}
+                            </Show>
+                          </button>
+                          <button
+                            type="button"
+                            class="icon sm ref-row-del"
+                            aria-label={t("packs.deleteEntry")}
+                            onClick={() => removeEntry(x())}
+                          >
+                            <Trash />
+                          </button>
+                        </div>
+                      </div>
                     }
                   >
-                    {t("invoke.auto")}
-                  </Tick>
-                  <Tick
-                    class="tag"
-                    on={x().e.access?.player ?? true}
-                    onFlip={() =>
-                      updateEntry(x().i, {
-                        access: { player: !(x().e.access?.player ?? true), model: x().e.access?.model ?? true },
-                      })
-                    }
-                  >
-                    {t("invoke.manual")}
-                  </Tick>
-                  <Menu
-                    small
-                    label={t("invoke.mode")}
-                    value={x().e.activation ?? "on_demand"}
-                    options={[
-                      { value: "on_demand", label: t("packs.onDemand") },
-                      { value: "always", label: t("packs.everyTurn") },
-                    ]}
-                    onPick={(v) => updateEntry(x().i, { activation: v })}
-                  />
-                  <Menu
-                    small
-                    label={t("invoke.residency")}
-                    value={x().e.residency ?? "window"}
-                    options={[
-                      { value: "permanent", label: t("invoke.permanent") },
-                      { value: "window", label: t("invoke.window") },
-                      { value: "turn", label: t("invoke.turn") },
-                    ]}
-                    onPick={(v) => updateEntry(x().i, { residency: v })}
-                  />
-                  <span class="tag">{hook(x().e.text)}</span>
-                  <span class="spacer" />
-                  <button
-                    type="button"
-                    class="icon sm"
-                    aria-label={t("packs.deleteEntry")}
-                    onClick={() => {
-                      const i = x().i
-                      setEntries((list) => list.filter((_, j) => j !== i))
-                    }}
-                  >
-                    <Close />
-                  </button>
-                </div>
-                <Well label={t("packs.content")}>
-                  <textarea
-                    aria-label={t("packs.content")}
-                    value={x().e.text}
-                    onChange={(e) => updateEntry(x().i, { text: e.currentTarget.value })}
-                    onKeyDown={leaveArea}
-                  />
-                </Well>
-              </div>
-            )}
-          </For>
-          <Show when={!entries().length && !draft()}>
-            <p class="none">{t("packs.noEntries")}</p>
+                    <article class="ref-item open" aria-label={displayTitle() || t("packs.entries")}>
+                      <div class="frag-bar ref-bar">
+                        <button
+                          type="button"
+                          class="icon sm"
+                          aria-expanded="true"
+                          aria-label={t("packs.collapseEntry")}
+                          onClick={() => switchOpenEntry(null)}
+                        >
+                          <Next class="ref-chev open" aria-hidden="true" />
+                        </button>
+
+                        <div class="at-toggle" role="group" aria-label={t("invoke.mode")}>
+                          <For each={ENTRY_MODES}>
+                            {(m) => (
+                              <button
+                                type="button"
+                                aria-pressed={mode() === m ? "true" : "false"}
+                                onClick={() => {
+                                  blurField()
+                                  commitItem(x().key, (cur) => {
+                                    const switched = withEntryMode(entryFromDraft(cur), m)
+                                    return {
+                                      ...cur,
+                                      access: switched.access,
+                                      activation: switched.activation,
+                                      residency: switched.residency,
+                                    }
+                                  })
+                                }}
+                              >
+                                {modeLabel(m)}
+                              </button>
+                            )}
+                          </For>
+                        </div>
+
+                        <Show when={mode() === "auto" || (mode() === "always" && x().sections.length > 0)}>
+                          <Menu
+                            small
+                            label={t("invoke.residency")}
+                            value={x().residency ?? "window"}
+                            options={[
+                              { value: "window", label: t("invoke.window") },
+                              { value: "turn", label: t("invoke.turn") },
+                              { value: "permanent", label: t("invoke.permanent") },
+                            ]}
+                            onPick={(v) => {
+                              blurField()
+                              commitItem(x().key, (cur) => ({ ...cur, residency: v }))
+                            }}
+                          />
+                        </Show>
+
+                        <Show when={mode() === "manual"}>
+                          <Menu
+                            small
+                            label={t("invoke.residency")}
+                            value={x().residency ?? "turn"}
+                            stale={
+                              x().residency === "permanent"
+                                ? { value: "permanent", label: t("invoke.permanent") }
+                                : undefined
+                            }
+                            options={[
+                              { value: "turn", label: t("invoke.turn") },
+                              { value: "window", label: t("invoke.window") },
+                            ]}
+                            onPick={(v) => {
+                              blurField()
+                              commitItem(x().key, (cur) => ({ ...cur, residency: v }))
+                            }}
+                          />
+                        </Show>
+
+                        <span class="spacer" />
+                        <button
+                          type="button"
+                          class="icon sm"
+                          aria-label={t("packs.deleteEntry")}
+                          onClick={() => removeEntry(x())}
+                        >
+                          <Trash />
+                        </button>
+                      </div>
+
+                      <div class="ref-box">
+                        <input
+                          type="text"
+                          class="ref-cell-input"
+                          enterkeyhint="done"
+                          placeholder={t("packs.entryTitle")}
+                          aria-label={t("packs.entryTitle")}
+                          value={x().title}
+                          ref={(el) => {
+                            if (!focusNextEntry) return
+                            focusNextEntry = false
+                            requestAnimationFrame(() => el.focus())
+                          }}
+                          onChange={(e) => {
+                            const v = e.currentTarget.value
+                            commitItem(x().key, (cur) => ({ ...cur, title: v }))
+                          }}
+                          onKeyDown={leaveInput}
+                        />
+                        <textarea
+                          class="ref-cell-summary"
+                          rows="1"
+                          ref={autosize(() => x().summary)}
+                          placeholder={t("packs.entrySummaryPlaceholder")}
+                          aria-label={t("packs.entrySummary")}
+                          value={x().summary}
+                          onChange={(e) => {
+                            const v = e.currentTarget.value
+                            commitItem(x().key, (cur) => ({ ...cur, summary: v }))
+                          }}
+                          onKeyDown={leaveArea}
+                        />
+                        <Well label={x().sections.length > 0 ? t("packs.overviewBody") : t("packs.mainBody")}>
+                          <textarea
+                            ref={autosize(() => x().text)}
+                            placeholder={x().sections.length > 0 ? t("packs.overviewBody") : t("packs.mainBody")}
+                            aria-label={x().sections.length > 0 ? t("packs.overviewBody") : t("packs.mainBody")}
+                            value={x().text}
+                            onChange={(e) => {
+                              const v = e.currentTarget.value
+                              commitItem(x().key, (cur) => ({ ...cur, text: v }))
+                            }}
+                            onKeyDown={leaveArea}
+                          />
+                        </Well>
+                      </div>
+
+                      <div class="ref-sections">
+                        <Show when={x().sections.length > 0}>
+                          <div class="ref-sec-list">
+                            <For each={x().sections} keyed={(s) => s.key}>
+                              {(s) => {
+                                const secOpen = () => openSecKey() === s().key
+                                return (
+                                  <Show
+                                    when={secOpen()}
+                                    fallback={
+                                      <div class="ref-sec-box closed">
+                                        <button
+                                          type="button"
+                                          class="ref-sec-trigger"
+                                          aria-expanded="false"
+                                          onClick={() => {
+                                            blurField()
+                                            setOpenSecKey(s().key)
+                                          }}
+                                        >
+                                          <Next class="ref-chev" aria-hidden="true" />
+                                          <Show when={s().title.trim()}>
+                                            {(st) => <span class="ref-sec-title">{st()}</span>}
+                                          </Show>
+                                          <span class="ref-sec-gist">
+                                            {s().text.trim() || t("packs.untitledSection")}
+                                          </span>
+                                        </button>
+                                        <button
+                                          type="button"
+                                          class="icon sm ref-row-del"
+                                          aria-label={t("packs.deleteSection")}
+                                          onClick={() => removeSection(x().key, s().key)}
+                                        >
+                                          <Trash />
+                                        </button>
+                                      </div>
+                                    }
+                                  >
+                                    <div class="ref-sec-box open">
+                                      <div class="ref-sec-head">
+                                        <button
+                                          type="button"
+                                          class="icon sm"
+                                          aria-expanded="true"
+                                          aria-label={t("packs.collapseSection")}
+                                          onClick={() => {
+                                            blurField()
+                                            persist(live)
+                                            setOpenSecKey(null)
+                                          }}
+                                        >
+                                          <Next class="ref-chev open" aria-hidden="true" />
+                                        </button>
+                                        <input
+                                          type="text"
+                                          class="ref-cell-input sec"
+                                          enterkeyhint="done"
+                                          placeholder={t("packs.sectionTitle")}
+                                          aria-label={t("packs.sectionTitle")}
+                                          value={s().title}
+                                          ref={(el) => {
+                                            if (!focusNextSec) return
+                                            focusNextSec = false
+                                            requestAnimationFrame(() => el.focus())
+                                          }}
+                                          onChange={(e) => {
+                                            const v = e.currentTarget.value
+                                            commitSection(x().key, s().key, (cur) => ({ ...cur, title: v }))
+                                          }}
+                                          onKeyDown={leaveInput}
+                                        />
+                                        <button
+                                          type="button"
+                                          class="icon sm"
+                                          aria-label={t("packs.deleteSection")}
+                                          onClick={() => removeSection(x().key, s().key)}
+                                        >
+                                          <Trash />
+                                        </button>
+                                      </div>
+                                      <Well label={s().title.trim() || t("packs.sectionBody")}>
+                                        <textarea
+                                          ref={autosize(() => s().text)}
+                                          placeholder={t("packs.sectionBody")}
+                                          aria-label={t("packs.sectionBody")}
+                                          value={s().text}
+                                          onChange={(e) => {
+                                            const v = e.currentTarget.value
+                                            commitSection(x().key, s().key, (cur) => ({ ...cur, text: v }))
+                                          }}
+                                          onKeyDown={leaveArea}
+                                        />
+                                      </Well>
+                                    </div>
+                                  </Show>
+                                )
+                              }}
+                            </For>
+                          </div>
+                        </Show>
+                        <Show when={x().sections.length < MAX_ENTRY_SECTIONS}>
+                          <div class="ref-sec-foot">
+                            <button type="button" class="btn xs ghost" onClick={() => addSection(x().key)}>
+                              <Plus /> <span>{t("packs.addSection")}</span>
+                            </button>
+                          </div>
+                        </Show>
+                      </div>
+                    </article>
+                  </Show>
+                )
+              }}
+            </For>
           </Show>
-          <Show when={q().trim() && !shown().length}>
-            <p class="none">{t("writing.noEntries")}</p>
-          </Show>
-        </div>
+        </Show>
       </div>
     </section>
   )

@@ -18,7 +18,7 @@ Effect Tavern 将一张卡视为**声明式数据 + 确定性规则**，而非�
 lookup → decide → settle → gate → direct → narrate → check → polish → record
 ```
 
-- **结构化阶段按需开启与决策模型预检：** 纯聊天卡每轮只跑 `narrate` 与 `record`；`lookup`、`decide`、`direct`、`check`、`polish` 均根据卡片声明自动启停。可选的全局**决策模型（Decision Model）**支持以概率打分直接完成完整目录 `lookup` 检索与边界清晰的 `check` 预检，仅在需要时回退至语言模型调用。
+- **结构化阶段按需开启与决策模型预检：** 纯聊天卡每轮只跑 `narrate` 与 `record`；`lookup`、`decide`、`direct`、`check`、`polish` 均根据卡片声明自动启停。可选的全局**决策模型**（Decision Model）支持以概率打分直接完成完整目录 `lookup` 检索与边界清晰的 `check` 预检，仅在需要时回退至语言模型调用。
 - **正文非权威与后台阶段隔离：** 只有 `narrate` 读取 `fiction`、行文风格指令与对话转录稿（`transcript`），且绝不直接看到数值——状态仅通过带 `when` 条件的散文分段（`band`）送达叙事者；其余后台阶段仅读取 `<world>` 背景与 XML 标签包裹的待处理文本。
 - **确定性结算、两阶段世界状态与过场（`passages`）：** 标量字段（`fields`）由带种子的动作检定（`actions`）与写后选择题读数（`readouts`）由代码结算；可变世界表与记录（`world`）通过 `record` 阶段的稀疏 `DomainChange` 事务更新，与追加式编年记忆（`chronicle`，如 `notes`）及纯面向玩家的小剧场（`theater`，如 `inner`、`options`、`<<aside>>`）严格分责；写后 `passages` 支持周目/幕间重置（`digest` 纪元边界）与终局收束（`over`）。
 
