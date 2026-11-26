@@ -1,5 +1,5 @@
 import { ViewBlock } from "./view-shell.tsx"
-import { residency, type CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
+import { viewApplies, viewMount, type CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import type { CardView } from "./store.ts"
 import { AsyncView } from "./async-view.tsx"
 // The Record's pieces: one renderer per reading element (src/record.ts projects them; this file only draws), the
@@ -602,7 +602,7 @@ export const consumedProducts = (views: readonly CompiledView[]): ReadonlySet<st
 }
 /** The card's views that apply at a node: no `when`, or its guard held there (`applicableViews`), mounted or not. */
 const applicableNodeViews = (view: CardView | null | undefined, node: Node): CompiledView[] =>
-  view?.views?.filter((v) => !v.when || node.applicableViews?.includes(v.id)) ?? []
+  view?.views?.filter((v) => viewApplies(v, node)) ?? []
 /** The views mounted on a node: a `latest` one on the last node once `record` settles, a `turn` one where it has data. */
 export const eligibleNodeViews = (
   view: CardView | null | undefined,
@@ -610,10 +610,9 @@ export const eligibleNodeViews = (
   last: boolean,
   settled: boolean,
 ): CompiledView[] =>
-  applicableNodeViews(view, node).filter((v) => {
-    if (residency(v) === "latest") return last && settled
-    return !v.consumes?.length || v.consumes.some((id) => node.theater[id] !== undefined)
-  })
+  applicableNodeViews(view, node).filter(
+    (v) => viewMount(v, { applies: true, head: last && settled, theater: node.theater }) === undefined,
+  )
 /** Products the default chrome leaves alone on a node: all an applicable view consumes, mounted there or not (a
  *  `latest` view on history, or on the head until `record` settles), so `.theater` never flashes or sprouts. */
 export const claimedNodeProducts = (view: CardView | null | undefined, node: Node): ReadonlySet<string> =>
