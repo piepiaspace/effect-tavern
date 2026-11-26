@@ -39,6 +39,7 @@ Turn spine assembled in `packages/runtime/src/request.ts`:
    - Freeze the mechanism. Write `frame` slots, `fiction` bands, `lore` layers/sections, `greetings`, `passages`, `guard`, and `lexicon`.
    - Re-run `card check` (catches `field-in-prose`, `inline-product`, `hook-length`, `unfilled-name`, `empty-text`).
    - Inspect exact prompt assembly across states and stages via `card view <card> --stage narrate|record|lookup|direct --state k=v --greeting n`.
+   - For `views`, run `card view <card> --views --scenario <scenario.yaml> --html <file>` and open the page: it shows whether each view mounts and what every binding resolved to ([references/views.md](references/views.md) §8).
 
 ## 3. Author Prose Boundaries
 
@@ -52,20 +53,22 @@ Whether invoking Workshop tools (`tavern card compile|sort|review`) or editing Y
 
 Everything is one command, `tavern` (`bun run tavern` from source); it exposes full flag documentation via `--help` and machine-readable output via `--json` / `--jsonl`. Inspect `--help` rather than guessing flags:
 
-| Task                 | Command (from repo root)                                                                       | Notes                                                          |
-| -------------------- | ---------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Scaffold new card    | `bun run tavern card init <id> --template chat\|readout\|rpg\|world`                           | Offline; writes `<id>.yaml` exclusively                        |
-| Validate & lint      | `bun run tavern card check <card> [--json]`                                                    | Schema, lint, `drawn` meters, openings, token budget           |
-| Preview stage prompt | `bun run tavern card view <card> [--stage ...] [--state k=v] [--greeting n] [--lore] [--json]` | Offline; prints exact sections, cache breakpoints & conditions |
-| Zero-token test      | `bun run tavern card test <card> [scenario.yaml]`                                              | Offline deterministic run on scripted fake model               |
-| Unroll ST V2/V3 card | `bun run tavern card unroll <card.png\|card.json> [--user name] [--json]`                      | Read-only inspection in ST assembly order; feeds `sort`        |
-| Workshop operations  | `bun run tavern card compile\|sort\|review ...`                                                | Uses `author` model route (finds a running server by itself)   |
-| Install & live play  | `bun run tavern card install <file>` / `bun run tavern play <card-or-story> [--user <name>]`   | Pass `MODEL=fake` or `--model fake` for zero-token host runs   |
+| Task                 | Command (from repo root)                                                                       | Notes                                                               |
+| -------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Scaffold new card    | `bun run tavern card init <id> --template chat\|readout\|rpg\|world`                           | Offline; writes `<id>.yaml` exclusively                             |
+| Validate & lint      | `bun run tavern card check <card> [--json]`                                                    | Schema, lint, `drawn` meters, openings, token budget                |
+| Preview stage prompt | `bun run tavern card view <card> [--stage ...] [--state k=v] [--greeting n] [--lore] [--json]` | Offline; prints exact sections, cache breakpoints & conditions      |
+| Preview views        | `bun run tavern card view <card> --views [--scenario <file> [--step n]] [--html <file>]`       | Offline; each view's mounting, every binding's value, a static page |
+| Zero-token test      | `bun run tavern card test <card> [scenario.yaml]`                                              | Offline deterministic run on scripted fake model                    |
+| Unroll ST V2/V3 card | `bun run tavern card unroll <card.png\|card.json> [--user name] [--json]`                      | Read-only inspection in ST assembly order; feeds `sort`             |
+| Workshop operations  | `bun run tavern card compile\|sort\|review ...`                                                | Uses `author` model route (finds a running server by itself)        |
+| Install & live play  | `bun run tavern card install <file>` / `bun run tavern play <card-or-story> [--user <name>]`   | Pass `MODEL=fake` or `--model fake` for zero-token host runs        |
 
 ## 5. Progressive Disclosure — Read On Demand
 
 Load **only** the reference file required by your current task:
 
-- **[references/schema.md](references/schema.md)** — Read when mapping concepts to `Card` fields (`frame` slots, `fiction` bands, `greetings`, `rules`, `drawn` gauge/scale heuristics, `lore` + `sections` + `ContextPolicy`, `products` `world`/`chronicle`/`theater`, `catalogs`, `media`, `views` + `data-*` directives, `Cond`, `names`, and static `lint` codes).
+- **[references/schema.md](references/schema.md)** — Read when mapping concepts to `Card` fields (`frame` slots, `fiction` bands, `greetings`, `rules`, `drawn` gauge/scale heuristics, `lore` + `sections` + `ContextPolicy`, `products` `world`/`chronicle`/`theater`, `catalogs`, `media`, `Cond`, `names`, and static `lint` codes).
+- **[references/views.md](references/views.md)** — Read before writing or porting any status bar, HUD, panel or option buttons (`views`): the data scope, residency and `consumes`, directives, working patterns, whitelist, the check/preview loop, limits, and a SillyTavern mapping. Complete passing example: [examples/status-view.yaml](examples/status-view.yaml) with [its scenario](examples/status-view.scenario.yaml).
 - **[references/pitfalls.md](references/pitfalls.md)** — Read before designing `readouts`, multi-opening state, `frame` vs. `fiction` placement, or inspecting the four fixture cards (`packages/runtime/test/cards/*.yaml`).
 - **[references/workshop-and-testing.md](references/workshop-and-testing.md)** — Read when porting/remastering SillyTavern cards with `unroll`, running `tavern card compile|sort|review`, or writing `scenario.yaml` assertions.

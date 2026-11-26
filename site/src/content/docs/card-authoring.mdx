@@ -22,6 +22,8 @@ A card in Effect Tavern is a single declarative YAML or JSON document validated 
 | `products` | Typed `world`, `chronicle`, or `theater` schemas (`text`, `list`, `record`, `table`) | `{ id, label?, text, shape, role, initial?, stage?, fold?, feed?, recall? }` |
 | `catalogs` | Attachment registries (illustrations, BGM, voice) picked by ID in `record` | `{ id, baseUrl?, items: [{ id, when?, variants? }] }` |
 | `guard` / `lexicon` | Post-prose prohibitions (`check`) & wildcard slop patterns (`polish`) | `guard: string[]`, `lexicon: [{ pattern, hint? }]` |
+| `media` | Portraits, after-paragraph illustrations, the gallery and a per-turn track, bound to catalogs | `{ illustrations?, portraits?, gallery?, bgm? }` |
+| `views` | Status bars, panels and option buttons drawn in the story column from fields and products (never sent to a model) | `{ id, label?, consumes?, residency?, when?, media?, html, css? }` |
 
 ### Lore Layers vs. Lore Sections (Replacing Keyword Worldbooks)
 Legacy `World Info` / `character_book` entries rely on `constant` ("blue light") vs. `selective` ("green light") keyword scanning over chat text—firing spoilers on casual mentions and missing entries when synonyms are used. Effect Tavern separates lore along two structural axes instead:
@@ -66,7 +68,83 @@ Always build a card in two distinct passes:
   4. **Set `Field.initial` to the lowest baseline shared across all greetings** and place route-specific deltas in `greetings[n].do`. Never put character profiles inside `frame` (non-writing `frame` slots enter `<world>` on every off-stage pass, including `direct`).
 </Aside>
 
-## 4. Workshop & Legacy Card Remastering
+## 4. Views: Status Bars and Panels in the Story
+
+A view is a small HTML template with its own CSS that the client draws under a turn's prose. It never reaches a model and runs no script: the client fills it from the turn's data through a few `data-*` attributes, inside a Shadow DOM so its CSS styles only itself. The skill reference `skills/card-author/references/views.md` holds the full rules, and `skills/card-author/examples/status-view.yaml` is a complete card that passes `card check`.
+
+### What a view can read
+
+Every directive takes a plain dotted path. There are no expressions: no comparisons, arithmetic, negation, formatting or `{{macros}}`.
+
+| Path | What it is |
+| --- | --- |
+| `fields.<field>` | A field's raw value. Its `min`, `max`, `label` and options are not readable, so a gauge's maximum is written into the CSS. |
+| `world.<product>…` | A `world` product, only in a `residency: latest` view. A record by its keys; a table as an array of `{ entityId, ...columns }` rows. |
+| `theater.<product>…` | This turn's `theater` products, readable without consuming them. |
+| `media.<slot>` | The view's own image slot, set when one of its catalog's items applies. |
+| `names.<key>` | `user`, `char` and the card's other names. |
+| `value` | When `consumes` lists exactly one product: that product's value (a record's keys are also top-level names). |
+
+Chronicle products, lore, events and the turn number are not readable.
+
+### Where a view appears
+
+- `residency: latest` (the default without `consumes`): only on the newest turn, and the only kind that reads `world`.
+- `residency: turn` (the default with `consumes`): on every turn that has one of its consumed products, reading that turn's fields and theater.
+- `consumes` claims `theater` products (including `surface: composer` option lists). The default chrome stops drawing a claimed product on every turn where the view applies, so a product claimed by a `latest` view does not show on past turns. Something that should remain on each past turn, such as a letter, belongs in its own `turn` view.
+
+### Directives
+
+| Directive | Does |
+| --- | --- |
+| `data-text="path"` | Shows a value as text. |
+| `data-if` / `data-unless` | Draws the element only when the value is truthy / falsy. |
+| `data-each="path" data-as="row"` | Repeats the element's children per item; `row.<column>` and `row.$num` inside. |
+| `data-media="source"` | Draws a catalog image: `media.<slot>`, `portraits.<slot>`, or `<catalog>:<path>` on a catalog column. Optional `data-fit`, `data-lightbox`. |
+| `data-attr-<k>="path"` | Writes `data-<k>="value"` for CSS attribute selectors. |
+| `data-var-<k>="path"` | Sets `--<k>` when the value is a number, for `calc()` and `clamp()`. |
+| `<details data-open="latest">` | Open on the newest turn, closed on past ones. |
+| `<button data-fill="path">` | Puts the value into the input box; never sends. Enabled only on the newest turn with no turn in flight. |
+
+Tabs come from radio inputs and `:checked ~` in CSS; thresholds come from `clamp()` on a `data-var-*`, a view with a `when`, or an enum field with `data-attr-*`; colours follow the theme with `light-dark()` and the app's tokens such as `--ink`, `--line` and `--danger`.
+
+### A short example
+
+```yaml
+views:
+  - id: warmth
+    label: 炉温
+    css: |
+      .gauge { height: 6px; border-radius: 3px; background: var(--alpha-2); }
+      .fill { display: block; height: 100%; width: calc(var(--warmth, 0) / 10 * 100%); background: light-dark(#c2410c, #fb923c); }
+    html: |
+      <div class="gauge" role="meter" aria-label="炉温" data-var-warmth="fields.warmth"><span class="fill"></span></div>
+      <p data-unless="fields.warmth">炉火灭了。</p>
+```
+
+### Check and preview
+
+<Steps>
+  <Step title="Check">
+    `bun run tavern card check <card>` reports every view problem at `views.<id>.html:<line>:<column>` (line 1 is the first line of the block) with a hint, resolves every path against the card ("did you mean"), and checks each value's type against its directive.
+  </Step>
+  <Step title="Preview">
+    `bun run tavern card view <card> --views --scenario <scenario.yaml> --html views.html` plays the scenario offline, prints whether each view mounts and what every binding resolved to, and writes a static page. Theater products exist only after a turn, so script them in the scenario.
+  </Step>
+  <Step title="Install">
+    Lock the turns with `card test` (`expect.world` asserts what a view reads), then `bun run tavern card install <card>`.
+  </Step>
+</Steps>
+
+<Aside type="caution" title="What a view cannot do">
+  No script, no `<style>`, `<img>`, `<a>`, `<iframe>`, `<audio>`, `<video>`, `<canvas>` or `<form>`, no inline `style=`, no `on*` handlers; in CSS no `@import`, `@font-face`, `@property`, `attr()`, and no `url()` except `url(#id)`. Images come only from `https://` catalogs. A view cannot write state, cannot play sound, and receives no world data on past turns; tab and fold state resets when a `latest` view moves to the new turn.
+</Aside>
+
+## 5. Media
+
+`media` binds catalogs to the reader: `portraits` (a slot showing the first item of a catalog whose `when` holds), `illustrations` (a `chronicle` or `theater` table product whose rows place catalog images after numbered paragraphs), `gallery` (catalogs collected on the card page) and `bgm` (a one-row table product that records a track from an `audio` catalog each turn). A catalog bound to media needs an `https://` `baseUrl` and relative `variants`; items may carry `label`, `focus: [x, y]` and `aspect: "W / H"`. The client has no music player yet, so a `bgm` track is recorded but not played.
+
+## 6. Workshop & Legacy Card Remastering
 
 Effect Tavern ships three AI-assisted Workshop operations (`packages/runtime/src/workshop.ts`, exposed via HTTP `/api/author/*` and `tavern card`):
 
@@ -86,5 +164,5 @@ When porting an unrolled SillyTavern card, preserve the author's character and w
 | `first_mes` + `alternate_greetings` | `greetings[n].text`, factoring route-specific initial state into `greetings[n].do` |
 | `character_book` (`constant` / `selective` entries) | `fiction` (always-on) or `lore` (`layers` + `sections` + natural first-sentence `hook`; discard regex keyword lists) |
 | `at_depth` (`@D0`–`@D4`), `Author's Note`, `post_history_instructions` | **No depth injection.** Route voice rules to `frame`, prohibitions to `guard`, slop lists to `lexicon`, and state shifts to `fiction` bands |
-| Inline `<status>` bars, MVU JSON blocks & regex scripts | **Discard format prompts & regexes.** Model scalar axes in `rules.fields` (`actions` / `readouts`), world tables in `world` `products`, and side blocks in `theater` |
+| Inline `<status>` bars, MVU JSON blocks & regex scripts | **Discard format prompts & regexes.** Model scalar axes in `rules.fields` (`actions` / `readouts`), world tables in `world` `products`, and side blocks in `theater`; rebuild the bar's look as a view (section 4) |
 | `{{user}}` / `{{char}}` vs. `{{setvar}}` / `{{roll}}` | Keep proper-noun holes in `names`; replace stateful/random macros with `rules.fields`, `Cond`, `Effect`, and `Action.roll` |
