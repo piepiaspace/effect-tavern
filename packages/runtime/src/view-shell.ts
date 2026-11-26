@@ -26,16 +26,6 @@ export type TemplateNode =
   | string
   | { tag: string; svg: boolean; attrs: Record<string, string>; children: TemplateNode[] }
 
-export function checkConsumesIds(consumes: readonly string[] | undefined) {
-  if (!consumes) return
-  const seen = new Set<string>()
-  for (const id of consumes) {
-    if (!id.trim()) throw new Error("consumes contains an empty product id")
-    if (seen.has(id)) throw new Error(`duplicate consumed product: ${id}`)
-    seen.add(id)
-  }
-}
-
 export function consumableSurface(
   product: (Pick<Product, "id"> & { role?: string }) | undefined,
   illustrations?: readonly { product: string }[],

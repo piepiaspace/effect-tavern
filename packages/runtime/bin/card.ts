@@ -68,6 +68,7 @@ const loadHat = (name: string) =>
   )
 
 const attempt = <A>(f: () => A) => Effect.try({ try: f, catch: (e) => (e instanceof Error ? e.message : String(e)) })
+const VIEW_PLACE = /^views\..+\.(?:html|css):\d+:\d+$/
 const check = Command.make("check", { card }, ({ card: name }) =>
   Effect.gen(function* () {
     const json = yield* Json
@@ -89,6 +90,10 @@ const check = Command.make("check", { card }, ({ card: name }) =>
     else {
       for (const d of report.diagnostics)
         yield* Console.log(`${d.level} ${d.rule} ${d.path}: ${d.message}${d.hint ? `\n    hint: ${d.hint}` : ""}`)
+      if (report.diagnostics.some((d) => VIEW_PLACE.test(d.path)))
+        yield* Console.log(
+          "note: in views.<id>.html:<line>:<column> and views.<id>.css:<line>:<column>, line 1 is the first line inside the view's html: or css: block",
+        )
       for (const line of [...report.fieldLines, ...report.greetings]) yield* Console.log(line)
       for (const section of report.sections.filter((s) => s.tokens))
         yield* Console.log(`${section.name} ~${section.tokens} tokens`)

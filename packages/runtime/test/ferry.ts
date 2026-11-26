@@ -98,7 +98,7 @@ for (const badConsumes of [[""], ["  "], ["inner", "inner"]]) {
       {
         id: "card_deck",
         consumes: ["choices"],
-        html: "<ul data-each='value' data-as='c'><li data-text='c'></li></ul>",
+        html: "<ul data-each='value' data-as='c'><li><button data-fill='c' data-text='c'></button></li></ul>",
       },
     ],
   })
@@ -254,6 +254,30 @@ assert.deepEqual(checkValue(ferry).diagnostics, [])
   const next = await collect(S.act(first.id, { text: "继续。" }))
   assert.ok(!next.some((e) => e.kind === "call" && e.product === "inner"))
   assert.equal(S.timelineNode(lastNode(next).id).theater.inner, undefined)
+
+  // Every surface that carries text follows the theme: its colors come from the `--ri-*` palette (`light-dark()` on
+  // :host), so dark mode never leaves text on cream. A literal is left only as a faint tint (alpha <= 0.2).
+  const css = riView.css!
+  const literal = /#[\da-f]{3,8}\b|rgba?\(([^)]*)\)/gi
+  for (const selector of [
+    ".parchment",
+    ".ribbon",
+    ".ribbon-lover",
+    ".ribbon-brother",
+    ".scale-wrap",
+    ".bond-note",
+    ".bond-note-bro",
+    ".letter",
+    ".sheet",
+  ]) {
+    const body = css.match(new RegExp(`(?:^|\\n)\\s*\\${selector} \\{([^}]*)\\}`))?.[1]
+    assert.ok(body, selector)
+    for (const [, property, value] of body.matchAll(/(?:^|;)\s*(color|background(?:-color)?|box-shadow):([^;]*)/g))
+      for (const m of value.matchAll(literal)) {
+        const alpha = m[1]?.split(/[\s,/]+/).filter(Boolean)[3]
+        assert.ok(alpha && Number(alpha) <= 0.2, `${selector} ${property} hard-codes ${m[0]}`)
+      }
+  }
 }
 
 // YAML print -> parse roundtrip & CardView exposure.
@@ -520,6 +544,24 @@ assert.deepEqual(sorted.media, ferry.media)
   assert.equal(hits(sunny1.id).length, 0)
   hidden = false
   assert.equal(hits(sunny1.id).length, 1)
+
+  // A guarded `latest` view: `applicableViews` says where its guard held, head or history (its consumes hold there), while
+  // history carries no `latestContext` and no `viewMedia` of it, since it mounts only on the head.
+  const guarded = makeSession({
+    card: { ...ferry, views: [{ ...lantern, when: { path: "天气", is: "晴" } }] },
+    rows: () => ({}),
+    model: () => scripted,
+    store,
+  })
+  const at = (id: number) => guarded.timelineNode(id)
+  assert.notEqual(sunny1.id, checkedOut.head)
+  assert.deepEqual(at(sunny1.id).applicableViews, ["lantern"])
+  assert.deepEqual(at(rainy1.id).applicableViews, [])
+  assert.equal(at(sunny1.id).latestContext, undefined)
+  assert.equal(at(sunny1.id).media?.viewMedia, undefined)
+  assert.equal(at(rainy1.id).latestContext, undefined)
+  assert.deepEqual(at(checkedOut.head).applicableViews, ["lantern"])
+  assert.ok(at(checkedOut.head).latestContext)
 
   // Ancestor `setField` on `sunny0` (`潮位` 1 -> 0): `sunny1` (`潮位` becomes 1 < 2) loses `passenger` and `high_tide`!
   const amended = S.setField(sunny0.id, [{ path: "潮位", set: 0 }])

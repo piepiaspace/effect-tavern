@@ -202,12 +202,12 @@ assert.deepEqual(
   const turn = compiled({ id: "t", consumes: ["scene"], html: "<p>x</p>" })
   assert.deepEqual(mountOf(latest, node(), true), { mounted: true, when: undefined })
   assert.deepEqual(mountOf(latest, node(), false), { mounted: false, when: undefined, reason: "latest-not-head" })
-  assert.deepEqual(mountOf(guarded, node({ visibleViews: [] }), true), {
+  assert.deepEqual(mountOf(guarded, node({ applicableViews: [] }), true), {
     mounted: false,
     when: false,
     reason: "guard-false",
   })
-  assert.equal(mountOf(guarded, node({ visibleViews: ["g"] }), true).mounted, true)
+  assert.equal(mountOf(guarded, node({ applicableViews: ["g"] }), true).mounted, true)
   assert.deepEqual(mountOf(turn, node(), true), { mounted: false, when: undefined, reason: "turn-nothing" })
   assert.equal(mountOf(turn, node({ theater: { scene: "x" } }), true).mounted, true)
   // an opening says why a consumed product is empty, and a product made only on demand says so too

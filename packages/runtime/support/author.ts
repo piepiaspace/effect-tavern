@@ -17,7 +17,15 @@ export const checkCard = (source: string): ReturnType<typeof checkValue> => {
   } catch (e) {
     return {
       ...checkValue(undefined),
-      diagnostics: [{ rule: "schema", level: "error", path: "$", message: String(e) }],
+      diagnostics: [
+        {
+          rule: "schema",
+          level: "error",
+          path: "$",
+          message: `the file is not valid YAML: ${(e instanceof Error ? e.message : String(e)).replace(/^YAML Parse error:\s*/, "")}`,
+          hint: "the YAML parser names no line: check the indentation under html: | and css: | (every line indented past the key), and any unclosed quote or bracket",
+        },
+      ],
     }
   }
 }

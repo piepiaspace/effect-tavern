@@ -506,6 +506,276 @@ assert.ok(of({ ...base, greetings: [{ text: "  " }] }).includes("error empty-gre
   )
 }
 
+// bad-view (#248): a view's bindings are resolved against the card, every problem is reported, each placed in its html
+// or css block (line 1 is the block's first line).
+{
+  const viewed: Card = {
+    ...base,
+    names: { char: "老艄公" },
+    rules: {
+      fields: [
+        { path: "潮位", type: "int", min: 0, max: 3, initial: 1 },
+        { path: "天气", type: "enum", options: ["晴", "雨"], initial: "晴" },
+        { path: "a.b", type: "boolean", initial: false },
+      ],
+      actions: [],
+    },
+    fiction: [
+      { id: "moor", text: "船。", when: { path: "world.boat.mor", is: "江心" } },
+      { id: "kept", text: "客。", when: { path: "world.guests.e_1.name", is: "x" } },
+      { id: "fine", text: "岸。", when: { path: "world.boat.moor", is: "岸边" } },
+    ],
+    products: [
+      {
+        id: "boat",
+        role: "world",
+        text: "船",
+        shape: {
+          kind: "record",
+          keys: [
+            { key: "aboard", type: "boolean" },
+            { key: "moor", type: "enum", options: ["岸边", "江心"] },
+          ],
+        },
+      },
+      {
+        id: "guests",
+        role: "world",
+        text: "客",
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "name", type: "text" },
+            { key: "age", type: "int" },
+          ],
+        },
+      },
+      { id: "inner", role: "theater", text: "心声", shape: { kind: "text" } },
+      {
+        id: "board",
+        role: "theater",
+        text: "面板",
+        shape: {
+          kind: "record",
+          keys: [
+            { key: "hp", type: "int" },
+            {
+              key: "people",
+              shape: {
+                kind: "table",
+                columns: [
+                  { key: "name", type: "text" },
+                  { key: "face", type: "enum", catalog: "faces" },
+                ],
+              },
+            },
+          ],
+        },
+      },
+    ],
+    catalogs: [
+      { id: "faces", kind: "image", baseUrl: "https://x.example/", items: [{ id: "a", variants: ["a.png"] }] },
+    ],
+    views: [
+      {
+        id: "hud",
+        residency: "latest",
+        media: [{ id: "face", catalog: "faces" }],
+        html: [
+          '<div class="hud" data-var-tide="fields.天气" data-attr-w="fields.潮位">',
+          '  <span data-text="fields.潮立"></span>',
+          '  <span data-text="潮位"></span>',
+          '  <span data-text="world.boat"></span>',
+          '  <ul data-each="world.boat.moor" data-as="m"><li data-text="m"></li></ul>',
+          '  <ol data-each="world.guests" data-as="g"><li><span data-text="g.nmae"></span><span data-text="g.entityId"></span><span data-text="g.$num"></span><span data-var-age="g.age"></span></li></ol>',
+          '  <span data-text="world.guests"></span>',
+          '  <span data-text="world.nope"></span>',
+          '  <span data-text="theater.inner"></span><span data-text="theater.extra"></span><span data-text="theater.guests"></span>',
+          '  <span data-text="names.char"></span><span data-text="names.villain"></span>',
+          '  <span data-if="media.face"></span><span data-text="media.face.item"></span><span data-if="media.nope"></span>',
+          '  <span data-text="value"></span>',
+          '  <span data-text="fields.a.b"></span>',
+          "  <p>{{char}} {{getvar::hp}}</p>",
+          '  <span data-if="fields.潮位 < 2"></span>',
+          '  <ul data-each="names.villain" data-as="v"></ul><b data-text="names.villain.foo"></b><i data-media="faces:theater.extra"></i>',
+          "</div>",
+        ].join("\n"),
+      },
+      {
+        id: "turned",
+        consumes: ["board"],
+        html: [
+          '<section data-if="world.boat.aboard">',
+          '  <span data-text="hp"></span><span data-text="value.hp"></span><span data-var-hp="hp"></span>',
+          '  <div data-each="people" data-as="p"><span data-text="p.name"></span><span data-media="faces:p.face"></span><span data-media="faces:p.name"></span></div>',
+          "</section>",
+        ].join("\n"),
+      },
+      {
+        id: "broken",
+        consumes: ["guests", "ghost", "inner"],
+        html: '<div>a\n<p style="color: red">b</p><img src="x.png">',
+        css: "p { color: red; }\np { background: url(https://x.example/a.png); }\n@font-face { font-family: x; }",
+      },
+    ],
+  }
+  const views = lint(viewed).filter((d) => d.rule === "bad-view")
+  const want: [level: string, path: string, phrase: RegExp][] = [
+    ["error", "views.hud.html:1:18", /fields\.天气 is an enum field, not a number, and data-var-\* drops/],
+    ["error", "views.hud.html:2:9", /潮立 is not a field of this card: did you mean fields\.潮位\?/],
+    ["error", "views.hud.html:3:9", /潮位 is not something this view can read: did you mean fields\.潮位\?/],
+    ["error", "views.hud.html:4:9", /world\.boat is a record with keys aboard, moor, which data-text cannot show/],
+    ["error", "views.hud.html:5:7", /world\.boat\.moor is an enum column, not a list or a table/],
+    [
+      "error",
+      "views.hud.html:6:54",
+      /nmae is not a key of g, a table row with keys entityId, name, age: did you mean g\.name\?/,
+    ],
+    ["error", "views.hud.html:7:9", /world\.guests is a table, which data-text cannot show/],
+    ["error", "views.hud.html:8:9", /nope is not a world product of this card/],
+    ["warn", "views.hud.html:9:48", /extra is not a product of this card: a player's writing pack may supply it/],
+    [
+      "error",
+      "views.hud.html:9:87",
+      /guests has role: world, and theater holds only role: theater products \(read it as world\.guests\)/,
+    ],
+    ["warn", "views.hud.html:10:45", /villain is not one of the card's names \(user, char\)/],
+    ["error", "views.hud.html:11:84", /nope is not a media slot of this view/],
+    ["error", "views.hud.html:12:9", /value is bound only in a view that consumes exactly one product/],
+    ["error", "views.hud.html:13:9", /the field a\.b has a dot in its path.*a view cannot address it/],
+    ["error", "views.hud.html:14:6", /\{\{char\}\} is shown as written: a view does not interpolate$/],
+    [
+      "error",
+      "views.hud.html:14:15",
+      /\{\{getvar::hp\}\} is shown as written: a view does not interpolate or run macros/,
+    ],
+    ["error", "views.hud.html:15:9", /data-if="fields\.潮位 < 2" is not a path/],
+    // A name or product only a pack could supply keeps its warning, and what can never be right is still said: a name
+    // is a string, and an undeclared product has no catalog column.
+    ["warn", "views.hud.html:16:7", /villain is not one of the card's names/],
+    ["error", "views.hud.html:16:7", /names\.villain is a name, not a list or a table/],
+    ["warn", "views.hud.html:16:53", /villain is not one of the card's names/],
+    ["error", "views.hud.html:16:53", /names\.villain is a name: it has no key foo/],
+    ["warn", "views.hud.html:16:90", /extra is not a product of this card: a player's writing pack may supply it/],
+    [
+      "error",
+      "views.hud.html:16:90",
+      /theater\.extra is not a product of this card, so it is never a column of catalog faces/,
+    ],
+    [
+      "error",
+      "views.turned.html:1:10",
+      /world is not given to a turn view: only a residency: latest view receives world/,
+    ],
+    ["error", "views.turned.html:3:116", /p\.name is not a column of catalog faces in a theater product/],
+    ["error", "views.broken.consumes[0]", /guests has role: world, and only role: theater products can be consumed/],
+    ["error", "views.broken.consumes[1]", /ghost is not a product of this card/],
+    ["error", "views.broken.html:1:1", /<div> is never closed: the browser closes it at the end of the html/],
+    ["error", "views.broken.html:2:4", /<p>: style is not allowed in a view/],
+    ["error", "views.broken.html:2:28", /<img> is not a view element/],
+    ["error", "views.broken.css:2:17", /unsupported view CSS: url\(https:\/\/x\.example\/a\.png\)/],
+    ["error", "views.broken.css:3:1", /unsupported view CSS: @font-face/],
+  ]
+  // `hp`, `value.hp`, `data-var-hp="hp"` (an int column), `p.name`, `data-media="faces:p.face"`, `g.entityId`, `g.$num`
+  // and `media.face.item` read what the card has: nothing is said of them.
+  for (const [level, path, phrase] of want)
+    assert.ok(
+      views.some((d) => d.level === level && d.path === path && phrase.test(d.message)),
+      `${level} ${path} ${phrase}\n${views.map((d) => `${d.level} ${d.path}: ${d.message}`).join("\n")}`,
+    )
+  assert.equal(views.length, want.length, views.map((d) => `${d.level} ${d.path}: ${d.message}`).join("\n"))
+  for (const d of views) assert.ok(!d.message.startsWith("Error"), d.message)
+  // Hints name the replacement.
+  const hint = (path: string) => views.find((d) => d.path === path)?.hint ?? ""
+  assert.match(hint("views.broken.html:2:4"), /a class and style it in the view's css block/)
+  assert.match(hint("views.broken.html:2:28"), /data-media/)
+  assert.match(hint("views.broken.css:2:17"), /data-media element behind the content/)
+  assert.match(hint("views.broken.css:3:1"), /var\(--font-sans\)/)
+  assert.match(hint("views.hud.html:15:9"), /data-unless.*data-attr-<name>.*calc\(\).*when/)
+  assert.match(hint("views.hud.html:14:6"), /data-text="names\.char"/)
+  // A condition's world.<record>.<key> is checked; a table's rows are addressed by entity id and left alone.
+  assert.deepEqual(
+    lint(viewed)
+      .filter((d) => d.rule === "unknown-path")
+      .map((d) => `${d.path}: ${d.message}`),
+    [
+      "fiction.moor.when: world.boat.mor: mor is not a key of world.boat, a record with keys aboard, moor: did you mean world.boat.moor?",
+    ],
+  )
+  // A product bound in media.illustrations is not consumable, and the message says why.
+  const drawn: Card = {
+    ...viewed,
+    products: [
+      ...viewed.products!,
+      {
+        id: "cg",
+        role: "theater",
+        text: "图",
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "afterParagraph", type: "int" },
+            { key: "id", type: "enum", catalog: "faces" },
+          ],
+        },
+      },
+    ],
+    media: { illustrations: [{ product: "cg" }] },
+    views: [{ id: "v", consumes: ["cg"], html: "<p data-text='value.0.id'></p>" }],
+  }
+  assert.deepEqual(
+    lint(drawn)
+      .filter((d) => d.rule === "bad-view")
+      .map((d) => `${d.path}: ${d.message}`),
+    [
+      "views.v.consumes[0]: cg is bound in media.illustrations, which draws it as pictures in the prose; a view cannot consume it too",
+    ],
+  )
+  // The fill button (#248): data-fill reads a scalar like data-text, a row alias included, and a view that takes a
+  // composer product's place without one is warned: its options are drawn but cannot be chosen.
+  const filled: Card = {
+    ...viewed,
+    products: [
+      ...viewed.products!,
+      { id: "options", role: "theater", surface: "composer", text: "建议", shape: { kind: "list", max: 3 } },
+      { id: "hints", role: "theater", surface: "composer", text: "提示", shape: { kind: "list", max: 3 } },
+    ],
+    views: [
+      {
+        id: "picks",
+        consumes: ["options"],
+        html: '<ul data-each="value" data-as="opt"><li><button data-fill="opt" data-text="opt"></button></li></ul>',
+      },
+      {
+        id: "rows",
+        residency: "latest",
+        html: [
+          '<div data-each="world.guests" data-as="g">',
+          '  <button data-fill="g.name">a</button><button data-fill="g.age">b</button><button data-fill="g.$num">c</button>',
+          '  <button data-fill="g.nmae">d</button><button data-fill="g">e</button><button data-fill="world.guests">f</button>',
+          "</div>",
+        ].join("\n"),
+      },
+      {
+        id: "mute",
+        consumes: ["hints", "inner"],
+        html: '<ul data-each="theater.hints" data-as="h"><li data-text="h"></li></ul>',
+      },
+    ],
+  }
+  assert.deepEqual(
+    lint(filled)
+      .filter((d) => d.rule === "bad-view")
+      .map((d) => `${d.level} ${d.path}: ${d.message} | ${d.hint ?? ""}`),
+    [
+      'error views.rows.html:3:11: <button> data-fill="g.nmae": nmae is not a key of g, a table row with keys entityId, name, age: did you mean g.name? | ',
+      'error views.rows.html:3:48: <button> data-fill="g": g is a table row with keys entityId, name, age, which data-fill cannot put in the composer | name one of its keys',
+      'error views.rows.html:3:80: <button> data-fill="world.guests": world.guests is a table, which data-fill cannot put in the composer | iterate it with data-each and data-as',
+      'warn views.mute.html: hints is offered above the input box (surface: composer), and this view takes its place without a data-fill button: the options are drawn but cannot be chosen | draw each as a button that fills the composer: <button data-fill="opt" data-text="opt"></button> inside data-each="theater.hints" data-as="opt"',
+    ],
+  )
+}
+
 // The fixture cards (test/cards): no errors, and exactly these warnings (a new one fails here until it is meant).
 const templates: Record<string, string[]> = {
   wuxia: [

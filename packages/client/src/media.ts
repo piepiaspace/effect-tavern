@@ -106,7 +106,7 @@ export interface ResolveGalleryOptions {
   readonly pathNodes?: readonly {
     readonly id: number
     readonly fields?: State
-    readonly visibleViews?: readonly string[]
+    readonly applicableViews?: readonly string[]
     readonly prose: string
     readonly theater?: Readonly<Record<string, unknown>>
     readonly media?: NodeMedia

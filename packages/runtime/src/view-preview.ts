@@ -123,7 +123,7 @@ export const mountOf = (
   node: TimelineNode,
   head: boolean,
 ): { mounted: boolean; when?: boolean; reason?: Reason } => {
-  const when = view.when ? !!node.visibleViews?.includes(view.id) : undefined
+  const when = view.when ? !!node.applicableViews?.includes(view.id) : undefined
   if (when === false) return { mounted: false, when, reason: head ? "guard-false" : "latest-not-head" }
   if (residency(view) === "latest")
     return head ? { mounted: true, when } : { mounted: false, when, reason: "latest-not-head" }

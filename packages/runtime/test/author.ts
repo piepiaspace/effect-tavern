@@ -98,7 +98,10 @@ try {
     writeFileSync(join(dir, "bad.yml"), source)
     const result = await run("check", "bad.yml", "--json")
     assert.equal(result.exitCode, 1)
-    assert.equal(JSON.parse(result.stdout).diagnostics[0].rule, "schema")
+    // docs/card-cli.md's contract: YAML and schema errors are both `schema` (a YAML one says so in its message).
+    const [first] = JSON.parse(result.stdout).diagnostics
+    assert.equal(first.rule, "schema")
+    if (source === "foo: [") assert.match(first.message, /^the file is not valid YAML: /)
   }
   assert.equal(JSON.parse((await run("check", "missing.yml", "--json")).stdout).diagnostics[0].rule, "io")
   const card: Card = {
@@ -487,6 +490,39 @@ assert.deepEqual(projected.media, {
   gallery: ["images"],
   bgm: { product: "memory" },
 })
+// Views reach the author model as wiring only (#248): what each reads, never its markup, styles or labels; a candidate
+// carries them through untouched.
+const viewing: Card = {
+  ...detailed,
+  products: [...detailed.products!, { id: "inner", role: "theater", text: "PRIVATE INNER", shape: { kind: "text" } }],
+  views: [
+    {
+      id: "hud",
+      label: "PRIVATE VIEW LABEL",
+      residency: "latest",
+      when: { path: "mode", is: "text" },
+      media: [{ id: "hero", catalog: "images", label: "PRIVATE SLOT LABEL" }],
+      html: "<p>PRIVATE HTML</p>",
+      css: "p { color: red; } /* PRIVATE CSS */",
+    },
+    { id: "thought", consumes: ["inner"], html: "<p data-text='value'>PRIVATE</p>" },
+  ],
+}
+const seen = mechanical(viewing)
+assert.ok(!JSON.stringify(seen).includes("PRIVATE"))
+assert.deepEqual(seen.views, [
+  {
+    id: "hud",
+    consumes: [],
+    residency: "latest",
+    when: { path: "mode", is: "text" },
+    media: [{ id: "hero", catalog: "images" }],
+  },
+  { id: "thought", consumes: ["inner"], residency: "turn" },
+])
+assert.equal("views" in projected, false)
+assert.deepEqual(applyCompile(viewing, full).views, viewing.views)
+assert.deepEqual(applySort(viewing, ["Sorted."], [{ paragraphs: [0], to: "fiction.sorted" }]).views, viewing.views)
 const revised = applyCompile(detailed, full)
 assert.equal(revised.rules.fields[0].start, true)
 assert.equal(revised.rules.fields[0].label, "PRIVATE LABEL")
