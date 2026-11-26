@@ -138,8 +138,11 @@ export const effortOptions = (
 }
 
 /** Effect Schema as an ai-sdk schema: Standard Schema for validation plus Standard JSON Schema for the wire. */
-export const standard = <S extends Schema.Top & Schema.Constraint & Schema.ConstraintDecoder<unknown>>(s: S) => {
-  const v = Schema.toStandardSchemaV1(s)
+export const standard = <S extends Schema.Top & Schema.Constraint & Schema.ConstraintDecoder<unknown>>(
+  s: S,
+  options?: Parameters<typeof Schema.toStandardSchemaV1>[1],
+) => {
+  const v = Schema.toStandardSchemaV1(s, options)
   const j = Schema.toStandardJSONSchemaV1(s)
   return { "~standard": { ...v["~standard"], jsonSchema: j["~standard"].jsonSchema } }
 }

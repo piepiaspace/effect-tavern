@@ -700,7 +700,7 @@ assert.ok(of({ ...base, greetings: [{ text: "  " }] }).includes("error empty-gre
       "views.turned.html:1:10",
       /world is not given to a turn view: only a residency: latest view receives world/,
     ],
-    ["error", "views.turned.html:3:116", /p\.name is not a column of catalog faces in a theater product/],
+    ["error", "views.turned.html:3:116", /p\.name is not a column of catalog faces in a theater or world product/],
     ["error", "views.broken.consumes[0]", /guests has role: world, and only role: theater products can be consumed/],
     ["error", "views.broken.consumes[1]", /ghost is not a product of this card/],
     ["error", "views.broken.html:1:1", /<div> is never closed: the browser closes it at the end of the html/],
@@ -825,3 +825,88 @@ const templates: Record<string, string[]> = {
 }
 for (const [name, want] of Object.entries(templates)) assert.deepEqual(of(await loadCard(name)), want, name)
 console.log("ok")
+
+// A band union covers adjacent intervals; invalid names and non-uniform constant tables are author errors.
+{
+  const bands = [
+    { id: "low", min: 0, label: "Low" },
+    { id: "mid", min: 2, label: "Middle" },
+    { id: "high", min: 5, label: "High" },
+  ]
+  const card: Card = {
+    ...base,
+    rules: { fields: [{ path: "heat", type: "int", min: 0, max: 9, initial: 0, bands }], actions: [] },
+    fiction: [
+      { id: "a", text: "A", when: { path: "heat", band: ["low", "mid"] } },
+      { id: "b", text: "B", when: { path: "heat", band: "high" } },
+    ],
+  }
+  assert.ok(!lint(card).some((d) => d.rule === "band-gap" || d.rule === "bad-band"))
+  const invalid = lint({
+    ...card,
+    fiction: [card.fiction[0], { id: "typo", text: "B", when: { path: "heat", band: "hihg" } }],
+    views: [
+      {
+        id: "panel",
+        consts: { actions: [{ name: "one" }, { label: "two" }] },
+        html: '<span data-text="meta.heat.bandLabel"></span>',
+      },
+    ],
+  })
+  assert.ok(invalid.some((d) => d.rule === "bad-band" && d.message.includes("high")))
+  assert.ok(invalid.some((d) => d.rule === "band-gap"))
+  assert.ok(invalid.some((d) => d.rule === "bad-view" && d.message.includes("uniform")))
+}
+
+{
+  const card: Card = {
+    ...base,
+    products: [
+      {
+        id: "guests",
+        role: "world",
+        text: "Guests",
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "name", type: "text" },
+            { key: "age", type: "int" },
+          ],
+        },
+      },
+    ],
+    rules: {
+      fields: [],
+      actions: [],
+      derived: [
+        { id: "attending.total", table: "guests", op: "count", where: { path: "age", op: "gte", value: 18 } },
+        { id: "senior", table: "guests", op: "any", where: { path: "age", op: "gt", value: 60 } },
+      ],
+    },
+    fiction: [
+      { id: "visitor", text: "An adult is here.", when: { path: "derived.attending.total", op: "gt", value: 0 } },
+    ],
+    views: [{ id: "ages", html: '<span data-text="derived.attending.total"></span>' }],
+  }
+  assert.deepEqual(
+    lint(card).filter((d) => d.level === "error"),
+    [],
+  )
+  const bad = lint({
+    ...card,
+    rules: {
+      ...card.rules,
+      derived: [
+        { id: "weight", table: "guests", op: "sum", column: "name", where: { path: "name", op: "gt", value: 5 } },
+        { id: "elsewhere", table: "guests", op: "any", where: { event: "arrived" } },
+      ],
+    },
+    fiction: [
+      { id: "count", text: "Waiting.", when: { path: "world.guests.length", op: "gt", value: 0 } },
+      { id: "typo", text: "Waiting.", when: { path: "world.guests.lawrence.nmae", is: "Lawrence" } },
+    ],
+  })
+  assert.ok(bad.some((d) => d.rule === "unknown-path" && d.message.includes("count")))
+  assert.ok(bad.some((d) => d.rule === "unknown-path" && d.message.includes("name")))
+  assert.equal(bad.filter((d) => d.rule === "bad-derived").length, 3)
+}

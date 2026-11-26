@@ -51,7 +51,6 @@ function here(r: Partial<Local> = {}): Local {
   const file = new URL("fixtures/requests.json", import.meta.url)
   const fixture = JSON.parse(readFileSync(file, "utf8"))
   const canned = {
-    inner: "I",
     town: "GOSSIP",
     notes: "N",
     options: ["A", "B", "C", "D"],
@@ -61,7 +60,12 @@ function here(r: Partial<Local> = {}): Local {
   const model = fake((o) => {
     const d = readStage(o)
     if (d.phase === "narrate") return { text: "不是这样而是那样。".repeat(30) }
-    return defaultAnswer(d, canned)
+    return defaultAnswer(
+      d,
+      (d.schemas?.inner as { type?: string })?.type === "object"
+        ? { ...canned, inner: { expression: "gentle", mood: "M", whisper: "I" } }
+        : { ...canned, inner: "I" },
+    )
   })
   const variant = async (name: string): Promise<Card> => {
     if (name !== "wuxia+") return loadCard(name)

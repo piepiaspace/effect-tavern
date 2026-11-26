@@ -4,6 +4,9 @@ import { fake, type FakeReply } from "@effect-tavern/provider"
 import { Effect, Fiber, Stream } from "effect"
 import { makeSession, outcome, type Turn } from "../src/session.ts"
 import { initialWorld, recordTransaction, worldOn } from "../src/world.ts"
+import { checkValue } from "../src/author.ts"
+import { viewBindings } from "../src/view-bindings.ts"
+import { worldValue } from "../src/world.ts"
 import { holds } from "../src/cond.ts"
 import type { Product } from "../src/product.ts"
 import * as Log from "../src/log.ts"
@@ -407,3 +410,150 @@ console.log("record transactions ok")
   assert.ok(!("bgm" in none.products))
 }
 console.log("catalog picks ok")
+
+// World catalog selection is frozen per attempt. Stored selections keep their provenance when the guard closes.
+{
+  const columns = [
+    { key: "face", type: "enum", catalog: "faces" },
+    { key: "name", type: "text" },
+  ] as const
+  const row = { face: "ri", name: "ri" }
+  const products: Product[] = [
+    { ...scene, shape: { kind: "record", keys: columns }, initial: row },
+    { ...people, shape: { kind: "table", columns }, initial: { guest: row } },
+  ]
+  const catalogs = [
+    {
+      id: "faces",
+      kind: "image",
+      baseUrl: "https://example.com",
+      items: [{ id: "ri", when: { path: "open", is: true }, variants: ["ri.png"] }],
+    },
+  ] as const
+  const view = {
+    id: "faces",
+    html: '<div data-media="faces:world.scene.face"></div><div data-each="world.people" data-as="p"><div data-media="faces:p.face"></div></div>',
+  }
+  const card = {
+    ...chat,
+    products,
+    catalogs,
+    views: [view],
+    fiction: [],
+    greetings: [],
+    rules: { fields: [{ path: "open", type: "boolean", initial: false }], actions: [] },
+  } as const
+  assert.deepEqual(
+    checkValue(card).diagnostics.filter((d) => d.level === "error"),
+    [],
+  )
+  const base = initialWorld(products, catalogs)
+  const tx = (open: boolean, world = base) =>
+    recordTransaction(products, world, undefined, undefined, undefined, { catalogs, state: { fields: { open } } })
+  const recorded = (face: string) => [
+    { changes: [{ kind: "patch_record" as const, product: "scene", patch: { face }, prev: row }] },
+  ]
+  assert.deepEqual(worldOn(products, recorded("ri"), catalogs).scene, row)
+  assert.throws(() => worldOn(products, recorded("unknown"), catalogs))
+  const closed = tx(false)
+  assert.ok(!closed.tools.replace_scene && !closed.tools.insert_people)
+  assert.ok(closed.tools.read_scene && closed.tools.read_people && closed.tools.remove_people)
+  const context = { toolCallId: "patch", signal: new AbortController().signal }
+  assert.ok((await closed.tools.patch_scene.execute({ patch: { name: "new" } }, context)).ok)
+  assert.ok((await closed.tools.patch_people.execute({ entityId: "guest", patch: { name: "new" } }, context)).ok)
+  assert.deepEqual(closed.current(), { scene: { ...row, name: "new" }, people: { guest: { ...row, name: "new" } } })
+  const input = closed.tools.patch_scene.inputSchema as {
+    "~standard": { validate(input: unknown): Promise<{ issues?: unknown }> }
+  }
+  assert.ok((await input["~standard"].validate({ patch: { name: "new", face: "ri" } })).issues)
+  const open = tx(true, closed.current())
+  assert.ok(open.tools.replace_scene && open.tools.insert_people)
+  const bindings = viewBindings({
+    view: { ...view, tree: [] },
+    node: { id: 1 },
+    names: {},
+    products,
+    context: { world: { scene: row, people: worldValue(products[1], base.people) } },
+  })
+  assert.ok(bindings.image("faces:world.scene.face", {}))
+  assert.ok(bindings.image("faces:p.face", { p: "world.people.0" }))
+  assert.equal(bindings.image("faces:p.name", { p: "world.people.0" }), undefined)
+}
+
+// A dynamic opening gives the actor a key. Its beat uses the key before narration and record;
+// readouts run in declaration order and the player's correction is the last write.
+{
+  const scenePatch = (place: string) => ({ world: "scene", patch: { place } })
+  const hasKey = { path: "world.people.key.stance", is: "ready" }
+  const used = { path: "world.scene.place", is: "AFTER_BEAT" }
+  const products = [scene, { ...people, initial: { key: { name: "key", stance: "ready" } } }]
+  const roots = {
+    fields: [],
+    actions: [
+      {
+        id: "unlock",
+        text: "unlock",
+        when: hasKey,
+        do: [scenePatch("AFTER_BEAT"), { world: "people", entityId: "key", patch: { stance: "used" } }],
+      },
+    ],
+    readouts: ["first", "last"].map((id) => ({
+      id,
+      text: id,
+      when: used,
+      options: [{ id: "yes", text: "yes", do: [scenePatch(id)] }],
+    })),
+  }
+  const card = {
+    ...chat,
+    products,
+    frame: [],
+    fiction: [{ id: "door", when: used, text: "OPEN_FIXTURE_DOOR" }],
+    greetings: [{ note: "unlock", do: [scenePatch("OPENING")] }],
+    lore: [],
+    rules: roots,
+  }
+  const prompts = new Map<string, string>()
+  const T = makeSession({
+    card,
+    rows: () => productsOff,
+    model: () =>
+      fake((o) => {
+        const doc = readStage(o)
+        prompts.set(doc.phase, JSON.stringify(o.prompt))
+        if (doc.phase === "decide") return { text: JSON.stringify({ next: "unlock" }) }
+        if (doc.phase === "record")
+          return {
+            text: "",
+            toolCalls: [
+              tool("patch_scene", { patch: { place: "MODEL" } }),
+              tool("finish_record", { answers: { last: "yes", first: "yes" } }),
+            ],
+          }
+        return defaultAnswer(doc)
+      }),
+  })
+  assert.throws(() => T.begin({ greeting: 0, opening: [scenePatch("forged")] }), /player sets at the start/)
+  const n = T.node((await Effect.runPromise(outcome(T.begin({ greeting: 0 })))).id)
+  assert.ok(prompts.get("narrate")?.includes("OPEN_FIXTURE_DOOR"))
+  for (const stage of ["narrate", "record"]) assert.ok(prompts.get(stage)?.includes("place: AFTER_BEAT"), stage)
+  assert.deepEqual(
+    n.worldChanges.flatMap((c) => (c.kind === "patch_record" ? [c.patch.place] : [])),
+    ["OPENING", "AFTER_BEAT", "MODEL", "first", "last"],
+  )
+  assert.equal((T.context(n.id).world.scene as { place: string }).place, "last")
+  T.setField(n.id, [scenePatch("manual")])
+  assert.equal((T.detail(n.id).productChanges.at(-1)!.value as { place: string }).place, "manual")
+  assert.equal(T.timelineNode(n.id).changeSummary.products, n.worldChanges.length + 1)
+  assert.throws(() => T.setField(n.id, [{ event: "forged" }]), /cannot emit/)
+  assert.throws(
+    () => T.setField(n.id, [scenePatch("rollback"), { world: "people", entityId: "missing", remove: true }]),
+    /does not exist/,
+  )
+  assert.equal((T.context(n.id).world.scene as { place: string }).place, "manual")
+  const ancestor = T.greet({ text: "root" }).node!.id
+  const child = await Effect.runPromise(outcome(T.act(ancestor, { text: "unlock" })))
+  assert.ok(T.setField(ancestor, [{ world: "people", entityId: "key", remove: true }]).invalidated?.includes(child.id))
+  assert.deepEqual(T.context(child.id).world.people, {})
+  assert.ok(!T.detail(child.id).changes.some((c) => c.kind === "patch_entity"))
+}

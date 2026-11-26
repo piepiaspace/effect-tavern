@@ -22,7 +22,7 @@ export const validateCard = (value: unknown): { card?: Card; diagnostics: Diagno
     if (idError) diagnostics.push({ rule: "schema", level: "error", path: "id", message: idError })
     const rpg = makeCard(card.rules)
     rpg.validate(rpg.initial)
-    initialWorld(resolve(card, {}).products)
+    initialWorld(resolve(card, {}).products, card.catalogs)
     diagnostics.push(...lint(card))
   } catch (e) {
     diagnostics.push({ rule: "schema", level: "error", path: "$", message: String(e) })

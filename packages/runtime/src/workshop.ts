@@ -20,7 +20,11 @@ export const mechanical = (card: Card) => {
     ...(card.passages && { passages: card.passages.map(({ text: _text, note: _note, ...p }) => p) }),
     rules: {
       ...card.rules,
-      fields: card.rules.fields.map(({ label: _l, group: _g, ...wiring }) => wiring),
+      fields: card.rules.fields.map(({ label: _l, group: _g, bands, ...wiring }) => ({
+        ...wiring,
+        ...(bands && { bands: bands.map(({ id, min }) => ({ id, min })) }),
+      })),
+      ...(card.rules.derived && { derived: card.rules.derived.map(({ label: _label, ...d }) => d) }),
       actions: card.rules.actions.map(({ text: _t, roll, ...wiring }) => ({
         ...wiring,
         roll: roll && typeof roll === "object" && "judge" in roll ? { judged: true } : roll,
@@ -69,6 +73,7 @@ const Sub = Schema.suspend((): Schema.Codec<Cond> => Condition)
 const Condition: Schema.Codec<Cond> = Schema.Union([
   Schema.Struct({ path: Token, is: Scalar }),
   Schema.Struct({ path: Token, op: Schema.Literals(["lt", "lte", "gt", "gte"]), value: Schema.Number }),
+  Schema.Struct({ path: Token, band: Schema.Union([Token, Schema.Array(Token)]) }),
   Schema.Struct({ all: Schema.Array(Sub) }),
   Schema.Struct({ any: Schema.Array(Sub) }),
   Schema.Struct({ not: Sub }),

@@ -39,9 +39,10 @@ export const stageTool = <S extends Schema.Top & Schema.Constraint & Schema.Cons
   schema: S,
   description: string,
   execute: (input: S["Type"], context: ToolContext) => Promise<ToolResult>,
+  options?: Parameters<typeof standard>[1],
 ): StageTool => ({
   description,
-  inputSchema: standard(schema),
+  inputSchema: standard(schema, options),
   execute: (input, context) => execute(input, context), // SDK has decoded input through inputSchema
 })
 

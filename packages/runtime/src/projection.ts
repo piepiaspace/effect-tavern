@@ -8,7 +8,7 @@ import type { Node } from "./derived.ts"
 import type { Turn } from "./journal.ts"
 import type { NodeMedia } from "./media.ts"
 import type { Product } from "./product.ts"
-import type { DomainChange, WorldState } from "./world.ts"
+import { deepMerge, type DomainChange, type WorldState } from "./world.ts"
 import type { Event } from "./session.ts"
 import type { Change } from "./log.ts"
 
@@ -25,7 +25,7 @@ export interface PlayerCatalogItem extends InvocationToken {
   available: boolean
 }
 export interface TimelineNode {
-  latestContext?: { fields: State; world: Record<string, unknown> }
+  latestContext?: { fields: State; world: Record<string, unknown>; derived?: Record<string, number | boolean> }
   fields?: State
   applicableViews?: readonly string[] // conditional views whose `when` held at this node
   id: number
@@ -118,7 +118,7 @@ export const timelineNode = (
     fields: fieldChanges(n, before, rules).length,
     checks: n.checks.length,
     deliveries: n.delivered.length,
-    products: n.turn.changes.length,
+    products: n.worldChanges.length,
   },
 })
 
@@ -127,8 +127,8 @@ export const turnDetail = (n: Node, before: State, rules: Rules): TurnDetail => 
   checks: n.checks,
   deliveries: n.delivered,
   fieldChanges: fieldChanges(n, before, rules),
-  changes: n.turn.changes,
-  productChanges: n.turn.changes.map((c): ProductChange => ({
+  changes: n.worldChanges,
+  productChanges: n.worldChanges.map((c): ProductChange => ({
     id: "product" in c ? c.product : c.collection,
     change:
       c.kind === "insert_entity"
@@ -146,7 +146,7 @@ export const turnDetail = (n: Node, before: State, rules: Rules): TurnDetail => 
           : c.kind === "remove_entity"
             ? [c.prev]
             : c.kind === "patch_record"
-              ? { ...c.prev, ...c.patch }
+              ? deepMerge(c.prev, c.patch)
               : c.value,
   })),
   events: n.events,

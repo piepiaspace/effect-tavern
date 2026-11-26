@@ -1,12 +1,24 @@
+import { fieldMeta } from "./field-meta.ts"
+import type { Field } from "./card.ts"
+import type { ConstValue } from "./view-shell.ts"
+import { expand, type Names } from "./names.ts"
 import type { CompiledView, TemplateNode } from "./view-shell.ts"
 import type { NodeMedia, MediaVariantTarget } from "./media.ts"
 import { rows, type Product, type Shape, type TableShape } from "./product.ts"
 export type Scope = Record<string, unknown>
+/** Field metadata and named derived values use flat declaration IDs, which may contain dots. */
+export function bindingKeys(path: string) {
+  const parts = path.split(".")
+  if (parts[0] === "derived" && parts.length > 1) return ["derived", parts.slice(1).join(".")]
+  if (parts[0] === "meta" && parts.length > 2) return ["meta", parts.slice(1, -1).join("."), parts.at(-1)!]
+  return parts
+}
 export const readPath = (scope: Scope, path: string) => {
   if (Object.hasOwn(scope, path)) return scope[path]
-  return path
-    .split(".")
-    .reduce<unknown>((v, k) => (v && typeof v === "object" && Object.hasOwn(v, k) ? (v as Scope)[k] : undefined), scope)
+  return bindingKeys(path).reduce<unknown>(
+    (v, k) => (v && typeof v === "object" && Object.hasOwn(v, k) ? (v as Scope)[k] : undefined),
+    scope,
+  )
 }
 export const truth = (v: unknown) => (Array.isArray(v) ? v.length > 0 : Boolean(v))
 export const safeRows = (shape: TableShape, value: unknown) => {
@@ -38,18 +50,28 @@ function productImages(
   )
 }
 
+function expandConst(value: ConstValue, names: Names): ConstValue {
+  if (typeof value === "string") return expand(value, names, "card")!
+  if (Array.isArray(value)) return value.map((v) => expandConst(v, names))
+  if (typeof value === "object")
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, expandConst(v, names)]))
+  return value
+}
+
 export function viewBindings({
   view,
   node,
   products,
-  names,
+  fields,
+  names = {},
   context,
 }: {
   view: CompiledView
   node: { id: number; media?: NodeMedia; fields?: Scope; theater?: Readonly<Scope> }
-  products?: readonly Pick<Product, "id" | "shape">[]
-  names: unknown
-  context?: { fields?: unknown; world?: unknown }
+  products?: readonly (Pick<Product, "id" | "shape"> & Partial<Pick<Product, "role">>)[]
+  fields?: readonly Field[]
+  names?: Names | undefined
+  context?: { fields?: unknown; world?: unknown; derived?: unknown }
 }) {
   const allTheater = node.theater ?? {}
   const consumed = view.consumes ?? []
@@ -71,7 +93,9 @@ export function viewBindings({
       Object.assign(scope, record)
       aliases = Object.fromEntries(
         Object.keys(record)
-          .filter((k) => k !== "theater" && k !== "value")
+          .filter(
+            (k) => !["theater", "value", "names", "fields", "world", "media", "consts", "meta", "derived"].includes(k),
+          )
           .map((k) => [k, "value." + k]),
       )
     }
@@ -82,12 +106,17 @@ export function viewBindings({
   scope.media = Object.fromEntries(hits.map((m) => [m.id, m]))
   scope.fields = context?.fields ?? node.fields
   Object.defineProperty(scope, "world", { enumerable: true, configurable: true, get: () => context?.world })
+  scope.consts = expandConst(view.consts ?? {}, names)
+  scope.meta = scope.fields && fieldMeta(fields ?? [], scope.fields as Scope)
+  scope.derived = context?.derived
   scope.theater = allTheater
   let refs: ReturnType<typeof productImages> | undefined
   const collectRefs = () => {
     const out: ReturnType<typeof productImages> = []
     if (primaryShape) out.push(...productImages(primaryShape, primaryValue, "value"))
     for (const p of products ?? []) {
+      if (p.role === "world" && context?.world && typeof context.world === "object")
+        out.push(...productImages(p.shape, (context.world as Scope)[p.id], "world." + p.id))
       if (Object.hasOwn(allTheater, p.id)) out.push(...productImages(p.shape, allTheater[p.id], "theater." + p.id))
     }
     return out

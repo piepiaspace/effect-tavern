@@ -416,7 +416,7 @@ const full = decodeCompile({
 const keys = (o: object) => Object.keys(o).sort()
 assert.deepEqual(
   keys(full.fields![0]),
-  keys(Field.fields).filter((k) => !["label", "group"].includes(k)),
+  keys(Field.fields).filter((k) => !["label", "group", "bands"].includes(k)),
 )
 assert.deepEqual(
   keys(full.products![0]),

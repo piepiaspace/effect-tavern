@@ -165,7 +165,7 @@ const col = (c: object) => ({ ...pics, shape: { kind: "table" as const, columns:
 assert.throws(() => validate(col({ key: "id", type: "enum" })), /exactly one of options or catalog/)
 assert.throws(() => validate(col({ key: "id", type: "enum", options: ["a"], catalog: "cg" })), /exactly one/)
 assert.throws(() => validate(col({ key: "id", type: "text", catalog: "cg" })), /exactly one/)
-assert.throws(() => validate({ ...pics, role: "world" }), /not world state/)
+assert.equal(validate({ ...pics, role: "world" }).role, "world")
 
 // Catalog `kind` and item `label`: surviving item labels append `[id: label | ...]` in productAsks; unlabeled catalogs
 // produce exact legacy ask bytes.

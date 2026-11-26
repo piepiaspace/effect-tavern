@@ -55,6 +55,7 @@ export const viewNode = async (card: Card, at: At = {}): Promise<PreviewInput & 
     views: view.views ?? [],
     node,
     products: view.layer.products,
+    fields: card.rules.fields,
     names: view.layer.names,
     catalogs: view.catalogs,
     head: node.settlementStatus !== "pending",

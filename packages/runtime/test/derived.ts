@@ -236,7 +236,7 @@ const none = { events: [], before: [] }
     ...parent[0],
     changes: [{ kind: "patch_record" as const, product: "scene", patch: { open: false }, prev: {} }],
   }
-  assert.throws(() => D.at([amended, path[1]]).state, /not an available action/)
+  assert.deepEqual(D.at([amended, path[1]]).context().world, { scene: { open: false } })
   assert.deepEqual(D.at(path).context().world, { scene: { open: true } }) // original branch still correct
   const adjusted = {
     ...path[1],
@@ -298,4 +298,77 @@ console.log("derived ok")
     ["2", "3"],
   )
   assert.equal(view().ledger()[0]?.text, " → -; read -; fired -\n3 → -; read -; fired -")
+}
+
+{
+  const card: Card = {
+    ...full,
+    lore: [],
+    products: [
+      {
+        id: "bag",
+        role: "world",
+        text: "Items",
+        shape: {
+          kind: "table",
+          filter: { path: "mass", op: "gt", value: 100 },
+          columns: [{ key: "mass", type: "int" }],
+        },
+        initial: { key: { mass: 2 }, stone: { mass: 5 } },
+      },
+    ],
+    rules: {
+      actions: [],
+      fields: [],
+      derived: [
+        { id: "total", op: "sum", table: "bag", column: "mass" },
+        { id: "heavy", op: "count", table: "bag", where: { path: "mass", op: "gte", value: 4 } },
+        { id: "hasKey", op: "any", table: "bag", where: { path: "entityId", is: "key" } },
+      ],
+    },
+  }
+  const d = derivedOf(card)
+  assert.deepEqual(d.at([]).context().derived, { total: 7, heavy: 1, hasKey: true })
+  const empty = add([], {
+    changes: ["key", "stone"].map((id) => ({
+      kind: "remove_entity" as const,
+      collection: "bag",
+      entityId: id,
+      prev: {},
+    })),
+  })
+  assert.deepEqual(d.at(empty).context().derived, { total: 0, heavy: 0, hasKey: false })
+}
+
+// A digest can introduce the very entity consumed by the passage opening.
+// The model's patch and the player's adjustment settle after that pre snapshot.
+{
+  const D = derivedOf({
+    ...full,
+    lore: [],
+    rules: { fields: [], actions: [] },
+    products: [
+      {
+        id: "bag",
+        role: "world",
+        text: "inventory",
+        shape: { kind: "table", columns: [{ key: "charges", type: "int" }] },
+      },
+    ],
+  })
+  const product = { collection: "bag", entityId: "key" }
+  const node = D.at(
+    add([], {
+      passageSeed: { products: {}, changes: [{ kind: "insert_entity", ...product, data: { charges: 3 } }] },
+      opening: [{ world: "bag", entityId: "key", patch: { charges: 2 } }],
+      changes: [{ kind: "patch_entity", ...product, prev: { charges: 2 }, patch: { charges: 1 } }],
+      adjust: [{ world: "bag", entityId: "key", remove: true }],
+    }),
+  )
+  assert.deepEqual(node.pre.world.bag, { key: { charges: 2 } })
+  assert.deepEqual(node.context().world.bag, {})
+  assert.deepEqual(
+    node.node().worldChanges.map((c) => c.kind),
+    ["insert_entity", "patch_entity", "patch_entity", "remove_entity"],
+  )
 }

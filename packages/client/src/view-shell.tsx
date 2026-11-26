@@ -62,6 +62,7 @@ export const ViewBlock = (props: Props) => {
       node: props.node,
       products: props.card.layer.products,
       names: props.card.layer.names,
+      fields: props.card.rules.fields,
       ...(context && { context }),
     })
   })

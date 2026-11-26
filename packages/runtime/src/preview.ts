@@ -841,7 +841,11 @@ const eventOptions = (card: Card, rpg: ReturnType<typeof makeCard>, state: State
   const events = new Set<string>()
   const collectEffects = (effects: Card["rules"]["actions"][number]["do"]) => {
     if (!effects?.some((e) => "event" in e)) return
-    for (const token of rpg.apply(state, effects).events) events.add(token)
+    for (const token of rpg.apply(
+      state,
+      effects.filter((e) => !("world" in e)),
+    ).events)
+      events.add(token)
   }
   for (const action of card.rules.actions) {
     for (const effects of action.roll === undefined ? [action.do] : [action.hit, action.miss]) collectEffects(effects)
@@ -906,6 +910,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   const L = makeLore<Paths, readonly string[]>(namedLore(cardLore, R.names))
   const policy = summarizePolicy(connection.contextTokens)
   const derived = makeDerived({
+    catalogs: card.catalogs ?? [],
     rpg,
     L: () => L,
     lore: card.lore,
@@ -966,7 +971,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     : rawInput
 
   const here = derived.at(basePath)
-  const opened = openingEffects ? rpg.apply(here.state, openingEffects) : { s: here.state, events: [] as string[] }
+  const { tx, o: opened } = here.open(openingEffects)
   const sanitizeFields = (base: State, overrides?: State): State => {
     if (!overrides) return base
     const next: State = { ...base }
@@ -993,7 +998,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   const actionEvents = opts.events ?? []
   const turnEvents = [...opened.events, ...actionEvents]
   const gateEvents = [...turnEvents, ...here.post]
-  const s1Context = here.context(overriddenState)
+  const s1Context = here.context(overriddenState, tx.world)
 
   // Story mode diagnostics (settlement / branch / folded summary)
   const settlementPending =
@@ -1053,12 +1058,9 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
 
   // Resources + residency + simulation (session.ts exact delivery semantics)
   const seenOnPath = basePath.flatMap((t) => t.deliveries)
-  // The live turn selects lookup and automatic deliveries on the parent, before a dynamic opening settles.
-  const lookupState = openingEffects ? sanitizeFields(here.state, opts.fields) : overriddenState
-  const resources: Resource[] = here.resources(lookupState)
+  const resources: Resource[] = here.resources(overriddenState, tx.world)
   const resident = opts.mode === "story" ? here.resident() : []
-  const currentRes =
-    opts.mode === "story" ? here.currentResources() : fedResources(resources, R.products).map((r) => freeze(r))
+  const currentRes = fedResources(resources, R.products).map((r) => freeze(r))
 
   // 1. Player invocations (check access.player cleanly without mutating story)
   const invokedIds = [...new Set(input.invoke ?? [])]
@@ -1104,7 +1106,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   preDisclosures.push(...lookupCtx.disclosures)
 
   // 4. Gate + disclosures + open windows
-  const gate = here.gate({ state: overriddenState, events: turnEvents, before: preDisclosures })
+  const gate = here.gate({ state: overriddenState, world: tx.world, events: turnEvents, before: preDisclosures })
   const open = gate.open.map((d) => ({ ...d, text: L.text(d) }))
   const mustIds = opts.assumedMust !== undefined ? opts.assumedMust : []
   const mayIds =
@@ -1126,7 +1128,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   }
   deliveries = uniqueDeliveries(deliveries)
 
-  const fed = here.known()
+  const fed = here.known(false, tx.world)
   const prepped = prepareNarrate({
     card,
     resolvedTrace: RT,

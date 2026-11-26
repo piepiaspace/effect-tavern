@@ -2,7 +2,7 @@
 import { sha256 } from "@noble/hashes/sha2.js"
 import { Schema } from "effect"
 import { residency, type CompiledView } from "./view-shell.ts"
-import { holds, reads, type State } from "./cond.ts"
+import { holds, needsContext, type State } from "./cond.ts"
 import { rows, type Catalog, type Product } from "./product.ts"
 
 export const IllustrationBinding = Schema.Struct({
@@ -42,8 +42,7 @@ export function nodeCondition(fields: State, events: readonly string[], context:
   const fieldState = { fields }
   let fullState: State | undefined
   return (when: NonNullable<Catalog["items"][number]["when"]>) => {
-    const needsContext = reads(when).some((p) => p.startsWith("world.") || p.startsWith("lore."))
-    return holds(when, needsContext ? (fullState ??= context()) : fieldState, events)
+    return holds(when, needsContext(when) ? (fullState ??= context()) : fieldState, events)
   }
 }
 

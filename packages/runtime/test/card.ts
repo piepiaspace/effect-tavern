@@ -98,7 +98,7 @@ assert.deepEqual(
   duel.available(duel.initial).map((a) => a.id),
   ["strike"],
 ) // flee gated out at full hp
-assert.throws(() => duel.settle(duel.initial, { next: "flee", seed: 1 }), /not an available action/)
+assert.equal(duel.settle(duel.initial, { next: "flee", seed: 1 }).s.fled, true)
 const hit: Beat = { next: "strike", seed: seedWhere(0.6, true) }
 const hits = [hit, hit, hit]
 // Three hits bring foe to 0 and the code ends the fight.

@@ -39,6 +39,7 @@
 import { timelineNode, turnDetail, type ActiveContextView, type TimelineNode } from "./projection.ts"
 import {
   catalogBlock,
+  fedResources,
   contextLookup,
   deliveryText,
   freeze,
@@ -99,7 +100,7 @@ import { request, worldBlock, type Ask, type DetailedRequest, type Told } from "
 import type { MessageTrace, WireErrorInfo, WrapTrace } from "./trace.ts"
 import { checkQuestions, checkVerdict, lookupQuestions, lookupSelect, type Line } from "./decision.ts"
 import { cap, shapeSchema, withCatalogs, askedAt, productAsks, type Catalog, type Product } from "./product.ts"
-import { recordTransaction, worldValue, type RecordResult, type WorldState } from "./world.ts"
+import { recordTransaction, worldEffects, worldValue, type RecordResult, type WorldState } from "./world.ts"
 
 export type Turn = TurnOf<Beat>
 export const phases = ["lookup", "decide", "direct", "narrate", "check", "polish", "record"] as const
@@ -442,6 +443,7 @@ export const makeSession = ({
   const products = () => layer().products
   // ───────── Derived facts along a path (src/derived.ts) ─────────
   const derived = makeDerived({
+    catalogs: card.catalogs ?? [],
     rpg,
     L,
     lore: card.lore,
@@ -613,7 +615,7 @@ export const makeSession = ({
     qs?: { lines: string[] },
     interval = false,
   ) => {
-    const fed = derived.at(path).known(true)
+    const fed = derived.at(path).known(true, context.world)
     return ask(context, scene.input, {
       stage: "record",
       known: fed.known,
@@ -621,7 +623,7 @@ export const makeSession = ({
       invoked: latest(scene.deliveries)
         .filter((d) => scene.input.invoke?.includes(d.resourceId))
         .map(deliveryText),
-      asks: productAsks(picks, context),
+      asks: productAsks(picks, context, catalogs()),
       ...(settlement && { tools: true }),
       questions: qs?.lines,
       prose: interval ? "" : proseOf(scene.reply),
@@ -645,9 +647,11 @@ export const makeSession = ({
         picks.map((p) => ({ ...p, text: expandState(p.text, context) })),
         context.world,
         qs?.schema,
-        (answers) => {
-          rpg.settleReadouts(state, answers)
+        (answers, world) => {
+          rpg.settleReadouts(state, answers, worldEffects(products(), catalogs(), world).write)
         },
+        undefined,
+        { catalogs: catalogs(), state: context },
       )
       const msgs = sceneRequest(picks, context, path, scene, true, qs, interval)
       const result = yield* native(emit, "record", msgs, {
@@ -691,10 +695,10 @@ export const makeSession = ({
 
   // ───────── The turn ─────────
   const sceneContext = (path: readonly Turn[], node: Turn) => {
-    const view = node.passage ? passageView(path, { ...node, ...node.passageSeed }) : path
+    const view = node.passageSeed ? passageView(path, { ...node.passageSeed, boundary: node.boundary }) : path
     const pre = derived.at(path).settle(node).pre
-    const context = derived.at(view).context(pre)
-    return { view, pre, context }
+    const context = derived.at(view).context(pre.fields, pre.world)
+    return { view, pre: pre.fields, context }
   }
   const recordWork = (path: readonly Turn[], node: Turn) => {
     const { view, pre, context } = sceneContext(path, node)
@@ -787,17 +791,22 @@ export const makeSession = ({
         )
       )
         return yield* new Rejected({ message: "parent passage must be completed before continuing" })
-      const viewPath = transition ? passageView(path, transition) : path
+      const seed = transition ?? base?.passageSeed
+      const viewPath = seed ? passageView(path, { ...seed, boundary: transition?.boundary ?? base?.boundary }) : path
       const here = derived.at(viewPath)
       // the guard lines expanded, an unnamed hole as written: what the director and check read, and check's enum
       const guard = lines(card.guard, layer().names, "card")
       // a root's opening settles first, as the fold does (derived.ts `settleFresh`); its events reach this turn's gate
       const opening = start ?? base?.opening
-      const o = opening ? rpg.apply(here.state, opening) : { s: here.state, events: [] as string[] }
+      const { tx, o, fold } = (seed ? derived.at(path) : here).open(
+        opening,
+        seed && { products: seed.products ?? {}, changes: seed.changes ?? [] },
+      )
+      const opened = here.context(o.s, tx.world)
       const s0 = o.s
-      const resources = here.resources()
+      const resources = here.resources(o.s, tx.world)
       const resident = here.resident()
-      const current = here.currentResources()
+      const current = fedResources(resources, products()).map((r) => freeze(r))
       const reused = from !== "lookup"
       const invoked = [...new Set(input.invoke ?? [])]
       const selected = resources.filter((r) => invoked.includes(r.resourceId) && r.access.player)
@@ -854,12 +863,12 @@ export const makeSession = ({
             yield* native(
               emit,
               "lookup",
-              ask(here.context(s0), input, {
+              ask(opened, input, {
                 stage: "lookup",
                 ledger: here.ledger(),
                 // lookup's own reading: an entry's unread sections listed under it; narrate's `told` stays bare
                 context: latest([...resident, ...deliveries]).map(lookup.told),
-                current: here.known().current,
+                current: here.known(false, tx.world).current,
                 catalog: catalogBlock(view),
               }),
               {
@@ -877,28 +886,30 @@ export const makeSession = ({
       const beats: Beat[] = from !== "lookup" ? [...base!.beats] : []
       let end: Turn["end"] = from !== "lookup" ? base!.end : "end"
       if (hasInput && card.rules.actions.length && from === "lookup") {
-        if (rpg.over(s0, here.context(s0))) end = "over"
+        if (rpg.over(s0, opened)) end = "over"
         else {
           const d = yield* obj(
             emit,
             "decide",
-            rpg.decideSchema(s0, here.context(s0)),
-            ask(here.context(s0), input, {
+            rpg.decideSchema(s0, opened),
+            ask(opened, input, {
               stage: "decide",
               ledger: here.ledger(),
               state: JSON.stringify(s0),
-              menu: rpg.menu(s0, here.context(s0)),
+              menu: rpg.menu(s0, opened),
             }),
           )
           if (d.next !== "end") beats.push({ next: d.next, chance: (d as { chance?: number }).chance, seed: ++seeds })
         }
       }
-      const { s: s1, events } = rpg.fold(s0, beats, here.context(s0))
+      const { s: s1, events } = fold(beats)
+      const pre = here.context(s1, tx.world)
       // gate: after settlement, on this turn's beat events plus what the turn before emitted after its own gate
       // (derived.ts `gate`). Director only if the card has one and something is open.
       const gateEvents = [...o.events, ...events, ...derived.at(path).post]
       const gate = here.gate({
         state: s1,
+        world: tx.world,
         events: [...o.events, ...events],
         before: looked,
       })
@@ -914,7 +925,7 @@ export const makeSession = ({
                 emit,
                 "direct",
                 BriefOf(openIds),
-                ask(here.context(s1), input, {
+                ask(pre, input, {
                   stage: "direct",
                   ledger: here.ledger(),
                   rules: guard,
@@ -943,8 +954,8 @@ export const makeSession = ({
         deliveries = uniqueDeliveries(deliveries)
       }
       // narrate, streamed, with truncation recovery and at most one correction rewrite
-      const fed = here.known()
-      const transcript = transition ? derived.at(path) : here
+      const fed = here.known(false, pre.world)
+      const transcript = seed ? derived.at(path) : here
       const sum = transcript.summary()
       // No output cap by default: the model's own limit (128k on Haiku) is the ceiling. A cap is connection config.
       const M = modelFor("narrate", emit.observe("narrate"))
@@ -1050,7 +1061,7 @@ export const makeSession = ({
               reasoningBack: M.reasoningBack,
               ttl: M.ttl,
             },
-            state: here.context(s1),
+            state: pre,
             history: transition?.boundary ? [] : transcript.history(),
             summarized: sum !== undefined,
             told: latest([...resident, ...deliveries]),
@@ -1089,7 +1100,7 @@ export const makeSession = ({
         // stands whole; the prose is written by now, so the fast pass never fails the turn. Its call is on the trace.
         const fast = (text: string) => {
           const { state, questions } = checkQuestions({
-            world: worldBlock(headOf(worldOf(card, layer().frame), { state: here.context(s1) })),
+            world: worldBlock(headOf(worldOf(card, layer().frame), { state: pre })),
             draft: text,
             rules: guard,
             open,
@@ -1107,7 +1118,7 @@ export const makeSession = ({
             emit,
             "check",
             Check(openIds, guard),
-            ask(here.context(s1), input, {
+            ask(pre, input, {
               stage: "check",
               rules: guard,
               open: told(open),
@@ -1153,7 +1164,7 @@ export const makeSession = ({
           emit,
           "polish",
           Schema.Struct(Object.fromEntries(targets.map((t) => [t.id, Schema.String]))),
-          ask(here.context(s1), input, {
+          ask(pre, input, {
             stage: "polish",
             hints: targets.flatMap((t) => (t.hints.length ? [`${t.id}: ${t.hints.join("; ")}`] : [])),
             prose: marked(text, targets),
@@ -1182,14 +1193,14 @@ export const makeSession = ({
         violated,
         ...(opening && { opening }),
         ...(base && { sibling: SIBLING[from] }),
-        changes: [],
         settlementStatus: "pending",
         settlementVersion: 0,
         ...(base?.passage && { passage: true as const }),
         ...(base?.boundary && { boundary: true as const }),
         ...transition,
-        ...(transition && { passageSeed: { products: transition.products ?? {}, changes: transition.changes ?? [] } }),
-        products: transition?.products ?? {},
+        ...(seed && { passageSeed: { products: seed.products ?? {}, changes: seed.changes ?? [] } }),
+        changes: [],
+        products: seed?.products ?? {},
       }
       fresh()
       const parents = chain(parent)
@@ -1340,30 +1351,32 @@ export const makeSession = ({
     transition?: Partial<Pick<Turn, "boundary" | "passage" | "end" | "products" | "changes">>,
   ): Change => {
     fresh()
-    return change(
-      held.commit(
-        Log.add(held.log, {
-          parent,
-          input: { text: "" },
-          read: [],
-          deliveries: [],
-          opportunities: [],
-          ...(g.do ? { opening: g.do } : {}),
-          beats: [],
-          answers: {},
-          end: "end",
-          brief: { must: [], may: [] },
-          reply: [{ type: "text", text: named(g.text ?? "") }], // the transcript holds the names as they stand now
-          fired: [],
-          violated: [],
-          products: {},
-          changes: [],
-          settlementStatus: "committed",
-          settlementVersion: 0,
-          ...transition,
-        }),
-      ),
-    )
+    const next = Log.add(held.log, {
+      parent,
+      input: { text: "" },
+      read: [],
+      deliveries: [],
+      opportunities: [],
+      ...(g.do ? { opening: g.do } : {}),
+      beats: [],
+      answers: {},
+      end: "end",
+      brief: { must: [], may: [] },
+      reply: [{ type: "text", text: named(g.text ?? "") }], // the transcript holds the names as they stand now
+      fired: [],
+      violated: [],
+      products: {},
+      changes: [],
+      settlementStatus: "committed",
+      settlementVersion: 0,
+      ...transition,
+      ...(transition && {
+        passageSeed: { products: transition.products ?? {}, changes: transition.changes ?? [] },
+        changes: [],
+      }),
+    })
+    derived.at(chain(parent)).settle(next[1].node!)
+    return change(held.commit(next))
   }
 
   const transitions = new Map<number, Deferred.Deferred<void>>()
@@ -1502,6 +1515,7 @@ export const makeSession = ({
     const turnFields = views.some((v) => residency(v) === "turn")
     if (turnFields) node.fields = n.state
     const latestContext = {
+      ...(card.rules.derived?.length && { derived: context().derived! }),
       fields: n.state,
       get world() {
         return (world ??= expandedWorld(context()))
@@ -1519,6 +1533,7 @@ export const makeSession = ({
             node,
             products: products(),
             names: layer().names,
+            fields: card.rules.fields,
             ...(residency(view) === "latest" && { context: latestContext }),
           })
           return displayedImages(view.tree, bindings).filter((hit) => gallery.includes(hit.catalog))
@@ -1529,8 +1544,7 @@ export const makeSession = ({
     const rendered = applicable.filter(
       (v) => viewMount(v, { applies: true, head, theater: node.theater }) !== "latest-not-head",
     )
-    if (rendered.some((v) => residency(v) === "latest"))
-      node.latestContext = { fields: n.state, world: latestContext.world }
+    if (rendered.some((v) => residency(v) === "latest")) node.latestContext = { ...latestContext }
     // a `latest` view applies on history too, though it mounts only on the head: its claim on `consumes` holds there
     if (views.some((v) => v.when)) node.applicableViews = applicable.filter((v) => v.when).map((v) => v.id)
     if (!head && media?.viewMedia) {
@@ -1712,6 +1726,9 @@ export const makeSession = ({
     setField: (nodeId: number, effects: readonly (typeof Effect_.Type)[]): Change => {
       fresh()
       const t = turnOf(nodeId)
+      if (effects.some((e) => "event" in e)) throw new Error("setField cannot emit events")
+      const current = derived.at(chain(nodeId)).context()
+      rpg.apply(current.fields, effects, worldEffects(products(), catalogs(), current.world, true).write)
       const adjust = [...(t.adjust ?? []), ...effects]
       const amended = Log.amend(held.log, nodeId, { adjust, settlementVersion: t.settlementVersion + 1 })
       const next = amended[0]

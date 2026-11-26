@@ -25,17 +25,20 @@ export const cond = (c: Cond, by: Label, nested = false): string => {
   if ("event" in c) return `on ${c.event}`
   if ("is" in c)
     return typeof c.is === "boolean" ? (c.is ? by(c.path) : `not ${by(c.path)}`) : `${by(c.path)} = ${c.is}`
+  if ("band" in c) return by(c.path) + " ∈ " + [c.band].flat().join(" / ")
   return `${by(c.path)} ${OP[c.op]} ${c.value}`
 }
 /** `敌手 −10`, `起点 = 血案`, `event strike:hit` (a page decides whether an event name is for its reader). */
 export const effect = (e: typeof Effect_.Type, by: Label): string =>
-  "event" in e
-    ? `event ${e.event}`
-    : "set" in e
-      ? `${by(e.path)} = ${scalar(e.set)}`
-      : typeof e.add === "number"
-        ? `${by(e.path)} ${e.add < 0 ? "−" : "+"}${Math.abs(e.add)}`
-        : `${by(e.path)} + ${by(e.add.path)}`
+  "world" in e
+    ? `world.${e.world}${"entityId" in e && e.entityId ? "." + e.entityId : ""} ${"put" in e ? "put" : "patch" in e ? "patch" : "remove" in e ? "remove" : "replace"}`
+    : "event" in e
+      ? `event ${e.event}`
+      : "set" in e
+        ? `${by(e.path)} = ${scalar(e.set)}`
+        : typeof e.add === "number"
+          ? `${by(e.path)} ${e.add < 0 ? "−" : "+"}${Math.abs(e.add)}`
+          : `${by(e.path)} + ${by(e.add.path)}`
 /** `60%`, `by 体力`, or `judged` (the model names the odds inside decide; the question is detail). */
 export const chance = (c: typeof Chance.Type, by: Label): string =>
   typeof c === "number" ? `${Math.round(c * 100)}%` : "judge" in c ? "judged" : `by ${by(c.path)}`

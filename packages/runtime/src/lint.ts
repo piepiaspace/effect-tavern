@@ -1,13 +1,15 @@
+import { worldChange } from "./world.ts"
 import { inspectView, type ViewProblem } from "./view-template.ts"
-import { checkViewBindings, worldPathProblem } from "./view-check.ts"
-import { consumableSurface, type TemplateNode } from "./view-shell.ts"
+import { checkViewBindings, closest, worldPathProblem } from "./view-check.ts"
+import { consumableSurface, type TemplateNode, type ConstValue } from "./view-shell.ts"
 // Card lint (issue #27): what a card author's type checker says about a card. Pure: a card in, facts and fixes out; no
 // I/O, no console. The throws in `makeCard` / `resolve` stay decode-time invariants; lint reports what decodes but is
 // wired wrong (topology: events, fields, bands, layers) or written where code should do the work (prose: numbers and
 // output formats in the text). Rules are the list at the bottom; there is no plugin system and no config.
 import { unlocks, unlockPath, whenPaths } from "./paths.ts"
+import { fieldMeta } from "./field-meta.ts"
 import type { Card, Effect_, Field } from "./card.ts"
-import { type Cond, holds, reads, STATE_HOLE } from "./cond.ts"
+import { type Cond, holds, reads, namespaceOf, stateNamespaces, STATE_HOLE } from "./cond.ts"
 import { SLOTS } from "./fragment.ts"
 import { hook } from "./lore.ts"
 import { mediaAspectError, mediaBaseUrlError, mediaFileError, mediaFocusError } from "./media.ts"
@@ -123,13 +125,6 @@ const span = (int: boolean, run: readonly Piece[]) => {
   }
   return `${a.closed ? "[" : "("}${show(a.lo)}, ${show(b.hi)}${b.closed ? "]" : ")"}`
 }
-const setIn = (s: Record<string, unknown>, path: string, v: unknown) => {
-  const ks = path.split(".")
-  let o = s
-  for (const k of ks.slice(0, -1)) o = (o[k] ??= {}) as Record<string, unknown>
-  o[ks.at(-1)!] = v
-  return s
-}
 const safely = (c: Cond, s: Record<string, unknown>, events: readonly string[] = []) => {
   try {
     return holds(c, s, events)
@@ -140,26 +135,40 @@ const safely = (c: Cond, s: Record<string, unknown>, events: readonly string[] =
 /** Whether some state inside the fields' bounds, and some set of this turn's events, satisfies `c`. Exhaustive over the
  *  pieces of each field it reads. ponytail: a cartesian product, fine for the handful of fields one Cond reads. */
 const satisfiable = (c: Cond, fields: ReadonlyMap<string, Field>): boolean => {
-  const ls = leaves(c)
+  const axis = (path: string) =>
+    path.startsWith("meta.") ? path.slice(5, path.lastIndexOf(".")) : path.replace(/^fields\./, "")
+  const ls = leaves(c).filter((l): l is Extract<Cond, { path: string }> => "path" in l)
   const values = (path: string): unknown[] => {
     const f = fieldOf(fields, path)
     if (f.type === "boolean") return [true, false]
     if (f.type === "enum") return [...(f.options ?? [])]
-    const own = ls.filter((l): l is Extract<Cond, { path: string }> => "path" in l && l.path === path)
-    const cuts = own.flatMap((l) => ("value" in l ? [l.value] : typeof l.is === "number" ? [l.is] : []))
+    const own = ls.filter((l) => axis(l.path) === path)
+    const cuts = own.flatMap((l) => {
+      if ("band" in l || (l.path.startsWith("meta.") && !l.path.endsWith(".ratio")))
+        return fields.get(path)?.bands?.map((b) => b.min) ?? []
+      const n = "value" in l ? l.value : l.is
+      if (typeof n !== "number") return []
+      return l.path.startsWith("meta.") && f.min !== undefined && f.max !== undefined
+        ? [f.min + n * (f.max - f.min)]
+        : [n]
+    })
     return [
       ...pieces(f, cuts).map((p) => p.at),
-      ...own.flatMap((l) => ("is" in l && typeof l.is !== "number" ? [l.is] : [])),
+      ...own.flatMap((l) => ("is" in l && typeof l.is !== "number" && !fields.has(path) ? [l.is] : [])),
     ]
   }
-  const paths = [...new Set(reads(c))]
+  const paths = [...new Set(ls.map((l) => axis(l.path)))]
   const evs = [...new Set(eventsOf(c))]
   const states = paths.reduce<Record<string, unknown>[]>(
-    (acc, p) => acc.flatMap((s) => values(p).map((v) => setIn(structuredClone(s), p, v))),
+    (acc, p) => acc.flatMap((s) => values(p).map((v) => ({ ...s, [p]: v }))),
     [{}],
   )
   const subsets = evs.reduce<string[][]>((acc, e) => acc.flatMap((x) => [x, [...x, e]]), [[]])
-  return states.some((s) => subsets.some((es) => safely(c, s, es)))
+  return states.some((s) => {
+    const declared = Object.fromEntries([...fields.keys()].map((p) => [p, s[p]]))
+    const scope = { ...s, fields: declared, meta: fieldMeta([...fields.values()], declared) }
+    return subsets.some((es) => safely(c, scope, es))
+  })
 }
 const NEVER = (c: Cond) => "any" in c && c.any.length === 0 // `{ any: [] }`: the card's way of saying "not in play"
 
@@ -221,8 +230,15 @@ const INLINE: Entry[] = [
 ]
 
 /** The card's text a hole can sit in: the prose, its products' questions, its guard lines, its readouts. */
+const constStrings = (path: string, v: ConstValue): [string, string][] =>
+  typeof v === "string"
+    ? [[path, v]]
+    : typeof v === "object"
+      ? Object.entries(v).flatMap(([k, x]) => constStrings(path + "." + k, x))
+      : []
 const named = (card: Card): [string, string][] => [
   ...texts(card),
+  ...(card.views ?? []).flatMap((v) => constStrings("views." + v.id + ".consts", v.consts ?? {})),
   ...(card.products ?? []).flatMap((p): [string, string][] => (p.text ? [[`products.${p.id}.text`, p.text]] : [])),
   ...card.guard.map((g, i): [string, string] => [`guard[${i}]`, g]),
   ...(card.rules.readouts ?? []).flatMap((q): [string, string][] => [
@@ -235,6 +251,88 @@ const named = (card: Card): [string, string][] => [
 const HOOK = 40 // ponytail: characters; a hook is the player's own words for the thing, one short sentence
 
 const rules: Rule[] = [
+  (card) =>
+    effects(card).flatMap(([path, e]): Diagnostic[] => {
+      if (!("world" in e)) return []
+      try {
+        worldChange(
+          (card.products ?? []).flatMap((p) => (p.shape && p.role ? [{ id: p.id, role: p.role, shape: p.shape }] : [])),
+          card.catalogs ?? [],
+          e,
+        )
+        return []
+      } catch (cause) {
+        return [{ rule: "bad-world-effect", level: "error", path, message: String(cause) }]
+      }
+    }),
+  (card) => {
+    const out: Diagnostic[] = []
+    const seen = new Set<string>()
+    for (const d of card.rules.derived ?? []) {
+      const path = "rules.derived." + d.id
+      const bad = (message: string) => out.push({ rule: "bad-derived", level: "error", path, message })
+      if (!d.id || /\s/.test(d.id) || stateNamespaces.includes(d.id) || seen.has(d.id))
+        bad("invalid or duplicate derived id " + d.id)
+      seen.add(d.id)
+      const shape = card.products?.find((p) => p.id === d.table && p.role === "world")?.shape
+      if (shape?.kind !== "table") {
+        bad(d.table + " must be a top-level world table")
+        continue
+      }
+      if (d.op === "sum" && !shape.columns.some((c) => c.key === d.column && c.type === "int"))
+        bad("sum needs an int column: " + d.column)
+      for (const l of d.where ? leaves(d.where) : []) {
+        if (!("path" in l) || "band" in l) {
+          bad("where reads only row columns and entityId")
+          continue
+        }
+        const col = l.path === "entityId" ? "text" : shape.columns.find((c) => c.key === l.path)?.type
+        const expected = col === "int" ? "number" : col === "boolean" ? "boolean" : "string"
+        if (!col || ("op" in l && col !== "int") || ("is" in l && typeof l.is !== expected))
+          bad("invalid where column or comparison: " + l.path)
+      }
+    }
+    return out
+  },
+  (card) => {
+    const out: Diagnostic[] = []
+    const bad = (path: string, message: string) => out.push({ rule: "bad-band", level: "error", path, message })
+    for (const f of card.rules.fields)
+      if (f.bands) {
+        const path = "rules.fields." + f.path + ".bands"
+        if (!["int", "number"].includes(f.type) || !f.bands.length)
+          bad(path, "bands need a numeric field and at least one entry")
+        for (const [i, b] of f.bands.entries()) {
+          if (!identifier.test(b.id) || f.bands.some((x, j) => x.id === b.id && j < i))
+            bad(path, "invalid or duplicate band id " + b.id)
+          if (
+            (i === 0 && f.min !== undefined && b.min !== f.min) ||
+            (i > 0 && b.min <= f.bands[i - 1].min) ||
+            (f.type === "int" && !Number.isInteger(b.min)) ||
+            b.min > (f.max ?? Infinity)
+          )
+            bad(path, "invalid lower bound for " + b.id)
+        }
+      }
+    for (const [path, cond] of conds(card))
+      for (const l of leaves(cond))
+        if ("band" in l) {
+          const ids =
+            card.rules.fields.find((f) => f.path === l.path.replace(/^fields\./, ""))?.bands?.map((b) => b.id) ?? []
+          const wanted = typeof l.band === "string" ? [l.band] : l.band
+          if (!ids.length || !wanted.length) bad(path, "band requires a declared field with bands and at least one id")
+          for (const id of wanted)
+            if (!ids.includes(id))
+              bad(path, "unknown band " + id + (closest(id, ids) ? "; did you mean " + closest(id, ids) + "?" : ""))
+        }
+    const checkRows = (s: Shape, path: string) => {
+      if (s.kind === "table" && s.filter && leaves(s.filter).some((l) => "band" in l))
+        bad(path, "a table row filter cannot read field bands")
+      if (s.kind === "record") for (const k of s.keys) if ("shape" in k) checkRows(k.shape, path + "." + k.key)
+    }
+    for (const p of card.products ?? []) if (p.shape) checkRows(p.shape, "products." + p.id)
+    return out
+  },
   (card) => {
     const out: Diagnostic[] = []
     // half of a surrogate pair alone is no character: a file cannot carry it (YAML writes it as U+FFFD) (#254). In a
@@ -272,6 +370,12 @@ const rules: Rule[] = [
   },
   (card) => {
     const texts: [string, string | undefined][] = [
+      ...card.rules.fields.flatMap((f) =>
+        (f.bands ?? []).map((b, i): [string, string] => [
+          "rules.fields." + f.path + ".bands[" + i + "].label",
+          b.label,
+        ]),
+      ),
       ...card.frame.map((f): [string, string | undefined] => [`frame.${f.id}.text`, f.text]),
       ...card.fiction.map((f): [string, string] => [`fiction.${f.id}.text`, f.text ?? ""]),
       ...openings(card).flatMap((g): [string, string | undefined][] => [
@@ -344,7 +448,7 @@ const rules: Rule[] = [
   // `lore` is the gate's derived counters, not a card field.
   (card) =>
     card.rules.fields
-      .filter((f) => /^(fields|world|lore)(\.|$)/.test(f.path))
+      .filter((f) => namespaceOf(f.path) !== undefined)
       .map((f) => ({
         rule: "reserved-path",
         level: "error" as const,
@@ -398,7 +502,13 @@ const rules: Rule[] = [
   // A path no field declares throws only when evaluation reaches it (holds, apply), and decode never sees it.
   (card) => {
     const known = new Set([
+      ...(card.rules.derived ?? []).map((d) => "derived." + d.id),
       ...card.rules.fields.flatMap((f) => [f.path, `fields.${f.path}`]),
+      ...card.rules.fields.flatMap((f) =>
+        Object.keys(fieldMeta([f], { [f.path]: f.bands?.at(-1)?.min ?? f.initial })[f.path]).map(
+          (k) => "meta." + f.path + "." + k,
+        ),
+      ),
       ...card.lore.flatMap((e) => [`lore.${e.id}.since`, `lore.${e.id}.shown`, `lore.${e.id}.floor`]),
     ])
     const used: [string, string][] = [
@@ -543,12 +653,15 @@ const rules: Rule[] = [
   },
   // Fiction variants on one numeric field are read as alternatives: exactly one should hold everywhere in min..max.
   (card) => {
-    const fields = new Map(card.rules.fields.map((f) => [f.path, f]))
     return card.rules.fields
       .filter((f) => f.type === "int" || f.type === "number")
       .flatMap((f) => {
         const bands = card.fiction.filter(
-          (x) => x.when && !eventsOf(x.when).length && reads(x.when).length && reads(x.when).every((p) => p === f.path),
+          (x) =>
+            x.when &&
+            !eventsOf(x.when).length &&
+            reads(x.when).length &&
+            reads(x.when).every((p) => p.replace(/^fields\./, "") === f.path),
         )
         if (bands.length < 2) return [] // one conditional fragment is an addition, not a set of alternatives
         const cuts = bands.flatMap((x) =>
@@ -556,9 +669,11 @@ const rules: Rule[] = [
             "value" in l ? [l.value] : "is" in l && typeof l.is === "number" ? [l.is] : [],
           ),
         )
-        const ps = pieces(fieldOf(fields, f.path), cuts).map((p) => ({
+        const ps = pieces(f, [...cuts, ...(f.bands ?? []).map((b) => b.min)]).map((p) => ({
           p,
-          on: bands.filter((x) => safely(x.when!, setIn({}, f.path, p.at))).map((x) => x.id),
+          on: bands
+            .filter((x) => safely(x.when!, { fields: { [f.path]: p.at }, meta: fieldMeta([f], { [f.path]: p.at }) }))
+            .map((x) => x.id),
         }))
         const out: Diagnostic[] = []
         for (let i = 0; i < ps.length;) {

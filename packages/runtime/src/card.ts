@@ -10,6 +10,7 @@
 // reference, dynamic entities, time. Fields are flat paths for now.
 import { ContextPolicy, checkContextPolicies } from "./lore.ts"
 import { Effect, Random, Schema } from "effect"
+import { fieldMeta } from "./field-meta.ts"
 import { Cond, holds, expandState, type State as Paths } from "./cond.ts"
 import { Fragment } from "./fragment.ts"
 import { expand, Names } from "./names.ts"
@@ -25,6 +26,7 @@ const Scalar = Schema.Union([Num, Schema.Boolean, Schema.String])
 // Display declarations (docs/client-design-brief-3.md §2): what a client needs to draw a field that settlement never
 // reads. `label` is the shown name (the path when absent); `group` names the Status section it sits in (the harness's
 // defaults are Body / People / World / Belongings, the client knows their icons; any other name is a plain section).
+export const FieldBand = Schema.Struct({ id: Schema.String, min: Schema.Finite, label: Schema.String })
 export const Field = Schema.Struct({
   path: Schema.String,
   label: Schema.optionalKey(Schema.String),
@@ -33,6 +35,7 @@ export const Field = Schema.Struct({
   min: Schema.optionalKey(Num),
   max: Schema.optionalKey(Num),
   options: Schema.optionalKey(Schema.Array(Schema.String)),
+  bands: Schema.optionalKey(Schema.Array(FieldBand)),
   initial: Scalar,
   hidden: Schema.optionalKey(Schema.Boolean), // never shown (the status table and the card page skip it): an ending switch the player should not see coming. Settlement reads it like any field
   start: Schema.optionalKey(Schema.Boolean), // the player may set it when a story opens (a greet's opening); `hidden` fields never
@@ -43,7 +46,17 @@ export const Chance = Schema.Union([
   Schema.Struct({ path: Schema.String }),
   Schema.Struct({ judge: Schema.String }),
 ])
+const row = Schema.Record(Schema.String, Schema.Unknown)
+export const WorldEffect = Schema.Union([
+  Schema.Struct({ world: Schema.String, replace: Schema.Unknown }),
+  Schema.Struct({ world: Schema.String, patch: row, entityId: Schema.optionalKey(Schema.String) }),
+  Schema.Struct({ world: Schema.String, entityId: Schema.String, put: row }),
+  Schema.Struct({ world: Schema.String, entityId: Schema.String, remove: Schema.Literal(true) }),
+])
+export type WorldEffect = typeof WorldEffect.Type
+type WriteWorld = (e: WorldEffect) => void
 export const Effect_ = Schema.Union([
+  WorldEffect,
   Schema.Struct({ path: Schema.String, set: Scalar }),
   Schema.Struct({ path: Schema.String, add: Schema.Union([Num, Schema.Struct({ path: Schema.String })]) }),
   Schema.Struct({ event: Schema.String }), // `{path}` interpolates the post-effect state; feeds narrator and ledger
@@ -66,8 +79,20 @@ export const Readout = Schema.Struct({
   when: Schema.optionalKey(Cond), // asked only when it holds (on the post-settlement state)
   options: Schema.Array(Schema.Struct({ id: Schema.String, text: Schema.String, do: Schema.Array(Effect_) })),
 })
+const aggregate = {
+  id: Schema.String,
+  label: Schema.optionalKey(Schema.String),
+  table: Schema.String,
+  where: Schema.optionalKey(Cond),
+}
+export const DerivedDef = Schema.Union([
+  Schema.Struct({ ...aggregate, op: Schema.Literals(["any", "count"]) }),
+  Schema.Struct({ ...aggregate, op: Schema.Literal("sum"), column: Schema.String }),
+])
+export type DerivedDef = typeof DerivedDef.Type
 export const Rules = Schema.Struct({
   fields: Schema.Array(Field),
+  derived: Schema.optionalKey(Schema.Array(DerivedDef)),
   actions: Schema.Array(Action),
   readouts: Schema.optionalKey(Schema.Array(Readout)),
   over: Schema.optionalKey(Cond), // code-decided ending; `end` stays the model's
@@ -101,7 +126,9 @@ export type Drawn = { as: "steps" } | { as: "gauge" | "scale"; cuts: number[] } 
 export const drawn = (f: Field, whens: readonly (Cond | undefined)[] = []): Drawn => {
   if (f.type === "enum" && f.options) return { as: "steps" }
   if (f.type !== "int" || f.min === undefined || f.max === undefined) return { as: "value" }
-  const c = cuts(f.path, f.min, f.max, whens)
+  const c = [...new Set([...cuts(f.path, f.min, f.max, whens), ...(f.bands ?? []).slice(1).map((b) => b.min)])].sort(
+    (a, b) => a - b,
+  )
   return { as: f.view ?? (f.min < 0 || c.length >= 2 ? "scale" : "gauge"), cuts: c }
 }
 export type State = Record<string, number | boolean | string>
@@ -124,7 +151,7 @@ export const rollOf = (seed: number) => Effect.runSync(Random.next.pipe(Random.w
 
 export const makeCard = (r: Rules) => {
   for (const f of r.fields)
-    if (/^(fields|world|lore)(\.|$)/.test(f.path)) throw new Error(`${f.path}: reserved state namespace`)
+    if (/^(fields|world|lore|meta|derived)(\.|$)/.test(f.path)) throw new Error(`${f.path}: reserved state namespace`)
   const fields = new Map(r.fields.map((f) => [f.path, f]))
   const initial: State = Object.fromEntries(r.fields.map((f) => [f.path, f.initial]))
   const fieldSchema = (f: typeof Field.Type) => {
@@ -145,12 +172,18 @@ export const makeCard = (r: Rules) => {
     if (typeof v !== "number") throw new Error(`${path} is not a number`)
     return v
   }
+  const fieldContext = (context: Paths, fields: State) => ({ ...context, fields, meta: fieldMeta(r.fields, fields) })
   const available = (s: State, context: Paths = s) =>
-    r.actions.filter((a) => !a.when || holds(a.when, { ...context, fields: s }))
-  const apply = (s: State, effects: readonly (typeof Effect_.Type)[]) => {
+    r.actions.filter((a) => !a.when || holds(a.when, fieldContext(context, s)))
+  const apply = (s: State, effects: readonly (typeof Effect_.Type)[], write?: WriteWorld) => {
     const out = { ...s }
     const events: string[] = []
     for (const e of effects) {
+      if ("world" in e) {
+        if (!write) throw new Error("world effect requires a world state")
+        write(e)
+        continue
+      }
       if ("path" in e && !fields.has(e.path)) throw new Error(`${e.path}: not a field`) // state is a closed vocabulary
       if ("set" in e) out[e.path] = e.set
       else if ("add" in e) {
@@ -168,19 +201,19 @@ export const makeCard = (r: Rules) => {
     if (b.chance === undefined) throw new Error(`${a.id}: judge chance missing on the beat`)
     return b.chance
   }
-  const settle = (s: State, b: Beat, context: Paths = s) => {
-    const a = available(s, context).find((x) => x.id === b.next)
-    if (!a) throw new Error(`${b.next}: not an available action`)
+  const settle = (s: State, b: Beat, write?: WriteWorld) => {
+    const a = r.actions.find((x) => x.id === b.next)
+    if (!a) throw new Error(`${b.next}: unknown action`)
     const p = chanceOf(s, a, b)
-    if (p === undefined) return { ...apply(s, a.do ?? []), check: undefined }
+    if (p === undefined) return { ...apply(s, a.do ?? [], write), check: undefined }
     const roll = rollOf(b.seed)
     const hit = roll < p
-    return { ...apply(s, hit ? (a.hit ?? []) : (a.miss ?? [])), check: { action: a.id, chance: p, roll, hit } }
+    return { ...apply(s, hit ? (a.hit ?? []) : (a.miss ?? []), write), check: { action: a.id, chance: p, roll, hit } }
   }
-  const fold = (s: State, beats: readonly Beat[], context: Paths = s) =>
+  const fold = (s: State, beats: readonly Beat[], write?: WriteWorld) =>
     beats.reduce<{ s: State; events: string[]; checks: Check[] }>(
       (acc, b) => {
-        const r = settle(acc.s, b, { ...context, fields: acc.s })
+        const r = settle(acc.s, b, write)
         return { s: r.s, events: [...acc.events, ...r.events], checks: r.check ? [...acc.checks, r.check] : acc.checks }
       },
       { s, events: [], checks: [] },
@@ -206,13 +239,13 @@ export const makeCard = (r: Rules) => {
   const menu = (s: State, context: Paths = s) =>
     available(s, context).map(
       (a) =>
-        `${a.id}: ${expandState(a.text, { ...context, fields: s })}${a.roll && typeof a.roll === "object" && "judge" in a.roll ? ` (estimate chance: ${a.roll.judge})` : ""}`,
+        `${a.id}: ${expandState(a.text, fieldContext(context, s))}${a.roll && typeof a.roll === "object" && "judge" in a.roll ? ` (estimate chance: ${a.roll.judge})` : ""}`,
     )
   // Readouts: asked on the post-settlement state; the enum per question is the gate. Nothing asked → no schema.
   // With `names`, the wording expanded; a hole nothing fills stays as written (names.ts).
   const asked = (s: State, names?: Names, context: Paths = s) =>
     (r.readouts ?? [])
-      .filter((q) => !q.when || holds(q.when, { ...context, fields: s }))
+      .filter((q) => !q.when || holds(q.when, fieldContext(context, s)))
       .map((q) => {
         if (!names) return q
         const named = (t: string) => expand(t, names, "card")!
@@ -227,14 +260,19 @@ export const makeCard = (r: Rules) => {
   const questions = (s: State, names?: Names, context: Paths = s) =>
     asked(s, names, context).map(
       (q) =>
-        `${q.id}: ${expandState(q.text, { ...context, fields: s })} [${q.options.map((o) => `${o.id}: ${expandState(o.text, { ...context, fields: s })}`).join(" | ")}]`,
+        `${q.id}: ${expandState(q.text, fieldContext(context, s))} [${q.options.map((o) => `${o.id}: ${expandState(o.text, fieldContext(context, s))}`).join(" | ")}]`,
     )
-  const settleReadouts = (s: State, a: Answers) => {
+  const settleReadouts = (s: State, a: Answers, write?: WriteWorld) => {
     let out = { s, events: [] as string[] }
-    for (const [qid, oid] of Object.entries(a)) {
-      const o = (r.readouts ?? []).find((q) => q.id === qid)?.options.find((x) => x.id === oid)
+    for (const id of Object.keys(a))
+      if (!r.readouts?.some((q) => q.id === id)) throw new Error(id + ": unknown readout")
+    for (const q of r.readouts ?? []) {
+      const qid = q.id
+      if (!Object.hasOwn(a, qid)) continue
+      const oid = a[qid]
+      const o = q.options.find((x) => x.id === oid)
       if (!o) throw new Error(`${qid}=${oid}: not a readout option`)
-      const res = apply(out.s, o.do)
+      const res = apply(out.s, o.do, write)
       out = { s: res.s, events: [...out.events, ...res.events] }
     }
     return out
@@ -253,7 +291,7 @@ export const makeCard = (r: Rules) => {
     readoutSchema,
     questions,
     settleReadouts,
-    over: (s: State, context: Paths = s) => (r.over ? holds(r.over, { ...context, fields: s }) : false),
+    over: (s: State, context: Paths = s) => (r.over ? holds(r.over, fieldContext(context, s)) : false),
   }
 }
 export type Rpg = ReturnType<typeof makeCard>

@@ -661,7 +661,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
   assert.equal(scPreview.sandbox.state["depth"], 5)
   assert.equal("typo" in scPreview.sandbox.state, false)
 
-  // The opening unlocks the entry after this call's automatic deliveries have been selected.
+  // The opening state determines this call's automatic deliveries.
   const openingCard: Card = {
     ...scCard,
     greetings: [{ text: "Title", note: "Begin.", do: [{ path: "depth", set: 2 }] }],

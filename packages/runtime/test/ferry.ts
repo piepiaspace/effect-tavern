@@ -195,7 +195,7 @@ assert.ok(!validatePhotos({ items: [{ id: "portrait" }] }, []).some((d) => d.rul
 assert.equal(ferry.id, "ferry")
 assert.deepEqual(checkValue(ferry).diagnostics, [])
 
-// `ri.yaml` uses ONE unified parchment HUD (`ri_hud`, `residency: "latest"`, `consumes: ["inner"]`) with full state + theater bindings.
+// `ri.yaml` uses ONE unified parchment HUD (`ri_hud`, `residency: "latest"`, `consumes: ["inner", "options"]`) with full state + theater bindings.
 {
   const ri = await loadCard("ri")
   assert.deepEqual(
@@ -204,14 +204,15 @@ assert.deepEqual(checkValue(ferry).diagnostics, [])
   )
   assert.deepEqual(
     ri.views?.map((v) => ({ id: v.id, label: v.label, residency: v.residency, consumes: v.consumes })),
-    [{ id: "ri_hud", label: "圣女手记", residency: "latest", consumes: ["inner"] }],
+    [{ id: "ri_hud", label: "圣女手记", residency: "latest", consumes: ["inner", "options"] }],
   )
   const pack = createStarterPack()
   let enabled = true
+  const inner = { expression: "gentle", mood: "温柔", whisper: "牧师先生今天也很温柔呢。" }
   const M = fake((o) => {
     const doc = readStage(o)
     if (doc.phase === "narrate") return { text: "她深吸一口气。".repeat(36) }
-    return defaultAnswer(doc, { inner: "牧师先生今天也很温柔呢。", options: ["点头"], answers: { affinity: "warm" } })
+    return defaultAnswer(doc, { inner, options: ["点头"], answers: { affinity: "warm" } })
   })
   const S = makeSession({
     card: ri,
@@ -223,19 +224,20 @@ assert.deepEqual(checkValue(ferry).diagnostics, [])
   })
   const root = S.greet(ri.greetings[0]).node!
   const headNode = S.timelineNode(root.id)
-  assert.deepEqual(headNode.latestContext, { fields: root.state, world: {} })
+  assert.deepEqual(headNode.latestContext?.fields, root.state)
+  assert.deepEqual(headNode.latestContext?.world.church, ri.products?.find((p) => p.id === "church")?.initial)
   const riView = cardView(ri).views![0]
   const bound = viewBindings({
     view: riView,
-    node: { ...headNode, theater: { inner: "牧师先生今天也很温柔呢。" } },
+    node: { ...headNode, theater: { inner } },
     products: S.layer.products,
     names: S.layer.names,
     context: headNode.latestContext,
   })
   assert.equal(readPath(bound.scope, "fields.好感度"), 15)
   assert.equal(readPath(bound.scope, "names.char"), "理")
-  assert.equal(readPath(bound.scope, "theater.inner"), "牧师先生今天也很温柔呢。")
-  assert.equal(readPath(bound.scope, "value"), "牧师先生今天也很温柔呢。")
+  assert.deepEqual(readPath(bound.scope, "theater.inner"), inner)
+  assert.equal(readPath(bound.scope, "value"), undefined)
   const events = await collect(S.act(root.id, { text: "向她问好。" }))
   const calls = events.filter((e) => e.kind === "call")
   assert.ok(calls.some((c) => c.phase === "polish"))
@@ -249,7 +251,7 @@ assert.deepEqual(checkValue(ferry).diagnostics, [])
   assert.ok(!JSON.stringify(calls.find((c) => c.phase === "narrate")!.msgs).includes("没有说出口的真实想法"))
   const first = S.timelineNode(lastNode(events).id)
   assert.equal(first.latestContext?.fields.好感度, 18)
-  assert.equal(first.theater.inner, "牧师先生今天也很温柔呢。")
+  assert.deepEqual(first.theater.inner, inner)
   enabled = false
   const next = await collect(S.act(first.id, { text: "继续。" }))
   assert.ok(!next.some((e) => e.kind === "call" && e.product === "inner"))

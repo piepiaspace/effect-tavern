@@ -3,6 +3,7 @@
 // lines, the ledger, the node projection. One factory per session; `at(path)` reads them, lazily, per fact. The memo
 // tables live as long as the factory, keyed by Turn object: a turn is immutable, an amended one is a new object.
 // session.ts is the caller: turn, project, setField and demand.
+import { fieldMeta } from "./field-meta.ts"
 import type { PlayerCatalogItem } from "./projection.ts"
 import {
   catalogEntry,
@@ -29,8 +30,16 @@ import {
 } from "./history.ts"
 import { deliveredIn, deliveredOn, textOf as proseOf, type Turn as TurnOf } from "./journal.ts"
 import { key, type Disclosure, type Lore } from "./lore.ts"
-import { feedsChronicle, fold, render, type Product } from "./product.ts"
-import { applyChanges, initialWorld, worldValue, type World, type WorldState } from "./world.ts"
+import { feedsChronicle, fold, render, type Product, type Catalog } from "./product.ts"
+import {
+  worldEffects,
+  type DomainChange,
+  evalDerived,
+  initialWorld,
+  worldValue,
+  type World,
+  type WorldState,
+} from "./world.ts"
 import { tokens } from "./tokens.ts"
 
 const title = (ref: string, fields: State, world: Record<string, unknown>): string | undefined => {
@@ -50,6 +59,7 @@ export interface Node {
   parent: number | null
   turn: Turn
   state: State
+  worldChanges: readonly DomainChange[]
   heading?: string
   events: readonly string[]
   checks: readonly Check[] // this turn's judged beats, in order; what the Record's check track draws
@@ -72,6 +82,7 @@ export const gateOf = (id: string, offer: Cond) => ({
 })
 
 export const makeDerived = ({
+  catalogs = [],
   rpg,
   L,
   lore,
@@ -80,6 +91,7 @@ export const makeDerived = ({
   policy,
   heading,
 }: {
+  catalogs?: readonly Catalog[]
   rpg: Rpg
   heading?: string
   L: () => Lore<Paths, readonly string[]> // card lore only; Pack delivery must not advance a same-named story disclosure
@@ -91,16 +103,17 @@ export const makeDerived = ({
   // Card world shapes and initial values are fixed for this factory; player layers cannot override them.
   // Stable world identities let settlement cache both of its inputs. Amending an ancestor changes the
   // incoming world, so descendants miss even when their scalar fields remain unchanged.
-  const initial = initialWorld(products())
-  const worlds = new WeakMap<Turn, { from: World; out: World }>()
-  const worldAfter = (from: World, t: Turn): World => {
-    const hit = worlds.get(t)
-    if (hit?.from === from) return hit.out
-    const out = t.changes.length ? applyChanges(from, t.changes) : from
-    worlds.set(t, { from, out })
-    return out
+  const aggregatesByWorld = new WeakMap<World, ReturnType<typeof evalDerived>>()
+  const aggregates = (world: World) => {
+    if (!rpg.rules.derived?.length) return {}
+    let derived = aggregatesByWorld.get(world)
+    if (!derived) {
+      derived = evalDerived(rpg.rules.derived, products(), world)
+      aggregatesByWorld.set(world, derived)
+    }
+    return { derived }
   }
-  const worldAt = (path: readonly Turn[]): World => path.reduce(worldAfter, initial)
+  const initial = initialWorld(products(), catalogs)
   const summaries = makeSummaries<Beat>()
   // A turn's cost in the narrator's transcript (input, prose, the lore delivered with it), memoized: a turn is immutable.
   const costs = new WeakMap<Turn, number>()
@@ -111,7 +124,7 @@ export const makeDerived = ({
     return c
   }
   const sources = () => products().filter(feedsChronicle)
-  const known = (path: readonly Turn[], recall = false) => {
+  const known = (path: readonly Turn[], world: World, recall = false) => {
     const chronicles = sources()
     return {
       known: chronicles.length
@@ -121,7 +134,7 @@ export const makeDerived = ({
         : "",
       current: currentAt(
         products(),
-        worldAt(path),
+        world,
         fold(
           products().filter(
             (p) => p.role !== "world" && !feedsChronicle(p) && p.on && (p.feed || (recall && p.recall)),
@@ -148,11 +161,19 @@ export const makeDerived = ({
     settledFrom.set(t, { from: s, world, out })
     return out
   }
-  const settleFresh = (s: State, t: Turn, world: Paths = {}) => {
-    const o = t.opening ? rpg.apply(s, t.opening) : { s, events: [] as string[] }
-    const b = rpg.fold(o.s, t.beats, { fields: o.s, world })
-    const r = rpg.settleReadouts(b.s, t.answers)
-    const a = t.adjust ? rpg.apply(r.s, t.adjust) : { s: r.s, events: [] as string[] }
+  const open = (s: State, world: World, opening: Turn["opening"], seed?: Turn["passageSeed"]) => {
+    const tx = worldEffects(products(), catalogs, world)
+    tx.replay(seed?.changes ?? [])
+    const o = rpg.apply(s, opening ?? [], tx.write)
+    return { o, tx, fold: (beats: readonly Beat[]) => rpg.fold(o.s, beats, tx.write) }
+  }
+  const settleFresh = (s: State, t: Turn, world: World) => {
+    const { o, tx, fold } = open(s, world, t.opening, t.passageSeed)
+    const b = fold(t.beats)
+    const pre = { fields: b.s, world: tx.world }
+    tx.replay(t.changes)
+    const r = rpg.settleReadouts(b.s, t.answers, tx.write)
+    const a = rpg.apply(r.s, t.adjust ?? [], tx.write)
     // a static greeting had no gate, so its opening's events wait for the next turn's; a narrated root read them in its own
     const gated = !!(t.input.text || t.input.note || t.input.invoke?.length)
     return {
@@ -160,7 +181,9 @@ export const makeDerived = ({
       events: [...o.events, ...b.events, ...r.events, ...a.events],
       checks: b.checks,
       post: [...(gated ? [] : o.events), ...r.events, ...a.events],
-      pre: b.s, // after opening and beats, before readouts and adjustments: what the turn's record saw
+      world: tx.world,
+      worldChanges: tx.changes,
+      pre, // after opening and beats, before readouts and adjustments: what the turn's record saw
     }
   }
   /** Every turn of the path settled, in order: each from the one before, the first from the card's initial state. */
@@ -169,7 +192,7 @@ export const makeDerived = ({
     let world = initial
     for (const t of path) {
       out.push(settleTurn(out.at(-1)?.s ?? rpg.initial, t, world))
-      world = worldAfter(world, t)
+      world = out.at(-1)!.world
     }
     return out
   }
@@ -179,23 +202,36 @@ export const makeDerived = ({
    *  floor is monotone because knowledge is: what the fiction made available does not become unavailable again. A
    *  told layer already stayed (lore.ts keeps the deepest delivered); this keeps an untold one too. A card field named
    *  `lore` would collide, so none may be. */
-  const gated = (path: readonly Turn[], extra: readonly Disclosure[] = [], s?: State): WorldState & Paths => {
-    let world = initial
-    const floors = new Map(lore.map((e) => [e.id, floorAt(e.unlock, { fields: rpg.initial, world })]))
+  const gated = (
+    path: readonly Turn[],
+    extra: readonly Disclosure[] = [],
+    s?: State,
+    atWorld?: World,
+  ): WorldState & Paths => {
+    const scope = (fields: State, world: World) => ({
+      fields,
+      world,
+      ...aggregates(world),
+      meta: fieldMeta(rpg.rules.fields, fields),
+    })
+    const floors = new Map<string, number>()
+    const observe = (fields: State, world: World) => {
+      if (!lore.length) return
+      const snapshot = scope(fields, world)
+      for (const e of lore) floors.set(e.id, Math.max(floors.get(e.id) ?? 0, floorAt(e.unlock, snapshot)))
+    }
+    observe(rpg.initial, initial)
     const along = settledAlong(path)
+    for (const o of along) {
+      observe(o.pre.fields, o.pre.world)
+      observe(o.s, o.world)
+    }
     const at = s ?? along.at(-1)?.s ?? rpg.initial
-    const observe = (fields: State) => {
-      for (const e of lore) floors.set(e.id, Math.max(floors.get(e.id)!, floorAt(e.unlock, { fields, world })))
-    }
-    for (const [i, o] of along.entries()) {
-      world = worldAfter(world, path[i])
-      observe(o.s)
-    }
-    observe(at)
+    const world = atWorld ?? along.at(-1)?.world ?? initial
+    if (s || atWorld) observe(at, world)
     const counters = L().counters([...path.map(deliveredIn), extra])
     return {
-      fields: at,
-      world,
+      ...scope(at, world),
       lore: Object.fromEntries(
         lore.map((e) => [
           e.id,
@@ -210,8 +246,8 @@ export const makeDerived = ({
 
   /** Only unlocked text becomes a resource. Memory identities come from committed entities,
    * never the turn where a field happened to change. */
-  const resourcesOn = (path: readonly Turn[], at?: State): Resource[] => {
-    const s = gated(path, [], at)
+  const resourcesOn = (path: readonly Turn[], at?: State, world?: World): Resource[] => {
+    const s = gated(path, [], at, world)
     const I = L()
     const seen = deliveredOn(path)
     return resourcesAt({
@@ -261,7 +297,16 @@ export const makeDerived = ({
     const retained = () => (window ??= readWindow())
     let all: ReturnType<typeof settledAlong> | undefined // walked once per handle: a node() reads four facts off it
     const along = () => (all ??= settledAlong(path))
-    const last = () => along().at(-1) ?? { s: rpg.initial, events: [], checks: [], post: [], pre: rpg.initial }
+    const last = () =>
+      along().at(-1) ?? {
+        s: rpg.initial,
+        events: [],
+        checks: [],
+        post: [],
+        pre: { fields: rpg.initial, world: initial },
+        world: initial,
+        worldChanges: [],
+      }
     const text = (d: Disclosure) => L().text(d)
     return {
       get state(): State {
@@ -273,16 +318,17 @@ export const makeDerived = ({
       get checks(): readonly Check[] {
         return last().checks
       },
-      get pre(): State {
+      get pre() {
         return last().pre
       },
       /** What the last turn emitted after its own gate: the next turn's gate reads it as well as its own events. */
       get post(): readonly string[] {
         return last().post
       },
-      context: (fields: State = last().s) => gated(path, [], fields),
+      open: (opening: Turn["opening"], seed?: Turn["passageSeed"]) => open(last().s, last().world, opening, seed),
+      context: (fields: State = last().s, world?: World) => gated(path, [], fields, world),
       gated: (extra?: readonly Disclosure[], s?: State) => gated(path, extra, s),
-      resources: (fields?: State) => resourcesOn(path, fields),
+      resources: (fields?: State, world?: World) => resourcesOn(path, fields, world),
       resident: () => resident(path, retained().absolute),
       currentResources: () => currentResources(path).map((r) => freeze(r)),
       playerCatalog: () => playerCatalog(path),
@@ -293,7 +339,7 @@ export const makeDerived = ({
       fold: () => retained().start,
       summary: () => retained().summary,
       history: () => narratorHistory(path, retained().summary, retained().start),
-      known: (recall = false) => known(path, recall),
+      known: (recall = false, world = last().world) => known(path, world, recall),
       ledger: () =>
         ledger(
           path,
@@ -304,7 +350,7 @@ export const makeDerived = ({
         ),
       text,
       /** A candidate turn settled on top of the path (setField's adjusted node, demand's `pre`). */
-      settle: (t: Turn) => settleTurn(last().s, t, worldAt(path)),
+      settle: (t: Turn) => settleTurn(last().s, t, last().world),
       /** The node projection of the path's last turn. */
       node: (withCatalog = true): Node => {
         const t = path.at(-1)!
@@ -313,8 +359,9 @@ export const makeDerived = ({
           id: t.id,
           parent: t.parent,
           turn: t,
+          worldChanges: settled.worldChanges,
           state: settled.s, // the fold to t's end
-          ...(heading ? { heading: title(heading, settled.s, worldAt(path)) } : {}),
+          ...(heading ? { heading: title(heading, settled.s, settled.world) } : {}),
           events: settled.events,
           checks: settled.checks,
           delivered: t.deliveries,
@@ -329,13 +376,15 @@ export const makeDerived = ({
         state,
         events,
         before: given,
+        world,
       }: {
         state: State
+        world?: World
         events: readonly string[]
         before: readonly Disclosure[]
       }) => {
         const before = once(given)
-        const g1 = gated(path, before, state)
+        const g1 = gated(path, before, state, world)
         const ds1 = deliveredOn(path, before)
         const I = L()
         const offered = I.offers(g1, ds1, [...events, ...last().post]).map(({ id, layer }) => ({ id, layer }))

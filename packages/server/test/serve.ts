@@ -186,6 +186,16 @@ const sse = (text: string) =>
     assert.ok(update.updated?.some((n) => n.id === childId))
     assert.ok(update.updated?.every((n) => !("turn" in n) && !("state" in n)))
 
+    const repaired = sse(
+      await (
+        await post({ kind: "setField", node: node.id, effects: [{ world: "scene", patch: { place: "corrected" } }] })
+      ).text(),
+    )
+    const repair = repaired.at(-1)!.data as Extract<Event, { kind: "change" }>
+    assert.ok(repair.updated?.some((n) => n.id === childId))
+    const corrected = await (await fetch(`${base}/nodes/${node.id}/detail`)).json()
+    assert.deepEqual(corrected.changes.at(-1).patch, { place: "corrected" })
+
     // Closing the response stops nothing: the turn runs on into a normal node. While it runs, every action on the
     // story is a 409, a synchronous one and a node dropped too, and its row says where it is; GET /turn picks it up
     // (`attach`: the phase and the draft so far, then the live events to the node) and, once idle, answers 204.

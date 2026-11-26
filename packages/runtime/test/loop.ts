@@ -596,12 +596,10 @@ const program = Effect.gen(function* () {
 
   // An ancestor edit validates every branch before writing. Reopening keeps both the tree and the beat sequence.
   let saved: Log.Snapshot<Turn> | undefined
-  let writes = 0
   const store: Log.Store<Turn> = {
     read: () => saved,
     write: (_, log) => {
       saved = Log.snapshot(log)
-      writes++
     },
   }
   const opts = {
@@ -627,11 +625,9 @@ const program = Effect.gen(function* () {
   const root = tree.greet({ text: "opening" }).node!.id
   const branch = yield* go(tree.act(root, { text: "strike" }))
   yield* go(tree.act(root, { text: "rest" })) // head is on a branch with no gated beat
-  const beforeEdit = saved
-  const written = writes
-  assert.throws(() => tree.setField(root, [{ path: "hp", set: 0 }]), /not an available action/)
-  assert.equal(saved, beforeEdit)
-  assert.equal(writes, written)
+  const correction = tree.setField(root, [{ path: "hp", set: 0 }])
+  assert.ok(correction.invalidated?.includes(branch.id))
+  assert.equal(tree.node(branch.id).state.hp, 0)
   assert.equal(tree.snapshot().nodes.length, 3)
   tree.setField(root, [{ path: "hp", set: 5 }])
   assert.equal(tree.node(branch.id).state.hp, 5)

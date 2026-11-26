@@ -1,6 +1,6 @@
 # 青空 理 (docs/card-reading.md §2.5): the MVU example card, remastered into prose chapters and conditional bands.
 # 地点 → frame (setting); "你是新来的牧师" → frame (persona). 角色信息 / NPC信息 → fiction prose fragments.
-# 变量分阶段-好感度 (six bands) → six fiction fragments with `when` on 好感度. 理.好感度 [-30,100]
+# 变量分阶段-好感度 (seven named bands) → six fiction fragments with `when` on 好感度. 理.好感度 [-30,100]
 # → an int field (initial 0; openings 0 and 2 set 15 and 60), moved by a readout in record. <user>.与理的关系 (恋人 / 哥哥)
 # → two hidden booleans. 角色事件-告白 → a two-layer lore entry whose offer is the confession condition, opened by the
 # director as MUST and settled by a readout once the player answers.
@@ -65,7 +65,7 @@ fiction:
       喜好与厌恶：喜欢清晨在空旷教堂独自祷告、阅读古老神学与哲学手稿、与孩子们分享温暖故事；厌恶虚伪的奉承与欺骗、暴力冲突损伤无辜，以及他人对理的过度责难。
   - id: band--100
     label: 理（客气有礼）
-    when: { "all": [{ "path": "好感度", "op": "gte", "value": -30 }, { "path": "好感度", "op": "lt", "value": 20 }] }
+    when: { path: 好感度, band: [cold, new] }
     text: |-
       眼下理对你的态度（初识与客气阶段）：
       日常相处：她在面对你时始终保持有礼而端庄的态度，言行举止透着圣女的庄重与温和，并未表现出太多个人情绪。日常相处中她对你恪守礼仪，像对待镇上其他人一样亲切却带着些许客气，保持着适当的距离感。她经常微笑着向你致意，耐心倾听你的请求或烦恼，并以圣女身份给予中肯的建议和祈祷祝福；在公众场合下，她对你和对别人并无二致，总是展现出公正无私的一面，不会给予你特殊优待。
@@ -81,7 +81,7 @@ fiction:
       独处话语示例：「需要我去泡杯茶来吗？教堂里有新采的草药茶，可以让你放松一下。」「你最近在镇上过得还好吗？如果有什么烦心事，我可以为你祈祷。」「这里有本镇上志愿者写的小册子，记录了不少趣事，要听我说给你听吗？」「虽然这里只有我们两个人，但也请你把我当作普通的倾诉对象就好，不必拘谨。」
   - id: band-20
     label: 理（熟稔亲切）
-    when: { "all": [{ "path": "好感度", "op": "gte", "value": 20 }, { "path": "好感度", "op": "lt", "value": 40 }] }
+    when: { path: 好感度, band: warm }
     text: |-
       眼下理对你的态度（熟稔与朋友阶段）：
       日常相处：随着彼此认识加深，她在你面前渐渐变得稍微轻松了一些，不再一味保持过分正式的态度。日常相处时她偶尔会主动向你搭话，分享一些教堂或镇上的趣闻，以此拉近与你的距离。她对你的态度依然谦和有礼，但笑容中多了一份发自内心的亲切，再见到你时眼中会闪过欣喜之色；有时候完成祈祷或工作后，她会特地来到你身边稍作闲谈，语气轻柔，仿佛也享受着与你相处的点滴时光。
@@ -97,7 +97,7 @@ fiction:
       独处话语示例：「难得清闲下来，能和你这样聊聊天真好…平时都没有这么放松的机会呢。」「对了，上次你说过喜欢看书，不知道可不可以借我几本你推荐的？我也很想读读看。」「有时候我会想，像这样静静待在教堂里和你说说话，比一个人发呆要开心很多。」「今天谢谢你听我说了这么多话，和你在一起时我总是不知不觉话变多了呢。」
   - id: band-40
     label: 理（亲密依恋）
-    when: { "all": [{ "path": "好感度", "op": "gte", "value": 40 }, { "path": "好感度", "op": "lt", "value": 60 }] }
+    when: { path: 好感度, band: close }
     text: |-
       眼下理对你的态度（亲密与暗生情愫阶段）：
       日常相处：她已经将你视作亲密的朋友，日常中总是自然地和你待在一起，寻找机会和你分享日常琐事或者一起完成任务。外出拜访镇民时她喜欢邀请你同行，有你在身边她显得更加从容自信，走在路上也时不时侧头对你微笑。每当你来到教堂，她都会眼前一亮，立刻停下手头的事迎接你，语气里带着真切的欢喜，好像早已期待你的到来；她开始在你面前表现出更加真实随和的一面，偶尔也会开个小玩笑逗你笑，彼此相处氛围轻松愉悦。
@@ -113,7 +113,7 @@ fiction:
       独处话语示例：「有件事我从没跟别人说过…其实我小时候特别怕黑，每晚都要奶奶牵着才能入睡。现在说起来有点不好意思呢。」「谢谢你愿意听我这些絮絮叨叨的心事…和你在一起时，我感觉自己能够坦率面对内心的想法。」「唔…离你这么近，我好像有点紧张…但又很开心…总觉得心跳快得不受控制了呢。」「我真的很珍惜和你独处的每分每秒，希望时间能够过得再慢一点就好了…」
   - id: band-60
     label: 理（患得患失）
-    when: { "all": [{ "path": "好感度", "op": "gte", "value": 60 }, { "path": "好感度", "op": "lt", "value": 80 }] }
+    when: { path: 好感度, band: deep }
     text: |-
       眼下理对你的态度（深陷情愫与患得患失阶段）：
       日常相处：她仍保持圣女般的优雅形象，但只要你与别人站得稍近，她会瞬间低温沉默，眼底泛起委屈阴影。若你未先主动打招呼，她会用微颤的笑容回应，随后借故离开，让你意识到她正因被忽视而受伤。她会频繁围绕你转悠，用柔声请求一起做事，一旦被婉拒就垂眸轻叹，似乎下一秒就要落泪；镇民面前她依旧温婉完美，只有在你注视不到时，她才露出掐紧手帕的紧张动作，泄露不安情绪。
@@ -129,7 +129,7 @@ fiction:
       独处话语示例：「抱紧我…再紧一点…这样我才能确定你真的在我身边。」「对不起…我知道自己情绪太多，却控制不住…你会讨厌这样任性的我吗？」「如果有一天我变得一无是处…你还会像现在这样看着我吗？」「请你说喜欢我…只要一句，我就能安心到天亮。」
   - id: band-80
     label: 理（占有不安）
-    when: { "all": [{ "path": "好感度", "op": "gte", "value": 80 }, { "path": "好感度", "op": "lt", "value": 90 }] }
+    when: { path: 好感度, band: cling }
     text: |-
       眼下理对你的态度（强烈占有与不安阶段）：
       日常相处：她已公开宣示主权，与你同行时常不自觉握紧你的手，即使面带微笑也透出不容置疑的占有欲。若有人试图独占你注意力，她会以完美礼仪委婉插话，却用目光冷冷封锁对方，气场强大。你偶尔迟到，她会先快步迎上笑称理解，随后在无人的走廊里红着眼控诉自己的不安与惧怕；她每日准备小惊喜，却暗自记录你所有反应，稍有敷衍她便沉默，情绪如云疯涨又骤散。
@@ -145,7 +145,7 @@ fiction:
       独处话语示例：「别移开视线…只要你看着我，我就能确定自己不是可有可无的存在。」「我好怕哪天醒来你就不见了…那样我真的不知道自己会做出什么事。」「你愿意对神明发誓永远不离开我吗？如果你犹豫，我会害怕到心脏发疼…」「对不起…我知道这样的我很可怕，可我爱你，爱到忘了怎么让你轻松…请不要丢下我。」
   - id: band-90
     label: 理（全心相守）
-    when: { "path": "好感度", "op": "gte", "value": 90 }
+    when: { path: 好感度, band: devot }
     text: |-
       眼下理对你的态度（全心相守与圆满爱恋阶段）：
       日常相处：当她对你的好感度臻至顶点，她的举动无不显露出以爱人为核心的深情，于日常点滴间给予你无微不至的体贴关怀。镇上居民早已视你们为天造地设的一对，她不再羞赧辩解，反而会在众人面前自然地挽着你的手臂，脸上是掩不住的幸福光晕。清晨时光她会悄悄早起为你精心准备早餐，满心期待看见你用餐后那满足的神情；夜晚睡前亦会细心确认你一切安好方能安心入梦。她的喜怒哀乐似乎已和你紧密地交织在一起，你欢欣时她便笑靥如花，你忧愁时她亦感同身受般蹙眉，视你为生命中最重要的同行者。
@@ -244,7 +244,22 @@ greetings:
       光线透过彩窗，在她白色的头纱上染上淡淡的彩色光晕，像是一层神圣而脆弱的光环。 她就那样站在那里，屏住呼吸，等待着你的回应，整个世界仿佛在这一刻都安静了下来，只剩下她眼中那份孤注一掷的勇气和深藏的情愫在无声地诉说。
 rules:
   fields:
-    - { path: 好感度, label: 好感度, group: People, type: int, min: -30, max: 100, initial: 0, start: true }
+    - path: 好感度
+      label: 好感度
+      group: People
+      type: int
+      min: -30
+      max: 100
+      initial: 0
+      start: true
+      bands:
+        - { id: cold, min: -30, label: 疏离戒备 }
+        - { id: new, min: 0, label: 初识有礼 }
+        - { id: warm, min: 20, label: 熟稔亲切 }
+        - { id: close, min: 40, label: 亲密依恋 }
+        - { id: deep, min: 60, label: 悄然倾心 }
+        - { id: cling, min: 80, label: 炽烈眷恋 }
+        - { id: devot, min: 90, label: 全心相守 }
     - { path: 恋人, label: 恋人, group: People, type: boolean, initial: false, hidden: true }
     - { path: 哥哥, label: 哥哥, group: People, type: boolean, initial: false, hidden: true }
   actions: []
@@ -362,25 +377,25 @@ catalogs:
         variants: [downcast.webp]
       - id: high_fond
         label: 圣女·满心依恋
-        when: { path: 好感度, op: gte, value: 80 }
+        when: { path: 好感度, band: [cling, devot] }
         focus: [0.5, 0.34]
         aspect: "2 / 3"
         variants: [fond.webp]
       - id: confession_nervous
         label: 圣女·欲言又止
-        when: { path: 好感度, op: gte, value: 60 }
+        when: { path: 好感度, band: deep }
         focus: [0.5, 0.34]
         aspect: "2 / 3"
         variants: [downcast.webp]
       - id: warm_radiant
         label: 圣女·笑靥生辉
-        when: { path: 好感度, op: gte, value: 20 }
+        when: { path: 好感度, band: [warm, close] }
         focus: [0.5, 0.34]
         aspect: "2 / 3"
         variants: [radiant.webp]
       - id: cold_tears
         label: 圣女·眼眶泛红
-        when: { path: 好感度, op: lt, value: 0 }
+        when: { path: 好感度, band: cold }
         focus: [0.5, 0.34]
         aspect: "2 / 3"
         variants: [tears.webp]
@@ -412,29 +427,6 @@ products:
       note: 彩绘玻璃映出温暖光影，空气里有淡淡的熏香与茶香。
     text: |-
       当下两人所处的小镇景况：place 是所在地点，time 是时段，attire 是{{char}}此刻的着装，note 是简短一句环境与氛围摘记。本轮未变时不要修改。
-  - id: rituals
-    role: world
-    label: 教堂日常
-    shape:
-      kind: table
-      columns:
-        - { key: label, type: text }
-        - { key: prompt, type: text }
-    initial:
-      tea:
-        label: 递上花草茶
-        prompt: 我顺手替她添了半杯温热的玫瑰花草茶，柔声劝她先歇一会儿。
-      scone:
-        label: 去买司康饼
-        prompt: 趁面包房刚出炉，我问她愿不愿意一起去买两块热腾腾的金黄司康饼。
-      praise:
-        label: 轻声夸奖她
-        prompt: 我望着她微露疲惫却依旧端庄的模样，轻声说：“今天也多亏了你，做得很好。”
-      garden:
-        label: 花园里走走
-        prompt: 我邀请她暂时放下教堂的杂务，一起去旁侧的小花园晒晒太阳、散散心。
-    text: |-
-      牧师在教堂与小镇日常里随时可发起的快捷互动清单（label 为短按钮名，prompt 为填入输入框的一句话行动）。通常保持不变，仅在剧情结下新的专属约定时可增补一条。
   - id: inner
     role: theater
     surface: theater
@@ -461,6 +453,16 @@ views:
     label: 圣女手记
     residency: latest
     consumes: [inner, options]
+    consts:
+      rituals:
+        - label: 递上花草茶
+          prompt: 我顺手替她添了半杯温热的玫瑰花草茶，柔声劝她先歇一会儿。
+        - label: 去买司康饼
+          prompt: 趁面包房刚出炉，我问她愿不愿意一起去买两块热腾腾的金黄司康饼。
+        - label: 轻声夸奖她
+          prompt: 我望着她微露疲惫却依旧端庄的模样，轻声说：“今天也多亏了你，做得很好。”
+        - label: 花园里走走
+          prompt: 我邀请她暂时放下教堂的杂务，一起去旁侧的小花园晒晒太阳、散散心。
     media:
       - { id: portrait, catalog: ri_portraits }
     css: |
@@ -618,7 +620,7 @@ views:
         border-color: rgba(198, 154, 75, 0.4);
       }
 
-      /* Pure-text affinity stage badge derived strictly from --aff (zero numbers shown) */
+      /* Pure-text affinity stage badge from the declared field bands (zero numbers shown) */
       .stage-badge {
         display: inline-grid;
         align-items: center;
@@ -631,20 +633,13 @@ views:
         font-weight: 600;
         letter-spacing: 0.04em;
       }
-      .stage-item {
-        grid-area: 1 / 1;
-        text-align: center;
-        opacity: var(--on, 0);
-        pointer-events: none;
-        transition: opacity 240ms ease;
-      }
-      .s-cold  { --on: clamp(0, 0 - var(--aff, 0), 1); color: var(--ri-blue); }
-      .s-new   { --on: min(clamp(0, var(--aff, 0) + 1, 1), clamp(0, 20 - var(--aff, 0), 1)); color: var(--ri-ink-soft); }
-      .s-warm  { --on: min(clamp(0, var(--aff, 0) - 19, 1), clamp(0, 40 - var(--aff, 0), 1)); color: var(--ri-emerald); }
-      .s-close { --on: min(clamp(0, var(--aff, 0) - 39, 1), clamp(0, 60 - var(--aff, 0), 1)); color: var(--ri-rose-ink); }
-      .s-deep  { --on: min(clamp(0, var(--aff, 0) - 59, 1), clamp(0, 80 - var(--aff, 0), 1)); color: var(--ri-rose-deep); }
-      .s-cling { --on: min(clamp(0, var(--aff, 0) - 79, 1), clamp(0, 90 - var(--aff, 0), 1)); color: var(--ri-rose-deep); }
-      .s-devot { --on: clamp(0, var(--aff, 0) - 89, 1); color: var(--ri-gold-ink); }
+      [data-band="cold"] .stage-badge { color: var(--ri-blue); }
+      [data-band="new"] .stage-badge { color: var(--ri-ink-soft); }
+      [data-band="warm"] .stage-badge { color: var(--ri-emerald); }
+      [data-band="close"] .stage-badge { color: var(--ri-rose-ink); }
+      [data-band="deep"] .stage-badge { color: var(--ri-rose-deep); }
+      [data-band="cling"] .stage-badge { color: var(--ri-rose-deep); }
+      [data-band="devot"] .stage-badge { color: var(--ri-gold-ink); }
 
       .scene-line {
         display: flex;
@@ -741,7 +736,7 @@ views:
       .scale-pin {
         position: absolute;
         top: 50%;
-        left: calc((var(--aff, 0) + 30) / 130 * 100%);
+        left: calc(var(--ratio, 0) * 100%);
         margin-top: -8px;
         margin-left: -8px;
         width: 16px;
@@ -774,12 +769,13 @@ views:
         background: color-mix(in srgb, var(--ri-gold-soft) calc(var(--on, 0) * 100%), transparent);
         font-weight: 500;
       }
-      .sl-1 { --on: clamp(0, 0 - var(--aff, 0), 1); }
-      .sl-2 { --on: min(clamp(0, var(--aff, 0) + 1, 1), clamp(0, 20 - var(--aff, 0), 1)); }
-      .sl-3 { --on: min(clamp(0, var(--aff, 0) - 19, 1), clamp(0, 40 - var(--aff, 0), 1)); }
-      .sl-4 { --on: min(clamp(0, var(--aff, 0) - 39, 1), clamp(0, 60 - var(--aff, 0), 1)); }
-      .sl-5 { --on: min(clamp(0, var(--aff, 0) - 59, 1), clamp(0, 90 - var(--aff, 0), 1)); }
-      .sl-6 { --on: clamp(0, var(--aff, 0) - 89, 1); }
+      [data-band="cold"] .sl-1 { --on: 1; }
+      [data-band="new"] .sl-2 { --on: 1; }
+      [data-band="warm"] .sl-3 { --on: 1; }
+      [data-band="close"] .sl-4 { --on: 1; }
+      [data-band="deep"] .sl-5 { --on: 1; }
+      [data-band="cling"] .sl-5 { --on: 1; }
+      [data-band="devot"] .sl-6 { --on: 1; }
 
       .bond-note {
         margin-top: 9px;
@@ -1027,7 +1023,7 @@ views:
         opacity: 0.85;
       }
     html: |
-      <section class="parchment" data-var-aff="fields.好感度">
+      <section class="parchment" data-var-ratio="meta.好感度.ratio" data-attr-band="meta.好感度.band">
         <svg class="corner c-tl" viewBox="0 0 16 16" aria-hidden="true">
           <path d="M2 14V5a3 3 0 0 1 3-3h9" fill="none" stroke="currentColor" stroke-width="1.3"/>
           <circle cx="5" cy="5" r="1.4" fill="currentColor"/>
@@ -1060,15 +1056,7 @@ views:
                 <span class="ribbon ribbon-brother" data-if="fields.哥哥">✦ 兄长</span>
               </span>
 
-              <span class="stage-badge" aria-label="当前心意阶段">
-                <span class="stage-item s-cold">疏离戒备</span>
-                <span class="stage-item s-new">初识有礼</span>
-                <span class="stage-item s-warm">熟稔亲切</span>
-                <span class="stage-item s-close">亲密依恋</span>
-                <span class="stage-item s-deep">悄然倾心</span>
-                <span class="stage-item s-cling">炽烈眷恋</span>
-                <span class="stage-item s-devot">全心相守</span>
-              </span>
+              <span class="stage-badge" aria-label="当前心意阶段" data-text="meta.好感度.bandLabel"></span>
             </div>
 
             <div class="scene-line">
@@ -1151,7 +1139,7 @@ views:
 
               <div class="action-block" data-unless="theater.options">
                 <p class="action-caption">教堂日常</p>
-                <div class="quick-grid" data-each="world.rituals" data-as="act">
+                <div class="quick-grid" data-each="consts.rituals" data-as="act">
                   <button data-fill="act.prompt" data-text="act.label"></button>
                 </div>
               </div>
@@ -1178,7 +1166,7 @@ views:
 
               <div class="action-block">
                 <p class="action-caption">教堂日常</p>
-                <div class="quick-grid" data-each="world.rituals" data-as="act">
+                <div class="quick-grid" data-each="consts.rituals" data-as="act">
                   <button data-fill="act.prompt" data-text="act.label"></button>
                 </div>
               </div>

@@ -351,7 +351,7 @@
         },
         {
           "role": "system",
-          "content": "<ledger>\n → -; read -; fired -\n</ledger>\n\nAvailable (1, complete):\ncard:kokuhaku 理最近有心事：常常绞着胸前的吊坠出神，话到嘴边又咽回去。"
+          "content": "<ledger>\n → -; read -; fired -\n</ledger>\n\n<state>\nCurrent: church=place: 教堂; time: 午后; attire: 圣女礼装; note: 彩绘玻璃映出温暖光影，空气里有淡淡的熏香与茶香。\n</state>\n\nAvailable (1, complete):\ncard:kokuhaku 理最近有心事：常常绞着胸前的吊坠出神，话到嘴边又咽回去。"
         },
         {
           "role": "user",
@@ -391,6 +391,10 @@
         {
           "role": "user",
           "content": "我看了看四周。⦅小心⦆"
+        },
+        {
+          "role": "system",
+          "content": "<!-- Off-stage reference and directions for this turn only; never quote, paraphrase, or expose them as in-world text. -->\n\n<turn_state>\nCurrent: church=place: 教堂; time: 午后; attire: 圣女礼装; note: 彩绘玻璃映出温暖光影，空气里有淡淡的熏香与茶香。\n</turn_state>"
         }
       ]
     },
@@ -413,8 +417,12 @@
           }
         },
         {
+          "role": "system",
+          "content": "<state>\nCurrent: church=place: 教堂; time: 午后; attire: 圣女礼装; note: 彩绘玻璃映出温暖光影，空气里有淡淡的熏香与茶香。\n</state>"
+        },
+        {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: 这一幕里理藏在心底、没有说出口的真实想法与细微情绪，简短一两句，保持她温柔又容易害羞的口吻。"
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\noptions: 接下来你可以对理说的话或做的举动，至多三条，每条简短自然，用牧师的第一人称或动作口吻，兼顾温柔回应、日常互动与推进心意。"
         }
       ]
     },
@@ -437,8 +445,12 @@
           }
         },
         {
+          "role": "system",
+          "content": "<state>\nCurrent: church=place: 教堂; time: 午后; attire: 圣女礼装; note: 彩绘玻璃映出温暖光影，空气里有淡淡的熏香与茶香。\n</state>"
+        },
+        {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\nUse the native tools only for facts already established in <scene>; never continue the story, write prose, or infer events beyond <scene>. Read current values before updating. Insert creates an entity with a host-generated ID; patch changes defined fields; remove deletes an entity. Omit unchanged data. Finish by calling finish_record once with the required fields, even if no world data changed.\n\nAnswer each question strictly from what is explicitly settled in <scene>, not from intent or what may happen next. If <scene> does not establish a change for a question, choose the option indicating no change.\nQuestions: affinity: 这一幕里，理在言行间对你流露出的亲疏变化 [cold: 受到冒犯、惊吓或冷落，眼眶泛红、退缩回避或强忍委屈 | cool: 感到局促或失落，收敛笑容、言辞变得客套拘谨 | flat: 维持往常的礼数与分寸，只作寻常交谈或公事往来 | warm: 神色放松下来，主动搭话、分享日常或欣然替你分担事务 | warmer: 流露明显的亲昵与依赖，主动靠近、倾诉心事或因你的夸奖而欢喜脸红 | moved: 被你的关怀或举动深深触动，不顾矜持地依偎、落泪或流露强烈情意]"
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: 这一幕里理的神态与心底私语：expression 选最贴合她此刻表情的插图；mood 用两到四个字概括她眼下的神态或心绪（如“耳尖微红”“强装镇定”“满心欢喜”）；whisper 是她藏在心底、没有说出口的真实想法，简短一两句，保持她温柔又容易害羞的口吻。 [gentle: 温柔微笑 | radiant: 灿烂欢喜 | downcast: 低首垂眸 | helpless: 无奈轻叹 | pout: 鼓腮微嗔 | tears: 眼含热泪]"
         }
       ]
     },
@@ -461,8 +473,40 @@
           }
         },
         {
+          "role": "system",
+          "content": "<state>\nCurrent: church=place: 教堂; time: 午后; attire: 圣女礼装; note: 彩绘玻璃映出温暖光影，空气里有淡淡的熏香与茶香。\n</state>"
+        },
+        {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: 这一幕里理藏在心底、没有说出口的真实想法与细微情绪，简短一两句，保持她温柔又容易害羞的口吻。"
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\nchurch: 当下两人所处的小镇景况：place 是所在地点，time 是时段，attire 是理此刻的着装，note 是简短一句环境与氛围摘记。本轮未变时不要修改。\nUse the native tools only for facts already established in <scene>; never continue the story, write prose, or infer events beyond <scene>. Read current values before updating. Insert creates an entity with a host-generated ID; patch changes defined fields; remove deletes an entity. Omit unchanged data. Finish by calling finish_record once with the required fields, even if no world data changed.\n\nAnswer each question strictly from what is explicitly settled in <scene>, not from intent or what may happen next. If <scene> does not establish a change for a question, choose the option indicating no change.\nQuestions: affinity: 这一幕里，理在言行间对你流露出的亲疏变化 [cold: 受到冒犯、惊吓或冷落，眼眶泛红、退缩回避或强忍委屈 | cool: 感到局促或失落，收敛笑容、言辞变得客套拘谨 | flat: 维持往常的礼数与分寸，只作寻常交谈或公事往来 | warm: 神色放松下来，主动搭话、分享日常或欣然替你分担事务 | warmer: 流露明显的亲昵与依赖，主动靠近、倾诉心事或因你的夸奖而欢喜脸红 | moved: 被你的关怀或举动深深触动，不顾矜持地依偎、落泪或流露强烈情意]"
+        }
+      ]
+    },
+    {
+      "phase": "record",
+      "msgs": [
+        {
+          "role": "system",
+          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+        },
+        {
+          "role": "system",
+          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<setting>\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</setting>\n</world>",
+          "providerOptions": {
+            "anthropic": {
+              "cacheControl": {
+                "type": "ephemeral"
+              }
+            }
+          }
+        },
+        {
+          "role": "system",
+          "content": "<state>\nCurrent: church=place: 教堂; time: 午后; attire: 圣女礼装; note: 彩绘玻璃映出温暖光影，空气里有淡淡的熏香与茶香。\n</state>"
+        },
+        {
+          "role": "user",
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: 这一幕里理的神态与心底私语：expression 选最贴合她此刻表情的插图；mood 用两到四个字概括她眼下的神态或心绪（如“耳尖微红”“强装镇定”“满心欢喜”）；whisper 是她藏在心底、没有说出口的真实想法，简短一两句，保持她温柔又容易害羞的口吻。 [gentle: 温柔微笑 | radiant: 灿烂欢喜 | downcast: 低首垂眸 | helpless: 无奈轻叹 | pout: 鼓腮微嗔 | tears: 眼含热泪]"
         }
       ]
     }

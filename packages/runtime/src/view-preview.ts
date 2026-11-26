@@ -44,7 +44,8 @@ export interface PreviewInput {
   node: TimelineNode
   /** `cardView(card, rows)`'s `layer.products`, `layer.names` and `catalogs`: what the client draws a view by. */
   products: readonly (Pick<Product, "id" | "shape"> & Partial<Pick<Product, "role" | "on" | "trigger">>)[]
-  names: unknown
+  fields?: readonly import("./card.ts").Field[]
+  names: import("./names.ts").Names
   catalogs: readonly Catalog[] | undefined
   /** The node is the line's head and settled: a `latest` view mounts only there. */
   head: boolean
@@ -119,6 +120,7 @@ export interface ViewReport {
   scope: ScopeShape
 }
 export interface ScopeShape {
+  consts: string[]
   fields: string[] | null // null: a latest view reads them from latestContext, a turn view from the node; absent when neither
   world: Record<string, string> | null // product id → its shape as a view sees it; null for a turn view
   theater: Record<string, string>
@@ -136,6 +138,7 @@ const bindingsOf = (input: PreviewInput, view: CompiledView) => {
     node: input.node,
     products: input.products,
     names: input.names,
+    fields: input.fields,
     ...(context && { context }),
   })
 }
@@ -309,6 +312,7 @@ export const scopeShape = (view: CompiledView, scope: Scope, aliases: Record<str
     fields: fields ? Object.keys(fields) : null,
     world: world ? Object.fromEntries(Object.entries(world).map(([k, v]) => [k, shapeOfValue(v)])) : null,
     theater: Object.fromEntries(Object.entries(obj(scope.theater) ?? {}).map(([k, v]) => [k, shapeOfValue(v)])),
+    consts: Object.keys(obj(scope.consts) ?? {}),
     media: Object.keys(obj(scope.media) ?? {}),
     names: Object.keys(obj(scope.names) ?? {}),
     ...(view.consumes?.length === 1 && { value: shapeOfValue(scope.value) }),
@@ -594,6 +598,7 @@ export const previewText = (reports: readonly ViewReport[]): string => {
     }
     const s = r.scope
     out.push("scope")
+    if (s.consts.length) out.push("  consts   " + s.consts.join(", "))
     out.push(`  fields   ${s.fields ? s.fields.join(" ") || "(none)" : "(none)"}`)
     out.push(
       `  world    ${

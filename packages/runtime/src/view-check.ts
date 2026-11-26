@@ -1,9 +1,10 @@
 // A view's bindings checked against the card (#248): every path a directive reads is resolved in a static scope built
 // from the card the way view-bindings.ts `viewBindings` builds the live one, and its type is checked against what the
 // directive needs. A path that resolves to nothing renders as nothing, so each one is said here, with the closest name.
+import { bindingKeys } from "./view-bindings.ts"
 import type { Card, Field } from "./card.ts"
 import type { Shape } from "./product.ts"
-import { residency, type TemplateNode, type ViewShell } from "./view-shell.ts"
+import { residency, type ConstValue, type TemplateNode, type ViewShell } from "./view-shell.ts"
 import { isViewPath, pathDirective, type InspectedView, type Place, type ViewProblem } from "./view-template.ts"
 
 type Ty =
@@ -62,7 +63,7 @@ const shapeTy = (s: Shape, o: { world?: boolean; images?: boolean }): Ty => {
       return {
         t: "record",
         what: "a record",
-        keys: new Map(s.keys.map((k) => [k.key, "shape" in k ? shapeTy(k.shape, o) : col(k)])),
+        keys: new Map(s.keys.map((k) => [k.key, "shape" in k ? shapeTy(k.shape, { ...o, world: false }) : col(k)])),
       }
   }
 }
@@ -131,20 +132,25 @@ const worldTy = (products: NonNullable<Card["products"]>): Ty => ({
   keys: new Map(
     products
       .filter((p) => p.role === "world")
-      .map((p) => [p.id, p.shape ? shapeTy(p.shape, { world: true }) : { t: "any" }]),
+      .map((p) => [p.id, p.shape ? shapeTy(p.shape, { world: true, images: true }) : { t: "any" }]),
   ),
 })
 /** What is wrong with a condition's `world.<product>.<key>…` path: a record's keys are checked and nested records
- *  followed; a table's rows are addressed by entity id, which no card knows, so the walk ends there. `null` when
+ *  followed. Top-level tables use entity IDs and nested tables use array indices. `null` when
  *  `<product>` is no world product of the card; `undefined` when nothing is wrong. */
 export function worldPathProblem(card: Pick<Card, "products">, path: string): ViewProblem | null | undefined {
   const [, id, ...keys] = path.split(".")
-  const world = worldTy(card.products ?? [])
-  let ty = world.t === "record" ? world.keys.get(id) : undefined
-  if (!ty) return null
+  const p = card.products?.find((p) => p.id === id && p.role === "world")
+  if (!p?.shape) return null
+  let ty: Ty = shapeTy(p.shape, {})
   let at = `world.${id}`
+  if (p.shape.kind === "table" && ty.t === "array" && keys.length) {
+    if (keys.length === 1 && keys[0] === "length")
+      return { level: "error", message: at + " is keyed by entity ID; declare a count in rules.derived" }
+    at += "." + keys.shift()
+    ty = ty.item
+  }
   for (const k of keys) {
-    if (ty.t === "array" || ty.t === "any") return
     const next = step(ty, k, at)
     if (next.problem) return next.problem
     ty = next.ty
@@ -157,7 +163,34 @@ export interface ViewBindingCheck {
   /** Catalogs a `data-media="<catalog>:<path>"` binding draws from: their files must be served as images. */
   imageCatalogs: Set<string>
 }
-const ROOT_NAMES = new Set(["value", "names", "media", "fields", "world", "theater"])
+function literalTy(value: ConstValue, path: string, problems: ViewProblem[]): Ty {
+  if (Array.isArray(value)) {
+    const items = value.map((v, i) => literalTy(v, path + "." + i, problems))
+    const signature = (ty: Ty): unknown =>
+      ty.t === "record"
+        ? [...ty.keys].sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, signature(v)])
+        : ty.t === "array"
+          ? { array: signature(ty.item) }
+          : ty.t === "scalar"
+            ? ty.of
+            : ty.t
+    if (new Set(items.map((t) => JSON.stringify(signature(t)))).size > 1)
+      problems.push({ level: "error", message: path + " must have uniform array items and the same row keys" })
+    return { t: "array", what: path, item: items[0] ?? { t: "any" } }
+  }
+  if (typeof value === "object")
+    return {
+      t: "record",
+      what: path,
+      keys: new Map(Object.entries(value).map(([k, v]) => [k, literalTy(v, path + "." + k, problems)])),
+    }
+  return {
+    t: "scalar",
+    of: typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "string",
+    what: path,
+  }
+}
+const ROOT_NAMES = new Set(["value", "names", "media", "fields", "world", "theater", "consts", "meta", "derived"])
 
 /** Every directive path of a view resolved against the card, and the type it reads checked against what the
  *  directive needs. A directive is checked by `needs` below; a new path-taking directive gets its row there. */
@@ -220,6 +253,26 @@ export function checkViewBindings(
     keys: new Map((view.media ?? []).map((s) => [s.id, hit])),
   })
   const fields = card.rules.fields
+  roots.set(
+    "consts",
+    view.consts
+      ? literalTy(view.consts, "consts", problems)
+      : { t: "absent", message: "this view declares no consts", hint: "declare consts on this view" },
+  )
+  roots.set("meta", {
+    t: "record",
+    what: "field metadata",
+    keys: new Map(
+      fields.map((f) => {
+        const keys = new Map<string, Ty>([["label", { t: "scalar", of: "string", what: "the field label" }]])
+        for (const key of ["min", "max"] as const) if (f[key] !== undefined) keys.set(key, number(key))
+        if ((f.type === "int" || f.type === "number") && f.min !== undefined && f.max !== undefined && f.max > f.min)
+          keys.set("ratio", number("normalized value"))
+        if (f.bands) for (const key of ["band", "bandLabel"]) keys.set(key, { t: "scalar", of: "string", what: key })
+        return [f.path, { t: "record", keys, what: "metadata declared for " + f.path }]
+      }),
+    ),
+  })
   const dotted = fields.filter((f) => f.path.includes("."))
   roots.set("fields", { t: "record", what: "the fields", keys: new Map(fields.map((f) => [f.path, fieldTy(f)])) })
   roots.set(
@@ -231,6 +284,21 @@ export function checkViewBindings(
           message: `world is not given to a turn view: only a residency: latest view receives world; a turn view reads its own turn's fields and theater`,
           hint: "set residency: latest on this view to read the world as it stands now",
         },
+  )
+  roots.set(
+    "derived",
+    latest
+      ? {
+          t: "record",
+          what: "derived values",
+          keys: new Map(
+            (card.rules.derived ?? []).map((d) => [
+              d.id,
+              d.op === "any" ? { t: "scalar", of: "boolean", what: d.id } : number(d.id),
+            ]),
+          ),
+        }
+      : { t: "absent", message: "derived values require residency: latest", hint: "read derived on a latest view" },
   )
   const theaterIds = products.filter((p) => p.role === "theater").map((p) => p.id)
   roots.set("theater", {
@@ -286,7 +354,7 @@ export function checkViewBindings(
     // readPath tries the whole path as one key first: that is how `<row>.$num` is read.
     const whole = locals.get(path)
     if (whole) return { ty: whole, problems: [] }
-    const [root, ...keys] = path.split(".")
+    const [root, ...keys] = bindingKeys(path)
     let ty = locals.get(root) ?? roots.get(root)
     if (!ty) return { problems: [unknownRoot(root, path, locals)] }
     const problems: ViewProblem[] = []
@@ -435,8 +503,8 @@ export function checkViewBindings(
               push(
                 {
                   level: "error",
-                  message: `${path} is not a column of catalog ${catalog} in a theater product`,
-                  hint: "name an enum column whose catalog is this one, in a product the view consumes or under theater.",
+                  message: `${path} is not a column of catalog ${catalog} in a theater or world product`,
+                  hint: "name an enum column whose catalog is this one, in a product the view consumes or under theater or world.",
                 },
                 "data-media",
               )

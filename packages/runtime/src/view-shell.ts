@@ -2,6 +2,16 @@ import { Schema } from "effect"
 import type { Product } from "./product.ts"
 import { Cond } from "./cond.ts"
 
+export type ConstValue = string | number | boolean | readonly ConstValue[] | { readonly [key: string]: ConstValue }
+export const ConstValue: Schema.Codec<ConstValue> = Schema.suspend(() =>
+  Schema.Union([
+    Schema.String,
+    Schema.Finite,
+    Schema.Boolean,
+    Schema.Array(ConstValue),
+    Schema.Record(Schema.String, ConstValue),
+  ]),
+)
 export const ViewShell = Schema.Struct({
   id: Schema.String,
   label: Schema.optionalKey(Schema.String),
@@ -13,6 +23,7 @@ export const ViewShell = Schema.Struct({
       Schema.Struct({ id: Schema.String, catalog: Schema.String, label: Schema.optionalKey(Schema.String) }),
     ),
   ),
+  consts: Schema.optionalKey(Schema.Record(Schema.String, ConstValue)),
   html: Schema.String,
   css: Schema.optionalKey(Schema.String),
 })

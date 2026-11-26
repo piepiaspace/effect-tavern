@@ -1,3 +1,4 @@
+import { fieldMeta } from "./field-meta.ts"
 // What a stage reads at a state, as plain text for a person or an agent writing a card (issue #28): the head fragment by
 // fragment, the lore at that state, what record asks, and each fiction band beside the readout that moves its field.
 // Pure: a card, the player's rows and a state in, text out. Nothing here renders a message: the head goes through
@@ -17,7 +18,7 @@ import { cond, effect, labels } from "./phrase.ts"
 import { catalogBlock, contextLookup, deliveryText, freeze, latest, resourcesAt, fedResources } from "./context.ts"
 import { floorAt, currentAt } from "./derived.ts"
 
-import { initialWorld } from "./world.ts"
+import { evalDerived, initialWorld, worldEffects } from "./world.ts"
 import { feedsChronicle, withCatalogs, askedAt, productAsks } from "./product.ts"
 import { tokens } from "./tokens.ts"
 
@@ -74,13 +75,21 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   // The state: initial, a greeting's opening, then the overrides as `set` effects (validated like any effect).
   const g = o.greeting === undefined ? undefined : card.greetings[o.greeting]
   if (o.greeting !== undefined && !g) throw new Error(`greeting ${o.greeting}: the card has ${card.greetings.length}`)
-  const opened = rpg.apply(rpg.initial, g?.do ?? [])
+  const R = resolve(card, rows)
+  const baseWorld = initialWorld(R.products, card.catalogs)
+  const tx = worldEffects(R.products, card.catalogs ?? [], baseWorld)
+  const opened = rpg.apply(rpg.initial, g?.do ?? [], tx.write)
   const s = rpg.apply(opened.s, overrides(card, o.state)).s
 
   // ───────── head ─────────
-  const R = resolve(card, rows)
-  const world = initialWorld(R.products)
-  const context = { fields: s, world }
+  const world = tx.world
+  const scope = (fields: State, world: typeof baseWorld) => ({
+    fields,
+    world,
+    derived: evalDerived(card.rules.derived ?? [], R.products, world),
+    meta: fieldMeta(card.rules.fields, fields),
+  })
+  const context = scope(s, world)
   const events = [...opened.events, ...(o.events ?? [])]
   const fiction = fill(card.fiction, R.names, "card")
   const layers = [...R.frame, ...R.tail]
@@ -98,11 +107,9 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   ]
 
   // ───────── lore ─────────
+  const snapshots = [scope(rpg.initial, baseWorld), scope(opened.s, world), context]
   const floors = new Map(
-    card.lore.map((e) => [
-      e.id,
-      Math.max(...[rpg.initial, opened.s, s].map((x) => floorAt(e.unlock, { fields: x, world }))),
-    ]),
+    card.lore.map((e) => [e.id, Math.max(...snapshots.map((snapshot) => floorAt(e.unlock, snapshot)))]),
   )
   // the index as the session builds it (session.ts `current`): the card's entries expanded, a hole nothing fills left as
   // written. Pack resources stay separate from story disclosure, as in derived.ts.
@@ -194,7 +201,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
     catalogs,
     gated,
   )
-  const asks = productAsks(asked, gated)
+  const asks = productAsks(asked, gated, catalogs)
   const qs = rpg.questions(s, R.names, context)
   const questions = qs.length ? qs : undefined // none active: no Questions line, as the session sends none
 
