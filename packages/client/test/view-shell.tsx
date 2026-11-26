@@ -436,6 +436,61 @@ async function run() {
     require(mountedHud === node1HudHost(), "Demand preserves the HUD element")
     require(fills().every((b) => !b.disabled), "fill buttons are live again once the turn settles")
     require(registry.get(demanded) === null, "successful Demand releases its node")
+
+    // 4. Turn 2, sent from the line a fill button put in the composer. While it is in flight the turn view's button on
+    // Turn 1 is disabled; once it lands Turn 1 is history, where `latest` ri_hud (and its fill buttons) does not mount
+    // yet still claims `inner` (#248), and where the turn view's fill button stays disabled.
+    await modelControl({
+      clear: true,
+      turns: [
+        { prose: "她低头。", canned: { place: { spot: "钟楼" }, answers: { affinity: "flat" } }, recordDelay: 750 },
+      ],
+      demands: [{ inner: "第二轮心声", delay: 750 }, { note_slip: "第二张便签" }, { options: ["告辞", "留下"] }],
+    })
+    const pressed = await agent.act({ steps: [{ ref: "询问礼拜日程", action: "press" }] })
+    require(pressed.ok, `press a fill button before Turn 2: ${pressed.error?.message}`)
+    await quiet()
+    require(registry.get(composition).text === "询问礼拜日程", "Turn 2's line comes from a fill button")
+    require(await until(() => !sendBtn()?.disabled), "composer send button enabled for Turn 2")
+    sendBtn()!.click()
+    require(await until(
+      () => registry.get(working) && !!slipFill(1)?.disabled,
+    ), "a turn view's fill button is disabled while a turn is in flight")
+    const node2HudHost = () => document.querySelector<HTMLElement>("#node-2 .view-shell[data-view=ri_hud]")
+    require(await until(
+      () => registry.get(log).nodes.get(2)?.settlementStatus === "pending",
+      5000,
+    ), "Turn 2 lands with pending record settlement")
+    require(!node1HudHost() &&
+      !document.querySelector(
+        "#node-1 .product.theater",
+      ), "Turn 1 shows no HUD and no fallback inner while Turn 2 records")
+    require(await until(
+      () => registry.get(log).nodes.get(2)?.settlementStatus === "committed" && !registry.get(working),
+      5000,
+    ), "Turn 2 record settlement commits")
+    await quiet()
+    require(Boolean(node2HudHost()) && !node1HudHost(), "ri_hud moves to Turn 2 and stays off history")
+    require(registry.get(log).nodes.get(2)?.input.text === "询问礼拜日程", "Turn 2 carries the filled line")
+    require(!!slipFill(1)?.disabled &&
+      slipFill(2) &&
+      !slipFill(2)!.disabled, "a turn view's fill button is disabled on a past turn and live on the latest")
+    const node2Fills = [...(node2HudHost()?.shadowRoot?.querySelectorAll<HTMLButtonElement>("button.fill") ?? [])]
+    require(node2Fills.map((b) => b.textContent).join() === "告辞,留下" &&
+      node2Fills.every((b) => !b.disabled), "the latest HUD's fill buttons hold the new options, live")
+    require(registry.get(log).nodes.get(1)?.theater.inner !== undefined &&
+      document.querySelectorAll(".product.theater").length === 0, "historical Turn 1 keeps inner claimed, no grey box")
+    await modelControl({ clear: true, demands: [{ inner: "旧轮重抽的心声" }] })
+    const askOld = await agent.act({ steps: [{ ref: demandLabel, action: "press", args: ["理的心声"] }] })
+    require(askOld.ok, `historical Turn 1 Demand still offers 理的心声: ${askOld.error?.message}`)
+    require(await until(
+      () => !registry.get(working) && registry.get(log).nodes.get(1)?.theater.inner === "旧轮重抽的心声",
+      5000,
+    ), "re-rolling inner on history lands")
+    await quiet()
+    require(!node1HudHost() &&
+      document.querySelectorAll(".product.theater").length === 0, "re-rolled historical inner draws no grey box")
+
     await modelControl({ demands: [{ options: [], fail: "choices unavailable" }] })
     turn.demand(1, "options")
     require(await until(() => !!registry.get(error) && !registry.get(working)), "failed Demand finishes")
@@ -459,38 +514,6 @@ async function run() {
       (el) => el.textContent === "理的心声",
     ), "Inspector labels node products")
 
-    // 4. A second turn, sent from the line a fill button put in the composer: while it is in flight the turn view's
-    // button on node 1 is disabled, and once node 2 lands node 1 is a past turn, whose options are not fillable.
-    open("reader")
-    await modelControl({
-      clear: true,
-      turns: [{ prose: "她点头。", recordDelay: 400 }],
-      demands: [{ inner: "心声二" }, { note_slip: "第二张便签" }, { options: ["收下便签", "告辞"] }],
-    })
-    const pressed = await agent.act({ steps: [{ ref: "询问礼拜日程", action: "press" }] })
-    require(pressed.ok, `press a fill button before the second turn: ${pressed.error?.message}`)
-    await quiet()
-    require(registry.get(composition).text === "询问礼拜日程", "the second turn's line comes from a fill button")
-    turn.act()
-    require(await until(
-      () => registry.get(working) && !!slipFill(1)?.disabled,
-    ), "a turn view's fill button is disabled while a turn is in flight")
-    require(await until(
-      () => registry.get(log).nodes.get(2)?.settlementStatus === "committed" && !registry.get(working),
-      5000,
-    ), "Turn 2 lands")
-    await quiet()
-    require(registry.get(log).nodes.get(2)?.input.text === "询问礼拜日程", "Turn 2 carries the filled line")
-    require(!!slipFill(1)?.disabled &&
-      slipFill(2) &&
-      !slipFill(2)!.disabled, "a turn view's fill button is disabled on a past turn and live on the latest")
-    const node2Fills = [
-      ...(document
-        .querySelector<HTMLElement>("#node-2 .view-shell[data-view=ri_hud]")
-        ?.shadowRoot?.querySelectorAll<HTMLButtonElement>("button.fill") ?? []),
-    ]
-    require(node2Fills.map((b) => b.textContent).join() === "收下便签,告辞" &&
-      node2Fills.every((b) => !b.disabled), "the latest HUD's fill buttons hold the new options, live")
     await postResult({ failures: diagnostics.end().diagnostics.map((d) => d.message) })
   } finally {
     disposeApp()

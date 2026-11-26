@@ -2,7 +2,7 @@
 
 `tavern` 是一棵命令树（`packages/server/bin/tavern.ts`），也是编译出的二进制本身；从源码在仓库根目录运行
 `bun run tavern …`。输入 `tavern` 显示帮助，`tavern start --help` 列出启动参数。
-`tavern card init|check|view|test|unroll` 是[离线制卡工具](card-cli.md)；其余命令如下：
+`tavern card init|check|view|test|unroll` 是[离线制卡工具](card-cli.md)（`card view --views [--scenario f [--step n]] [--html f]` 预览卡片的流内视图绑定到什么）；其余命令如下：
 
 ## 安装
 

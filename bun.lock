@@ -97,6 +97,7 @@
         "tavern": "bin/tavern.ts",
       },
       "dependencies": {
+        "@effect-tavern/client": "workspace:*",
         "@effect-tavern/provider": "workspace:*",
         "@effect-tavern/runtime": "workspace:*",
         "@effect/platform-bun": "4.1.5",

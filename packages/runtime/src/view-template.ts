@@ -5,13 +5,17 @@ import walk from "css-tree/walker"
 import { tokenize, tokenTypes } from "css-tree/tokenizer"
 import { HOLE } from "./names.ts"
 import { STATE_HOLE } from "./cond.ts"
-import type { CompiledView, TemplateNode, ViewShell } from "./view-shell.ts"
+import { voidElements, type CompiledView, type TemplateNode, type ViewShell } from "./view-shell.ts"
+import { hiddenFromName } from "./view-bindings.ts"
 const words = (s: string) => new Set(s.split(" "))
 const tags = words(
-  "button div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i u s del ins mark ruby rt rp abbr time kbd q cite wbr small sub sup code pre blockquote hr br figure figcaption details summary label input svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath",
+  "button div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i u s del ins mark ruby rt rp abbr time kbd q cite wbr small sub sup code pre blockquote hr br figure figcaption details summary label input",
 )
-// Only inside <svg>: in HTML, `title` and friends would be other elements.
-const svgTags = words("text tspan title desc use mask pattern")
+// Inside <svg> (and <svg> itself) only these: an HTML name there is a dead SVG-namespace node, and one of these
+// outside it an unknown HTML element (`title` would even be another element).
+const svgTags = words(
+  "svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath text tspan title desc use mask pattern",
+)
 const attributes = words(
   "class id title lang dir hidden aria-label aria-hidden role name for type checked open colspan rowspan viewBox width height x y x1 y1 x2 y2 cx cy r rx ry dx dy points d fill stroke stroke-width stroke-linecap stroke-linejoin stroke-dasharray stroke-dashoffset stroke-miterlimit stroke-opacity fill-opacity fill-rule clip-rule opacity vector-effect offset stop-color clip-path mask transform text-anchor dominant-baseline font-size font-weight font-family letter-spacing maskUnits maskContentUnits patternUnits patternContentUnits patternTransform",
 )
@@ -28,7 +32,11 @@ const cssFunctions = words(
 const atRules = words("media supports container keyframes layer")
 const localRef = /^url\(#[\w-]+\)$/
 // A paint: #hex, a keyword, url(#id), a numeric rgb()/hsl(), or var(--x) with one of those as its fallback.
-const simplePaint = String.raw`#[a-f\d]{3,8}|[a-z]+|url\(#[\w-]+\)|(?:rgba?|hsla?)\((?:[\s,/]*[+-]?(?:\d+\.?\d*|\.\d+)(?:%|deg)?)+\s*\)`
+// The value is the author's: each part matches one way only (a number's digits can't be split between two numbers, a
+// separator is never empty), so a near-miss fails in linear time rather than trying every split.
+const number = String.raw`[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:%|deg)?`
+const separator = String.raw`(?:\s*[,/]\s*|\s+)`
+const simplePaint = String.raw`#[a-f\d]{3,8}|[a-z]+|url\(#[\w-]+\)|(?:rgba?|hsla?)\(\s*${number}(?:${separator}${number})*\s*\)`
 const paint = new RegExp(String.raw`^(?:${simplePaint}|var\(--[\w-]+(?:\s*,\s*(?:${simplePaint}))?\s*\))$`, "i")
 const pathPattern = /^[\p{L}\p{N}_$-]+(?:\.[\p{L}\p{N}_$-]+)*$/u
 export const isViewPath = (value: string) => pathPattern.test(value)
@@ -89,11 +97,14 @@ const attributeHint = (name: string, tag: string) =>
 /** A view's one button (#248): it puts the text at a path into the composer, as a chip of the options does. */
 const FILL =
   'a view\'s button fills the composer: write <button data-fill="<path>">…</button>, such as data-fill="opt" inside data-each="theater.options" data-as="opt"'
-/** Whether a button has a name the gate can see: text written in it, a data-text on it or inside it, or an aria-label. */
+/** Whether a button can have a name: text written in it, a data-text on it or inside it, or an aria-label, none of it in
+ *  a hidden subtree (which names nothing). Whether it has one with the data is the host's (view-bindings.ts
+ *  `accessibleName`): it leaves the button disabled while the name is empty. */
 const named = (n: { attrs: Record<string, string>; children: TemplateNode[] }): boolean =>
-  !!n.attrs["aria-label"]?.trim() ||
-  "data-text" in n.attrs ||
-  n.children.some((c) => (typeof c === "string" ? !!c.trim() : named(c)))
+  !hiddenFromName(n.attrs) &&
+  (!!n.attrs["aria-label"]?.trim() ||
+    "data-text" in n.attrs ||
+    n.children.some((c) => (typeof c === "string" ? !!c.trim() : named(c))))
 const EXPRESSION =
   "views take plain paths only, no expressions: show or hide with data-if / data-unless on a boolean, mark a value with data-attr-<name> and a CSS attribute selector, scale with data-var-<name> and calc() / clamp() in css, or gate the whole view with its when"
 const FETCH =
@@ -105,7 +116,11 @@ interface Walk {
   html: string
   problems: ViewProblem[]
   places: WeakMap<object, ElementPlace>
+  /** Where the enclosing <button> starts, while the walk is inside one. */
+  button?: Partial<Place>
 }
+// Interactive content a button cannot hold: a browser would hand the press to it, or to the button, never both.
+const interactive = words("button input label details summary")
 function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
   if ("value" in n) return [n.value]
   if (!("tagName" in n)) return []
@@ -114,8 +129,15 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
   const fail = (message: string, where: { line?: number; column?: number } = place, hint?: string) =>
     w.problems.push({ level: "error", message, block: "html", ...where, fatal: true, ...(hint && { hint }) })
   const svg = n.namespaceURI === "http://www.w3.org/2000/svg"
-  const allowed = tags.has(n.tagName) || (svg && svgTags.has(n.tagName))
-  if (!allowed) fail(`<${n.tagName}> is not a view element`, place, elementHints[n.tagName])
+  const allowed = (svg ? svgTags : tags).has(n.tagName)
+  const hint =
+    elementHints[n.tagName] ??
+    (svg && tags.has(n.tagName)
+      ? "inside <svg> only SVG elements draw: close the </svg> before HTML, or write SVG <text>"
+      : !svg && svgTags.has(n.tagName)
+        ? "SVG elements draw only inside an <svg>"
+        : undefined)
+  if (!allowed) fail(`<${n.tagName}> is not a view element${svg ? " inside <svg>" : ""}`, place, hint)
   const attrs: Record<string, string> = Object.create(null)
   const attrPlaces: Record<string, Place> = Object.create(null)
   for (const { name, value, namespace, prefix } of n.attrs) {
@@ -172,6 +194,20 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
     )
   if (button && attrs.name !== undefined)
     fail("<button>: name is not allowed on a button", attrPlaces.name ?? place, "remove it, or use a class")
+  const within = w.button && `inside the <button> at ${w.button.line}:${w.button.column}`
+  if (within && interactive.has(n.tagName))
+    fail(
+      `<${n.tagName}> cannot sit ${within}: a button holds words, not another control`,
+      place,
+      "put the control beside the button",
+    )
+  for (const media of ["data-media", "data-lightbox"])
+    if ((button || within) && attrs[media] !== undefined)
+      fail(
+        `<${n.tagName}>: ${media} cannot sit ${button ? "on a <button>" : within}: a button holds words, not an image`,
+        attrPlaces[media] ?? place,
+        "put the image beside the button, and name the button with words",
+      )
   if (n.tagName === "input" && !["radio", "checkbox"].includes(attrs.type))
     fail(`<input type="${attrs.type ?? ""}">: only radio and checkbox inputs are supported`)
   if ((attrs["data-as"] !== undefined) !== (attrs["data-each"] !== undefined))
@@ -180,7 +216,8 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
         ? `<${n.tagName}> has data-each without data-as: name the row with data-as`
         : `<${n.tagName}> has data-as without data-each`,
     )
-  const node = { tag: n.tagName, svg, attrs, children: n.childNodes.flatMap((c) => templateNode(c, w)) }
+  const inner = button && !w.button ? { ...w, button: place } : w
+  const node = { tag: n.tagName, svg, attrs, children: n.childNodes.flatMap((c) => templateNode(c, inner)) }
   if (button && !named(node))
     w.problems.push({
       level: "error",
@@ -262,7 +299,6 @@ const optionalEnd: Record<string, readonly string[]> = {
   rt: ["rt", "rp"],
   rp: ["rt", "rp"],
 }
-const voidTags = words("area base br col embed hr img input link meta source track wbr")
 const rawText = words("style script textarea xmp iframe noembed noframes noscript title")
 
 /** What the browser does to markup that still parses: an element left open, an end tag it ignores, a start tag it
@@ -313,7 +349,8 @@ function checkStructure(html: string, fragment: Html.DocumentFragment, problems:
 
   for (const el of elements) {
     const tag = el.n.tagName
-    if (el.loc.endTag || voidTags.has(tag) || html.slice(el.loc.startTag!.startOffset, el.open).endsWith("/>")) continue
+    if (el.loc.endTag || voidElements.has(tag) || html.slice(el.loc.startTag!.startOffset, el.open).endsWith("/>"))
+      continue
     const rest = html.slice(el.close)
     const closedBy = /^<\/?([a-zA-Z][^\s/>]*)/.exec(rest)
     const byAncestorEnd =
@@ -334,7 +371,14 @@ function checkStructure(html: string, fragment: Html.DocumentFragment, problems:
           `${name(el)} has no end tag, and the browser closes it at ${where(el.close)}${closedBy && !rest.startsWith("</") ? `, before <${closedBy[1]}>` : ""}`,
           tag === "p" ? `write </${tag}>: a <p> cannot hold a block element such as <div>` : `write </${tag}>`,
         )
-    } else
+    } else if (tag === "button" && closedBy?.[1].toLowerCase() === "button" && !rest.startsWith("</"))
+      report(
+        "error",
+        el.loc.startOffset,
+        `${name(el)} is never closed: the browser closes it at ${where(el.close)}, where another <button> starts, since a button cannot hold a button`,
+        "put the buttons side by side",
+      )
+    else
       report(
         "error",
         el.loc.startOffset,
@@ -420,23 +464,38 @@ function checkStructure(html: string, fragment: Html.DocumentFragment, problems:
   }
 }
 
-/** `{{…}}` in a view is shown as written: a view's html is never name-filled and runs no macro. */
-function checkMacros(html: string, problems: ViewProblem[]) {
-  const comments = [...html.matchAll(/<!--[^]*?-->/g)].map((m) => [m.index, m.index + m[0].length])
-  for (const m of html.matchAll(/\{\{.*?\}\}/gs)) {
-    if (comments.some(([a, b]) => m.index >= a && m.index < b)) continue
-    const name = new RegExp(`^${HOLE.source}$`).exec(m[0])
-    const state = new RegExp(`^${STATE_HOLE.source}$`).exec(m[0])
+/** Each `open…close` span in `source`, left to right; an unclosed one ends the scan. Linear in `source`, where a lazy
+ *  regex would rescan the rest of the author's block from every unclosed opener. */
+function* spans(source: string, open: string, close: string) {
+  for (let from = 0; ;) {
+    const start = source.indexOf(open, from)
+    const end = start < 0 ? -1 : source.indexOf(close, start + open.length)
+    if (end < 0) return
+    yield [start, end + close.length] as const
+    from = end + close.length
+  }
+}
+/** `{{…}}` in a view is shown as written: neither its html nor its css (a `content:` string, a custom property) is
+ *  ever name-filled, and neither runs a macro. A comment is left alone. */
+function checkMacros(source: string, block: "html" | "css", problems: ViewProblem[]) {
+  const comments = [...(block === "html" ? spans(source, "<!--", "-->") : spans(source, "/*", "*/"))]
+  for (const [start, end] of spans(source, "{{", "}}")) {
+    if (comments.some(([a, b]) => start >= a && start < b)) continue
+    const text = source.slice(start, end)
+    const name = new RegExp(`^${HOLE.source}$`).exec(text)
+    const state = new RegExp(`^${STATE_HOLE.source}$`).exec(text)
+    const path = name ? `names.${name[1]}` : state?.[1]
     problems.push({
       level: "error",
-      block: "html",
-      ...placeOf(html, m.index),
-      message: `${m[0]} is shown as written: a view does not interpolate${name || state ? "" : " or run macros"}`,
-      hint: name
-        ? `write <span data-text="names.${name[1]}"></span>`
-        : state
-          ? `write <span data-text="${state[1]}"></span>`
-          : 'read a field with data-text="fields.<x>"; state and randomness are fields, actions and products',
+      block,
+      ...placeOf(source, start),
+      message: `${text} is shown as written: a view does not interpolate${path ? "" : " or run macros"}`,
+      hint:
+        block === "css"
+          ? `css holds no data: put the text in the html with data-text="${path ?? "fields.<x>"}", or bind a number with data-var-<name> and read var(--<name>)`
+          : path
+            ? `write <span data-text="${path}"></span>`
+            : 'read a field with data-text="fields.<x>"; state and randomness are fields, actions and products',
     })
   }
 }
@@ -473,7 +532,8 @@ export function inspectView(v: Pick<ViewShell, "css" | "html">, { lint = true } 
   const tree = fragment.childNodes.flatMap((n) => templateNode(n, { html: v.html, problems, places }))
   if (lint) {
     checkStructure(v.html, fragment, problems)
-    checkMacros(v.html, problems)
+    checkMacros(v.html, "html", problems)
+    if (v.css) checkMacros(v.css, "css", problems)
   }
   return { tree, problems, places }
 }

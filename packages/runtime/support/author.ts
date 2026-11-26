@@ -19,7 +19,7 @@ export const checkCard = (source: string): ReturnType<typeof checkValue> => {
       ...checkValue(undefined),
       diagnostics: [
         {
-          rule: "yaml",
+          rule: "schema",
           level: "error",
           path: "$",
           message: `the file is not valid YAML: ${(e instanceof Error ? e.message : String(e)).replace(/^YAML Parse error:\s*/, "")}`,

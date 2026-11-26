@@ -126,6 +126,19 @@ const hasControlChar = (s: string): boolean => {
 }
 const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*:/
 
+/** A catalog item's `aspect` as the gate takes it: a positive `W / H` between 1 / 4 and 4 / 1. Returns an error reason, or
+ *  undefined when it is one. */
+export const mediaAspectError = (aspect: string): string | undefined => {
+  const parts = typeof aspect === "string" ? /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(aspect) : null
+  const ratio = parts ? Number(parts[1]) / Number(parts[2]) : NaN
+  return ratio >= 0.25 && ratio <= 4 ? undefined : "aspect must be a positive W / H ratio between 1 / 4 and 4 / 1"
+}
+/** A catalog item's `focus` as the gate takes it: two coordinates in [0, 1]. */
+export const mediaFocusError = (focus: readonly number[]): string | undefined =>
+  focus.length === 2 && focus.every((x) => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 1)
+    ? undefined
+    : "focus coordinates must be in [0, 1]"
+
 /** Validate a production HTTPS media directory URL; returns an error reason or undefined when valid. */
 export const mediaBaseUrlError = (baseUrl: string): string | undefined => {
   if (typeof baseUrl !== "string" || !baseUrl.trim() || baseUrl !== baseUrl.trim())

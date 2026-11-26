@@ -1,5 +1,5 @@
 import { ViewBlock } from "./view-shell.tsx"
-import { residency, type CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
+import { viewApplies, viewMount, type CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import type { CardView } from "./store.ts"
 import { AsyncView } from "./async-view.tsx"
 // The Record's pieces: one renderer per reading element (src/record.ts projects them; this file only draws), the
@@ -600,23 +600,23 @@ export const consumedProducts = (views: readonly CompiledView[]): ReadonlySet<st
   }
   return ids.size ? ids : emptyConsumed
 }
+/** The card's views that apply at a node: no `when`, or its guard held there (`applicableViews`), mounted or not. */
+const applicableNodeViews = (view: CardView | null | undefined, node: Node): CompiledView[] =>
+  view?.views?.filter((v) => viewApplies(v, node)) ?? []
+/** The views mounted on a node: a `latest` one on the last node once `record` settles, a `turn` one where it has data. */
 export const eligibleNodeViews = (
   view: CardView | null | undefined,
   node: Node,
   last: boolean,
   settled: boolean,
 ): CompiledView[] =>
-  view?.views?.filter((v) => {
-    if (v.when && !node.visibleViews?.includes(v.id)) return false
-    if (residency(v) === "latest") return last && settled
-    return !v.consumes?.length || v.consumes.some((id) => node.theater[id] !== undefined)
-  }) ?? []
-/** Products claimed on a landed node, including `latest` views holding until `record` settles so `.theater` never flashes. */
-export const claimedNodeProducts = (
-  view: CardView | null | undefined,
-  node: Node,
-  last: boolean,
-): ReadonlySet<string> => consumedProducts(eligibleNodeViews(view, node, last, true))
+  applicableNodeViews(view, node).filter(
+    (v) => viewMount(v, { applies: true, head: last && settled, theater: node.theater }) === undefined,
+  )
+/** Products the default chrome leaves alone on a node: all an applicable view consumes, mounted there or not (a
+ *  `latest` view on history, or on the head until `record` settles), so `.theater` never flashes or sprouts. */
+export const claimedNodeProducts = (view: CardView | null | undefined, node: Node): ReadonlySet<string> =>
+  consumedProducts(applicableNodeViews(view, node))
 export const StateViews = (props: {
   views: readonly CompiledView[]
   view: CardView | null | undefined

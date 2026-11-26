@@ -1,6 +1,8 @@
 // compileView's whitelist (#248): what a view may write, and the fetch and escape paths that stay shut.
 import assert from "node:assert/strict"
 import { compileView, inspectView } from "../src/view-template.ts"
+import { accessibleName } from "../src/view-bindings.ts"
+import type { TemplateNode } from "../src/view-shell.ts"
 
 const css = (rule: string) => () => compileView({ html: "<p></p>", css: rule })
 const html = (markup: string) => () => compileView({ html: markup })
@@ -121,6 +123,15 @@ for (const markup of [
     "attr(data-x)",
     "light-dark(red, blue)",
   ].map((v) => `<svg><path fill="${v}"/></svg>`),
+  // Inside <svg> only SVG elements: an HTML name there would be a dead SVG-namespace node.
+  ...["section", "details", "input", "label", "summary", "article", "time", "mark"].map(
+    (tag) => `<svg><g><${tag}>x</${tag}></g></svg>`,
+  ),
+  // And SVG-only names stay out of HTML.
+  "<g></g>",
+  "<path d='M0 0'></path>",
+  "<circle r='1'></circle>",
+  "<p><use href='#a'></use></p>",
 ])
   assert.throws(html(markup), markup)
 
@@ -282,7 +293,98 @@ assert.deepEqual(JSON.parse(JSON.stringify(compileView({ html: "<button data-fil
   { tag: "button", svg: false, attrs: { "data-fill": "opt" }, children: ["x"] },
 ])
 assert.throws(() => compileView({ html: "<button>x</button>" }), /^Error: <button> has no data-fill at 1:1$/)
+// A hidden subtree names nothing; neither image nor control sits in or on a button.
+for (const [markup, want] of [
+  ["<button data-fill='opt'><span aria-hidden='true'>→</span></button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt' aria-hidden='true'>x</button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt'><span hidden data-text='opt'></span></button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt'><b aria-hidden='false'>→</b><span aria-hidden='true'>!</span>选</button>", []],
+  [
+    "<button data-fill='opt' data-media='media.face'>x</button>",
+    [
+      "error! html:1:25 <button>: data-media cannot sit on a <button>: a button holds words, not an image | put the image beside the button",
+    ],
+  ],
+  [
+    "<button data-fill='opt'>x<span><i data-media='media.face' data-lightbox></i></span></button>",
+    [
+      "error! html:1:35 <i>: data-media cannot sit inside the <button> at 1:1: a button holds words, not an image",
+      "error! html:1:59 <i>: data-lightbox cannot sit inside the <button> at 1:1",
+    ],
+  ],
+  [
+    "<button data-fill='opt'>x<input type='checkbox'><label>l</label><details><summary>s</summary></details></button>",
+    [
+      "error! html:1:26 <input> cannot sit inside the <button> at 1:1: a button holds words, not another control | put the control beside the button",
+      "error! html:1:49 <label> cannot sit inside the <button> at 1:1",
+      "error! html:1:65 <details> cannot sit inside the <button> at 1:1",
+      "error! html:1:74 <summary> cannot sit inside the <button> at 1:1",
+    ],
+  ],
+  [
+    "<button data-fill='a'>x<button data-fill='b'>y</button></button>",
+    [
+      "error html:1:1 <button> is never closed: the browser closes it at 1:24, where another <button> starts, since a button cannot hold a button | put the buttons side by side",
+      "error html:1:56 </button> has nothing open to close",
+    ],
+  ],
+] as [string, string[]][]) {
+  const got = said({ html: markup })
+  for (const w of want)
+    assert.ok(
+      got.some((g) => g.startsWith(w.split(" | ")[0]) && (!w.includes(" | ") || g.includes(w.split(" | ")[1]))),
+      `${markup}\nwant: ${w}\ngot:\n${got.join("\n")}`,
+    )
+  assert.equal(got.length, want.length, `${markup}\n${got.join("\n")}`)
+}
+// What a button is named with the data it renders: the host enables it only when this is not empty.
+{
+  const [button] = compileView({
+    html: "<button data-fill='opt'><span aria-hidden='true'>→</span><span data-if='hint' data-text='hint'></span><span data-unless='hint'>选</span><i data-each='tags' data-as='t'><b data-text='t'></b></i></button>",
+  }) as Exclude<TemplateNode, string>[]
+  assert.equal(accessibleName(button, { hint: "递茶", tags: [] }), "递茶")
+  assert.equal(accessibleName(button, { hint: "", tags: [] }), "选")
+  assert.equal(accessibleName(button, { hint: "", tags: ["甲", "乙"] }), "选甲 乙")
+  const [byText] = compileView({ html: "<button data-fill='a' data-text='b'></button>" }) as Exclude<
+    TemplateNode,
+    string
+  >[]
+  assert.equal(accessibleName(byText, { a: "递茶", b: "" }), "")
+  assert.equal(accessibleName(byText, { a: "递茶", b: 3 }), "3")
+  const [labelled] = compileView({
+    html: "<button data-fill='a' aria-label=' 选 '><b data-text='b'></b></button>",
+  }) as Exclude<TemplateNode, string>[]
+  assert.equal(accessibleName(labelled, { a: "x", b: "" }), "选")
+  const [hidden] = compileView({ html: "<button data-fill='a'><b hidden data-text='a'></b></button>" }) as Exclude<
+    TemplateNode,
+    string
+  >[]
+  assert.equal(accessibleName(hidden, { a: "x" }), "")
+}
 
+// The css is never name-filled either: a macro in a string or a custom property is placed in the css block.
+assert.deepEqual(
+  said({
+    html: "<p class='pct'></p>",
+    css: '.pct::after { content: "{{getvar::hp}}%"; }\n/* {{note}} */\n:host { --who: "{{char}}"; --tide: "{{ fields.潮位 }}"; }',
+  }),
+  [
+    'error css:1:25 {{getvar::hp}} is shown as written: a view does not interpolate or run macros | css holds no data: put the text in the html with data-text="fields.<x>", or bind a number with data-var-<name> and read var(--<name>)',
+    'error css:3:17 {{char}} is shown as written: a view does not interpolate | css holds no data: put the text in the html with data-text="names.char", or bind a number with data-var-<name> and read var(--<name>)',
+    'error css:3:37 {{ fields.潮位 }} is shown as written: a view does not interpolate | css holds no data: put the text in the html with data-text="fields.潮位", or bind a number with data-var-<name> and read var(--<name>)',
+  ],
+)
+// Unclosed openers and comments are scanned once, not once per opener.
+{
+  const start = performance.now()
+  inspectView({ html: "{{".repeat(20_000) + "<!--".repeat(10_000), css: "{{".repeat(20_000) + "/*" })
+  assert.ok(performance.now() - start < 200, "macro scan is linear")
+}
+// An element on the wrong side of <svg> says which side it belongs on.
+assert.deepEqual(said({ html: "<svg><section></section></svg><g></g>" }), [
+  "error! html:1:6 <section> is not a view element inside <svg> | inside <svg> only SVG elements draw: close the </svg> before HTML, or write SVG <text>",
+  "error! html:1:31 <g> is not a view element | SVG elements draw only inside an <svg>",
+])
 // Lint's checks never reach the session: a card that passed the gate before compiles the tree it did.
 assert.doesNotThrow(() => compileView({ html: "<div>{{char}}<p><div>x</div></p>" }))
 assert.deepEqual(JSON.parse(JSON.stringify(compileView({ html: "<ul><li data-text='a'>x<li>y</ul>" }))), [
@@ -297,5 +399,53 @@ assert.deepEqual(JSON.parse(JSON.stringify(compileView({ html: "<ul><li data-tex
   },
 ])
 assert.throws(() => compileView({ html: "<p style='x'></p>" }), /^Error: <p>: style is not allowed in a view at 1:4$/)
+// A paint's numeric color: every CSS spelling still accepted, near-misses refused.
+const paintOf = (v: string) => () => compileView({ html: `<svg><path fill="${v}"/></svg>` })
+for (const v of [
+  "rgb(1 2 3)",
+  "rgb(1,2,3)",
+  "rgb( 1 , 2 , 3 )",
+  "rgba(0, 0, 0, .5)",
+  "rgba(0 0 0 / 50%)",
+  "RGB(1 2 3)",
+  "rgb(-1 +2 3.5)",
+  "hsl(120deg 50% 50% / 0.3)",
+  "hsla(120,50%,50%,0.3)",
+  "var(--x, rgb(1 2 3))",
+  "var(--x,hsl(1deg 2% 3%))",
+])
+  assert.doesNotThrow(paintOf(v), v)
+for (const v of [
+  "rgb()",
+  "rgb(,1,2,3)",
+  "rgb(1,,2,3)",
+  "rgb(1 2 3,)",
+  "rgb(1 2 3 /)",
+  "rgb(1.)",
+  "rgb(1px 2 3)",
+  "rgb(a b c)",
+  "rgb(1 2 3",
+  "rgb(1 2 3) x",
+  "var(--x, rgb(1 2 3)",
+])
+  assert.throws(paintOf(v), v)
+// The author writes the value and the server judges it on its main thread: a near-miss of 10,000 characters is refused
+// in linear time, never by trying every way to split it (the old pattern took 1.4 s at 20 digits and doubled per digit).
+paintOf("rgb(1 2 3)")()
+for (const v of [
+  "rgb(" + "1".repeat(10_000) + "x)",
+  "rgb(" + "1.".repeat(5_000) + "x)",
+  "rgb(" + "1 ".repeat(5_000) + "x)",
+  "rgb(" + "1, ".repeat(3_333) + "x)",
+  "hsl(" + "1% ".repeat(3_333) + "x)",
+  "rgb(1" + " ".repeat(10_000) + "x)",
+  "var(--a, rgb(" + "1".repeat(10_000) + "x))",
+  "var(--a" + " ".repeat(10_000) + "x",
+]) {
+  const start = performance.now()
+  assert.throws(paintOf(v))
+  const ms = performance.now() - start
+  assert.ok(ms < 50, `${v.slice(0, 12)}… (${v.length} chars) took ${ms.toFixed(1)} ms`)
+}
 
 console.log("view template ok")

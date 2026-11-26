@@ -1,5 +1,5 @@
 import { inspectView, type ViewProblem } from "./view-template.ts"
-import { checkViewBindings, closest } from "./view-check.ts"
+import { checkViewBindings, worldPathProblem } from "./view-check.ts"
 import { consumableSurface, type TemplateNode } from "./view-shell.ts"
 // Card lint (issue #27): what a card author's type checker says about a card. Pure: a card in, facts and fixes out; no
 // I/O, no console. The throws in `makeCard` / `resolve` stay decode-time invariants; lint reports what decodes but is
@@ -10,8 +10,8 @@ import type { Card, Effect_, Field } from "./card.ts"
 import { type Cond, holds, reads, STATE_HOLE } from "./cond.ts"
 import { SLOTS } from "./fragment.ts"
 import { hook } from "./lore.ts"
-import { mediaBaseUrlError, mediaFileError } from "./media.ts"
-import { colsAt, type Product, type RecordShape, type Shape } from "./product.ts"
+import { mediaAspectError, mediaBaseUrlError, mediaFileError, mediaFocusError } from "./media.ts"
+import { colsAt, type Product, type Shape } from "./product.ts"
 import { HOLE, unfilled } from "./names.ts"
 import { type Entry, scan } from "./polish.ts"
 
@@ -389,40 +389,22 @@ const rules: Rule[] = [
     // heading may also name `<product>.<key>`, a key of one of the card's record products
     const heading = card.heading?.replace(/^world\./, "").split(".")[0]
     if (card.heading && !(card.products ?? []).some((p) => p.id === heading)) used.push(["heading", card.heading])
-    // A condition may read a world product: a record's keys are checked, nested records followed; a table's rows are
-    // addressed by entity id, which no card knows, so a path into a table is left alone.
-    const worldMiss = (r: string): { at?: string; key?: string; own?: string[] } | undefined => {
-      const [, id, ...keys] = r.split(".")
-      const product = (card.products ?? []).find((p) => p.role === "world" && p.id === id)
-      if (!product) return {}
-      let shape: Shape | undefined = product.shape
-      let at = `world.${id}`
-      for (const k of keys) {
-        if (!shape) return { at, key: k, own: [] } // a column holds a value, no keys
-        if (shape.kind !== "record") return
-        const key: RecordShape["keys"][number] | undefined = shape.keys.find((x) => x.key === k)
-        if (!key) return { at, key: k, own: shape.keys.map((x) => x.key) }
-        shape = "shape" in key ? key.shape : undefined
-        at += "." + k
-      }
-    }
     return used.flatMap(([path, r]): Diagnostic[] => {
       if (known.has(r)) return []
+      // A condition may read a world product: its path is walked as a latest view's would be (view-check.ts).
       const read = conds(card).some(([p]) => p === path)
-      const miss = read && r.startsWith("world.") ? worldMiss(r) : {}
-      if (!miss) return []
-      if (miss.key !== undefined && miss.at && miss.own) {
-        const near = closest(miss.key, miss.own)
+      const miss = read && r.startsWith("world.") ? worldPathProblem(card, r) : null
+      if (miss === undefined) return []
+      if (miss)
         return [
           {
             rule: "unknown-path",
             level: "error",
             path,
-            message: `${r}: ${miss.key} is not a key of ${miss.at}${miss.own.length ? ` (keys ${miss.own.join(", ")})` : ""}${near ? `: did you mean ${miss.at}.${near}?` : ""}`,
-            hint: "the condition never holds on a key the product does not have",
+            message: `${r}: ${miss.message}`,
+            hint: miss.hint ?? "the condition never holds on a key the product does not have",
           },
         ]
-      }
       return [
         {
           rule: "unknown-path",
@@ -682,19 +664,10 @@ const rules: Rule[] = [
     for (const catalog of card.catalogs ?? []) {
       for (const item of catalog.items) {
         const path = ["catalogs", catalog.id, "items", item.id].join(".")
-        if (item.focus?.some((x) => !Number.isFinite(x) || x < 0 || x > 1))
-          out.push({ rule: "media-focus", level: "error", path, message: "focus coordinates must be in [0, 1]" })
-        if (item.aspect !== undefined) {
-          const parts = /^\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*$/.exec(item.aspect)
-          const ratio = parts ? Number(parts[1]) / Number(parts[2]) : NaN
-          if (!(ratio >= 0.25 && ratio <= 4))
-            out.push({
-              rule: "media-aspect",
-              level: "error",
-              path,
-              message: "aspect must be a positive W / H ratio between 1 / 4 and 4 / 1",
-            })
-        }
+        const focus = item.focus && mediaFocusError(item.focus)
+        if (focus) out.push({ rule: "media-focus", level: "error", path, message: focus })
+        const aspect = item.aspect !== undefined && mediaAspectError(item.aspect)
+        if (aspect) out.push({ rule: "media-aspect", level: "error", path, message: aspect })
       }
     }
     return out

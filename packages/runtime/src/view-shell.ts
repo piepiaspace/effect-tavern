@@ -32,3 +32,37 @@ export function consumableSurface(
 ) {
   return !!product && product.role === "theater" && !illustrations?.some((i) => i.product === product.id)
 }
+
+/** The HTML elements with no end tag and no content: the template parser's and a static drawing's one list. */
+export const voidElements: ReadonlySet<string> = new Set(
+  "area base br col embed hr img input link meta source track wbr".split(" "),
+)
+
+/** Why a view is not mounted on a node (`viewMount`). */
+export type MountReason = "guard-false" | "turn-nothing" | "latest-not-head"
+/** The view applies at the node: it has no `when`, or its guard held there (the session's `applicableViews`). */
+export const viewApplies = (view: Pick<ViewShell, "id" | "when">, node: { applicableViews?: readonly string[] }) =>
+  !view.when || !!node.applicableViews?.includes(view.id)
+/** Whether a view is mounted on a node, the one rule the session, the reader and `card view --views` share: undefined
+ *  when it is, else why not. A view whose guard does not hold is `guard-false` wherever the node is; a `latest` view
+ *  mounts only on the head (`head`: the line's last node, its record settled); a `turn` view only where one of its
+ *  consumed products has a value (or it consumes nothing). `applies` is the guard's verdict (`viewApplies`). */
+export const viewMount = (
+  view: Pick<ViewShell, "residency" | "consumes">,
+  at: { applies: boolean; head: boolean; theater: Readonly<Record<string, unknown>> },
+): MountReason | undefined => {
+  if (!at.applies) return "guard-false"
+  if (residency(view) === "latest") return at.head ? undefined : "latest-not-head"
+  return !view.consumes?.length || view.consumes.some((id) => at.theater[id] !== undefined) ? undefined : "turn-nothing"
+}
+
+/** The rules every view's shadow root carries after the media frame's sheet (lightbox.css) and before the view's own:
+ *  the reader's (packages/client/src/view-shell.tsx) and the static preview's (view-preview.ts) one sheet.
+ *  A `data-media` element the author left unsized fills the line: in a flex row it would otherwise shrink to the
+ *  frame's zero content width. `:where` keeps a rule at zero specificity, so any author rule wins. A view's button
+ *  takes the view's font and colour, and a pointer while it is live. */
+export const VIEW_DEFAULTS = `
+.view-image:not([data-fit=natural]) { width:100%;height:100% }
+:where(:has(> .view-image)) { width:100%;width:-webkit-fill-available;width:stretch }
+:where(button) { font:inherit;color:inherit }
+:where(button:enabled) { cursor:pointer }`
