@@ -1,10 +1,10 @@
-# A complete in-stream view example for the card-author skill (skills/card-author/references/views.md).
-# Two views: `hud` (residency: latest) and `radio` (residency: turn). `bun run tavern card check` passes it with no
-# errors and no warnings, and packages/runtime/test/status-view.ts plays status-view.scenario.yaml on it, so a change
-# that breaks this example breaks the build.
+# Complete in-stream view showcase for the card-author skill (references/views.md).
+# Demonstrates: Field.bands + meta.* (ratio/band/bandLabel), rules.derived + derived.*,
+# views[].consts, world catalog column + data-media, residency: latest vs. turn, and data-fill.
+# Verified by packages/runtime/test/status-view.ts with zero errors and zero warnings.
 #
-# The catalogs' baseUrl (https://media.example.org/…) is a placeholder on a reserved example domain: no image is
-# served there. Put your own https host in its place; everything else works as written.
+# The catalogs' baseUrl (https://media.example.org/…) is a placeholder on a reserved example domain.
+# Replace it with your own https host; everything else works as written.
 id: status-view
 title: 雪线小屋
 summary: |-
@@ -27,7 +27,17 @@ greetings:
       门被风顶开一道缝，雪粉扑进来。{{char}}抬头看了你一眼，把炉门拉开，往里塞了一块柴。“坐近点，”她说，“今晚不会停。”
 rules:
   fields:
-    - { path: warmth, type: int, initial: 6, min: 0, max: 10, label: 炉温 }
+    - path: warmth
+      type: int
+      initial: 6
+      min: 0
+      max: 10
+      label: 炉温
+      bands:
+        - { id: out, min: 0, label: 将熄 }
+        - { id: low, min: 2, label: 微弱 }
+        - { id: warm, min: 5, label: 稳定 }
+        - { id: bright, min: 8, label: 旺盛 }
     - { path: weather, type: enum, options: [晴, 风雪, 暴雪], initial: 风雪, label: 天气 }
   actions: []
   readouts:
@@ -43,10 +53,16 @@ rules:
         - { id: clear, text: 雪停了，天放晴, do: [{ path: weather, set: 晴 }] }
         - { id: snow, text: 风雪, do: [{ path: weather, set: 风雪 }] }
         - { id: storm, text: 暴雪, do: [{ path: weather, set: 暴雪 }] }
+  derived:
+    - id: supply_total
+      label: 存货总数
+      op: sum
+      table: supplies
+      column: count
 lore: []
 guard: []
 catalogs:
-  # A state-driven image: the first item whose `when` holds is the view's `scene` slot.
+  # State-driven image: the first item whose `when` holds fills the view's `scene` slot.
   - id: hut_scenes
     kind: image
     baseUrl: https://media.example.org/snowline/scenes
@@ -54,13 +70,13 @@ catalogs:
       - { id: clear, label: 晴夜, when: { path: weather, is: 晴 }, variants: [clear.webp] }
       - { id: storm, label: 暴雪, when: { path: weather, is: 暴雪 }, variants: [storm.webp] }
       - { id: snow, label: 风雪, variants: [snow.webp] }
-  # A constant image: one item and no `when`, so the slot always has it.
+  # Constant image: one item without `when`, always active.
   - id: crest
     kind: image
     baseUrl: https://media.example.org/snowline
     items:
       - { id: map, label: 山口地图, variants: [map.webp], aspect: 3 / 2 }
-  # Pictures the model picks through the `face` column of the `voices` product.
+  # Catalog-backed column on a `theater` table (`voices.face`).
   - id: faces
     kind: image
     baseUrl: https://media.example.org/snowline/faces
@@ -113,13 +129,16 @@ products:
     text: |-
       玩家角色接下来可以说或做的三件事，每条一句，用玩家角色的口吻。
 views:
-  # The HUD: on the newest turn only (`latest`), so it may read `world`. It consumes the composer options and draws
-  # them as buttons that fill the input box. `residency: latest` is written out because a view with `consumes`
-  # defaults to `turn`.
+  # HUD: mounts on the newest turn (`residency: latest`) so it reads `world` and `derived`.
+  # Consumes `options` (one product → `value`), falling back to `consts.chores` before turn 1.
   - id: hud
     label: 小屋状态
     residency: latest
     consumes: [options]
+    consts:
+      chores:
+        - { label: 添一块柴, prompt: 我起身从墙角抱起一块干柴，添进铸铁炉里。 }
+        - { label: 调电台旋钮, prompt: 我伸手把旧电台的旋钮微微拧动，听着杂音里的动静。 }
     media:
       - { id: scene, catalog: hut_scenes }
       - { id: crest, catalog: crest }
@@ -140,9 +159,9 @@ views:
       header { display: flex; align-items: center; gap: 8px; font-size: var(--text-body); }
       .badge { padding: 1px 8px; border-radius: var(--radius-pill); background: var(--alpha-2); color: var(--ink-2); }
       .gauge { position: relative; height: 6px; margin: 8px 0; border-radius: var(--radius-pill); background: var(--alpha-2); overflow: hidden; }
-      .fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--warmth, 0) / 10 * 100%); background: var(--ok); }
-      /* red below 20%: opacity is 1 at warmth 0 and 1, 0 from 2 up; no comparison needed */
-      .fill::after { content: ""; position: absolute; inset: 0; background: var(--danger); opacity: clamp(0, 2 - var(--warmth, 0), 1); }
+      .fill { position: absolute; inset: 0 auto 0 0; width: calc(var(--ratio, 0) * 100%); background: var(--ok); }
+      .hud[data-band="out"] .fill { background: var(--danger); }
+      .hud[data-band="low"] .fill { background: var(--warn); }
       .tabs input { position: absolute; opacity: 0; }
       .tabs label { padding: 2px 10px; border-radius: var(--radius-pill); cursor: pointer; color: var(--ink-2); }
       .tabs input:checked + label { background: var(--alpha-2); color: var(--ink); }
@@ -151,14 +170,15 @@ views:
       .scene { width: 100%; aspect-ratio: 16 / 9; border-radius: var(--radius); overflow: hidden; }
       ul { margin: 0; padding-left: 1.2em; }
       .moves { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-      .moves button { padding: 4px 10px; border: 0; border-radius: var(--radius-pill); background: var(--fill); }
+      .moves button { padding: 4px 10px; border: 0; border-radius: var(--radius-pill); background: var(--fill); color: var(--ink); }
       .moves button:disabled { opacity: 0.5; }
     html: |
-      <section class="hud" data-attr-weather="fields.weather" data-var-warmth="fields.warmth">
+      <section class="hud" data-attr-weather="fields.weather" data-attr-band="meta.warmth.band" data-var-ratio="meta.warmth.ratio">
         <div class="backdrop" data-media="media.crest" data-fit="cover"></div>
         <header>
           <strong data-text="names.char"></strong>
           <span class="badge" data-text="fields.weather"></span>
+          <span class="badge" data-text="meta.warmth.bandLabel"></span>
           <span class="badge" data-if="world.hut.lit">灯亮着</span>
           <span class="badge" data-unless="world.hut.lit">灯灭了</span>
         </header>
@@ -167,7 +187,7 @@ views:
           <input type="radio" name="tab" id="tab-room" checked>
           <label for="tab-room">屋内</label>
           <input type="radio" name="tab" id="tab-store">
-          <label for="tab-store">存货</label>
+          <label for="tab-store">存货（<span data-text="derived.supply_total"></span>）</label>
           <div class="panel room">
             <div class="scene" data-media="media.scene" data-lightbox></div>
             <p>门<span data-text="world.hut.door"></span>。</p>
@@ -179,15 +199,17 @@ views:
           </div>
         </div>
         <details>
-          <summary>炉温读数</summary>
-          <p><span data-text="fields.warmth"></span> / 10</p>
+          <summary><span data-text="meta.warmth.label"></span>读数</summary>
+          <p><span data-text="fields.warmth"></span> / <span data-text="meta.warmth.max"></span></p>
         </details>
-        <div class="moves" data-each="value" data-as="move">
+        <div class="moves" data-if="value" data-each="value" data-as="move">
           <button data-fill="move" data-text="move"></button>
         </div>
+        <div class="moves" data-unless="value" data-each="consts.chores" data-as="act">
+          <button data-fill="act.prompt" data-text="act.label"></button>
+        </div>
       </section>
-  # The radio: one per turn that has `voices` (`residency` defaults to `turn` because it consumes a product), so every
-  # past turn keeps what its radio said. A turn view reads its own turn's `fields` and `theater`, never `world`.
+  # Radio: `residency` defaults to `turn` because it consumes `voices`, keeping each turn's broadcast in history.
   - id: radio
     label: 电台
     consumes: [voices]

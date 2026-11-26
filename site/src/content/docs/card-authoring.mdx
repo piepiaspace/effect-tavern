@@ -1,11 +1,13 @@
 ---
 title: Card Authoring & Workshop
-description: How to structure Card YAML, follow the two-hat workflow, avoid live-play pitfalls, and use the Workshop.
+description: Card YAML structure, two-hat workflow, design invariants, in-stream views, and the Workshop.
 sidebar:
   order: 2
 ---
 
-A card in Effect Tavern is a single declarative YAML or JSON document validated by `Card` (`packages/runtime/src/card.ts`). Authors write zero template logic or regex parsers: conditions use the closed `Cond` tree, and effects use `{ set }`, `{ add }`, and `{ event }`.
+A card in Effect Tavern is a declarative YAML or JSON document validated by `Card` (`packages/runtime/src/card.ts`). Conditions use the closed `Cond` tree, and effects use scalar primitives (`set`, `add`, `event`) plus controlled `world` mutation primitives (`replace`, `patch`, `put`, `remove`).
+
+To start from a working file, copy `skills/card-author/examples/starter.yaml` (minimal neutral template) or inspect `skills/card-author/examples/status-view.yaml` (full view showcase).
 
 ## 1. Where Everything Goes
 
@@ -15,98 +17,104 @@ A card in Effect Tavern is a single declarative YAML or JSON document validated 
 | `fiction` | Character sheets, cast, world prose & state-gated **bands** (`narrate` only) | `{ id, label?, text, when? }` |
 | `greetings` | Static openings (`text`) or dynamic narrated openings (`note` + `start` fields) | `[{ text?, do?, note? }]` |
 | `passages` | Post-`record` chapter transitions, macro-loops & endings (`boundary` / `over`) | `[{ when, text?, note?, do?, digest?, end? }]` |
-| `rules.fields` | Scalar state (`int`, `number`, `boolean`, `enum`) & UI meter shape (`drawn`) | `{ path, type, initial, label?, group?, min?, max?, options?, hidden?, start?, view? }` |
+| `rules.fields` | Scalar state (`int`, `number`, `boolean`, `enum`), named `bands` & UI meter shape (`drawn`) | `{ path, type, initial, label?, group?, min?, max?, options?, bands?, hidden?, start?, view? }` |
 | `rules.actions` | Pre-narration mechanical moves & seeded rolls | `{ id, text, when?, roll?, hit?, miss?, do? }` |
-| `rules.readouts` | Post-narration multiple-choice judgements moving prose-driven fields | `{ id, text, when?, options: [{ id, text, do }] }` |
+| `rules.readouts` | Post-narration multiple-choice judgements moving prose-driven fields & world state | `{ id, text, when?, options: [{ id, text, do }] }` |
+| `rules.derived` | Closed pure aggregations (`count`, `sum`, `any`) over top-level `world` tables, exposed at `derived.<id>` | `[{ id, label?, op, table, column?, where? }]` |
 | `lore` | Progressive `layers` (`unlock` floor + `offer` window), `sections` appendices & `ContextPolicy` | `{ id, layers, sections?, unlock, offer, access?, activation?, residency? }` |
-| `products` | Typed `world`, `chronicle`, or `theater` schemas (`text`, `list`, `record`, `table`) | `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }` |
-| `catalogs` | Attachment registries (illustrations, BGM, voice) picked by ID in `record` | `{ id, kind?, baseUrl?, items: [{ id, label?, when?, focus?, aspect?, variants? }] }` |
+| `products` | Typed `world`, `chronicle`, or `theater` schemas (all three support `catalog` enum columns) | `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }` |
+| `catalogs` | Static attachment registries (image, audio) filtered per turn by `item.when` in `record` | `{ id, kind?, baseUrl?, items: [{ id, label?, when?, focus?, aspect?, variants? }] }` |
 | `guard` / `lexicon` | Post-prose prohibitions (`check`) & wildcard slop patterns (`polish`) | `guard: string[]`, `lexicon: [{ pattern, hint?, max? }]` |
-| `media` | Portraits, after-paragraph illustrations, the gallery and a per-turn track, bound to catalogs | `{ illustrations?, portraits?, gallery?, bgm? }` |
-| `views` | Status bars, panels and option buttons drawn in the story column from fields and products (never sent to a model) | `{ id, label?, consumes?, residency?, when?, media?, html, css? }` |
+| `media` | Portraits, after-paragraph illustrations, gallery, and per-turn track bound to catalogs | `{ illustrations?, portraits?, gallery?, bgm? }` |
+| `views` | Status bars, panels, and option buttons drawn in the story column (never sent to a model) | `{ id, label?, consumes?, residency?, when?, consts?, media?, html, css? }` |
 
-### Lore Layers vs. Lore Sections (Replacing Keyword Worldbooks)
-Legacy `World Info` / `character_book` entries rely on `constant` ("blue light") vs. `selective` ("green light") keyword scanning over chat text—firing spoilers on casual mentions and missing entries when synonyms are used. Effect Tavern separates lore along two structural axes instead:
-- **Layers (`layers: string[]`)** represent vertical narrative progression: `unlock` sets the monotone floor along the story path, while `offer` opens `current + 1` when an event or counter (`lore.<id>.since | shown`) matches. The first sentence of `layers[0]` serves as the semantic `lookup` **hook**.
-- **Sections (`sections: [{ id, text }]`)** represent horizontal appendices (`card:<entry>#<section>`), such as detailed timelines or technical lore. They are never gated by plot events and are fetched on demand by `lookup` only when relevant to the current turn.
+### Field `bands`, `meta`, and `rules.derived`
 
-### UI Field Drawing (`drawn`)
-Clients render `rules.fields` directly from their bounds and band thresholds—no widget code required:
-- `enum` → **`steps`** track.
-- Bounded `int` (`min` and `max` set) → **`scale`** (staged cells with a dot, e.g. affection `-30..100`) when `min < 0` or `fiction` bands cut 2+ thresholds; otherwise **`gauge`** (`now / max` stock bar, e.g. HP `0..100`). Set `view: "gauge" | "scale"` to override.
-- Any other scalar → **`value`** row.
+- **`Field.bands` & `meta.<field>`:** Numeric fields can declare ordered named stages `bands: [{ id, min, label }]`. The runtime automatically exposes read-only `meta.<field>` (`label`, `min`, `max`, `ratio`, `band`, `bandLabel`) to `Cond` and all views, and `Cond` supports `{ path: warmth, band: [out, low] }` so thresholds are declared once.
+- **UI Field Drawing (`drawn`):** `enum` → `steps`; bounded `int` → `scale` when `min < 0` or `bands` / `fiction` cut 2+ thresholds, else `gauge` (override with `view: "gauge" | "scale"`); everything else → `value`.
+- **`rules.derived`:** Zero-token pure aggregations (`count`, `sum`, `any`, with optional row-level `where`) over top-level `world` tables, exposed at `derived.<id>` in `Cond` and `latest` views.
 
-### Post-Record `Passages`, Epoch Boundaries & Endings
+### Lore Layers vs. Lore Sections
+
+- **Layers (`layers: string[]`):** Vertical narrative progression. `unlock` sets the monotone floor along the story path, while `offer` opens `current + 1` when state, events, or `lore.<id>.since | shown` match. The first sentence of `layers[0]` serves as the natural-language `lookup` hook.
+- **Sections (`sections: [{ id, text }]`):** Horizontal appendices (`card:<entry>#<section>`), fetched on demand by `lookup` whenever the parent entry is visible.
+
+### Post-Record `passages`, Epoch Boundaries & Endings
+
 Cards with multi-day loops, act breaks, or authored epilogues (see `samples/life-of-pi/life-of-pi.yaml`) declare `passages` evaluated first-match-wins after player `record` commits:
-- **`text` / `note` + `do`:** Appends a static (`text`) or narrated (`note`) transition child node (`passage: true`), applying `do` effects (e.g. resetting a daily clock while advancing a loop counter).
-- **`digest` (`boundary: true`):** Runs an interval `record` pass for the named `record`-stage product IDs (`digest: []` marks a pure boundary) over the ending epoch's transcript—starting a clean `narratorHistory` and compression window while preserving scalar `fields`, `lore` unlock floors, and `world`/`chronicle` state.
-- **`end: true`:** Marks the passage node `end: "over"`, preventing further child turns under a finished story branch.
+
+- **`text` / `note` + `do`:** Appends a static (`text`) or narrated (`note`) transition child node (`passage: true`) and applies `do` effects (both scalar and `world` ops).
+- **`digest` (`boundary: true`):** Runs an interval `record` pass for the named product IDs (`digest: []` marks a pure boundary) over the ending epoch—starting a clean `narratorHistory` and compression window while preserving scalar `fields`, `lore` unlock floors, and `world`/`chronicle` state.
+- **`end: true`:** Marks the passage node `end: "over"`, preventing further child turns under a finished branch.
 
 ## 2. The Two-Hat Workflow
 
-Always build a card in two distinct passes:
+Build a card in two distinct passes:
 
 <Steps>
   <Step title="Hat 1 — Architect (Mechanism & Skeleton)">
-    Keep prose to one-line placeholders. Choose the two coordinates (`persona` + `input`), declare `rules.fields`, decide which fields move via `actions` vs. `readouts`, wire `lore` floors/windows, add `fiction` band `when` conditions, and define `greetings[].do`.
+    Keep prose to one-line placeholders. Choose the two coordinates (`persona` + `input`), declare `rules.fields` (with `bands`), `actions` / `readouts`, `rules.derived`, `lore` gates, `products`, and `views`.
 
-    Run `card check` until zero errors remain and every greeting's initial state, active bands, and turn-1 windows match intent. Lock mechanics with a zero-token `scenario.yaml` via `card test`.
+    Run `bun run tavern card check <card>` until zero errors remain and every greeting's initial state and active bands match intent. Lock mechanics with a zero-token `scenario.yaml` via `card test`.
   </Step>
   <Step title="Hat 2 — Novelist (Prose & Voice)">
     Freeze the mechanism. Write full prose for `frame`, `fiction` bands, `lore` layers/sections, and `greetings`.
 
-    Re-run `card check` (catching `field-in-prose`, `inline-product`, `hook-length`, `unfilled-name`, `empty-text`) and inspect exact stage prompts with `card view` across boundary states (`--state bond=59` vs. `--state bond=60`).
+    Re-run `card check` (catching `field-in-prose`, `inline-product`, `hook-length`, `unfilled-name`, `empty-text`) and inspect exact stage prompts with `card view` across boundary states.
   </Step>
 </Steps>
 
-## 3. Proven Design Rules from Live Play
+## 3. Key Design Invariants
 
 <Aside type="caution" title="Four Classic Card Bugs to Avoid">
-  1. **Write readout options as observable deeds, never internal psychology.** Reserved prose keeps feelings implicit, causing `record` to pick the conservative option forever. Name visible acts (`accepts the letter`, `asks about the scar`).
-  2. **Do not let a `fiction` band prescribe the trajectory its readout measures.** A band should describe present tension and leave room for the scene to move.
-  3. **Cover the "raised, not yet answered" state on latching readouts.** When a readout shares its `when` condition with a `lore` `offer`, `record` asks it on the very turn the NPC raises the topic—before the player replies. Include an explicit in-flight neutral option so the model is not forced into `refused`.
-  4. **Set `Field.initial` to the lowest baseline shared across all greetings** and place route-specific deltas in `greetings[n].do`. Never put character profiles inside `frame` (non-writing `frame` slots enter `<world>` on every off-stage pass, including `direct`).
+  1. **Write readout options as observable deeds, never internal psychology.** Reserved prose keeps feelings implicit, causing `record` to pick the neutral option forever. Name visible acts (`accepts the letter`, `asks about the scar`).
+  2. **Do not let a `fiction` band prescribe the trajectory its readout measures.** Describe present posture and tension while leaving room for the scene to move.
+  3. **Cover the "raised, not yet answered" state on latching readouts.** When a readout shares its `when` condition with a `lore` `offer`, `record` asks it on the turn the NPC raises the topic—before the player replies. Include an explicit in-flight neutral option so the model is not forced into `refused`.
+  4. **Set `Field.initial` to the lowest baseline shared across all greetings** and place route-specific deltas (including `world` patches) in `greetings[n].do`. Keep character profiles out of `frame` (non-writing `frame` slots enter `<world>` on every off-stage pass).
 </Aside>
 
 ## 4. Views: Status Bars and Panels in the Story
 
-A view is a small HTML template with its own CSS that the client draws under a turn's prose. It never reaches a model and runs no script: the client fills it from the turn's data through a few `data-*` attributes, inside a Shadow DOM so its CSS styles only itself. The skill reference `skills/card-author/references/views.md` holds the full rules, and `skills/card-author/examples/status-view.yaml` is a complete card that passes `card check`.
+A view (`ViewShell`) is a small scriptless HTML + CSS template rendered inside a Shadow DOM under a turn's prose. It never reaches a model. Full rules live in `skills/card-author/references/views.md`, with a complete passing card at `skills/card-author/examples/status-view.yaml`.
 
 ### What a view can read
 
-Every directive takes a plain dotted path. There are no expressions: no comparisons, arithmetic, negation, formatting or `{{macros}}`.
+Every directive takes a plain dotted path—no expressions, comparisons, arithmetic, negation, or `{{macros}}`:
 
-| Path | What it is |
-| --- | --- |
-| `fields.<field>` | A field's raw value. Its `min`, `max`, `label` and options are not readable, so a gauge's maximum is written into the CSS. |
-| `world.<product>…` | A `world` product, only in a `residency: latest` view. A record by its keys; a table as an array of `{ entityId, ...columns }` rows. |
-| `theater.<product>…` | This turn's `theater` products, readable without consuming them. |
-| `media.<slot>` | The view's own image slot, set when one of its catalog's items applies. |
-| `names.<key>` | `user`, `char` and the card's other names. |
-| `value` | When `consumes` lists exactly one product: that product's value (a record's keys are also top-level names). |
+| Path | Availability | What it is |
+| --- | --- | --- |
+| `fields.<field>` | `latest` / `turn` | A field's raw value. |
+| `meta.<field>.*` | `latest` / `turn` | Read-only field metadata: `label`, `min`, `max`, `ratio` (`0..1`), `band`, `bandLabel`. |
+| `world.<product>…` | `latest` only | A `world` product: records by key; tables as `{ entityId, ...columns }[]`. |
+| `derived.<id>` | `latest` only | Value of a `rules.derived` aggregation. |
+| `theater.<product>…` | `latest` / `turn` | This turn's `theater` products, readable without consuming them. |
+| `consts.<key>…` | `latest` / `turn` | The view's own read-only `consts` tree (`{{key}}` expanded). |
+| `media.<slot>` | `latest` / `turn` | The view's own image slot, set when a catalog item applies. |
+| `names.<key>` | `latest` / `turn` | `user`, `char`, and the card's other names. |
+| `value` | Single `consumes` | That product's value (a record's keys are also top-level names). |
 
-Chronicle products, lore, events and the turn number are not readable.
+Chronicle products, lore, events, and turn numbers are not in scope.
 
 ### Where a view appears
 
-- `residency: latest` (the default without `consumes`): only on the newest turn, and the only kind that reads `world`.
-- `residency: turn` (the default with `consumes`): on every turn that has one of its consumed products, reading that turn's fields and theater.
-- `consumes` claims `theater` products (including `surface: composer` option lists). The default chrome stops drawing a claimed product on every turn where the view applies, so a product claimed by a `latest` view does not show on past turns. Something that should remain on each past turn, such as a letter, belongs in its own `turn` view.
+- `residency: latest` (default without `consumes`): mounts only on the newest turn, and is the only residency that reads `world` and `derived`.
+- `residency: turn` (default with `consumes`): mounts on every turn that has a consumed product, reading that turn's `fields`, `meta`, and `theater`.
+- `consumes` claims `theater` products (including `surface: composer` option lists). Default chrome hides claimed products on every turn where the view applies; a product claimed by a `latest` view does not appear on past turns—use a separate `turn` view for history items.
 
 ### Directives
 
 | Directive | Does |
 | --- | --- |
-| `data-text="path"` | Shows a value as text. |
-| `data-if` / `data-unless` | Draws the element only when the value is truthy / falsy. |
+| `data-text="path"` | Shows a value as plain text. |
+| `data-if` / `data-unless` | Draws the element only when truthy / falsy. |
 | `data-each="path" data-as="row"` | Repeats the element's children per item; `row.<column>` and `row.$num` inside. |
-| `data-media="source"` | Draws a catalog image: `media.<slot>`, `portraits.<slot>`, or `<catalog>:<path>` on a catalog column. Optional `data-fit`, `data-lightbox`. |
+| `data-media="source"` | Draws a catalog image: `media.<slot>`, `portraits.<slot>`, or `<catalog>:<path>` on a `theater` or `world` catalog column. Optional `data-fit`, `data-lightbox`. |
 | `data-attr-<k>="path"` | Writes `data-<k>="value"` for CSS attribute selectors. |
-| `data-var-<k>="path"` | Sets `--<k>` when the value is a number, for `calc()` and `clamp()`. |
+| `data-var-<k>="path"` | Sets `--<k>` when the value is a finite number (e.g., `meta.<field>.ratio`). |
 | `<details data-open="latest">` | Open on the newest turn, closed on past ones. |
-| `<button data-fill="path">` | Puts the value into the input box; never sends. Enabled only on the newest turn, with no turn in flight, a value that is not blank, and a name (an `aria-label`, or the words it shows with that turn's data). Holds words only: no control or image inside. |
+| `<button data-fill="path">` | Fills the input box on click; never sends. Enabled only on the newest turn, idle, non-blank value, with an accessible name; holds text only. |
 
-Tabs come from radio inputs and `:checked ~` in CSS; thresholds come from `clamp()` on a `data-var-*`, a view with a `when`, or an enum field with `data-attr-*`; colours follow the theme with `light-dark()` and the app's tokens such as `--ink`, `--line` and `--danger`.
+Use radio inputs + `:checked ~` for tabs, `Field.bands` + `meta.<f>.band` + `data-attr-band` for threshold styling, `views[].consts` for static quick-action buttons, and `light-dark()` + host tokens (`--ink`, `--line`, `--primary`, `--ok`, `--warn`, `--danger`) for theming.
 
 ### A short example
 
@@ -115,54 +123,57 @@ views:
   - id: warmth
     label: 炉温
     css: |
-      .gauge { height: 6px; border-radius: 3px; background: var(--alpha-2); }
-      .fill { display: block; height: 100%; width: calc(var(--warmth, 0) / 10 * 100%); background: light-dark(#c2410c, #fb923c); }
+      .gauge { height: 6px; border-radius: 3px; background: var(--alpha-2); overflow: hidden; }
+      .fill { display: block; height: 100%; width: calc(var(--ratio, 0) * 100%); background: var(--ok); }
+      [data-band="out"] .fill { background: var(--danger); }
     html: |
-      <div class="gauge" role="meter" aria-label="炉温" data-var-warmth="fields.warmth"><span class="fill"></span></div>
-      <p data-unless="fields.warmth">炉火灭了。</p>
+      <div class="gauge" role="meter" aria-label="炉温" data-var-ratio="meta.warmth.ratio" data-attr-band="meta.warmth.band">
+        <span class="fill"></span>
+      </div>
+      <p><span data-text="meta.warmth.bandLabel"></span> (<span data-text="fields.warmth"></span> / <span data-text="meta.warmth.max"></span>)</p>
 ```
 
 ### Check and preview
 
+Run `skills/card-author/scripts/verify-card.sh <card> [scenario.yaml] [preview.html]`, or run each step directly:
+
 <Steps>
   <Step title="Check">
-    `bun run tavern card check <card>` reports every view problem at `views.<id>.html:<line>:<column>` or `views.<id>.css:<line>:<column>` (line 1 is the first line of the block) with a hint, resolves every path against the card ("did you mean"), and checks each value's type against its directive.
+    `bun run tavern card check <card>` reports every view issue at `views.<id>.html:<line>:<column>` or `.css:`, validates every path and type, and suggests fixes.
   </Step>
   <Step title="Preview">
-    `bun run tavern card view <card> --views --scenario <scenario.yaml> --html views.html` plays the scenario offline, prints whether each view mounts and what every binding resolved to, and writes a static page. Theater products exist only after a turn, so script them in the scenario.
+    `bun run tavern card view <card> --views --scenario <scenario.yaml> --html views.html` plays the scenario offline, prints mount status and every resolved binding, and writes a light/dark preview page.
   </Step>
   <Step title="Install">
-    Lock the turns with `card test` (`expect.world` asserts what a view reads), then `bun run tavern card install <card>`.
+    Lock turns with `bun run tavern card test <card> <scenario.yaml>`, then `bun run tavern card install <card>`.
   </Step>
 </Steps>
 
 <Aside type="caution" title="What a view cannot do">
-  No script, no `<style>`, `<img>`, `<a>`, `<iframe>`, `<audio>`, `<video>`, `<canvas>` or `<form>`, no inline `style=`, no `on*` handlers; in CSS no `@import`, `@font-face`, `@property`, `attr()`, and no `url()` except `url(#id)`. Images come only from `https://` catalogs. A view cannot write state, cannot play sound, and receives no world data on past turns; tab and fold state resets when a `latest` view moves to the new turn.
+  No script, no `<style>`, `<img>`, `<a>`, `<iframe>`, `<audio>`, `<video>`, `<canvas>` or `<form>`, no inline `style=`, no `on*` handlers; in CSS no `@import`, `@font-face`, `@property`, `attr()`, and no `url()` except `url(#id)`. Images come only from `https://` catalogs. A view cannot mutate state, cannot play sound, and receives no `world`/`derived` data on past turns; tab and fold state resets when a `latest` view moves to the new turn.
 </Aside>
 
 ## 5. Media
 
-`media` binds catalogs to the reader: `portraits` (a slot showing the first item of a catalog whose `when` holds), `illustrations` (a `chronicle` or `theater` table product whose rows place catalog images after numbered paragraphs), `gallery` (catalogs collected on the card page) and `bgm` (a one-row table product that records a track from an `audio` catalog each turn). A catalog bound to media needs an `https://` `baseUrl` and relative `variants`; items may carry `label`, `focus: [x, y]` and `aspect: "W / H"`. The client has no music player yet, so a `bgm` track is recorded but not played.
+`media` binds catalogs to the reader: `portraits` (first item whose `when` holds), `illustrations` (`chronicle` or `theater` table placing catalog images after numbered paragraphs), `gallery` (catalogs shown on the card page), and `bgm` (a one-row table recording a track from an `audio` catalog each turn; no client audio player yet). Media-bound catalogs require an `https://` `baseUrl` and relative `variants`; items may set `label`, `focus: [x, y]`, and `aspect: "W / H"`.
 
 ## 6. Workshop & Legacy Card Remastering
 
-Effect Tavern ships three AI-assisted Workshop operations (`packages/runtime/src/workshop.ts`, exposed via HTTP `/api/author/*` and `tavern card`):
+Effect Tavern ships AI-assisted Workshop operations (`packages/runtime/src/workshop.ts`, via `/api/author/*` and `tavern card`):
 
-- **`tavern card unroll`** (`bun run tavern card unroll <card.png|card.json>`): Read-only inspection tool that prints a SillyTavern V2/V3 card in ST's exact assembly order, ready to audit and feed into `sort`.
-- **`tavern card compile`**: Compiles `rules` and `bindings` from selected card prose and a natural-language `--intent`. Its output schema contains **no prose fields**—existing prose stays untouched and new prose/rubric slots remain empty (`empty-text`) for the author to write.
-- **`tavern card sort`**: Places whole paragraphs from a source Markdown file into `frame`, `fiction`, `greetings`, or `lore` slots verbatim without rewriting a word.
-- **`tavern card review`**: Read-only semantic consistency pass returning path-addressed `review:consistency` warnings.
+- **`tavern card unroll`:** Read-only tool printing a SillyTavern V2/V3 card in ST's assembly order.
+- **`tavern card compile`:** Compiles `rules` and `bindings` from selected prose and `--intent`; output contains no prose fields so existing prose stays verbatim and new slots remain empty (`empty-text`).
+- **`tavern card sort`:** Places whole paragraphs from Markdown notes into `frame`, `fiction`, `greetings`, or `lore` without rewriting.
+- **`tavern card review`:** Read-only semantic consistency check returning `review:consistency` warnings.
 
-### Remastering SillyTavern V2/V3 Cards: What Goes Where
+### Remastering SillyTavern V2/V3 Cards
 
-When porting an unrolled SillyTavern card, preserve the author's character and world prose verbatim while stripping legacy prompt scaffolding:
-
-| SillyTavern Construct | Effect Tavern Target (or Negative Constraint) |
+| SillyTavern Construct | Effect Tavern Target |
 | --- | --- |
-| `description` / `personality` / `mes_example` | `fiction` fragments (`when`-gated `Band`s when posture shifts with state; never place in `frame`) |
-| `scenario` | Premise in `frame` (`setting` slot); active scene posture in `fiction` |
-| `first_mes` + `alternate_greetings` | `greetings[n].text`, factoring route-specific initial state into `greetings[n].do` |
-| `character_book` (`constant` / `selective` entries) | `fiction` (always-on) or `lore` (`layers` + `sections` + natural first-sentence `hook`; discard regex keyword lists) |
-| `at_depth` (`@D0`–`@D4`), `Author's Note`, `post_history_instructions` | **No depth injection.** Route voice rules to `frame`, prohibitions to `guard`, slop lists to `lexicon`, and state shifts to `fiction` bands |
-| Inline `<status>` bars, MVU JSON blocks & regex scripts | **Discard format prompts & regexes.** Model scalar axes in `rules.fields` (`actions` / `readouts`), world tables in `world` `products`, and side blocks in `theater`; rebuild the bar's look as a view (section 4) |
-| `{{user}}` / `{{char}}` vs. `{{setvar}}` / `{{roll}}` | Keep proper-noun holes in `names`; replace stateful/random macros with `rules.fields`, `Cond`, `Effect`, and `Action.roll` |
+| `description` / `personality` / `mes_example` | `fiction` fragments (`when`-gated bands for state-dependent posture; keep out of `frame`) |
+| `scenario` | Premise in `frame` (`setting`); active scene posture in `fiction` |
+| `first_mes` + `alternate_greetings` | `greetings[n].text`, factoring per-opening scalar/world deltas into `greetings[n].do` |
+| `character_book` (`constant` / `selective`) | `fiction` (always-on) or `lore` (`layers` + `sections` + natural first-sentence hook; drop regex keys) |
+| `at_depth`, Author's Note, `post_history_instructions` | Voice rules → `frame`; prohibitions → `guard`; slop → `lexicon`; state shifts → `fiction` bands |
+| Inline `<status>` bars, MVU JSON & regex scripts | Scalar axes → `rules.fields` (`bands`/`actions`/`readouts`); world tables → `world` products; side blocks → `theater`; UI → `views` (section 4) |
+| `{{user}}` / `{{char}}` vs. `{{setvar}}` / `{{roll}}` | Proper nouns → `names`; stateful/random macros → `rules.fields`, `Cond`, `Effect_`, `Action.roll` |

@@ -40,12 +40,24 @@ assert.deepEqual(bindings.image("faces:voice.face", { voice: "value.1" }), {
   item: "stranger",
 })
 // The `hud` consumes the composer options: one consumed product, so `value` is the list its buttons fill from.
+// It also reads `meta.*` (bands/ratio), `derived.*` (world table sum), and `consts.*` (static quick actions).
 const hud = views.find((v) => v.id === "hud")!
-assert.deepEqual(
-  readPath(
-    viewBindings({ view: hud, node: { id: 2, theater: last.products }, products, names: card.names }).scope,
-    "value",
-  ),
-  ["请护林员进屋", "把门关上", "重新点灯"],
-)
+const hudScope = viewBindings({
+  view: hud,
+  node: { id: 2, fields: last.state, theater: last.products },
+  fields: card.rules.fields,
+  products,
+  names: card.names,
+  context: { derived: { supply_total: 9 } },
+}).scope
+assert.deepEqual(readPath(hudScope, "value"), ["请护林员进屋", "把门关上", "重新点灯"])
+assert.equal(readPath(hudScope, "meta.warmth.band"), "warm")
+assert.equal(readPath(hudScope, "meta.warmth.bandLabel"), "稳定")
+assert.equal(readPath(hudScope, "meta.warmth.ratio"), 0.6)
+assert.equal(readPath(hudScope, "derived.supply_total"), 9)
+assert.equal(readPath(hudScope, "consts.chores.0.label"), "添一块柴")
+
+// The minimal starter template also passes validation with zero diagnostics.
+const starter = validateCard(parseCard(readFileSync(resolve(dir, "starter.yaml"), "utf8")))
+assert.deepEqual(starter.diagnostics, [])
 console.log("status-view: ok")

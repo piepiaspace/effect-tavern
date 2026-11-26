@@ -1,0 +1,125 @@
+# Neutral, minimal card template passing `tavern card check` with zero errors and warnings.
+# Copy this file to start a new card: replace names, prose, fields, and view styling.
+id: starter
+title: 起点模板
+summary: 中立最小模板卡：演示字段阶梯（bands/meta）、世界表派生量（derived）、视图常量（consts）与流内视图。
+version: "1.0"
+source: hand
+names:
+  char: 同行者
+frame:
+  - id: persona
+    label: 玩家身份
+    text: 你是一名路过此地的旅人。
+  - id: setting
+    label: 场景前提
+    text: 一座安静的驿站，壁炉正暖，窗外天色将晚。
+fiction:
+  - id: companion
+    label: 同行者
+    text: "{{char}}坐在壁炉旁整理行囊，语气平和，习惯先听对方说完再回应。"
+  - id: posture-distant
+    label: 姿态（疏离）
+    when: { path: trust, band: [cold, neutral] }
+    text: "{{char}}保持着恰当的距离，礼貌回应你的话，不主动谈及自己的来历。"
+  - id: posture-close
+    label: 姿态（熟稔）
+    when: { path: trust, band: warm }
+    text: "{{char}}神色放松下来，愿意与你分享沿途见闻和随身物件。"
+greetings:
+  - text: 壁炉里的木柴轻轻爆了一声。{{char}}抬眼看你，把桌上空着的茶杯推近半寸：“先坐吧，外头风大。”
+rules:
+  fields:
+    - path: trust
+      label: 信任
+      type: int
+      min: 0
+      max: 10
+      initial: 3
+      start: true
+      bands:
+        - { id: cold, min: 0, label: 戒备 }
+        - { id: neutral, min: 3, label: 平和 }
+        - { id: warm, min: 7, label: 熟稔 }
+  actions: []
+  readouts:
+    - id: rapport
+      text: 这一幕里，{{char}}对你表现出的态度变化
+      options:
+        - { id: cool, text: 话题受阻、对方明显退后一步或结束交谈, do: [{ path: trust, add: -2 }] }
+        - { id: flat, text: 维持寻常寒暄或静默共处, do: [] }
+        - { id: warm, text: 主动递物、分享消息或放松神态继续交谈, do: [{ path: trust, add: 2 }] }
+  derived:
+    - id: pack_total
+      label: 物件总数
+      op: sum
+      table: pack
+      column: count
+lore: []
+guard: []
+products:
+  - id: scene
+    role: world
+    label: 驿站景况
+    feed: true
+    shape:
+      kind: record
+      keys:
+        - { key: place, type: enum, options: [大堂, 炉边, 门廊] }
+        - { key: time, type: enum, options: [傍晚, 深夜, 清晨] }
+    initial: { place: 炉边, time: 傍晚 }
+    text: 当前所在位置（place）与时段（time）。本轮未变时不要修改。
+  - id: pack
+    role: world
+    label: 随身物件
+    shape:
+      kind: table
+      columns:
+        - { key: name, type: text }
+        - { key: count, type: int }
+    initial:
+      tea: { name: 热茶, count: 2 }
+      lantern: { name: 提灯, count: 1 }
+    text: 桌上或随身可见的物件，每样一行：name 是名称，count 是数量。本轮未变时不要修改。
+  - id: options
+    role: theater
+    surface: composer
+    label: 接下来
+    shape: { kind: list, max: 3 }
+    text: 接下来你可以说的话或做的举动，至多三条，每条一句。
+views:
+  - id: hud
+    label: 状态栏
+    residency: latest
+    consumes: [options]
+    consts:
+      quick:
+        - { label: 添柴, prompt: 我往壁炉里添了一块木柴，顺口问起前方的路况。 }
+        - { label: 倒茶, prompt: 我替自己和对方各添了半杯热茶。 }
+    css: |
+      :host { display: block; font-family: var(--font-sans); color: var(--ink); }
+      .card { padding: 10px 14px; border-radius: var(--radius-card); background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+      .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: var(--text-body); }
+      .meta { font-size: var(--text-footnote); color: var(--ink-2); }
+      .bar { height: 6px; margin: 8px 0; border-radius: var(--radius-pill); background: var(--alpha-2); overflow: hidden; }
+      .fill { display: block; height: 100%; width: calc(var(--ratio, 0) * 100%); background: var(--primary); }
+      [data-band="cold"] .fill { background: var(--danger); }
+      [data-band="warm"] .fill { background: var(--ok); }
+      .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .chips button { padding: 4px 10px; border: 0; border-radius: var(--radius-pill); background: var(--fill); color: var(--ink); cursor: pointer; }
+      .chips button:disabled { opacity: 0.5; cursor: default; }
+    html: |
+      <section class="card" data-var-ratio="meta.trust.ratio" data-attr-band="meta.trust.band">
+        <div class="row">
+          <strong data-text="names.char"></strong>
+          <span class="meta"><span data-text="world.scene.place"></span> · <span data-text="world.scene.time"></span> · <span data-text="meta.trust.bandLabel"></span></span>
+        </div>
+        <div class="bar" role="meter" aria-label="信任"><span class="fill"></span></div>
+        <div class="meta">随身物件：<span data-text="derived.pack_total"></span> 件</div>
+        <div class="chips" data-if="value" data-each="value" data-as="opt">
+          <button data-fill="opt" data-text="opt"></button>
+        </div>
+        <div class="chips" data-unless="value" data-each="consts.quick" data-as="act">
+          <button data-fill="act.prompt" data-text="act.label"></button>
+        </div>
+      </section>

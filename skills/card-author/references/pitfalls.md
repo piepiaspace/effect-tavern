@@ -1,39 +1,26 @@
-# Design Rules, Live-Play Pitfalls & Canonical Cards
-
-Every rule below comes from a failure observed in live multi-turn runs and locked in regression tests. Check these whenever designing mechanics (Hat 1) or reviewing prose/rubrics (Hat 2).
+# Card Design Invariants & Reference Cards
 
 ## 1. Readout & Band Invariants
 
-1. **Options must name observable deeds, never internal psychology.**
-   - _Failure mode:_ In a restrained literary register, internal feelings stay subtextual; the `record` model conservatively picks the neutral option every turn and the field freezes.
-   - _Rule:_ Phrase readout options around concrete scene actions (`accepts the token`, `presses for details`, `changes the subject`).
-2. **A `fiction` band gated on field `X` must never prescribe the trajectory that `X`'s readout measures.**
-   - _Failure mode:_ If a low-`bond` band instructs the character to "deflect every approach and keep distance", the narrator obeys, the readout sees distance, and `bond` stays trapped in that band forever.
-   - _Rule:_ Describe present posture and tension in the band while leaving scene outcomes open to how the player acts.
-3. **Latching readouts must include an "open / raised, not yet answered" no-change option.**
-   - _Failure mode:_ When a readout shares its `when` threshold with a `lore` `offer` (e.g. a confession at `bond >= 60`), `record` evaluates the readout **on the very turn the NPC raises the confession**, before the player has replied. With only `did not happen / accepted / refused`, the model rules out `did not happen` and `accepted`, falsely latching `refused` (observed on `ri.yaml`).
-   - _Rule:_ Always cover the in-flight state in the neutral option (`raised this turn, awaiting player's answer`). Verify how `record` sees it via:
-     `bun run tavern card view <card> --stage record --state <field>=<threshold>`
-4. **Write authority determines whether prose can move a field.**
-   - Fields modified only by `rules.actions` are purely mechanical (e.g. `gold` stays unchanged even if improvised prose says "the innkeeper hands you three coins"). If narrative events should move a field, attach a `Readout` (`prose-cannot-move` lint).
+1. **Name observable deeds in readout options, not internal psychology.** In restrained prose, unspoken feelings remain implicit and `record` defaults to the neutral option. Phrase options around concrete scene behavior (`accepts the token`, `presses for details`, `changes the subject`).
+2. **Keep `fiction` bands descriptive of current posture, not prescriptive of readout outcomes.** If a low-affinity band instructs the character to deflect every approach, `narrate` obeys and the field cannot advance. Describe present tension and leave room for player action.
+3. **Include an in-flight neutral option on latching readouts.** When a readout's `when` matches a `lore` `offer` threshold, `record` evaluates it on the turn the topic is raised—before the player replies. Cover `raised this turn, awaiting player's answer` in the neutral option so `record` does not falsely latch `refused`. Verify with `bun run tavern card view <card> --stage record --state <field>=<threshold>`.
+4. **Match write authority to gameplay intent.** Fields written only by `rules.actions` are purely mechanical; attach a `readout` whenever narrative events should move a field (`prose-cannot-move` lint).
 
-## 2. Openings & `frame` Isolation
+## 2. Openings, `frame` Isolation & Hooks
 
-1. **Set `Field.initial` to the lowest shared baseline across all greetings; put per-opening deltas in `greetings[n].do`.**
-   - _Failure mode:_ Baking one route's elevated state (e.g. `bond: 60`) into `Field.initial` causes every other greeting to start past mid-game thresholds and fire late-game windows on turn 1.
-   - _Rule:_ Always inspect the per-greeting state, active bands, open windows, and active readouts printed by `card check`.
-2. **Never place character sheets inside `frame`.**
-   - _Failure mode:_ `frame` is prepended to **every** stage, including `lookup`, `decide`, and `direct`. Putting an NPC profile in `frame` caused `direct` to confuse background figures with scene leads (`ri.yaml`).
-   - _Rule:_ Put characters, casts, and world prose in `fiction` (`narrate` only); keep `frame` strictly for narrator voice, style, setting premise, language, and `persona` / `pov`.
-3. **Write lore hooks as the player refers to the topic, not as encyclopedic labels or keywords.**
-   - `layers[0]`'s first sentence (and each `section`'s first sentence) is what `lookup` scans. Keep it natural and specific.
+1. **Set `Field.initial` to the lowest baseline shared across greetings; put route-specific deltas in `greetings[n].do`.** (Including `world` patches when openings start in different places or times.) Verify per-greeting state, active bands, and turn-1 windows in `card check` output.
+2. **Keep character sheets out of `frame`.** Non-writing `frame` slots enter `<world>` on every off-stage pass (`lookup`, `decide`, `direct`). Put characters, casts, and world prose in `fiction` (`narrate` only); keep `frame` for `persona`, `pov`, `setting`, `voice`, `style`, `language`, and `verbosity`.
+3. **Write lore hooks as natural first sentences.** `layers[0]`'s first sentence (and each `section`'s first sentence) is what `lookup` scans—write how a player refers to the topic, not keyword lists.
 
-## 3. Fixture & Sample Cards (`packages/runtime/test/cards/`, `samples/`)
+## 3. Live-Verified Reference Cards
 
-Inspect these live-verified cards directly when looking for concrete YAML idioms:
+Inspect these cards for concrete YAML idioms:
 
-- **`packages/runtime/test/cards/banxing.yaml` (伴星)** — Pure chat (`participant mode` without rules or lore). Demonstrates porting V3 `mes_example` dialogue into an unlabelled `fiction` voice-sample fragment.
-- **`packages/runtime/test/cards/ri.yaml` (理)** — `participant mode` affection progression remastered from MVU: multi-stage `scale` bands on one field, `hidden: true` route switches, three greetings with distinct `do` states (`15`, `0`, `60`), and a latching confession readout.
-- **`packages/runtime/test/cards/wuxia.yaml` (竹林)** — Full RPG + memory showcase: `actions` with rolls, readout-driven `bond` bands, 3-layer `lore` with floor + event windows, `director: true`, `world` record (`scene`, `feed: true`, `heading: "scene.place"`) + `world` table (`people`, `recall: "who"`), and `guard`.
-- **`packages/runtime/test/cards/yandao.yaml` (盐道)** — `author mode` (`input: "note"`, no `persona`, card-supplied `pov` slot): protagonist-free world narration with readout-driven state and a turn-1 window triggered by `greetings[0].do`.
-- **`samples/life-of-pi/life-of-pi.yaml` (Life of Pi)** — Multi-day time-loop remastered from V3: post-record `passages` resetting daily clocks while carrying cross-loop fields, epoch `digest` carryover (`boundary: true`), one-turn cooldown band, and `end: true` terminal ending.
+- **`skills/card-author/examples/starter.yaml`** — Minimal neutral template (`bands`/`meta`, `derived`, `consts`, `world` + `theater`, `views`).
+- **`skills/card-author/examples/status-view.yaml`** — Full `ViewShell` showcase (`latest` HUD + `turn` history view, catalogs, tabs, `data-fill`, `derived`, `consts`).
+- **`packages/runtime/test/cards/banxing.yaml`** — Pure chat (`participant mode`, no rules/lore, `fiction` voice samples).
+- **`packages/runtime/test/cards/ri.yaml`** — Multi-stage affection (`Field.bands` + `meta.*`, `views[].consts`, `hidden` route switches, 3 greetings, latching readout, `director: true`, expression/portrait catalogs).
+- **`packages/runtime/test/cards/wuxia.yaml`** — Full RPG + memory (`actions` with rolls, readout-driven `bond`, 3-layer `lore`, `world` record + `world` table with `recall`, `guard`).
+- **`packages/runtime/test/cards/yandao.yaml`** — `author mode` (`input: "note"`, no `persona`, card-supplied `pov`, greeting-triggered window).
+- **`samples/life-of-pi/life-of-pi.yaml`** — Multi-day time loop (`passages`, `digest` epoch `boundary`, cooldown band, `end: true`).

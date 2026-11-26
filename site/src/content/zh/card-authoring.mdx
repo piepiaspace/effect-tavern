@@ -1,11 +1,13 @@
 ---
 title: 卡片创作与工坊
-description: Card YAML 结构速查、“两顶帽子”制卡工作流、实测设计铁律与 AI 制卡工坊。
+description: Card YAML 结构速查、“两顶帽子”制卡工作流、设计铁律、流内视图与 AI 制卡工坊。
 sidebar:
   order: 2
 ---
 
-在 Effect Tavern 中，一张卡是一份通过 `Card` Schema（`packages/runtime/src/card.ts`）校验的声明式 YAML 或 JSON 数据。作者无需编写模板控制流或正则脚本：所有条件均由封闭的 `Cond` 树表达，所有状态效果仅由 `{ set }`、`{ add }` 与 `{ event }` 三种原语构成。
+在 Effect Tavern 中，一张卡是一份通过 `Card` Schema（`packages/runtime/src/card.ts`）校验的声明式 YAML 或 JSON 数据。作者无需编写模板控制流或正则脚本：所有条件均由封闭的 `Cond` 树表达，状态效果由标量原语（`set` / `add` / `event`）与受控世界变更原语（`replace` / `patch` / `put` / `remove`）构成。
+
+新手可直接从 `skills/card-author/examples/starter.yaml`（最小中立模板）或 `skills/card-author/examples/status-view.yaml`（完整视图示例）起步。
 
 ## 1. 内容归属速查
 
@@ -15,98 +17,104 @@ sidebar:
 | `fiction` | 人物设定、群像、世界观散文及按状态切换的**分段（`Band`）**（仅 `narrate` 读） | `{ id, label?, text, when? }` |
 | `greetings` | 静态开场白（`text`）或动态引导开场（`note` + `start: true` 开局字段） | `[{ text?, do?, note? }]` |
 | `passages` | 写后幕间过渡、周目循环重置与终局节点（`boundary` / `over`） | `[{ when, text?, note?, do?, digest?, end? }]` |
-| `rules.fields` | 标量状态（`int` / `number` / `boolean` / `enum`）及量表绘制推导（`drawn`） | `{ path, type, initial, label?, group?, min?, max?, options?, hidden?, start?, view? }` |
+| `rules.fields` | 标量状态（`int` / `number` / `boolean` / `enum`）、命名阶梯 `bands` 与量表推导（`drawn`） | `{ path, type, initial, label?, group?, min?, max?, options?, bands?, hidden?, start?, view? }` |
 | `rules.actions` | 叙事前机械动作与带种子的概率检定 | `{ id, text, when?, roll?, hit?, miss?, do? }` |
-| `rules.readouts` | 叙事后选择题判据，使剧情能够推动标量字段 | `{ id, text, when?, options: [{ id, text, do }] }` |
+| `rules.readouts` | 叙事后选择题判据，使剧情能够推动标量字段与世界状态 | `{ id, text, when?, options: [{ id, text, do }] }` |
+| `rules.derived` | 顶层 `world` 表的封闭纯聚合（`count` / `sum` / `any`），挂在 `derived.<id>` | `[{ id, label?, op, table, column?, where? }]` |
 | `lore` | 纵向渐进揭示 `layers`（`unlock` 地板 + `offer` 窗口）、横向附录 `sections` 与 `ContextPolicy` | `{ id, layers, sections?, unlock, offer, access?, activation?, residency? }` |
-| `products` | 结构化 `world`、`chronicle` 或 `theater` 产物声明 | `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }` |
-| `catalogs` | 静态附件目录（立绘、BGM、语音），在 `record` 阶段按条件过滤可选项 ID | `{ id, kind?, baseUrl?, items: [{ id, label?, when?, focus?, aspect?, variants? }] }` |
+| `products` | 结构化 `world`、`chronicle` 或 `theater` 产物声明（三者均支持 `catalog` 枚举列） | `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }` |
+| `catalogs` | 静态附件目录（图片、音频），在 `record` 阶段按 `item.when` 过滤当轮可选项 | `{ id, kind?, baseUrl?, items: [{ id, label?, when?, focus?, aspect?, variants? }] }` |
 | `guard` / `lexicon` | 事后核查禁令（`check`）与套话重写词表（`polish`） | `guard: string[]`、`lexicon: [{ pattern, hint?, max? }]` |
 | `media` | 立绘、段后插图、卡面画廊与每轮曲目，绑定到目录 | `{ illustrations?, portraits?, gallery?, bgm? }` |
-| `views` | 由字段与产物绘制在正文流里的状态栏、面板与选项按钮（从不发给模型） | `{ id, label?, consumes?, residency?, when?, media?, html, css? }` |
+| `views` | 由字段、元数据、世界状态与小剧场绘制在正文流里的状态栏、面板与选项按钮（从不发给模型） | `{ id, label?, consumes?, residency?, when?, consts?, media?, html, css? }` |
 
-### Lore 的纵向层（`layers`）与横向节（`sections`）：取代世界书蓝绿灯扫描
-传统酒馆世界书（`World Info` / `character_book`）靠“蓝灯常驻”与“绿灯关键词正则扫描”触发，极易因对话顺口提到某词而提前剧透，或换个说法就漏检。Effect Tavern 按内容结构将其拆为两条正交轴：
-- **层**（`layers`）表达随剧情解锁的真相深度：`unlock` 定义沿路径单调不退的解锁地板，`offer` 根据状态、当轮事件与计数器（`lore.<id>.since | shown`）打开下一层窗口；`layers[0]` 的首句即为供 `lookup` 浏览的自然语言检索钩子（`hook`）。
-- **节**（`sections: [{ id, text }]`）表达无需剧情解锁的横向背景附录（资源 ID 为 `card:<条目>#<节>`），首句即检索钩子，仅在 `lookup` 追问时按需读取，避免主词条过长挤占上下文。
+### 字段命名阶梯（`bands`）、`meta` 与封闭派生（`derived`）
 
-### 字段量表自动推导（`drawn`）
-客户端直接根据字段边界与 `fiction` 分段阈值决定绘制形态：
-- `enum` → **`steps`**（步骤轨）；
-- 同时带 `min` 与 `max` 的 `int` → 若 `min < 0` 或分段在区间内切出 2 个及以上阈值，画为 **`scale`**（分格刻度轴，如好感度 `-30..100`）；否则画为 **`gauge`**（存量进度条，如生命值 `0..100`）。当带伤势分段的存量仍需画为进度条时，显式声明 `view: "gauge"` 即可覆盖；
-- 其余字段 → **`value`**（数值行）。
+- **`Field.bands` 与 `meta.<字段>`**：数值字段可声明有序命名阶梯 `bands: [{ id, min, label }]`。运行时自动向 `Cond` 与所有视图暴露只读元数据 `meta.<字段>`（含 `label`、`min`、`max`、`ratio`、`band`、`bandLabel`），条件树可直接写 `{ path: warmth, band: [out, low] }`，无需在多处手抄阈值。
+- **量表自动推导（`drawn`）**：`enum` 画为 `steps`；带 `min` 与 `max` 的 `int` 若 `min < 0` 或 `bands` / `fiction` 切出 2 个及以上阈值则画为 `scale`，否则画为 `gauge`（可用 `view: "gauge" | "scale"` 覆盖）；其余画为 `value`。
+- **`rules.derived`**：对顶层 `world` 表做零 Token 纯聚合（`count`、`sum`、`any`，支持行级 `where` 条件），结果挂在 `derived.<id>` 下，供条件判断与 `latest` 视图共享。
+
+### Lore 的纵向层（`layers`）与横向节（`sections`）
+
+- **层**（`layers`）表达随剧情解锁的真相深度：`unlock` 定义沿路径单调不退的解锁地板，`offer` 根据状态、当轮事件与计数器（`lore.<id>.since | shown`）打开下一层窗口；`layers[0]` 的首句是供 `lookup` 检索的自然语言钩子（`hook`）。
+- **节**（`sections: [{ id, text }]`）表达横向背景附录（资源 ID 为 `card:<条目>#<节>`），首句即检索钩子，仅在 `lookup` 追问时按需读取，避免主词条挤占上下文。
 
 ### 写后过场（`passages`）、纪元边界与终局收束
+
 包含多日时间循环、章节切幕或分支尾声的卡片（参见 `samples/life-of-pi/life-of-pi.yaml`）可声明 `passages`，在玩家回合 `record` 落库后按序取首个满足 `when` 的条目执行：
-- **`text` / `note` + `do`：** 追加一条静态（`text`）或动态叙事（`note`）过渡子节点（`passage: true`），并结算 `do` 效果（如重置单日钟点、推进周目计数）。
-- **`digest`（`boundary: true`）：** 对刚结束一幕的完整转录稿执行区间 `record` 提取指定产物（传 `digest: []` 则仅切分边界），并开启新纪元——后续 `narratorHistory` 与前缀折叠从新纪元重新起算，而标量字段、`lore` 解锁地板与 `world`/`chronicle` 状态跨幕完整继承。
-- **`end: true`：** 将该节点标为终局 `end: "over"`，阻止在已完结分支下继续追加子回合。
+
+- **`text` / `note` + `do`**：追加一条静态（`text`）或动态叙事（`note`）过渡子节点（`passage: true`），并结算 `do` 效果（支持同时更新标量与 `world` 状态）。
+- **`digest`（`boundary: true`）**：对刚结束一幕的转录稿执行区间 `record` 提取指定产物（传 `digest: []` 仅切分边界）并开启新纪元——后续 `narratorHistory` 与前缀折叠从新纪元重新起算，而标量字段、`lore` 解锁地板与 `world`/`chronicle` 状态跨幕完整继承。
+- **`end: true`**：将该节点标为终局 `end: "over"`，阻止在已完结分支下继续追加子回合。
 
 ## 2. “两顶帽子”制卡流程
 
-务必严格分两步制卡，先搭机关再填散文：
+分两步制卡，先搭机制再写散文：
 
 <Steps>
-  <Step title="第一顶帽子：建筑师（Architect —— 只搭机制骨架）">
-    正文只写一行占位符。先定两个坐标（`persona` 与 `input`），声明 `rules.fields` 及其写权限归属（`actions` 机械量还是 `readouts` 读数量），接好 `lore` 的 `unlock` / `offer`、`fiction` 分段 `when` 条件以及各开场的 `greetings[].do`。
+  <Step title="第一顶帽子：建筑师（只搭机制骨架）">
+    正文只写一行占位符。定好两个坐标（`persona` 与 `input`），声明 `rules.fields`（含 `bands`）、`actions` / `readouts`、`rules.derived`、`lore` 门控、`products` 与 `views`。
 
-    运行 `card check` 直至零错误，逐行核对各开场的初始状态、激活分段与首轮窗口；再用 `card test` 编写零 Token `scenario.yaml` 锁死规则行为。
+    运行 `bun run tavern card check <卡片>` 直至零错误，逐行核对各开场的初始状态与激活分段；再用 `card test` 编写零 Token `scenario.yaml` 锁死规则行为。
   </Step>
-  <Step title="第二顶帽子：小说家（Novelist —— 冻结机制写散文）">
-    冻结规则结构，专注撰写 `frame`、各段 `fiction`、`lore` 各层/各节以及 `greetings` 开场正文。
+  <Step title="第二顶帽子：小说家（冻结机制写散文）">
+    冻结规则结构，撰写 `frame`、各段 `fiction`、`lore` 各层/各节以及 `greetings` 正文。
 
-    再次运行 `card check`（拦截正文夹带数值 `field-in-prose`、内联索要状态栏 `inline-product`、留空槽 `empty-text` 等），并用 `card view` 在关键阈值两侧（如 `--state bond=59` 与 `--state bond=60`）预览模型实际读到的完整提示词。
+    再次运行 `card check`（拦截 `field-in-prose`、`inline-product`、`hook-length`、`empty-text` 等），并用 `card view` 在关键阈值两侧预览模型实际读到的完整提示词。
   </Step>
 </Steps>
 
-## 3. 真卡实测总结的设计铁律
+## 3. 核心设计准则
 
 <Aside type="caution" title="四条高频踩坑准则">
-  1. **读数（`Readout`）选项必须写“可见举动”，绝不写“内心心理”。** 克制文风下心理活动含蓄不露，`record` 会永远保守落回不变项导致字段锁死；选项应写具体行为（如“收下信物”“追问来历”）。
-  2. **挂在某字段上的 `fiction` 分段不得提前规定该字段读数要测量的走向。** 分段只写角色当下的姿态与张力，把本幕推进空间留给玩家互动。
-  3. **锁存型读数（触发后翻转开关不再询问）必须包含“已提起、尚待回应”的中间态选项。** 当读数的 `when` 与某条 `lore` 的 `offer` 同阈值时，`record` 会在角色刚抛出话题、玩家尚未回答的当轮立即提问；若只有“未发生 / 接受 / 拒绝”，模型会误判为“拒绝”。
-  4. **多开场卡的 `Field.initial` 取所有开场的最低公共基线**，单条路线的增量写进各自的 `greetings[n].do`。切勿把人物设定放进 `frame`（非行文类的卡片 `frame` 槽位会作为 `<world>` 送入包括 `direct` 在内的所有后台阶段）。
+  1. **读数（`Readout`）选项必须写“可见举动”，不要写“内心心理”。** 克制文风下心理活动含蓄不露，`record` 会保守落回不变项导致字段停滞；选项应写具体行为（如“收下信物”“追问来历”）。
+  2. **挂在某字段上的 `fiction` 分段不得提前规定该字段读数要测量的走向。** 分段只写角色当下的姿态与张力，把推进空间留给玩家互动。
+  3. **锁存型读数（触发后翻转开关不再询问）必须包含“已提起、尚待回应”的中间态选项。** 当读数的 `when` 与某条 `lore` 的 `offer` 同阈值时，`record` 会在角色刚抛出话题、玩家尚未回答的当轮立即提问；若只有“未发生 / 接受 / 拒绝”，模型容易误判为“拒绝”。
+  4. **多开场卡的 `Field.initial` 取所有开场的最低公共基线**，单条路线的增量（含 `world` 初始差异）写进各自的 `greetings[n].do`。不要把人物设定放进 `frame`（非行文类的卡片 `frame` 槽位会作为 `<world>` 送入所有后台阶段）。
 </Aside>
 
 ## 4. 流内视图：正文里的状态栏与面板
 
-视图（view）是一段带自有 CSS 的小型 HTML 模板，客户端把它画在某一回合正文的下方。它从不发给模型，也不运行任何脚本：客户端通过几个 `data-*` 属性把回合数据填进模板，并放在 Shadow DOM 里，视图的 CSS 只作用于它自己。完整规则见技能参考 `skills/card-author/references/views.md`，`skills/card-author/examples/status-view.yaml` 是一张能通过 `card check` 的完整示例卡。
+视图（`ViewShell`）是一段带自有 CSS 的小型 HTML 模板，客户端把它画在回合正文下方。它从不发给模型，也不运行任何脚本：客户端通过 `data-*` 属性把回合数据填进 Shadow DOM。完整参考见 `skills/card-author/references/views.md`，完整可运行示例见 `skills/card-author/examples/status-view.yaml`。
 
 ### 视图能读到什么
 
-每个指令只接受一条以点分隔的路径。没有表达式：不能比较、运算、取反、格式化，也没有 `{{宏}}`。
+每个指令只接受一条点分隔路径，没有内联表达式、比较、运算、取反或 `{{宏}}`：
 
-| 路径 | 含义 |
-| --- | --- |
-| `fields.<字段>` | 字段的原始值。字段的 `min`、`max`、`label` 与枚举选项读不到，所以进度条的上限要写进 CSS。 |
-| `world.<产物>…` | `world` 产物，只在 `residency: latest` 的视图里有。记录按键读取；表是 `{ entityId, ...列 }` 行组成的数组。 |
-| `theater.<产物>…` | 本回合的 `theater` 产物，不必接管也能读。 |
-| `media.<槽位>` | 视图自己的图片槽位，目录里有条目适用时才有值。 |
-| `names.<键>` | `user`、`char` 以及卡片的其他名字。 |
-| `value` | 当 `consumes` 恰好列出一个产物时：该产物的值（若是记录，它的各个键也可直接作顶层名读取）。 |
+| 路径 | 可用范围 | 含义 |
+| --- | --- | --- |
+| `fields.<字段>` | `latest` / `turn` | 字段的当前原始值。 |
+| `meta.<字段>.*` | `latest` / `turn` | 字段只读元数据：`label`、`min`、`max`、`ratio`（`0..1` 归一化比例）、`band`、`bandLabel`。 |
+| `world.<产物>…` | 仅 `latest` | `world` 产物：记录按键读取；表是 `{ entityId, ...列 }` 行数组。 |
+| `derived.<id>` | 仅 `latest` | `rules.derived` 计算出的表聚合值。 |
+| `theater.<产物>…` | `latest` / `turn` | 本回合的 `theater` 产物，不必接管也能读。 |
+| `consts.<键>…` | `latest` / `turn` | 视图自带的 `consts` 只读静态常量树（字符串支持 `{{key}}` 展开）。 |
+| `media.<槽位>` | `latest` / `turn` | 视图自己的图片槽位，目录里有条目适用时才有值。 |
+| `names.<键>` | `latest` / `turn` | `user`、`char` 以及卡片的其他名字。 |
+| `value` | `consumes` 仅 1 项时 | 该被接管产物的值（若是记录，各键也可直接作顶层名读取）。 |
 
-`chronicle` 产物、`lore`、事件与回合序号都读不到。
+`chronicle` 产物、`lore`、事件与回合序号不在视图作用域内。
 
 ### 视图出现在哪里
 
-- `residency: latest`（没有 `consumes` 时的默认值）：只挂在最新一回合，也是唯一能读 `world` 的一种。
-- `residency: turn`（有 `consumes` 时的默认值）：挂在每一个带有其接管产物的回合上，读那一回合自己的字段与小剧场。
-- `consumes` 接管 `theater` 产物（包括 `surface: composer` 的选项列表）。在视图适用的每一回合，默认界面都不再画被接管的产物，所以被 `latest` 视图接管的产物在历史回合上不会出现。需要留在每个历史回合上的内容（比如一封信），应交给它自己的 `turn` 视图。
+- `residency: latest`（无 `consumes` 时的默认值）：只挂在最新一回合，也是唯一能读 `world` 与 `derived` 的视图。
+- `residency: turn`（有 `consumes` 时的默认值）：挂在每一个带有其接管产物的回合上，读那一回合自己的 `fields`、`meta` 与 `theater`。
+- `consumes` 接管 `theater` 产物（含 `surface: composer` 选项列表）。在视图适用的每一回合，默认界面不再绘制被接管的产物；被 `latest` 视图接管的产物不会在历史回合出现，如需留在历史中请单独使用 `turn` 视图。
 
-### 指令
+### 指令速查
 
 | 指令 | 作用 |
 | --- | --- |
-| `data-text="路径"` | 把值显示为文本。 |
-| `data-if` / `data-unless` | 值为真 / 为假时才画出该元素。 |
-| `data-each="路径" data-as="row"` | 按每一项重复元素的子节点；内部可读 `row.<列>` 与 `row.$num`。 |
-| `data-media="来源"` | 画一张目录图片：`media.<槽位>`、`portraits.<槽位>`，或目录列上的 `<目录>:<路径>`。可选 `data-fit`、`data-lightbox`。 |
-| `data-attr-<k>="路径"` | 写出 `data-<k>="值"`，供 CSS 属性选择器使用。 |
-| `data-var-<k>="路径"` | 值是数字时设置 `--<k>`，供 `calc()` 与 `clamp()` 使用。 |
-| `<details data-open="latest">` | 在最新回合展开，在历史回合收起。 |
-| `<button data-fill="路径">` | 把值填进输入框，从不发送。只在最新回合、没有回合进行中、值不是空白、且按钮有名字（`aria-label`，或按那一回合的数据显示出的文字）时可点。按钮里只放文字，不放控件或图片。 |
+| `data-text="路径"` | 显示纯文本。 |
+| `data-if` / `data-unless` | 值为真 / 为假时才渲染该元素。 |
+| `data-each="路径" data-as="row"` | 按项重复子节点；内部可读 `row.<列>` 与 `row.$num`。 |
+| `data-media="来源"` | 绘制目录图片：`media.<槽位>`、`portraits.<槽位>`，或 `theater` / `world` 目录列上的 `<目录>:<路径>`。可选 `data-fit`、`data-lightbox`。 |
+| `data-attr-<k>="路径"` | 写出 `data-<k>="值"`，配合 CSS 属性选择器按档位或枚举换色。 |
+| `data-var-<k>="路径"` | 值为有限数字时设置 `--<k>`（例如绑定 `meta.<字段>.ratio`）。 |
+| `<details data-open="latest">` | 最新回合展开，历史回合收起。 |
+| `<button data-fill="路径">` | 点击把文本填进输入框（从不自动发送）。仅在最新回合、空闲、非空白且按钮有可读名称时启用；按钮内只放文字。 |
 
-页签用单选框加 CSS 的 `:checked ~` 实现；阈值用 `data-var-*` 上的 `clamp()`、带 `when` 的视图，或枚举字段加 `data-attr-*` 实现；颜色用 `light-dark()` 与应用的设计变量（如 `--ink`、`--line`、`--danger`）跟随主题。
+页签用单选框加 CSS 的 `:checked ~` 实现；阶段变色与阈值提示优先用 `Field.bands` + `meta.<字段>.band` + `data-attr-band`；静态快捷按钮放进 `views[].consts`；颜色用 `light-dark()` 与宿主设计变量（`--ink`、`--line`、`--primary`、`--ok`、`--warn`、`--danger` 等）跟随主题。
 
 ### 一个简短示例
 
@@ -115,54 +123,57 @@ views:
   - id: warmth
     label: 炉温
     css: |
-      .gauge { height: 6px; border-radius: 3px; background: var(--alpha-2); }
-      .fill { display: block; height: 100%; width: calc(var(--warmth, 0) / 10 * 100%); background: light-dark(#c2410c, #fb923c); }
+      .gauge { height: 6px; border-radius: 3px; background: var(--alpha-2); overflow: hidden; }
+      .fill { display: block; height: 100%; width: calc(var(--ratio, 0) * 100%); background: var(--ok); }
+      [data-band="out"] .fill { background: var(--danger); }
     html: |
-      <div class="gauge" role="meter" aria-label="炉温" data-var-warmth="fields.warmth"><span class="fill"></span></div>
-      <p data-unless="fields.warmth">炉火灭了。</p>
+      <div class="gauge" role="meter" aria-label="炉温" data-var-ratio="meta.warmth.ratio" data-attr-band="meta.warmth.band">
+        <span class="fill"></span>
+      </div>
+      <p><span data-text="meta.warmth.bandLabel"></span>（<span data-text="fields.warmth"></span> / <span data-text="meta.warmth.max"></span>）</p>
 ```
 
 ### 检查与预览
 
+可使用一键离线校验脚本 `skills/card-author/scripts/verify-card.sh <卡片> [场景.yaml] [预览.html]`，或分步执行：
+
 <Steps>
-  <Step title="检查">
-    `bun run tavern card check <卡片>` 把视图里的每个问题报在 `views.<id>.html:<行>:<列>` 或 `views.<id>.css:<行>:<列>`（第 1 行是该块的第一行）并附提示，按卡片解析每条路径（拼错时给出“did you mean”），并检查值的类型是否合乎指令。
+  <Step title="静态检查">
+    `bun run tavern card check <卡片>` 把视图问题精确定位到 `views.<id>.html:<行>:<列>` 或 `.css:`，校验每条路径与类型并给出拼写建议。
   </Step>
-  <Step title="预览">
-    `bun run tavern card view <卡片> --views --scenario <场景.yaml> --html views.html` 离线播放场景，打印每个视图是否挂载、每个绑定解析到了什么，并写出一张静态页面。小剧场产物只在回合之后才有，所以要在场景里写好它们的值。
+  <Step title="离线预览">
+    `bun run tavern card view <卡片> --views --scenario <场景.yaml> --html views.html` 离线回放场景，打印每个视图的挂载状态与绑定值，并生成带浅色/深色切换的静态预览页。
   </Step>
-  <Step title="上架">
-    用 `card test` 锁定回合（`expect.world` 断言视图读到的世界状态），再 `bun run tavern card install <卡片>`。
+  <Step title="测试与上架">
+    用 `bun run tavern card test <卡片> <场景.yaml>` 锁定回合行为，再 `bun run tavern card install <卡片>`。
   </Step>
 </Steps>
 
-<Aside type="caution" title="视图做不到的事">
-  不能有脚本，也不能用 `<style>`、`<img>`、`<a>`、`<iframe>`、`<audio>`、`<video>`、`<canvas>`、`<form>`、行内 `style=`、`on*` 事件；CSS 里不能用 `@import`、`@font-face`、`@property`、`attr()`，`url()` 只能写 `url(#id)`。图片只来自 `https://` 目录。视图不能写状态，不能放声音，历史回合上读不到世界数据；`latest` 视图移到新回合时，页签与折叠状态会复位。
+<Aside type="caution" title="视图边界">
+  不能包含脚本，禁用 `<style>`、`<img>`、`<a>`、`<iframe>`、`<audio>`、`<video>`、`<canvas>`、`<form>`、行内 `style=`、`on*` 事件；CSS 禁用 `@import`、`@font-face`、`@property`、`attr()`，`url()` 仅允许 `url(#id)`。图片仅来自 `https://` 目录。视图不能写状态、不能播放声音、历史回合读不到 `world` / `derived`；`latest` 视图移到新回合时，页签与折叠状态会复位。
 </Aside>
 
 ## 5. 媒体
 
-`media` 把目录绑定到阅读界面：`portraits`（立绘槽位，显示目录里第一个 `when` 成立的条目）、`illustrations`（一个 `chronicle` 或 `theater` 表产物，其各行把目录图片放在指定自然段之后）、`gallery`（在卡片页上展示的目录）与 `bgm`（一个单行表产物，每回合从 `audio` 目录里记下一首曲目）。绑定到媒体的目录需要 `https://` 的 `baseUrl` 与相对路径的 `variants`；条目可带 `label`、`focus: [x, y]` 与 `aspect: "W / H"`。客户端目前还没有音乐播放器，`bgm` 只记录曲目，不会播放。
+`media` 把目录绑定到阅读界面：`portraits`（立绘槽位，显示目录里首个 `when` 成立的条目）、`illustrations`（`chronicle` 或 `theater` 表产物，按行把目录图片放在指定自然段之后）、`gallery`（卡片页画廊）与 `bgm`（单行表产物，每回合从 `audio` 目录记下一首曲目；客户端暂未内置播放器，仅记录曲目）。绑定到媒体的目录需要 `https://` 的 `baseUrl` 与相对路径的 `variants`；条目可带 `label`、`focus: [x, y]` 与 `aspect: "W / H"`。
 
 ## 6. 制卡工坊与旧卡重制
 
-Effect Tavern 内置三项 AI 辅助工坊能力（`packages/runtime/src/workshop.ts`，同时暴露于 `/api/author/*` 与 `tavern card` CLI）：
+Effect Tavern 内置 AI 辅助工坊能力（`packages/runtime/src/workshop.ts`，同时暴露于 `/api/author/*` 与 `tavern card` CLI）：
 
-- **`tavern card unroll`**（`bun run tavern card unroll <card.png|card.json>`）：只读读卡仪器，按 SillyTavern 自身的装配顺序将 PNG/JSON V2/V3 卡片完整展开为 Markdown，可直接作为 `sort` 源稿。
-- **`tavern card compile`**：根据选中的正文片段与自然语言 `--intent` 编译规则增量与条件绑定。输出 Schema **不含任何正文字段**——已有作者原文逐字不动，新建的正文与判据槽一律留空（`empty-text`），交由作者亲笔填写。
-- **`tavern card sort`**：将源稿按段落原封不动归位到 `frame`、`fiction`、`greetings` 或 `lore` 槽位，绝不改写句子。
+- **`tavern card unroll`**：只读读卡工具，按 SillyTavern 装配顺序将 PNG/JSON V2/V3 卡片展开为 Markdown，供审阅与 `sort` 使用。
+- **`tavern card compile`**：根据选中片段与 `--intent` 编译规则与条件绑定；输出不含任何正文字段，已有原文逐字保留，新建槽位留空（`empty-text`）交由作者填写。
+- **`tavern card sort`**：将源稿按段落原封不动归位到 `frame`、`fiction`、`greetings` 或 `lore` 槽位，不改写句子。
 - **`tavern card review`**：只读语义一致性审阅，返回指向具体卡片路径的 `review:consistency` 警告。
 
-### 重制 SillyTavern V2/V3 旧卡：落位映射与负向约束
+### 重制 SillyTavern V2/V3 旧卡：落位映射
 
-利用 `unroll` 拆解传统酒馆旧卡时，应**原封不动保留原作者的人物与世界观散文**，同时剥离因单次补全架构而生的提示词脚手架：
-
-| SillyTavern 旧卡结构 | Effect Tavern 落位目标（及禁止事项） |
+| SillyTavern 旧卡结构 | Effect Tavern 落位目标 |
 | --- | --- |
-| `description` / `personality` / `mes_example` | 归入 `fiction` 片段（随关系/状态变化的部分拆为带 `when` 的 `Band`；严禁放进 `frame`） |
-| `scenario` | 全局世界前提进 `frame` 的 `setting` 槽；当场对戏态势进 `fiction` |
-| `first_mes` + `alternate_greetings` | `greetings[n].text`，并将不同开场路线的初始数值增量提炼进 `greetings[n].do` |
-| `character_book`（蓝灯常驻 / 绿灯关键词词条） | 常驻背景进 `fiction`；渐进秘密与附录进 `lore`（纵向 `layers` + 横向 `sections` + 首句自然钩子，丢弃正则触发词） |
-| `at_depth`（`@D0`–`@D4`）、作者注释、`post_history_instructions` | **严禁复刻深度插入。** 行文基调进 `frame`，事后禁令进 `guard`，套话黑名单进 `lexicon`，状态提醒进 `fiction` 分段 |
-| 正文 `<status>` 状态栏、MVU JSON 尾块与正则脚本 | **丢弃格式咒语与正则。** 标量轴进 `rules.fields`（`actions` / `readouts`），动态实体表进 `world` 类 `products`，小剧场进 `theater`；状态栏的外观用流内视图重做（第 4 节） |
-| `{{user}}` / `{{char}}` 与 `{{setvar}}` / `{{roll}}` | 纯专名占位保留在 `names`；可变变量与随机宏改写为 `rules.fields`、`Cond`、`Effect` 与 `Action.roll` |
+| `description` / `personality` / `mes_example` | 归入 `fiction` 片段（随状态变化的部分拆为带 `when` 的分段；不要放进 `frame`） |
+| `scenario` | 全局前提进 `frame` 的 `setting` 槽；当场对戏态势进 `fiction` |
+| `first_mes` + `alternate_greetings` | `greetings[n].text`，各路线初始数值与世界差异提炼进 `greetings[n].do` |
+| `character_book`（常驻 / 关键词词条） | 常驻背景进 `fiction`；渐进秘密与附录进 `lore`（纵向 `layers` + 横向 `sections` + 首句自然钩子，去掉正则词） |
+| `at_depth`、作者注释、`post_history_instructions` | 行文基调进 `frame`，事后禁令进 `guard`，套话黑名单进 `lexicon`，状态提醒进 `fiction` 分段 |
+| 正文 `<status>` 状态栏、MVU JSON 与正则脚本 | 标量轴进 `rules.fields`（`bands` / `actions` / `readouts`），动态实体表进 `world` 产物，小剧场进 `theater`，界面外观用流内视图重做（第 4 节） |
+| `{{user}}` / `{{char}}` 与 `{{setvar}}` / `{{roll}}` | 纯专名占位保留在 `names`；可变变量与随机宏改写为 `rules.fields`、`Cond`、`Effect_` 与 `Action.roll` |
