@@ -644,7 +644,7 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
   const views = createMemo(() => eligibleNodeViews(props.view, props.node, props.last, settled()), {
     equals: sameViews,
   })
-  const consumedIds = createMemo(() => claimedNodeProducts(props.view, props.node, props.last), { equals: sameIds })
+  const consumedIds = createMemo(() => claimedNodeProducts(props.view, props.node), { equals: sameIds })
   const options = () => suggestions(props.view?.layer.products, props.node, consumedIds())
   // the editor's close: with text, the edit is sent; without (Escape, unchanged, empty), it is only closed
   const done = (text?: string) => {
