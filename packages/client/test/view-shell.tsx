@@ -13,6 +13,7 @@ import { turn } from "../src/turn.ts"
 import { apply, card, clear, demanded, error, log, openStreams, registry, working } from "../src/store.ts"
 import { importCard, fetchCardOf } from "../src/wire.ts"
 import type { CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
+import type { TimelineNode } from "@effect-tavern/runtime/src/projection.ts"
 import { until, quiet, touch, tracked } from "./settle.ts"
 import { timelineNode } from "./fixtures.ts"
 import { postResult } from "./media-transport.ts"
@@ -139,6 +140,7 @@ async function run() {
   }
   const [view, setView] = createSignal<CompiledView>({ ...source, tree: compileView(source) })
   const [latest, setLatest] = createSignal(true)
+  const [nodeMedia, setNodeMedia] = createSignal<TimelineNode["media"]>(undefined)
   const ratios = ["3 / 1", "1 / 1", "1 / 3"]
   const mountRoot = document.getElementById("root")!
   const dispose = render(
@@ -148,7 +150,7 @@ async function run() {
           card={cardView}
           view={view()}
           latest={latest()}
-          node={{ ...timelineNode(1, null, ""), theater: { inner: value() } }}
+          node={{ ...timelineNode(1, null, ""), theater: { inner: value() }, media: nodeMedia() }}
         />
         <For each={ratios}>
           {(aspect, i) => (
@@ -231,6 +233,39 @@ async function run() {
       getComputedStyle(root()!.querySelector("rect")!).clipPath.includes(
         "#cut",
       ), "same ID replaces HTML and SVG stylesheet")
+    // The whitelist's additions render: light-dark() follows the player's pinned theme through the shadow host, the
+    // new SVG elements are SVG, and an unsized data-media element neither collapses in a flex row nor overrides a size.
+    const widened = {
+      id: "widened",
+      media: [{ id: "ferryman", catalog: "ferryman" }],
+      css: '.ld { color: light-dark(rgb(1, 2, 3), rgb(4, 5, 6)) } .ld::after { content: "\\2022" } .row { display: flex } .pad { padding: 0 20px } .sized { width: 40px; height: 40px }',
+      html: '<p class="ld"><mark>x</mark><ruby>理<rt>li</rt></ruby></p><div class="row"><div class="flex" data-media="media.ferryman"></div><span>t</span></div><div class="row"><div class="sized" data-media="media.ferryman"></div></div><div class="pad" data-media="media.ferryman"></div><svg width="20" height="20"><defs><circle id="dot" r="4" fill="rgb(10 20 30)"/></defs><use href="#dot" x="10" y="10"/><text x="2" y="18" text-anchor="start">a<tspan dx="1">b</tspan></text></svg>',
+    }
+    setView({ ...widened, tree: compileView(widened) })
+    setNodeMedia({ viewMedia: [{ viewId: "widened", id: "ferryman", catalog: "ferryman", item: "calm" }] })
+    require(await until(() => root()?.querySelectorAll(".media-frame").length === 3), "widened view mounts its frames")
+    const box = (s: string) => root()!.querySelector(s)!.getBoundingClientRect()
+    const shell = document.querySelector(".view-shell")!.getBoundingClientRect()
+    require(box(".flex").width > shell.width / 2 &&
+      box(".flex .media-frame").height > 0, "unsized data-media fills a flex row")
+    require(box(".sized").width === 40 && box(".sized").height === 40, "author size overrides the data-media default")
+    require(box(".pad").right <= shell.right + 0.5, "padded data-media stays inside the view")
+    require(getComputedStyle(root()!.querySelector(".ld")!, "::after").content === '"\u2022"', "string escape renders")
+    const svgNS = "http://www.w3.org/2000/svg"
+    require(["use", "text", "tspan"].every((t) => root()!.querySelector(t)?.namespaceURI === svgNS) &&
+      root()!.querySelector<SVGUseElement>("use")!.getBBox().width > 0, "local <use> and SVG text render")
+    const pinned = document.documentElement.dataset.theme
+    const colorIn = (side: string) => {
+      document.documentElement.dataset.theme = side
+      return getComputedStyle(root()!.querySelector(".ld")!).color
+    }
+    const [light, dark] = [colorIn("light"), colorIn("dark")]
+    if (pinned) document.documentElement.dataset.theme = pinned
+    else delete document.documentElement.dataset.theme
+    require(light === "rgb(1, 2, 3)" && dark === "rgb(4, 5, 6)", "light-dark() follows the pinned theme: " +
+      light +
+      " / " +
+      dark)
   } finally {
     dispose()
   }

@@ -254,6 +254,30 @@ assert.deepEqual(checkValue(ferry).diagnostics, [])
   const next = await collect(S.act(first.id, { text: "继续。" }))
   assert.ok(!next.some((e) => e.kind === "call" && e.product === "inner"))
   assert.equal(S.timelineNode(lastNode(next).id).theater.inner, undefined)
+
+  // Every surface that carries text follows the theme: its colors come from the `--ri-*` palette (`light-dark()` on
+  // :host), so dark mode never leaves text on cream. A literal is left only as a faint tint (alpha <= 0.2).
+  const css = riView.css!
+  const literal = /#[\da-f]{3,8}\b|rgba?\(([^)]*)\)/gi
+  for (const selector of [
+    ".parchment",
+    ".ribbon",
+    ".ribbon-lover",
+    ".ribbon-brother",
+    ".scale-wrap",
+    ".bond-note",
+    ".bond-note-bro",
+    ".letter",
+    ".sheet",
+  ]) {
+    const body = css.match(new RegExp(`(?:^|\\n)\\s*\\${selector} \\{([^}]*)\\}`))?.[1]
+    assert.ok(body, selector)
+    for (const [, property, value] of body.matchAll(/(?:^|;)\s*(color|background(?:-color)?|box-shadow):([^;]*)/g))
+      for (const m of value.matchAll(literal)) {
+        const alpha = m[1]?.split(/[\s,/]+/).filter(Boolean)[3]
+        assert.ok(alpha && Number(alpha) <= 0.2, `${selector} ${property} hard-codes ${m[0]}`)
+      }
+  }
 }
 
 // YAML print -> parse roundtrip & CardView exposure.
