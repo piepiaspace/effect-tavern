@@ -230,17 +230,21 @@ const HOOK = 40 // ponytail: characters; a hook is the player's own words for th
 const rules: Rule[] = [
   (card) => {
     const out: Diagnostic[] = []
-    const visit = (v: unknown, path: string, key = "") => {
-      // half of a surrogate pair alone is no character: a file cannot carry it (YAML writes it as U+FFFD) (#254). In a
-      // /u pattern \p{Cs} matches only an unpaired surrogate.
-      if (typeof v === "string" && /\p{Cs}/u.test(v))
+    // half of a surrogate pair alone is no character: a file cannot carry it (YAML writes it as U+FFFD) (#254). In a
+    // /u pattern \p{Cs} matches only an unpaired surrogate. A key is text too: the author names the keys of `names`, a
+    // world table's `initial` entities, a record's rows.
+    const broken = (s: string, path: string, what: string) => {
+      if (/\p{Cs}/u.test(s))
         out.push({
           rule: "broken-text",
           level: "error",
           path,
-          message: "text holds half of a character (a lone UTF-16 surrogate), which no card file can carry",
+          message: `${what} holds half of a character (a lone UTF-16 surrogate), which no card file can carry`,
           hint: "Retype or paste the text again around the broken character.",
         })
+    }
+    const visit = (v: unknown, path: string, key = "") => {
+      if (typeof v === "string") broken(v, path, "text")
       if (typeof v === "string" && ["id", "path", "event", "options", "key"].includes(key) && !identifier.test(v))
         out.push({
           rule: "bad-identifier",
@@ -249,7 +253,12 @@ const rules: Rule[] = [
           message: "identifier must be a token without whitespace",
         })
       if (Array.isArray(v)) v.forEach((x, i) => visit(x, `${path}[${i}]`, key))
-      else if (v && typeof v === "object") Object.entries(v).forEach(([k, x]) => visit(x, path ? `${path}.${k}` : k, k))
+      else if (v && typeof v === "object")
+        Object.entries(v).forEach(([k, x]) => {
+          const at = path ? `${path}.${k}` : k
+          broken(k, at, "the key")
+          visit(x, at, k)
+        })
     }
     visit(card, "")
     return out
