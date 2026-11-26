@@ -624,6 +624,54 @@ assert.ok(paths.has(catalogError.path))
   )
   const aside = await runScenario(worldCard, step({ aside: ["想家"] }, {}))
   assert.deepEqual(aside[0].products.aside, ["想家"])
+
+  // a catalog column has no `options` until the run resolves it: a script is held to the catalog's declared items
+  const catalogCard = decodeCard({
+    id: "faces",
+    frame: [],
+    fiction: [{ id: "s", text: "门外。" }],
+    greetings: [{ text: "开场。" }],
+    rules: { fields: [], actions: [] },
+    lore: [],
+    guard: [],
+    catalogs: [{ id: "faces", items: [{ id: "smile" }, { id: "frown" }] }],
+    products: [
+      {
+        id: "cast",
+        role: "theater",
+        text: "Cast",
+        on: true,
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "name", type: "text" },
+            { key: "face", type: "enum", catalog: "faces" },
+          ],
+        },
+      },
+      {
+        id: "mood",
+        role: "theater",
+        text: "Mood",
+        on: true,
+        shape: { kind: "record", keys: [{ key: "face", type: "enum", catalog: "faces" }] },
+      },
+    ],
+  })
+  const picked = await runScenario(
+    catalogCard,
+    step({ cast: [{ name: "陈", face: "frown" }], mood: { face: "smile" } }, {}),
+  )
+  assert.deepEqual(picked[0].products.cast, [{ name: "陈", face: "frown" }])
+  assert.deepEqual(picked[0].products.mood, { face: "smile" })
+  await assert.rejects(
+    runScenario(catalogCard, step({ cast: [{ name: "陈", face: "smirk" }] }, {})),
+    /step 1: scripted record value cast was rejected: \[0\]\.face: "smirk" is no item of catalog faces/,
+  )
+  await assert.rejects(
+    runScenario(catalogCard, step({ mood: { face: "smirk" } }, {})),
+    /step 1: scripted record value mood was rejected: face: "smirk" is no item of catalog faces/,
+  )
 }
 
 console.log("author: ok")
