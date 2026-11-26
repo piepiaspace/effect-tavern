@@ -4,7 +4,7 @@
 import { fake, type Message } from "@effect-tavern/provider"
 import { Effect, Stream } from "effect"
 import assert from "node:assert/strict"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import type { Card } from "../src/card.ts"
@@ -282,6 +282,97 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
   assert.equal(badHat.exitCode, 1)
   assert.match(badHat.stderr, /is not one every model accepts/)
 }
+// `view --views` on the shipped sample 渡口: the opening by default, a scenario's step, JSON, the page.
+{
+  const ferry = new URL("../../../samples/ferry/ferry.yaml", import.meta.url).pathname
+  const opening = await run("view", ferry, "--views")
+  assert.equal(opening.exitCode, 0, opening.stderr)
+  assert.match(opening.stdout, /^ferry at \{"潮位":1,"天气":"晴"\}, opening 0 \(node 0\)\n/)
+  assert.match(
+    opening.stdout,
+    /── view ferry_hud 沧江渡口风物栏 ──\nresidency latest {2}when \(none\) {2}consumes nothing\nmounted here\n/,
+  )
+  assert.match(opening.stdout, /<details> data-attr-weather fields\.天气 +→ "晴" {2}· data-weather="晴"/)
+  assert.match(opening.stdout, /<span> data-text world\.boat\.moor +→ "岸边"/)
+  assert.match(opening.stdout, /<div> data-media media\.passenger +→ no hit {2}· element left out · not shown/)
+  assert.match(opening.stdout, /\n {2}world {4}boat \{aboard, moor\}\n/)
+  assert.match(opening.stdout, /not mounted here: a turn view with nothing to show/)
+  assert.match(opening.stdout, /note: opening node: theater products exist only after a turn/)
+  assert.match(opening.stdout, /<p> data-text value +→ undefined \(nothing at this path\)/)
+  assert.match(opening.stdout, /\n {2}world {4}absent for a turn view\n/)
+  // the second opening and a field set on it, as the player's 改数值 would
+  const rain = await run("view", ferry, "--views", "--greeting", "1", "--state", "潮位=3")
+  assert.match(rain.stdout, /^ferry at \{"潮位":3,"天气":"雨"\}, opening 1/)
+  assert.match(rain.stdout, /data-var-tide fields\.潮位 +→ 3 {2}· --tide: 3/)
+  // a scenario: the world record after its turns; --step reads an earlier node
+  const dir = mkdtempSync(join(tmpdir(), "views-"))
+  const scenario = join(dir, "ferry.scenario.yaml")
+  writeFileSync(
+    scenario,
+    Bun.YAML.stringify({
+      greeting: 0,
+      steps: [{ text: "等潮" }, { text: "上船", replies: { record: [{ boat: { aboard: true, moor: "江心" } }] } }],
+    }),
+  )
+  const played = await run("view", ferry, "--views", "--scenario", scenario)
+  assert.equal(played.exitCode, 0, played.stderr)
+  assert.match(played.stdout, /after scenario step 2 of 2 \(node 2\)/)
+  assert.match(played.stdout, /<div> data-if world\.boat\.aboard +→ true {2}· shows/)
+  assert.match(played.stdout, /data-media media\.passenger +→ passenger\/\w+ {2}· https:\/\/media\.tavern\.example\//)
+  assert.match(played.stdout, /inner is made only when the player asks for it \(on: false\)/)
+  assert.doesNotMatch(played.stdout, /opening node/)
+  const first = await run("view", ferry, "--views", "--scenario", scenario, "--step", "1")
+  assert.match(first.stdout, /after scenario step 1 of 2 \(node 1\)[^]*world\.boat\.aboard +→ false/)
+  // JSON: the same report, stable keys
+  const json = JSON.parse((await run("view", ferry, "--views", "--json")).stdout)
+  assert.deepEqual(Object.keys(json), ["card", "node", "at", "views"])
+  assert.deepEqual(
+    json.views.map((v: { id: string; mounted: boolean; reason?: string }) => [v.id, v.mounted, v.reason]),
+    [
+      ["ferry_hud", true, undefined],
+      ["ferry_letter", false, "turn-nothing"],
+    ],
+  )
+  assert.deepEqual(json.views[0].bindings[2], {
+    tag: "span",
+    depth: 3,
+    directive: "data-text",
+    path: "world.boat.moor",
+    type: "string",
+    value: '"岸边"',
+    raw: "岸边",
+    shown: true,
+  })
+  // the page: the views in shadow roots, the host's tokens from the client's own sheet
+  const page = join(dir, "views.html")
+  const drawn = await run("view", ferry, "--views", "--html", page)
+  assert.match(drawn.stdout, /\n\nwrote .*views\.html$/m)
+  const text = readFileSync(page, "utf8")
+  const tokens = readFileSync(new URL("../../client/src/tokens.css", import.meta.url), "utf8")
+  assert.ok(text.includes(tokens))
+  assert.match(text, /<div class="view-shell" data-view="ferry_hud" data-latest><template shadowrootmode="open">/)
+  assert.match(text, /<details class="hud" data-weather="晴" open style="--tide: 1">/)
+  assert.match(text, /<img class="media-img" src="https:\/\/media\.tavern\.example\/ferry\/portraits\/ferryman\//)
+  // refusals: stage flags with --views, views flags without it, a step out of range, a greeting with a scenario
+  for (const [args, said] of [
+    [["--views", "--stage", "record"], /--stage shapes a stage's document/],
+    [["--views", "--lore"], /--lore shapes a stage's document/],
+    [["--html", page], /--html goes with --views/],
+    [["--views", "--step", "1"], /--step picks a step of a scenario/],
+    [["--views", "--scenario", scenario, "--step", "3"], /--step 3: the scenario has 2 step\(s\)/],
+    [["--views", "--scenario", scenario, "--greeting", "1"], /a scenario names its own opening/],
+    [["--views", "--greeting", "5"], /--greeting 5: the card has 2 opening\(s\)/],
+    [["--views", "--scenario", join(dir, "none.yaml")], /--scenario .*none\.yaml/],
+  ] as const) {
+    const r = await run("view", ferry, ...args)
+    assert.equal(r.exitCode, 1, args.join(" "))
+    assert.match(r.stderr, said)
+  }
+  const noViews = await run("view", cardFile("yandao").pathname, "--views")
+  assert.equal(noViews.exitCode, 1)
+  assert.match(noViews.stderr, /declares no views/)
+}
+
 const help = await run("--help")
 assert.equal(help.exitCode, 0)
 assert.match(help.stdout, /SUBCOMMANDS\n {2}init .*\n {2}check .*\n {2}view /)

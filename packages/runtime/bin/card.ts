@@ -1,5 +1,5 @@
 // Offline authoring commands (`tavern card init|check|view|test`, run by the tree in packages/server/bin/tavern.ts);
-// pure preview lives in src/view.ts. They read files against `Here` (cli.ts) and print through the tree's Console.
+// pure preview lives in src/view.ts, a view shell's in src/view-preview.ts. They read files against `Here` (cli.ts) and print through the tree's Console.
 import { basename } from "node:path"
 import { Console, Effect, FileSystem, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/cli"
@@ -8,7 +8,12 @@ import { checkCard, readCard, scaffold, templates } from "../support/author.ts"
 import { runScenario } from "../support/scenario.ts"
 import { Hat, hatToolProblem, normalizeHatDelivery } from "../src/fragment.ts"
 import { stages, view } from "../src/view.ts"
+import { previewPage, previewText, previewViews } from "../src/view-preview.ts"
 import { starter } from "../support/rows.ts"
+import { viewNode } from "../support/view-node.ts"
+import "./text.d.ts"
+import tokens from "../../client/src/tokens.css" with { type: "text" }
+import frame from "../../client/src/lightbox.css" with { type: "text" }
 
 const card = Argument.String("card").pipe(Argument.withDescription("path to a .yaml card file"))
 const load = (name: string) =>
@@ -130,6 +135,12 @@ const test = Command.make(
     }),
 ).pipe(Command.withDescription("Run deterministic zero-token smoke or scenario assertions against the fake model"))
 
+/** The host's look for `--views --html`, read from the client's own sheets at build time (a text import, embedded by
+ *  `bun build --compile`): the design tokens and the media frame. Never copied here. */
+const hostSheets = { tokens, frame }
+
+const viewsOnly = ["scenario", "step", "html"] as const
+const stageOnly = ["events", "pin", "persona", "lore", "hat"] as const
 const show = Command.make(
   "view",
   {
@@ -151,7 +162,10 @@ const show = Command.make(
       Flag.optional,
     ),
     greeting: Flag.Int("greeting").pipe(Flag.withDescription("apply greetings[n].do first (0-based)"), Flag.optional),
-    stage: Flag.Literals("stage", stages).pipe(Flag.withDefault("narrate")),
+    stage: Flag.Literals("stage", stages).pipe(
+      Flag.withDescription("the stage whose document to print (default narrate)"),
+      Flag.optional,
+    ),
     lore: Flag.Boolean("lore").pipe(
       Flag.withDescription("list every lore entry, the fully unlocked ones with no window included"),
       Flag.withDefault(false),
@@ -160,11 +174,47 @@ const show = Command.make(
       Flag.withDescription("a .hat.json file to wear: its messages, and on narrate its delivery tool and wrap"),
       Flag.optional,
     ),
+    views: Flag.Boolean("views").pipe(
+      Flag.withDescription(
+        "the card's in-stream views instead of a stage: each binding and what it resolves to, on the opening (--greeting) or after --scenario",
+      ),
+      Flag.withDefault(false),
+    ),
+    scenario: Flag.String("scenario").pipe(
+      Flag.withDescription("with --views: play this scenario (card test's format) and read its last step's node"),
+      Flag.optional,
+    ),
+    step: Flag.Int("step").pipe(
+      Flag.withDescription("with --scenario: read the node step n leaves (1-based) instead of the last"),
+      Flag.optional,
+    ),
+    html: Flag.String("html").pipe(
+      Flag.withDescription("with --views: also write a static page drawing each mounted view to this file"),
+      Flag.optional,
+    ),
   },
-  ({ card: name, state, greeting, stage, events, pin, persona, lore, hat }) =>
+  (o) =>
     Effect.gen(function* () {
+      const { card: name, state, greeting, events, pin, persona, lore, hat } = o
       const json = yield* Json
       const c = yield* load(name)
+      const given = (k: (typeof viewsOnly)[number] | (typeof stageOnly)[number]) => {
+        const v: boolean | Option.Option<unknown> = o[k]
+        return typeof v === "boolean" ? v : Option.isSome(v)
+      }
+      if (o.views) {
+        const stray = [...(Option.isSome(o.stage) ? ["stage"] : []), ...stageOnly.filter(given)]
+        if (stray.length)
+          return yield* Effect.fail(
+            `${stray.map((k) => `--${k}`).join(", ")} ${stray.length === 1 ? "shapes" : "shape"} a stage's document, which --views does not print; drop ${stray.length === 1 ? "it" : "them"}, or drop --views`,
+          )
+        return yield* views(c, o, json)
+      }
+      const stray = viewsOnly.filter(given)
+      if (stray.length)
+        return yield* Effect.fail(
+          `${stray.map((k) => `--${k}`).join(", ")} ${stray.length === 1 ? "goes" : "go"} with --views: add it to read the card's views`,
+        )
       const worn = Option.isSome(hat) ? yield* loadHat(hat.value) : undefined
       const v = yield* Effect.try({
         try: () =>
@@ -174,7 +224,7 @@ const show = Command.make(
             {
               state: Option.getOrUndefined(state),
               greeting: Option.getOrUndefined(greeting),
-              stage,
+              stage: Option.getOrElse(o.stage, () => "narrate" as const),
               events: Option.getOrUndefined(events)?.split(",").filter(Boolean),
               pin: Option.getOrUndefined(pin),
               lore,
@@ -185,6 +235,65 @@ const show = Command.make(
       })
       yield* Console.log(json ? JSON.stringify(v) : v.text)
     }),
-).pipe(Command.withDescription("Print the stage's document at a state, sectioned, with token estimates"))
+).pipe(
+  Command.withDescription(
+    "Print the stage's document at a state, sectioned, with token estimates; with --views, what each of the card's views binds to",
+  ),
+)
+
+/** `card view --views`: the views read on the node (support/view-node.ts), as text or JSON, and the page if asked. */
+const views = (
+  c: Awaited<ReturnType<typeof readCard>>,
+  o: {
+    state: Option.Option<Record<string, string>>
+    greeting: Option.Option<number>
+    scenario: Option.Option<string>
+    step: Option.Option<number>
+    html: Option.Option<string>
+  },
+  json: boolean,
+) =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    let scenario: unknown
+    if (Option.isSome(o.scenario)) {
+      const name = o.scenario.value
+      const source = yield* fs
+        .readFileString(yield* here(name))
+        .pipe(Effect.mapError((e) => `--scenario ${name}: ${e.message}`))
+      scenario = yield* attempt(() => Bun.YAML.parse(source))
+    }
+    const input = yield* Effect.tryPromise({
+      try: () =>
+        viewNode(c, {
+          greeting: Option.getOrUndefined(o.greeting),
+          state: Option.getOrUndefined(o.state),
+          step: Option.getOrUndefined(o.step),
+          ...(scenario !== undefined && { scenario }),
+        }),
+      catch: (e) => (e instanceof Error ? e.message : String(e)),
+    })
+    const reports = previewViews(input)
+    const where = `${c.id} at ${JSON.stringify(input.node.fields ?? input.node.latestContext?.fields ?? {})}, ${input.where} (node ${input.node.id})`
+    let page: string | undefined
+    if (Option.isSome(o.html)) {
+      page = yield* here(o.html.value)
+      yield* fs.writeFileString(
+        page,
+        previewPage(input, { title: `${c.title ?? c.id} · views`, caption: where, ...hostSheets }),
+      )
+    }
+    if (json)
+      yield* Console.log(
+        JSON.stringify({
+          card: c.id,
+          node: input.node.id,
+          at: input.where,
+          views: reports,
+          ...(page && { html: page }),
+        }),
+      )
+    else yield* Console.log(`${where}\n${previewText(reports)}${page ? `\n\nwrote ${page}` : ""}`)
+  })
 
 export const authorCommands = [init, check, show, test]

@@ -76,6 +76,21 @@ const done = async (...argv: string[]) => {
     assert.ok(help.includes(word), word)
   for (const absent of ["--wizard", "--log-level", "--completions"]) assert.ok(!help.includes(absent), absent)
   assert.match(await done("card", "--help"), /unroll/)
+  // card view --views through the whole tree: offline, no library opened or written
+  {
+    const ferry = new URL("../../../samples/ferry/ferry.yaml", import.meta.url).pathname
+    const library = join(inProcess, "views-library")
+    const viewed = await run(["card", "view", ferry, "--views"], { DATA: library })
+    assert.equal(viewed.code, 0, viewed.err)
+    assert.match(viewed.out, /── view ferry_hud 沧江渡口风物栏 ──/)
+    assert.ok(!existsSync(library))
+    const refused = await run(["card", "view", ferry, "--views", "--stage", "record"])
+    assert.deepEqual([refused.code, refused.out], [1, ""])
+    assert.match(refused.err, /✗ --stage shapes a stage's document, which --views does not print/)
+    assert.equal((await run(["card", "view", ferry, "--views", "--step", "x"])).code, 2)
+    const helped = await done("card", "view", "--help")
+    for (const flag of ["--views", "--scenario", "--step", "--html"]) assert.ok(helped.includes(flag), flag)
+  }
   // a wrong command line: exit 2, what was wrong on stderr, nothing on stdout
   const wrong = await run(["story", "list", "--bogus"])
   assert.equal(wrong.code, 2)
