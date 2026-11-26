@@ -319,21 +319,21 @@ views:
     css: |
       :host {
         display: block;
-        --ri-paper: #fcf7eb;
-        --ri-paper-2: #f4ead4;
-        --ri-note-bg: #fffaf0;
-        --ri-note-bg2: #f6ecd7;
-        --ri-ink: #352c24;
-        --ri-ink-soft: #756454;
-        --ri-blue: #2f4b78;
-        --ri-blue-soft: #e7eef8;
-        --ri-gold: #c69a4b;
-        --ri-gold-soft: rgba(198, 154, 75, 0.24);
-        --ri-rose: #d47483;
-        --ri-rose-soft: #fae9ec;
-        --ri-wax: #c86472;
-        --ri-wax-deep: #9c4350;
-        --ri-line: rgba(168, 130, 68, 0.34);
+        --ri-paper: light-dark(#fcf7eb, #2a251d);
+        --ri-paper-2: light-dark(#f4ead4, #221e18);
+        --ri-note-bg: light-dark(#fffaf0, #2e2820);
+        --ri-note-bg2: light-dark(#f6ecd7, #27221b);
+        --ri-ink: light-dark(#352c24, #ece3d3);
+        --ri-ink-soft: light-dark(#756454, #b5a591);
+        --ri-blue: light-dark(#2f4b78, #9cb3da);
+        --ri-blue-soft: light-dark(#e7eef8, #243147);
+        --ri-gold: light-dark(#c69a4b, #d6ae66);
+        --ri-gold-soft: light-dark(rgba(198, 154, 75, 0.24), rgba(214, 174, 102, 0.24));
+        --ri-rose: light-dark(#d47483, #e08f9c);
+        --ri-rose-soft: light-dark(#fae9ec, #3d2529);
+        --ri-wax: light-dark(#c86472, #d97a87);
+        --ri-wax-deep: light-dark(#9c4350, #b45b68);
+        --ri-line: light-dark(rgba(168, 130, 68, 0.34), rgba(214, 174, 102, 0.3));
         font-family: "Songti SC", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
         color: var(--ri-ink);
       }
