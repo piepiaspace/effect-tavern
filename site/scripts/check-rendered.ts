@@ -2,6 +2,8 @@
 // "right-flanking": after punctuation it must be followed by whitespace or more punctuation, so `**读数（Readings）**视图`
 // stays literal (a full-width bracket, then a letter). Chinese text has no space to offer there; write the gloss outside
 // the bold instead: `**读数**（Readings）视图`. Run after `astro build`: `bun scripts/check-rendered.ts`.
+// It sees only markers left as text: bold that paired with the wrong `**` and left none showing (`**甲（a）**与**乙**`
+// bolds 与 inside 甲…乙) passes here; `tools/mdlint` at the root reads the source and finds those.
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 

@@ -50,12 +50,6 @@ description: One-line summary.
 
 Content here. The page H1 comes from `title` — don't repeat it in the body.
 
-### Bold next to CJK punctuation
-
-CommonMark shows `**读数（Readings）**视图` with its asterisks, on GitHub and on this site. `tools/mdlint` at the repository root moves the gloss or the punctuation outside the bold (`**读数**（Readings）视图`): the pre-commit hook runs it on staged `.mdx`, and `bun tools/mdlint/index.ts --fix <file>` (from the root) runs it by hand.
-
-`bun run check:rendered` (after `bun run build`; the deploy workflow runs it) fails when a built page shows `**` as text and names the page and the words around it.
-
 ## Section heading
 ```
 
@@ -65,6 +59,12 @@ Rules:
 - **Partials use `<Render file="..." />`.** Don't import `.mdx` directly. Shared content lives in `src/content/partials/<slug>.mdx`.
 - **Icons use Nimbus's `Icon` + Phosphor.** `<Icon name="ph:<glyph>" class="w-4 h-4" />` from `@cloudflare/nimbus-docs/components/Icon.astro`. Glyphs: [phosphoricons.com](https://phosphoricons.com).
 - **Don't remove `<AgentDirective />` from `BaseLayout.astro`.** It points agents at `/llms.txt`.
+
+### Bold next to CJK punctuation
+
+CommonMark shows `**读数（Readings）**视图` with its asterisks, on GitHub and on this site. `tools/mdlint` at the repository root moves the gloss or the punctuation outside the bold (`**读数**（Readings）视图`): the pre-commit hook runs it on staged `.mdx`, and `bun tools/mdlint/index.ts --fix <file>` (from the root) runs it by hand.
+
+`bun run check:rendered` (after `bun run build`; the deploy workflow runs it) fails when a built page shows `**` as text and names the page and the words around it.
 
 ## Adding things
 

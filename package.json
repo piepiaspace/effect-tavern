@@ -13,11 +13,11 @@
   "scripts": {
     "prepare": "vp config --no-agent",
     "dev": "cd packages/client && bun --bun vp dev",
-    "verify": "bun run --filter './packages/*' verify && bun test/install.ts && bun test/release.ts && bun test/mdlint.ts && bun tools/mdlint/index.ts",
+    "verify": "bun run --filter './packages/*' verify && bun test/install.ts && bun test/release.ts && bun test/docs.ts && bun test/mdlint.ts && bun tools/mdlint/index.ts",
     "tavern": "TAVERN_DATA=${TAVERN_DATA:-${DATA:-.dev}} bun packages/server/bin/tavern.ts",
     "docs:dev": "bun --bun --cwd site run dev",
     "docs:build": "bun --bun --cwd site run build",
-    "docs:check": "cd site && bunx --bun nimbus-docs check && bun --bun run typecheck && bun --bun run build && bunx --bun nimbus-docs check"
+    "docs:check": "cd site && bunx --bun nimbus-docs check && bun --bun run typecheck && bun --bun run build && bunx --bun nimbus-docs check && bun --bun run check:rendered"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.94.0",
