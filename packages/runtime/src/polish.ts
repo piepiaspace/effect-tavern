@@ -68,18 +68,21 @@ export const sentences = (text: string): [number, number][] => {
   return out
 }
 
-/** The text with every dialogue character (quotes included) masked, same length, so offsets still line up. */
+/** The text with every dialogue code unit (quotes included) masked, same length in code units as `sentences` counts,
+ *  so offsets still line up (an emoji in speech is two). Narration is copied in slices, not character by character. */
 const mask = (text: string) => {
   let depth = 0
-  const cs = Array.from(text)
-  return cs
-    .map((c, i) => {
-      if (c === "\n") depth = 0
-      if (OPEN.test(c)) return (depth++, HIDDEN)
-      if (closing(cs, i) && depth > 0) return (depth--, HIDDEN)
-      return depth > 0 ? HIDDEN : c
-    })
-    .join("")
+  let out = ""
+  let from = 0
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i]
+    if (c === "\n") depth = 0
+    if (OPEN.test(c) ? (depth++, true) : closing(text, i) && depth > 0 ? (depth--, true) : depth > 0) {
+      out += text.slice(from, i) + HIDDEN
+      from = i + 1
+    }
+  }
+  return out + text.slice(from)
 }
 const compile = (pattern: string) =>
   new RegExp(
@@ -97,30 +100,29 @@ const compile = (pattern: string) =>
 export const scan = (text: string, lexicon: readonly Entry[], floor = FLOOR): Target[] => {
   if (text.length < floor || !lexicon.length) return []
   const masked = mask(text)
+  // a pattern found nowhere in the masked prose is found in none of its sentences: only the others are run per sentence
   const res = lexicon
     .filter((e) => e.enabled !== false && e.pattern.replace(/\*/g, ""))
     .map((e) => ({ e, re: compile(e.pattern) }))
+    .filter(({ re }) => masked.search(re) >= 0)
   if (!res.length) return []
   const spans = sentences(text)
-  const per = spans.map(([start, end]) => {
-    const s = masked.slice(start, end)
-    return res.map(({ re }) => Array.from(s.matchAll(re), (m) => m[0]))
-  })
-  const active = res.map(
-    ({ e }, i) => e.max === undefined || per.reduce((n, row) => n + row[i].length, 0) * 1000 > e.max * text.length,
-  )
+  const count = (re: RegExp) =>
+    spans.reduce((n, [start, end]) => n + (masked.slice(start, end).match(re)?.length ?? 0), 0)
+  const active = res.filter(({ e, re }) => e.max === undefined || count(re) * 1000 > e.max * text.length)
   const out: Target[] = []
-  spans.forEach(([start, end], j) => {
+  for (const [start, end] of spans) {
+    const s = masked.slice(start, end)
     const hits: string[] = []
     const hints: string[] = []
-    per[j].forEach((ms, i) => {
-      if (!active[i] || !ms.length) return
+    for (const { e, re } of active) {
+      const ms = s.match(re)
+      if (!ms) continue
       for (const m of ms) hits.push(m)
-      const hint = res[i].e.hint
-      if (hint && !hints.includes(hint)) hints.push(hint)
-    })
+      if (e.hint && !hints.includes(e.hint)) hints.push(e.hint)
+    }
     if (hits.length) out.push({ id: `hit-${out.length + 1}`, start, end, hits, hints })
-  })
+  }
   return out
 }
 

@@ -209,17 +209,13 @@ const padTo = (s: string, len: number) => `${"雨".repeat(len - s.length - 1)}�
   assert.ok(Object.values(pinned).flat().length > 200) // the corpus finds plenty: it pins something
 }
 
-// An emoji inside dialogue is two code units: the hit after it belongs to the sentence it is in.
-// KNOWN WRONG until the mask keeps code units (#254): today's scan names the first sentence. This is the one case the
-// fix is allowed to change; the fix changes `today` to `right`.
+// An emoji inside dialogue is two code units: the hit after it belongs to the sentence it is in. (Before #254 the mask
+// counted code points, and this hit was laid on the first sentence; the one result the fix changed.)
 {
   const t = "「😀😀😀😀😀😀」第一句没事。状态栏在第二句。"
-  const right = "状态栏在第二句。"
-  const today = "「😀😀😀😀😀😀」第一句没事。"
-  assert.notEqual(today, right)
   assert.deepEqual(
     scan(t, [{ pattern: "状态栏" }], 0).map((x) => [t.slice(x.start, x.end), x.hits]),
-    [[today, ["状态栏"]]],
+    [["状态栏在第二句。", ["状态栏"]]],
   )
 }
 console.log("polish ok")
