@@ -50,6 +50,12 @@ description: One-line summary.
 
 Content here. The page H1 comes from `title` — don't repeat it in the body.
 
+### Bold next to CJK punctuation
+
+CommonMark closes `**` only where the marker is followed by whitespace or punctuation when the character before it is punctuation. Chinese text puts no space after a closing bracket, so `**读数（Readings）**视图` is shown with its asterisks. Keep the bracketed gloss or the trailing punctuation outside the bold: `**读数**（Readings）视图`. GitHub renders these files by the same rule, so this is a rule for the source, not for the site's Markdown processor.
+
+`bun run check:rendered` (after `bun run build`; the deploy workflow runs it) fails when a built page shows `**` as text and names the page and the words around it.
+
 ## Section heading
 ```
 
