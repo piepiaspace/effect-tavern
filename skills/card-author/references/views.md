@@ -316,7 +316,7 @@ player chose; the app's design tokens also reach a view. Ones you can rely on (d
 (backgrounds); `--alpha-1` … `--alpha-4`, `--line`, `--line-strong`, `--fill` (washes and borders); `--primary`, `--ok`,
 `--warn`, `--danger` and their `-soft` forms (`--ok-soft`, `--warn-soft`, `--danger-soft`); `--font-sans`, `--font-mono`;
 `--radius`, `--radius-sm`, `--radius-card`, `--radius-pill`; `--text-caption`, `--text-footnote`, `--text-body`,
-`--text-prose`. There is no `--font-prose`.
+`--text-prose`. There is no `--font-prose`: the story's prose is set in `--font-sans` at `--text-prose`.
 
 ```css
 :host {
