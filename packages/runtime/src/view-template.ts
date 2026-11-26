@@ -6,6 +6,7 @@ import { tokenize, tokenTypes } from "css-tree/tokenizer"
 import { HOLE } from "./names.ts"
 import { STATE_HOLE } from "./cond.ts"
 import type { CompiledView, TemplateNode, ViewShell } from "./view-shell.ts"
+import { hiddenFromName } from "./view-bindings.ts"
 const words = (s: string) => new Set(s.split(" "))
 const tags = words(
   "button div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i u s del ins mark ruby rt rp abbr time kbd q cite wbr small sub sup code pre blockquote hr br figure figcaption details summary label input",
@@ -96,11 +97,14 @@ const attributeHint = (name: string, tag: string) =>
 /** A view's one button (#248): it puts the text at a path into the composer, as a chip of the options does. */
 const FILL =
   'a view\'s button fills the composer: write <button data-fill="<path>">…</button>, such as data-fill="opt" inside data-each="theater.options" data-as="opt"'
-/** Whether a button has a name the gate can see: text written in it, a data-text on it or inside it, or an aria-label. */
+/** Whether a button can have a name: text written in it, a data-text on it or inside it, or an aria-label, none of it in
+ *  a hidden subtree (which names nothing). Whether it has one with the data is the host's (view-bindings.ts
+ *  `accessibleName`): it leaves the button disabled while the name is empty. */
 const named = (n: { attrs: Record<string, string>; children: TemplateNode[] }): boolean =>
-  !!n.attrs["aria-label"]?.trim() ||
-  "data-text" in n.attrs ||
-  n.children.some((c) => (typeof c === "string" ? !!c.trim() : named(c)))
+  !hiddenFromName(n.attrs) &&
+  (!!n.attrs["aria-label"]?.trim() ||
+    "data-text" in n.attrs ||
+    n.children.some((c) => (typeof c === "string" ? !!c.trim() : named(c))))
 const EXPRESSION =
   "views take plain paths only, no expressions: show or hide with data-if / data-unless on a boolean, mark a value with data-attr-<name> and a CSS attribute selector, scale with data-var-<name> and calc() / clamp() in css, or gate the whole view with its when"
 const FETCH =
@@ -112,7 +116,11 @@ interface Walk {
   html: string
   problems: ViewProblem[]
   places: WeakMap<object, ElementPlace>
+  /** Where the enclosing <button> starts, while the walk is inside one. */
+  button?: Partial<Place>
 }
+// Interactive content a button cannot hold: a browser would hand the press to it, or to the button, never both.
+const interactive = words("button input label details summary")
 function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
   if ("value" in n) return [n.value]
   if (!("tagName" in n)) return []
@@ -186,6 +194,20 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
     )
   if (button && attrs.name !== undefined)
     fail("<button>: name is not allowed on a button", attrPlaces.name ?? place, "remove it, or use a class")
+  const within = w.button && `inside the <button> at ${w.button.line}:${w.button.column}`
+  if (within && interactive.has(n.tagName))
+    fail(
+      `<${n.tagName}> cannot sit ${within}: a button holds words, not another control`,
+      place,
+      "put the control beside the button",
+    )
+  for (const media of ["data-media", "data-lightbox"])
+    if ((button || within) && attrs[media] !== undefined)
+      fail(
+        `<${n.tagName}>: ${media} cannot sit ${button ? "on a <button>" : within}: a button holds words, not an image`,
+        attrPlaces[media] ?? place,
+        "put the image beside the button, and name the button with words",
+      )
   if (n.tagName === "input" && !["radio", "checkbox"].includes(attrs.type))
     fail(`<input type="${attrs.type ?? ""}">: only radio and checkbox inputs are supported`)
   if ((attrs["data-as"] !== undefined) !== (attrs["data-each"] !== undefined))
@@ -194,7 +216,8 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
         ? `<${n.tagName}> has data-each without data-as: name the row with data-as`
         : `<${n.tagName}> has data-as without data-each`,
     )
-  const node = { tag: n.tagName, svg, attrs, children: n.childNodes.flatMap((c) => templateNode(c, w)) }
+  const inner = button && !w.button ? { ...w, button: place } : w
+  const node = { tag: n.tagName, svg, attrs, children: n.childNodes.flatMap((c) => templateNode(c, inner)) }
   if (button && !named(node))
     w.problems.push({
       level: "error",
@@ -348,7 +371,14 @@ function checkStructure(html: string, fragment: Html.DocumentFragment, problems:
           `${name(el)} has no end tag, and the browser closes it at ${where(el.close)}${closedBy && !rest.startsWith("</") ? `, before <${closedBy[1]}>` : ""}`,
           tag === "p" ? `write </${tag}>: a <p> cannot hold a block element such as <div>` : `write </${tag}>`,
         )
-    } else
+    } else if (tag === "button" && closedBy?.[1].toLowerCase() === "button" && !rest.startsWith("</"))
+      report(
+        "error",
+        el.loc.startOffset,
+        `${name(el)} is never closed: the browser closes it at ${where(el.close)}, where another <button> starts, since a button cannot hold a button`,
+        "put the buttons side by side",
+      )
+    else
       report(
         "error",
         el.loc.startOffset,

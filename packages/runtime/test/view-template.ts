@@ -1,6 +1,8 @@
 // compileView's whitelist (#248): what a view may write, and the fetch and escape paths that stay shut.
 import assert from "node:assert/strict"
 import { compileView, inspectView } from "../src/view-template.ts"
+import { accessibleName } from "../src/view-bindings.ts"
+import type { TemplateNode } from "../src/view-shell.ts"
 
 const css = (rule: string) => () => compileView({ html: "<p></p>", css: rule })
 const html = (markup: string) => () => compileView({ html: markup })
@@ -291,6 +293,74 @@ assert.deepEqual(JSON.parse(JSON.stringify(compileView({ html: "<button data-fil
   { tag: "button", svg: false, attrs: { "data-fill": "opt" }, children: ["x"] },
 ])
 assert.throws(() => compileView({ html: "<button>x</button>" }), /^Error: <button> has no data-fill at 1:1$/)
+// A hidden subtree names nothing; neither image nor control sits in or on a button.
+for (const [markup, want] of [
+  ["<button data-fill='opt'><span aria-hidden='true'>→</span></button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt' aria-hidden='true'>x</button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt'><span hidden data-text='opt'></span></button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt'><b aria-hidden='false'>→</b><span aria-hidden='true'>!</span>选</button>", []],
+  [
+    "<button data-fill='opt' data-media='media.face'>x</button>",
+    [
+      "error! html:1:25 <button>: data-media cannot sit on a <button>: a button holds words, not an image | put the image beside the button",
+    ],
+  ],
+  [
+    "<button data-fill='opt'>x<span><i data-media='media.face' data-lightbox></i></span></button>",
+    [
+      "error! html:1:35 <i>: data-media cannot sit inside the <button> at 1:1: a button holds words, not an image",
+      "error! html:1:59 <i>: data-lightbox cannot sit inside the <button> at 1:1",
+    ],
+  ],
+  [
+    "<button data-fill='opt'>x<input type='checkbox'><label>l</label><details><summary>s</summary></details></button>",
+    [
+      "error! html:1:26 <input> cannot sit inside the <button> at 1:1: a button holds words, not another control | put the control beside the button",
+      "error! html:1:49 <label> cannot sit inside the <button> at 1:1",
+      "error! html:1:65 <details> cannot sit inside the <button> at 1:1",
+      "error! html:1:74 <summary> cannot sit inside the <button> at 1:1",
+    ],
+  ],
+  [
+    "<button data-fill='a'>x<button data-fill='b'>y</button></button>",
+    [
+      "error html:1:1 <button> is never closed: the browser closes it at 1:24, where another <button> starts, since a button cannot hold a button | put the buttons side by side",
+      "error html:1:56 </button> has nothing open to close",
+    ],
+  ],
+] as [string, string[]][]) {
+  const got = said({ html: markup })
+  for (const w of want)
+    assert.ok(
+      got.some((g) => g.startsWith(w.split(" | ")[0]) && (!w.includes(" | ") || g.includes(w.split(" | ")[1]))),
+      `${markup}\nwant: ${w}\ngot:\n${got.join("\n")}`,
+    )
+  assert.equal(got.length, want.length, `${markup}\n${got.join("\n")}`)
+}
+// What a button is named with the data it renders: the host enables it only when this is not empty.
+{
+  const [button] = compileView({
+    html: "<button data-fill='opt'><span aria-hidden='true'>→</span><span data-if='hint' data-text='hint'></span><span data-unless='hint'>选</span><i data-each='tags' data-as='t'><b data-text='t'></b></i></button>",
+  }) as Exclude<TemplateNode, string>[]
+  assert.equal(accessibleName(button, { hint: "递茶", tags: [] }), "递茶")
+  assert.equal(accessibleName(button, { hint: "", tags: [] }), "选")
+  assert.equal(accessibleName(button, { hint: "", tags: ["甲", "乙"] }), "选甲 乙")
+  const [byText] = compileView({ html: "<button data-fill='a' data-text='b'></button>" }) as Exclude<
+    TemplateNode,
+    string
+  >[]
+  assert.equal(accessibleName(byText, { a: "递茶", b: "" }), "")
+  assert.equal(accessibleName(byText, { a: "递茶", b: 3 }), "3")
+  const [labelled] = compileView({
+    html: "<button data-fill='a' aria-label=' 选 '><b data-text='b'></b></button>",
+  }) as Exclude<TemplateNode, string>[]
+  assert.equal(accessibleName(labelled, { a: "x", b: "" }), "选")
+  const [hidden] = compileView({ html: "<button data-fill='a'><b hidden data-text='a'></b></button>" }) as Exclude<
+    TemplateNode,
+    string
+  >[]
+  assert.equal(accessibleName(hidden, { a: "x" }), "")
+}
 
 // The css is never name-filled either: a macro in a string or a custom property is placed in the css block.
 assert.deepEqual(

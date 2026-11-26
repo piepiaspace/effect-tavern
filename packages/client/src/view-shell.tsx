@@ -1,4 +1,5 @@
 import {
+  accessibleName,
   contentDirective,
   rowAliases,
   rowScope,
@@ -143,16 +144,19 @@ export const ViewBlock = (props: Props) => {
         }
         return branch(n.children, data, aliases, rowPrefix)
       }
-      // The view's one button (#248): it fills the composer as an Options chip does and never sends; live only on the
-      // latest turn, with no turn in flight, and with text at its path. A ui-sdk part, so the agent bridge can press it.
+      // The view's one button (#248): it fills the composer as an Options chip does (the text as it stands) and never
+      // sends; live only on the latest turn, with no turn in flight, with words at its path, and with a name to be
+      // found by: its accessible name is computed from the same template and data it renders.
+      // A ui-sdk part, so the agent bridge can press it.
       if (n.tag === "button") {
         const fill = () => scalar(get("data-fill")) ?? ""
+        const named = () => accessibleName(n, data()) !== ""
         return (
           <Show when={visibleElement(a, data())}>
             <Button
               {...attributes()}
               type="button"
-              disabled={!props.latest || busy() || !fill()}
+              disabled={!props.latest || busy() || !fill().trim() || !named()}
               onClick={() => updateComposition({ text: fill() })}
             >
               {body()}
