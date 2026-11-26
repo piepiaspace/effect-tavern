@@ -19,7 +19,7 @@ import { SiblingKind } from "./readings.tsx"
 import { apart, heading, lineOf, sceneOf, versions } from "./record.ts"
 import { previewFromPlay } from "./prompt-tree-state.ts"
 import { close, open } from "./pages.ts"
-import { card, draft, type Id, log, path, prose, registry, working } from "./store.ts"
+import { card, draft, draftParent, type Id, log, path, prose, registry, working } from "./store.ts"
 import { turn } from "./turn.ts"
 import { dropNodes } from "./wire.ts"
 import { t } from "./i18n.ts"
@@ -41,14 +41,14 @@ export const Timeline = () => {
   const all = read(log)
   const line = read(path)
   const d = read(draft)
+  const parent = read(draftParent)
   const view = read(card)
   const busy = read(working) // the story stays put while a turn is in flight: no checkout, no drop (as in the reader)
   const [selected, setSelected] = createSignal<Id | null>(registry.get(log).head)
   const [pane, setPane] = createSignal<"pipeline" | "node">("pipeline") // the inspector's names: its pane switch is inherited
   const onLine = createMemo(() => new Set(line().map((n) => n.id)))
   const laid = createMemo(() => {
-    const dr = d()
-    return layout(all(), lineOf, dr ? dr.parent : undefined)
+    return layout(all(), lineOf, parent())
   })
   // pixel geometry: threads stacked, each under its band with its own rows
   const geo = createMemo(() => {

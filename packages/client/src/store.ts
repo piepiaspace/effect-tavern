@@ -60,6 +60,13 @@ export type Wire = Event | ({ kind: "error" } & Failure) | Attach | { kind: "str
 export { registry }
 export const log = Atom.make<L.Log<Node>>(L.of<Node>())
 export const draft = Atom.make<Draft | null>(null)
+/** A draft is open, and the node it hangs under (`undefined` with none; `null` is a draft at the root). Prose streams
+ *  into `draft` every frame: a reader that only asks whether one is open, or where, reads these and sleeps through it. */
+export const drafting = Atom.make((get) => get(draft) !== null)
+export const draftParent = Atom.make((get) => {
+  const d = get(draft)
+  return d ? d.parent : undefined
+})
 /** What the client draws the card by (GET /card): read once at open, before anything subscribes, hence keepAlive. */
 export const card = Atom.make<CardView | null>(null).pipe(Atom.keepAlive)
 /** The library (GET /stories, /personas, /cards/<id>/local): every card's stories and which is open (a story is one root's tree),
@@ -160,11 +167,11 @@ export const demanded = Atom.make<Id | null>(null)
  *  draft, and two streams would interleave into one `apply` queue). What holds the composer, the story and a new root. */
 export const openStreams = Atom.make(0)
 export const working = Atom.make(
-  (get) => get(openStreams) > 0 || (get(draft) !== null && get(error) === null) || get(stage) !== null,
+  (get) => get(openStreams) > 0 || (get(drafting) && get(error) === null) || get(stage) !== null,
 )
 /** A demand or a field edit updates the mounted HUD in place. A new turn waits for all record calls. */
 export const latestViewsReady = Atom.make(
-  (get) => !get(working) || get(demanded) !== null || (get(stage) === null && get(draft) === null),
+  (get) => !get(working) || get(demanded) !== null || (get(stage) === null && !get(drafting)),
 )
 /** The page over the reader: none, the card page, the Timeline, the settings, the Writing page (writing.tsx) or the
  *  Inspect page on one node. The reader stays mounted under it, so a turn in flight keeps streaming. "home" is no page
