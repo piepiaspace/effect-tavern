@@ -45,20 +45,31 @@ YAML/Schema 错误使用 `schema`，文件读取失败使用 `io`。
 回合之后才有，开场节点上会逐个视图说明；`on: false` 或 `trigger: demand` 的产物只在玩家要求时生成，场景不会要求，也会注明。
 
 文本输出按卡片顺序列出每个视图：id、label、residency、`when` 在此是否成立、每个 consumes 产物此处有没有值、
-是否会挂载（不挂载时说明原因：守卫不成立 / turn 视图无可显示 / latest 视图不在 head）；然后按模板顺序列出每个绑定：
+是否会挂载（不挂载时说明原因：守卫不成立 / turn 视图无可显示 / latest 视图不在 head；守卫不成立在哪个节点都先报它。
+判定与会话、阅读器共用 `packages/runtime/src/view-shell.ts` 的 `viewMount`）；然后按模板顺序列出每个绑定：
 指令、原样路径和解析结果（`"雨"`、`2`、`true`、`[3 rows]`、`{aboard, moor}`；解析不到是
 `undefined (nothing at this path)`，拼错的路径一眼可见）。`data-each` 给出行数和第一行的键，其内部绑定按第一行读；
 `data-media` 给出 catalog/item 与解析出的 URL，或 `no hit`；`data-var-*` 说明值是否是有限数字（否则被丢弃）；
-`data-text` 读到对象或数组时说明会渲染为空。最后是作用域的顶层形状：`fields` 的键、`world` 的产物及形状（世界表在
+`data-text` 读到对象或数组时说明会渲染为空；`data-fill` 给出按下会填进输入框的文字，或按钮为何禁用（不在最新回合、
+路径上只有空白、按这份数据没有可访问名称；预览里没有进行中的回合）。最后是作用域的顶层形状：`fields` 的键、`world` 的产物及形状（世界表在
 视图里是 `{ entityId, ...columns }` 的数组；turn 视图没有 `world`）、此处有的 `theater` 产物、`media` 槽位、`names` 的键，
 以及只 consume 一个产物时的 `value` 和记录键别名。`--json` 输出同样的信息：`{card, node, at, views: [...]}`，
-每个视图含 `id`、`residency`、`when`、`consumes`、`mounted`、`reason`、`notes`、`bindings`、`scope`。
+每个视图含 `id`、`residency`、`when`、`consumes`、`mounted`、`reason`、`notes`、`bindings`、`scope`；`data-fill` 绑定另带
+`fill: { text, disabled? }`（`disabled` 为 `not-latest`、`blank` 或 `unnamed`）。
 
 `--html file` 另写一张自包含的静态页：每个挂载的视图放在声明式 shadow root（`<template shadowrootmode="open">`）里，
-作者的 CSS 与应用里一样只作用于自己；`data-media` 命中画成框里的 `<img>`（解析出的 https 地址），未命中不画。
-页面带宿主的设计变量（取自 `packages/client/src/tokens.css` 原文，媒体框取自 `lightbox.css`），右上角切换浅色/深色，
-`?theme=light|dark` 也可指定。不还原：灯箱、画廊遮罩、媒体框的点阵占位与渐显、宿主字体之外的字形。
+作者的 CSS 与应用里一样只作用于自己，前面是与阅读器同一份默认规则（`view-shell.ts` 的 `VIEW_DEFAULTS`）；
+`data-media` 命中画成框里的 `<img>`（解析出的 https 地址），未命中不画；按钮画成 `<button type="button">`，
+按上面的规则禁用。页面带宿主的设计变量与媒体框样式：`packages/client/src/tokens.css` 与 `lightbox.css` 原文，由
+`tavern` 命令树（`packages/server/bin/tavern.ts`，编译时嵌入二进制）传给 runtime 的命令；runtime 本身不依赖
+客户端，单独挂载时页面会注明缺少设计变量。右上角切换浅色/深色，`?theme=light|dark` 也可指定。
+不还原：灯箱、画廊遮罩、媒体框的点阵占位与渐显、按下按钮、宿主字体之外的字形。
 渲染器在 `packages/runtime/src/view-preview.ts`，规则全部来自客户端同用的 `view-bindings.ts`。
+
+卡片由 `card view` 直接解码读取，不经过闸门，所以页面对任何卡片都是惰性的：卡片与模型的字符串只以转义后的文字或
+属性值出现在渲染器自己写出的元素与属性上；闸门会拒绝的 `aspect`、`focus` 不画；图片只用 `resolveCatalogUrl`
+构造的 https 地址；样式表里的 `<` 写成 CSS 转义 `\3c `，任何 CSS 都关不掉自己的 `<style>`
+（`packages/runtime/test/view-preview-hostile.ts`）。
 
 `--views` 与只影响阶段文档的 `--stage`、`--events`、`--pin`、`--persona`、`--lore`、`--hat` 互斥；
 `--scenario`、`--step`、`--html` 只与 `--views` 同用。违反、步号越界、文件读不到、卡片没有视图时返回 1；命令行写错返回 2。

@@ -90,6 +90,16 @@ const done = async (...argv: string[]) => {
     assert.equal((await run(["card", "view", ferry, "--views", "--step", "x"])).code, 2)
     const helped = await done("card", "view", "--help")
     for (const flag of ["--views", "--scenario", "--step", "--html"]) assert.ok(helped.includes(flag), flag)
+    // the page draws with the client's own sheets, which the tree passes in (the runtime alone has none)
+    const page = join(inProcess, "views.html")
+    const drawn = await run(["card", "view", ferry, "--views", "--html", page])
+    assert.equal(drawn.code, 0, drawn.err)
+    const html = readFileSync(page, "utf8")
+    for (const sheet of ["tokens.css", "lightbox.css"]) {
+      const css = readFileSync(new URL(`../../client/src/${sheet}`, import.meta.url), "utf8")
+      assert.ok(html.includes(css.replace(/</g, "\\3c ")), sheet)
+    }
+    assert.doesNotMatch(html, /tokens were not available/)
   }
   // a wrong command line: exit 2, what was wrong on stderr, nothing on stdout
   const wrong = await run(["story", "list", "--bogus"])

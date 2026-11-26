@@ -343,13 +343,13 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
     raw: "岸边",
     shown: true,
   })
-  // the page: the views in shadow roots, the host's tokens from the client's own sheet
+  // the page: the views in shadow roots. The host's sheets are the client's, which the runtime does not depend on: the
+  // commands mounted here get none and say so (the tavern tree passes them in: packages/server/test/cli.ts)
   const page = join(dir, "views.html")
   const drawn = await run("view", ferry, "--views", "--html", page)
   assert.match(drawn.stdout, /\n\nwrote .*views\.html$/m)
   const text = readFileSync(page, "utf8")
-  const tokens = readFileSync(new URL("../../client/src/tokens.css", import.meta.url), "utf8")
-  assert.ok(text.includes(tokens))
+  assert.match(text, /The host's design tokens were not available/)
   assert.match(text, /<div class="view-shell" data-view="ferry_hud" data-latest><template shadowrootmode="open">/)
   assert.match(text, /<details class="hud" data-weather="晴" open style="--tide: 1">/)
   assert.match(text, /<img class="media-img" src="https:\/\/media\.tavern\.example\/ferry\/portraits\/ferryman\//)
