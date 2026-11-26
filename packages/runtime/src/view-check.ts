@@ -8,11 +8,16 @@ import { isViewPath, pathDirective, type InspectedView, type Place, type ViewPro
 
 type Ty =
   | { t: "scalar"; of: "number" | "string" | "boolean"; what: string; catalog?: string }
-  | { t: "record"; keys: Map<string, Ty>; what: string; open?: (key: string) => ViewProblem }
+  | { t: "record"; keys: Map<string, Ty>; what: string; open?: (key: string) => Opened }
   | { t: "array"; item: Ty; what: string }
-  | { t: "any" }
+  // `foreign`: under a product the card does not declare, so whatever a pack supplies there is no catalog column
+  | { t: "any"; foreign?: string }
   | { t: "absent"; message: string; hint?: string }
-type Resolved = { ty: Ty; problem?: undefined } | { ty?: undefined; problem: ViewProblem }
+/** A key a record leaves open to someone else (a pack's name or product): what is said, and what the value is
+ *  whoever supplies it, so the rest of the path is still checked. No `ty` ends the path there. */
+type Opened = { problem: ViewProblem; ty?: Ty }
+/** What a path reads, and everything said on the way; no `ty` when the path cannot be read at all. */
+type Resolved = { ty?: Ty; problems: ViewProblem[] }
 
 const number = (what: string): Ty => ({ t: "scalar", of: "number", what })
 const fieldTy = (f: Pick<Field, "type">): Ty => ({
@@ -87,6 +92,66 @@ export const closest = (name: string, candidates: Iterable<string>) => {
 }
 const didYouMean = (right: string | undefined, prefix: string) => (right ? `: did you mean ${prefix}${right}?` : "")
 
+type Step = { ty: Ty; problem?: undefined } | { ty?: undefined; problem: ViewProblem }
+/** One key into a value of type `ty`, read at `at`: the key's type, or what is wrong with it, with the closest key. */
+const step = (ty: Ty, k: string, at: string): Step => {
+  if (ty.t === "any") return { ty }
+  if (ty.t === "absent") return { problem: { level: "error", message: ty.message, hint: ty.hint } }
+  if (ty.t === "record") {
+    const next = ty.keys.get(k)
+    if (next) return { ty: next }
+    const near = didYouMean(closest(k, ty.keys.keys()), at + ".")
+    return {
+      problem: {
+        level: "error",
+        message: `${k} is not ${at === "fields" ? "a field of this card" : at === "media" ? "a media slot of this view" : at === "world" ? "a world product of this card" : `a key of ${at}, ${describe(ty)}`}${near}`,
+        ...(at === "media" && { hint: "declare the slot in the view's media" }),
+        ...(at === "world" && { hint: "only role: world products are under world." }),
+      },
+    }
+  }
+  if (ty.t === "array") {
+    if (/^\d+$/.test(k)) return { ty: ty.item }
+    if (k === "length") return { ty: number("a count") }
+    return {
+      problem: {
+        level: "error",
+        message: `${at} is ${ty.what}: it has no key ${k}`,
+        hint: `iterate it with data-each and data-as, or name an item by number (${at}.0)`,
+      },
+    }
+  }
+  return { problem: { level: "error", message: `${at} is ${ty.what}: it has no key ${k}` } }
+}
+
+/** The card's world products as a view or a condition reads them under `world.` */
+const worldTy = (products: NonNullable<Card["products"]>): Ty => ({
+  t: "record",
+  what: "the world",
+  keys: new Map(
+    products
+      .filter((p) => p.role === "world")
+      .map((p) => [p.id, p.shape ? shapeTy(p.shape, { world: true }) : { t: "any" }]),
+  ),
+})
+/** What is wrong with a condition's `world.<product>.<key>…` path: a record's keys are checked and nested records
+ *  followed; a table's rows are addressed by entity id, which no card knows, so the walk ends there. `null` when
+ *  `<product>` is no world product of the card; `undefined` when nothing is wrong. */
+export function worldPathProblem(card: Pick<Card, "products">, path: string): ViewProblem | null | undefined {
+  const [, id, ...keys] = path.split(".")
+  const world = worldTy(card.products ?? [])
+  let ty = world.t === "record" ? world.keys.get(id) : undefined
+  if (!ty) return null
+  let at = `world.${id}`
+  for (const k of keys) {
+    if (ty.t === "array" || ty.t === "any") return
+    const next = step(ty, k, at)
+    if (next.problem) return next.problem
+    ty = next.ty
+    at += "." + k
+  }
+}
+
 export interface ViewBindingCheck {
   problems: ViewProblem[]
   /** Catalogs a `data-media="<catalog>:<path>"` binding draws from: their files must be served as images. */
@@ -135,9 +200,13 @@ export function checkViewBindings(
     what: "the names",
     keys: new Map(names.map((k) => [k, { t: "scalar", of: "string", what: "a name" }])),
     open: (key) => ({
-      level: "warn",
-      message: `${key} is not one of the card's names (${names.join(", ")}): a writing pack may supply it, but the card cannot rely on it${didYouMean(closest(key, names), "names.")}`,
-      hint: "add it to the card's names",
+      problem: {
+        level: "warn",
+        message: `${key} is not one of the card's names (${names.join(", ")}): a writing pack may supply it, but the card cannot rely on it${didYouMean(closest(key, names), "names.")}`,
+        hint: "add it to the card's names",
+      },
+      // whoever supplies it, a name is a string
+      ty: { t: "scalar", of: "string", what: "a name" },
     }),
   })
   const hit: Ty = {
@@ -156,15 +225,7 @@ export function checkViewBindings(
   roots.set(
     "world",
     latest
-      ? {
-          t: "record",
-          what: "the world",
-          keys: new Map(
-            products
-              .filter((p) => p.role === "world")
-              .map((p) => [p.id, p.shape ? shapeTy(p.shape, { world: true }) : { t: "any" }]),
-          ),
-        }
+      ? worldTy(products)
       : {
           t: "absent",
           message: `world is not given to a turn view: only a residency: latest view receives world; a turn view reads its own turn's fields and theater`,
@@ -184,13 +245,18 @@ export function checkViewBindings(
       const other = products.find((p) => p.id === key)
       return other
         ? {
-            level: "error",
-            message: `${key} has role: ${other.role}, and theater holds only role: theater products${other.role === "world" ? ` (read it as world.${key})` : ""}`,
+            problem: {
+              level: "error",
+              message: `${key} has role: ${other.role}, and theater holds only role: theater products${other.role === "world" ? ` (read it as world.${key})` : ""}`,
+            },
           }
         : {
-            level: "warn",
-            message: `${key} is not a product of this card: a player's writing pack may supply it, but the card cannot rely on it being there${didYouMean(closest(key, theaterIds), "theater.")}`,
-            hint: "declare it in the card's products",
+            problem: {
+              level: "warn",
+              message: `${key} is not a product of this card: a player's writing pack may supply it, but the card cannot rely on it being there${didYouMean(closest(key, theaterIds), "theater.")}`,
+              hint: "declare it in the card's products",
+            },
+            ty: { t: "any", foreign: `theater.${key}` },
           }
     },
   })
@@ -219,58 +285,45 @@ export function checkViewBindings(
   const resolve = (path: string, locals: ReadonlyMap<string, Ty>): Resolved => {
     // readPath tries the whole path as one key first: that is how `<row>.$num` is read.
     const whole = locals.get(path)
-    if (whole) return { ty: whole }
+    if (whole) return { ty: whole, problems: [] }
     const [root, ...keys] = path.split(".")
     let ty = locals.get(root) ?? roots.get(root)
-    if (!ty) return { problem: unknownRoot(root, path, locals) }
+    if (!ty) return { problems: [unknownRoot(root, path, locals)] }
+    const problems: ViewProblem[] = []
     let at = root
     for (let i = 0; i < keys.length; i++) {
       const k = keys[i]
-      if (ty.t === "any") return { ty }
-      if (ty.t === "absent") return { problem: { level: "error", message: ty.message, hint: ty.hint } }
-      if (ty.t === "record") {
-        const next = ty.keys.get(k)
-        if (!next) {
-          if (at === "fields") {
-            const rest = keys.slice(i).join(".")
-            const field = dotted.find((f) => rest === f.path || rest.startsWith(f.path + "."))
-            if (field)
-              return {
-                problem: {
+      if (ty.t === "record" && !ty.keys.has(k)) {
+        if (at === "fields") {
+          const rest = keys.slice(i).join(".")
+          const field = dotted.find((f) => rest === f.path || rest.startsWith(f.path + "."))
+          if (field)
+            return {
+              problems: [
+                {
                   level: "error",
                   message: `the field ${field.path} has a dot in its path, and a view reads ${at}.${field.path} as ${field.path.split(".").join(" → ")}: a view cannot address it`,
                   hint: "rename the field without a dot",
                 },
-              }
-          }
-          if (ty.open) return { problem: ty.open(k) }
-          const own = [...ty.keys.keys()]
-          return {
-            problem: {
-              level: "error",
-              message: `${k} is not ${at === "fields" ? "a field of this card" : at === "media" ? "a media slot of this view" : at === "world" ? "a world product of this card" : `a key of ${at}, ${describe(ty)}`}${didYouMean(closest(k, own), at + ".")}`,
-              ...(at === "media" && { hint: "declare the slot in the view's media" }),
-              ...(at === "world" && { hint: "only role: world products are under world." }),
-            },
-          }
+              ],
+            }
         }
-        ty = next
-      } else if (ty.t === "array") {
-        if (/^\d+$/.test(k)) ty = ty.item
-        else if (k === "length") ty = number("a count")
-        else
-          return {
-            problem: {
-              level: "error",
-              message: `${at} is ${ty.what}: it has no key ${k}`,
-              hint: `iterate it with data-each and data-as, or name an item by number (${at}.0)`,
-            },
-          }
-      } else return { problem: { level: "error", message: `${at} is ${ty.what}: it has no key ${k}` } }
+        if (ty.open) {
+          const opened = ty.open(k)
+          problems.push(opened.problem)
+          if (!opened.ty) return { problems }
+          ty = opened.ty
+          at += "." + k
+          continue
+        }
+      }
+      const next = step(ty, k, at)
+      if (next.problem) return { problems: [...problems, next.problem] }
+      ty = next.ty
       at += "." + k
     }
-    if (ty.t === "absent") return { problem: { level: "error", message: ty.message, hint: ty.hint } }
-    return { ty }
+    if (ty.t === "absent") return { problems: [...problems, { level: "error", message: ty.message, hint: ty.hint }] }
+    return { ty, problems }
   }
 
   // What each path-taking directive needs of the value it reads.
@@ -325,11 +378,9 @@ export function checkViewBindings(
       for (const [attr, path] of Object.entries(a)) {
         if (!pathDirective(attr) || !isViewPath(path)) continue // an expression is said by inspectView
         const r = resolve(path, locals)
-        if (r.problem) push(r.problem, attr)
-        else {
-          const wrong = typeProblem(attr, path, r.ty)
-          if (wrong) push(wrong, attr)
-        }
+        for (const p of r.problems) push(p, attr)
+        const wrong = r.ty && typeProblem(attr, path, r.ty)
+        if (wrong) push(wrong, attr)
         if (attr === "data-each" && a["data-as"]) {
           const alias = a["data-as"]
           if (alias.includes("."))
@@ -341,7 +392,7 @@ export function checkViewBindings(
               },
               "data-as",
             )
-          const item: Ty = r.ty?.t === "array" ? r.ty.item : { t: "any" }
+          const item: Ty = r.ty?.t === "array" ? r.ty.item : r.ty?.t === "any" ? r.ty : { t: "any" }
           inner = new Map(locals).set(alias, item).set(alias + ".$num", number("a row number"))
         }
       }
@@ -369,17 +420,28 @@ export function checkViewBindings(
               },
               "data-media",
             )
-          else if (r.problem) push(r.problem, "data-media")
-          else if (r.ty.t !== "any" && !(r.ty.t === "scalar" && r.ty.catalog === catalog))
-            push(
-              {
-                level: "error",
-                message: `${path} is not a column of catalog ${catalog} in a theater product`,
-                hint: "name an enum column whose catalog is this one, in a product the view consumes or under theater.",
-              },
-              "data-media",
-            )
-          else imageCatalogs.add(catalog)
+          else {
+            for (const p of r.problems) push(p, "data-media")
+            if (r.ty?.t === "any" && r.ty.foreign)
+              push(
+                {
+                  level: "error",
+                  message: `${r.ty.foreign} is not a product of this card, so ${path === r.ty.foreign ? "it" : path} is never a column of catalog ${catalog}`,
+                  hint: "declare the product with an enum column whose catalog is this one",
+                },
+                "data-media",
+              )
+            else if (r.ty && r.ty.t !== "any" && !(r.ty.t === "scalar" && r.ty.catalog === catalog))
+              push(
+                {
+                  level: "error",
+                  message: `${path} is not a column of catalog ${catalog} in a theater product`,
+                  hint: "name an enum column whose catalog is this one, in a product the view consumes or under theater.",
+                },
+                "data-media",
+              )
+            else if (r.ty) imageCatalogs.add(catalog)
+          }
         } else {
           const [source, slot] = binding.split(".")
           const slots = source === "media" ? view.media : card.media?.portraits

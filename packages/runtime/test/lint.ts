@@ -597,6 +597,7 @@ assert.ok(of({ ...base, greetings: [{ text: "  " }] }).includes("error empty-gre
           '  <span data-text="fields.a.b"></span>',
           "  <p>{{char}} {{getvar::hp}}</p>",
           '  <span data-if="fields.潮位 < 2"></span>',
+          '  <ul data-each="names.villain" data-as="v"></ul><b data-text="names.villain.foo"></b><i data-media="faces:theater.extra"></i>',
           "</div>",
         ].join("\n"),
       },
@@ -649,6 +650,18 @@ assert.ok(of({ ...base, greetings: [{ text: "  " }] }).includes("error empty-gre
       /\{\{getvar::hp\}\} is shown as written: a view does not interpolate or run macros/,
     ],
     ["error", "views.hud.html:15:9", /data-if="fields\.潮位 < 2" is not a path/],
+    // A name or product only a pack could supply keeps its warning, and what can never be right is still said: a name
+    // is a string, and an undeclared product has no catalog column.
+    ["warn", "views.hud.html:16:7", /villain is not one of the card's names/],
+    ["error", "views.hud.html:16:7", /names\.villain is a name, not a list or a table/],
+    ["warn", "views.hud.html:16:53", /villain is not one of the card's names/],
+    ["error", "views.hud.html:16:53", /names\.villain is a name: it has no key foo/],
+    ["warn", "views.hud.html:16:90", /extra is not a product of this card: a player's writing pack may supply it/],
+    [
+      "error",
+      "views.hud.html:16:90",
+      /theater\.extra is not a product of this card, so it is never a column of catalog faces/,
+    ],
     [
       "error",
       "views.turned.html:1:10",
@@ -686,7 +699,7 @@ assert.ok(of({ ...base, greetings: [{ text: "  " }] }).includes("error empty-gre
       .filter((d) => d.rule === "unknown-path")
       .map((d) => `${d.path}: ${d.message}`),
     [
-      "fiction.moor.when: world.boat.mor: mor is not a key of world.boat (keys aboard, moor): did you mean world.boat.moor?",
+      "fiction.moor.when: world.boat.mor: mor is not a key of world.boat, a record with keys aboard, moor: did you mean world.boat.moor?",
     ],
   )
   // A product bound in media.illustrations is not consumable, and the message says why.
