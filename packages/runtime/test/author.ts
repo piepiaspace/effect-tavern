@@ -487,6 +487,39 @@ assert.deepEqual(projected.media, {
   gallery: ["images"],
   bgm: { product: "memory" },
 })
+// Views reach the author model as wiring only (#248): what each reads, never its markup, styles or labels; a candidate
+// carries them through untouched.
+const viewing: Card = {
+  ...detailed,
+  products: [...detailed.products!, { id: "inner", role: "theater", text: "PRIVATE INNER", shape: { kind: "text" } }],
+  views: [
+    {
+      id: "hud",
+      label: "PRIVATE VIEW LABEL",
+      residency: "latest",
+      when: { path: "mode", is: "text" },
+      media: [{ id: "hero", catalog: "images", label: "PRIVATE SLOT LABEL" }],
+      html: "<p>PRIVATE HTML</p>",
+      css: "p { color: red; } /* PRIVATE CSS */",
+    },
+    { id: "thought", consumes: ["inner"], html: "<p data-text='value'>PRIVATE</p>" },
+  ],
+}
+const seen = mechanical(viewing)
+assert.ok(!JSON.stringify(seen).includes("PRIVATE"))
+assert.deepEqual(seen.views, [
+  {
+    id: "hud",
+    consumes: [],
+    residency: "latest",
+    when: { path: "mode", is: "text" },
+    media: [{ id: "hero", catalog: "images" }],
+  },
+  { id: "thought", consumes: ["inner"], residency: "turn" },
+])
+assert.equal("views" in projected, false)
+assert.deepEqual(applyCompile(viewing, full).views, viewing.views)
+assert.deepEqual(applySort(viewing, ["Sorted."], [{ paragraphs: [0], to: "fiction.sorted" }]).views, viewing.views)
 const revised = applyCompile(detailed, full)
 assert.equal(revised.rules.fields[0].start, true)
 assert.equal(revised.rules.fields[0].label, "PRIVATE LABEL")
