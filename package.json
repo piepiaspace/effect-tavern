@@ -13,7 +13,7 @@
   "scripts": {
     "prepare": "vp config --no-agent",
     "dev": "cd packages/client && bun --bun vp dev",
-    "verify": "bun run --filter './packages/*' verify && bun test/install.ts && bun test/release.ts",
+    "verify": "bun run --filter './packages/*' verify && bun test/install.ts && bun test/release.ts && bun test/mdlint.ts && bun tools/mdlint/index.ts",
     "tavern": "TAVERN_DATA=${TAVERN_DATA:-${DATA:-.dev}} bun packages/server/bin/tavern.ts",
     "docs:dev": "bun --bun --cwd site run dev",
     "docs:build": "bun --bun --cwd site run build",
@@ -22,6 +22,10 @@
   "devDependencies": {
     "@oxlint/plugins": "1.94.0",
     "eslint-plugin-solid": "0.19.0",
+    "remark-cjk-friendly": "2.3.3",
+    "remark-gfm": "4.0.1",
+    "remark-parse": "11.0.0",
+    "unified": "11.0.5",
     "vite-plus": "catalog:"
   },
   "overrides": {

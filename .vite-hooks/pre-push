@@ -1,1 +1,2 @@
 vp check
+bun tools/mdlint/index.ts

@@ -2,6 +2,10 @@ import solidV2 from "eslint-plugin-solid/configs/v2"
 import { defineConfig } from "vite-plus"
 
 export default defineConfig({
+  staged: {
+    // bold beside CJK punctuation that GitHub shows as asterisks: the punctuation moves outside the markers
+    "*.{md,mdx}": "bun tools/mdlint/index.ts --fix",
+  },
   fmt: {
     printWidth: 120,
     semi: false,
