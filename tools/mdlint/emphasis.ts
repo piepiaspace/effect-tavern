@@ -409,23 +409,27 @@ const describe = (s: string, node: Node, m: number) => {
   return { at: a, opens, closes, problem: `this \`${marks}\` pairs with a different marker` }
 }
 
-/** The span with a space outside each marker that fails, when the strict parse then holds it: the edit that always
- *  works, at the cost of a visible space. */
-const spaced = (flavor: Flavor, s: string, node: Node, opens: boolean, closes: boolean) => {
+/** The span with a space outside each marker that fails, when both markers then count: the edit that always works,
+ *  at the cost of a visible space. Flanking is local, so a neighbour that fails too does not change the answer. */
+const spaced = (s: string, node: Node, opens: boolean, closes: boolean) => {
   const [a, b] = range(node)
+  const m = marker(s, node)
   const lead = opens ? "" : " "
   const trail = closes ? "" : " "
   if (!lead && !trail) return undefined
   const next = s.slice(0, a) + lead + s.slice(a, b) + trail + s.slice(b)
-  if (!spans(parse(parsers[flavor].strict, next)).has(key(node.type, a + lead.length, b + lead.length)))
-    return undefined
+  const o = a + lead.length
+  const c = b + lead.length
+  if (!canOpen(next, o, o + m) || !canClose(next, c - m, c)) return undefined
   return clusterBefore(s, a) + lead + clip(s.slice(a, b), 32) + trail + clusterAfter(s, b)
 }
 
-const hand = (reason: string, example: string | undefined, name: string) =>
-  `needs a hand: ${reason}. Either edit fixes it and keeps the ${name} words: ` +
-  (example ? `put a space outside the marker, ${show(example)}; ` : "") +
-  `or reword so the punctuation, bracket pair or gloss sits wholly outside the ${name} (\`**词**（gloss）\`, \`「**词**」\`)`
+const hand = (reason: string, example: string | undefined, name: string) => {
+  const reword = `reword so the punctuation, bracket pair or gloss sits wholly outside the ${name} (\`**词**（gloss）\`, \`「**词**」\`)`
+  return example
+    ? `needs a hand: ${reason}. Either edit fixes it and keeps the ${name} words: put a space outside the marker, ${show(example)}; or ${reword}`
+    : `needs a hand: ${reason}. To fix it, ${reword}`
+}
 
 /** Every span a strict renderer shows as text, each with its fix when the move is safe. `mdx` reads the source as MDX. */
 export const check = (source: string, options: { mdx?: boolean } = {}): Finding[] => {
@@ -463,7 +467,7 @@ export const check = (source: string, options: { mdx?: boolean } = {}): Finding[
     const name = NAMES[node.type]
     const remedy = next
       ? `move ${edit.moved} the markers: ${show(clip(next.slice(start, end)) + after(next, end))}`
-      : hand(reason || "the move would change other Markdown", spaced(flavor, source, node, opens, closes), name)
+      : hand(reason || "the move would change other Markdown", spaced(source, node, opens, closes), name)
     out.push({ type: node.type, start, end, at, problem, remedy, fix: next ? edit : undefined })
   }
   return out.sort((x, y) => x.at - y.at)

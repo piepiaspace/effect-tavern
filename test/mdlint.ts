@@ -220,6 +220,15 @@ for (const [name, source, fixed, found, left, mdx] of cases) {
   }
 }
 
+// two spans on one line that both need a hand: each still gets its own spaced form, though the strict parse pairs
+// their markers with each other
+{
+  const found = check("底部为**「从这里开始」chips**提供入口。用**Vite+**工具链。\n")
+  assert.equal(found.length, 2)
+  assert.ok(found[0].remedy.includes("put a space outside the marker, `为 **「从这里开始」chips**提`"), found[0].remedy)
+  assert.ok(found[1].remedy.includes("put a space outside the marker, `用**Vite+** 工`"), found[1].remedy)
+}
+
 // a property: generated spans of CJK text, Latin tokens, symbols, emoji and brackets keep, after --fix,
 // (a) the same characters, (b) the same grapheme clusters, (c) every bracket pair on one side of the markers that was,
 // and (d) a fixed point; and the text without its markers is the text that went in.
