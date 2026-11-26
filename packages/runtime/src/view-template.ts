@@ -8,10 +8,13 @@ import { STATE_HOLE } from "./cond.ts"
 import type { CompiledView, TemplateNode, ViewShell } from "./view-shell.ts"
 const words = (s: string) => new Set(s.split(" "))
 const tags = words(
-  "div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i u s del ins mark ruby rt rp abbr time kbd q cite wbr small sub sup code pre blockquote hr br figure figcaption details summary label input svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath",
+  "div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i u s del ins mark ruby rt rp abbr time kbd q cite wbr small sub sup code pre blockquote hr br figure figcaption details summary label input",
 )
-// Only inside <svg>: in HTML, `title` and friends would be other elements.
-const svgTags = words("text tspan title desc use mask pattern")
+// Inside <svg> (and <svg> itself) only these: an HTML name there is a dead SVG-namespace node, and one of these
+// outside it an unknown HTML element (`title` would even be another element).
+const svgTags = words(
+  "svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath text tspan title desc use mask pattern",
+)
 const attributes = words(
   "class id title lang dir hidden aria-label aria-hidden role name for type checked open colspan rowspan viewBox width height x y x1 y1 x2 y2 cx cy r rx ry dx dy points d fill stroke stroke-width stroke-linecap stroke-linejoin stroke-dasharray stroke-dashoffset stroke-miterlimit stroke-opacity fill-opacity fill-rule clip-rule opacity vector-effect offset stop-color clip-path mask transform text-anchor dominant-baseline font-size font-weight font-family letter-spacing maskUnits maskContentUnits patternUnits patternContentUnits patternTransform",
 )
@@ -26,7 +29,11 @@ const cssFunctions = words(
 const atRules = words("media supports container keyframes layer")
 const localRef = /^url\(#[\w-]+\)$/
 // A paint: #hex, a keyword, url(#id), a numeric rgb()/hsl(), or var(--x) with one of those as its fallback.
-const simplePaint = String.raw`#[a-f\d]{3,8}|[a-z]+|url\(#[\w-]+\)|(?:rgba?|hsla?)\((?:[\s,/]*[+-]?(?:\d+\.?\d*|\.\d+)(?:%|deg)?)+\s*\)`
+// The value is the author's: each part matches one way only (a number's digits can't be split between two numbers, a
+// separator is never empty), so a near-miss fails in linear time rather than trying every split.
+const number = String.raw`[+-]?(?:\d+(?:\.\d+)?|\.\d+)(?:%|deg)?`
+const separator = String.raw`(?:\s*[,/]\s*|\s+)`
+const simplePaint = String.raw`#[a-f\d]{3,8}|[a-z]+|url\(#[\w-]+\)|(?:rgba?|hsla?)\(\s*${number}(?:${separator}${number})*\s*\)`
 const paint = new RegExp(String.raw`^(?:${simplePaint}|var\(--[\w-]+(?:\s*,\s*(?:${simplePaint}))?\s*\))$`, "i")
 const pathPattern = /^[\p{L}\p{N}_$-]+(?:\.[\p{L}\p{N}_$-]+)*$/u
 export const isViewPath = (value: string) => pathPattern.test(value)
@@ -102,8 +109,15 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
   const fail = (message: string, where: { line?: number; column?: number } = place, hint?: string) =>
     w.problems.push({ level: "error", message, block: "html", ...where, fatal: true, ...(hint && { hint }) })
   const svg = n.namespaceURI === "http://www.w3.org/2000/svg"
-  const allowed = tags.has(n.tagName) || (svg && svgTags.has(n.tagName))
-  if (!allowed) fail(`<${n.tagName}> is not a view element`, place, elementHints[n.tagName])
+  const allowed = (svg ? svgTags : tags).has(n.tagName)
+  const hint =
+    elementHints[n.tagName] ??
+    (svg && tags.has(n.tagName)
+      ? "inside <svg> only SVG elements draw: close the </svg> before HTML, or write SVG <text>"
+      : !svg && svgTags.has(n.tagName)
+        ? "SVG elements draw only inside an <svg>"
+        : undefined)
+  if (!allowed) fail(`<${n.tagName}> is not a view element${svg ? " inside <svg>" : ""}`, place, hint)
   const attrs: Record<string, string> = Object.create(null)
   const attrPlaces: Record<string, Place> = Object.create(null)
   for (const { name, value, namespace, prefix } of n.attrs) {
