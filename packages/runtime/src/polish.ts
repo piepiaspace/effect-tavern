@@ -69,20 +69,27 @@ export const sentences = (text: string): [number, number][] => {
 }
 
 /** The text with every dialogue code unit (quotes included) masked, same length in code units as `sentences` counts,
- *  so offsets still line up (an emoji in speech is two). Narration is copied in slices, not character by character. */
+ *  so offsets still line up (an emoji in speech is two). Narration is copied in slices and each masked run is appended
+ *  once, not character by character: prose that is mostly speech would otherwise cost a concatenation per code unit. */
 const mask = (text: string) => {
   let depth = 0
   let out = ""
-  let from = 0
+  let from = 0 // where the text not yet appended begins
+  let hidden = -1 // where the masked run being read began, or -1 outside one
   for (let i = 0; i < text.length; i++) {
     const c = text[i]
     if (c === "\n") depth = 0
-    if (OPEN.test(c) ? (depth++, true) : closing(text, i) && depth > 0 ? (depth--, true) : depth > 0) {
-      out += text.slice(from, i) + HIDDEN
-      from = i + 1
+    const masked = OPEN.test(c) ? (depth++, true) : closing(text, i) && depth > 0 ? (depth--, true) : depth > 0
+    if (masked && hidden < 0) {
+      out += text.slice(from, i)
+      hidden = i
+    } else if (!masked && hidden >= 0) {
+      out += HIDDEN.repeat(i - hidden)
+      from = i
+      hidden = -1
     }
   }
-  return out + text.slice(from)
+  return hidden >= 0 ? out + HIDDEN.repeat(text.length - hidden) : out + text.slice(from)
 }
 const compile = (pattern: string) =>
   new RegExp(
