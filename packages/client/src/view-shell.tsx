@@ -39,6 +39,11 @@ const stylesheet = (css: string) => {
 }
 const sheets = new WeakMap<CompiledView, CSSStyleSheet>()
 let mediaSheet: CSSStyleSheet | undefined
+// A `data-media` element the author left unsized fills the line: in a flex row it would otherwise shrink to the
+// frame's zero content width. `:where` keeps it at zero specificity, so any author width wins.
+const mediaDefaults = `
+.view-image:not([data-fit=natural]) { width:100%;height:100% }
+:where(:has(> .view-image)) { width:100%;width:-webkit-fill-available;width:stretch }`
 function viewSheet(view: CompiledView) {
   let sheet = sheets.get(view)
   if (!sheet) sheets.set(view, (sheet = stylesheet(view.css ?? "")))
@@ -150,10 +155,7 @@ export const ViewBlock = (props: Props) => {
     ({ sheet, id, latest }) => {
       host.dataset.view = id
       host.toggleAttribute("data-latest", latest)
-      root.adoptedStyleSheets = [
-        (mediaSheet ??= stylesheet(frameCss + "\n.view-image:not([data-fit=natural]) { width:100%;height:100% }")),
-        sheet,
-      ]
+      root.adoptedStyleSheets = [(mediaSheet ??= stylesheet(frameCss + mediaDefaults)), sheet]
     },
   )
   // Keep the template's computations under the reader's Loading boundary.
