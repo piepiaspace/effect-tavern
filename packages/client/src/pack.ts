@@ -3,10 +3,105 @@
 // - `cardNameKeys`, `orderedPacks`, `toggleMount`, `withProductPatch`, `withoutProductPatch` for the Writing page;
 // - `fillKnown` for filling `{{key}}` holes from `cardView.layer.names` when inserting a snippet or sending a turn;
 // - `serializePack` for exporting a pack as a JSON file (an import is the server's decode of that file).
-import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
+import type { Layer, Local, PackEntry, PackSection } from "@effect-tavern/runtime/src/layer.ts"
 import { HOLE, holes } from "@effect-tavern/runtime/src/names.ts"
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
 import type { Key } from "./i18n.ts"
+
+export const MAX_ENTRY_SECTIONS = 8
+
+export type { PackSection }
+export type ReferenceEntry = PackEntry
+
+/** High-level reading & trigger mode for a reference entry (eliminating dead combinations of access/activation). */
+export type EntryMode = "auto" | "manual" | "always"
+
+export const entryModeOf = (e: Pick<ReferenceEntry, "access" | "activation">): EntryMode =>
+  e.activation === "always" ? "always" : e.access?.model === false ? "manual" : "auto"
+
+export const withEntryMode = (e: ReferenceEntry, mode: EntryMode): ReferenceEntry => {
+  const prev = entryModeOf(e)
+  if (mode === prev) return e
+  if (mode === "manual") {
+    return {
+      ...e,
+      access: { model: false, player: true },
+      activation: "on_demand",
+      residency: "turn",
+    }
+  }
+  if (mode === "always") {
+    return {
+      ...e,
+      access: { model: true, player: false },
+      activation: "always",
+      residency: e.residency === "turn" ? "window" : (e.residency ?? "window"),
+    }
+  }
+  return {
+    ...e,
+    access: { model: true, player: prev === "manual" ? true : (e.access?.player ?? true) },
+    activation: "on_demand",
+    residency: prev === "manual" ? "window" : (e.residency ?? "window"),
+  }
+}
+
+/** Sanitize an entry or section slug so it never contains `/` (pack separator) or `#` (section separator). */
+export const cleanEntrySlug = (raw: string): string =>
+  raw
+    .trim()
+    .replace(/[/#\s]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+
+/** Total character count across main body and all sections. */
+export const entryChars = (e: Pick<ReferenceEntry, "text" | "sections">): number =>
+  e.text.length + (e.sections ?? []).reduce((n, s) => n + s.text.length, 0)
+
+/** Normalize a reference entry for persistence: strips blank optional front-matter fields and empty sections,
+ *  guarantees unique `#`-free section slugs, and caps sections at `MAX_ENTRY_SECTIONS`. */
+export const cleanReferenceEntry = (e: ReferenceEntry, fallbackId: string): ReferenceEntry | undefined => {
+  const seen = new Set<string>()
+  const sections: PackSection[] = []
+  for (const s of (e.sections ?? []).slice(0, MAX_ENTRY_SECTIONS)) {
+    const sText = s.text.trim()
+    if (!sText) continue
+    const base = cleanEntrySlug(s.id) || cleanEntrySlug(s.title ?? "") || `sec-${sections.length + 1}`
+    let sid = base
+    let n = 2
+    while (seen.has(sid)) sid = `${base}-${n++}`
+    seen.add(sid)
+    const sTitle = s.title?.trim()
+    sections.push({
+      id: sid,
+      ...(sTitle && { title: sTitle }),
+      text: s.text,
+    })
+  }
+  const text = e.text.trim()
+  if (!text && !sections.length) return undefined
+  const title = e.title?.trim()
+  const summary = e.summary?.trim()
+  const id = cleanEntrySlug(e.id) || cleanEntrySlug(title ?? "") || fallbackId
+  const mode = entryModeOf(e)
+  const access =
+    mode === "manual"
+      ? { model: false, player: true }
+      : mode === "always"
+        ? { model: true, player: false }
+        : { model: true, player: e.access?.player ?? true }
+  const activation = mode === "always" ? ("always" as const) : ("on_demand" as const)
+  const residency = e.residency ?? (mode === "manual" ? "turn" : "window")
+  return {
+    id,
+    ...(title && { title }),
+    ...(summary && { summary }),
+    text: e.text,
+    ...(sections.length && { sections }),
+    access,
+    activation,
+    residency,
+  }
+}
 
 /** What a player's product is for (docs/harness-neutralization-brief.md §4.2): 记忆摘要 (a chronicle), 输入建议 (a
  *  theater list offered above the input box) or 小剧场 (any other theater). */
@@ -34,9 +129,15 @@ export const fillKnown = (text: string, names?: Readonly<Record<string, string>>
 
 /** The proper-noun holes in a row's own texts, plus any keys already in `p.names`. */
 export const packHoles = (p: Partial<Layer>): string[] => {
+  const entries = p.entries ?? []
   const text = [
     ...(p.fragments ?? []).map((x) => x.text ?? ""),
-    ...(p.entries ?? []).map((x) => x.text),
+    ...entries.flatMap((x) => [
+      x.title ?? "",
+      x.summary ?? "",
+      x.text,
+      ...(x.sections ?? []).flatMap((s) => [s.title ?? "", s.text]),
+    ]),
     ...(p.products ?? []).map((x) => x.text ?? ""),
     ...(p.snippets ?? []).flatMap((x) => [x.text, x.after ?? ""]),
   ].join("\n")

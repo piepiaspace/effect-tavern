@@ -223,10 +223,63 @@ async function run() {
     if (latestMode() !== "yield")
       throw Error(`Expected new default pack fragment to save mode "yield", got ${String(latestMode())}`)
     disposeDefault()
-    const disposeCustom = render(() => <ProseTab pack={custom} onSave={() => Promise.resolve()} />, root)
+    let latestCustom: Layer = custom
+    const [savedCustom, setSavedCustom] = createSignal(latestCustom)
+    const disposeCustom = render(
+      () => (
+        <ProseTab
+          pack={savedCustom()}
+          onSave={(edit) => {
+            latestCustom = edit(latestCustom)
+            setSavedCustom(latestCustom)
+            return Promise.resolve()
+          }}
+        />
+      ),
+      root,
+    )
     flush()
     if (!modeShown().includes(t("packs.modeOverride"))) throw Error("A mounted pack's fragment does not show override")
-    root.querySelector<HTMLButtonElement>(`[aria-label="${t("packs.mode")}"]`)!.click()
+    // Adding a new directive allows picking head position, slot, and merge mode directly in the draft row
+    button(root, t("writing.addRequirement"))!.click()
+    if (!(await until(() => root.querySelector(".frag-row.draft")))) throw Error("Missing draft row")
+    const draftRow = root.querySelector<HTMLElement>(".frag-row.draft")!
+    const headBtn = button(draftRow, t("writing.atHead"))!
+    if (headBtn.disabled) throw Error("Draft head position button should not be disabled")
+    headBtn.click()
+    if (!(await until(() => draftRow.querySelector<HTMLButtonElement>(`[aria-label="${t("packs.slot")}"]`))))
+      throw Error("Missing draft slot menu")
+    draftRow.querySelector<HTMLButtonElement>(`[aria-label="${t("packs.slot")}"]`)!.click()
+    if (!(await until(() => document.querySelector('[role="option"]')))) throw Error("Slot options did not open")
+    ;[...document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find((o) => o.textContent?.includes(t("packs.slotStyle")))!
+      .click()
+    if (!(await until(() => !document.querySelector('[role="option"]')))) throw Error("Slot options did not close")
+    draftRow.querySelector<HTMLButtonElement>(`[aria-label="${t("packs.mode")}"]`)!.click()
+    if (!(await until(() => document.querySelector('[role="option"]')))) throw Error("Mode options did not open")
+    ;[...document.querySelectorAll<HTMLElement>('[role="option"]')]
+      .find((o) => o.textContent?.includes(t("packs.modeBoth")))!
+      .click()
+    if (!(await until(() => !document.querySelector('[role="option"]')))) throw Error("Mode options did not close")
+    const headDraftArea = draftRow.querySelector<HTMLTextAreaElement>(
+      `textarea[aria-label="${t("writing.requirement")}"]`,
+    )!
+    headDraftArea.value = "Crisp visual nouns."
+    headDraftArea.dispatchEvent(new Event("input", { bubbles: true }))
+    headDraftArea.dispatchEvent(new FocusEvent("focusout", { bubbles: true }))
+    if (!(await until(() => !root.querySelector(".frag-row.draft")))) throw Error("Draft row did not commit on blur")
+    const added = latestCustom.fragments?.[0]
+    if (
+      !added ||
+      added.id !== "style" ||
+      added.at !== undefined ||
+      added.mode !== "both" ||
+      added.text !== "Crisp visual nouns."
+    )
+      throw Error(`Expected head style/both directive from draft, got ${JSON.stringify(added)}`)
+    // Custom fragment row (now at index 1) still does not offer slot mute
+    const customModeTriggers = root.querySelectorAll<HTMLButtonElement>(`[aria-label="${t("packs.mode")}"]`)
+    customModeTriggers[1].click()
     if (!(await until(() => document.querySelector('[role="option"]')))) throw Error("Missing fragment modes")
     if ([...document.querySelectorAll('[role="option"]')].some((o) => o.textContent?.includes(t("packs.muteSlot"))))
       throw Error("Custom fragment offered a slot mute")

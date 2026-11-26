@@ -27,7 +27,7 @@
 
 | TypeScript 时代（`9aee360b2`）的设计包袱 | 纯 Rust 时代（当前 `HEAD`）的收敛终态 | 验证出的工程结论 |
 | :--- | :--- | :--- |
-| **三套重叠存储 + 映射桥**：`SessionStore`（UI 消息）+ `AgentRunStore`（运维事件）+ `RuntimeEventStore`（语义账本）+ `session-event-runtime-mapper.ts` | **单一 `RootStore` + 同事务确定性折叠**：`maka-agent-state` 直接挂载在 `maka-event-log` 单一 SQLite 库上，同一写事务内追加事实并折叠出 `RunView` 与查询索引，独立只读连接池供快照读取，FTS/摘要走可随时重建的后台通道 | 多套半权威表并存必生状态裂缝；正确终态是**“单一事件表 + 同事务确定性物化视图 + 派生索引随时可重建”** |
+| **三套重叠存储 + 映射桥**：`SessionStore`（UI 消息）+ `AgentRunStore`（运维事件）+ `RuntimeEventStore`（语义账本）+ `session-event-runtime-mapper.ts` | **单一 `RootStore` + 同事务确定性折叠**：`maka-agent-state` 直接挂载在 `maka-event-log` 单一 SQLite 库上，同一写事务内追加事实并折叠出 `RunView` 与查询索引，独立只读连接池供快照读取，FTS/摘要走可随时重建的后台通道 | 多套半权威表并存必生状态裂缝；正确终态是“**单一事件表 + 同事务确定性物化视图 + 派生索引随时可重建**” |
 | **多条割裂的执行控制流**：普通回合走 `AiSdkTurn`，手动压缩走 `compactSession`，崩溃续跑走 `RuntimeContinuationPlanner` 另开新 Run | **单一确定性调谐器（Reconciler）**：`plugins/agent/engine/src/reconcile.rs`（*"The only next-action policy. State folds facts; Native executes capabilities."*），在线对话、审批挂起、退避重试、上下文压缩与冷启动恢复共享同一个 `RunId` 与 **义务前沿（Obligation Frontier）** 推进环 | 如果崩溃恢复和正常推进走两套代码路径，恢复路径永远是脆弱的二等公民 |
 | **缺乏生产消费者的超前恢复层**：Phase 3A 工具专属 `reconcile` 恢复包 writer、早期内置自迭代环 | **彻底退役删除**（第 8 章明确退役 recovery bundle writer，只留不可变事实判定） | 没有真实外部幂等协议支撑的“智能恢复抽象”只会污染安全边界，不如诚实停机（park） |
 

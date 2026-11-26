@@ -558,7 +558,7 @@ tavern card
 命令
   init     新建一个卡片文件
   check    检查一个卡片文件
-  view     预览卡片在某个阶段的提示
+  view     预览某个阶段的提示，或流内视图
   test     跑卡片旁边的场景测试，不花 token
   unroll   把 SillyTavern 卡片展开成卡片文件
   install  把卡片文件或链接放上书架
@@ -664,7 +664,7 @@ usage
 commands
   init     Make a new card file
   check    Check a card file
-  view     Preview a stage's document
+  view     Preview a stage's document or views
   test     Run the card's scenario, zero tokens
   unroll   Unroll a SillyTavern card
   install  Put a card file or link on the shelf

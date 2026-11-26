@@ -1083,7 +1083,7 @@ a.chip:active {
 }
 #snippets {
   box-sizing: border-box;
-  width: min(22rem, calc(100vw - 24px));
+  width: min(25rem, calc(100vw - 24px));
 }
 .invocation-menu {
   display: flex;
@@ -1154,6 +1154,11 @@ a.chip:active {
 }
 #snippets .asset .hint {
   white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
 }
 #snippets .dim:not([data-empty]) {
   display: none;
