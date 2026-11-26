@@ -544,4 +544,86 @@ const catalogError = lint(addresses).find((d) => d.rule === "unknown-catalog")!
 assert.equal(catalogError.path, "products.memory.shape.keys[0].shape.columns[0].catalog")
 assert.ok(paths.has(catalogError.path))
 
+// Scenario `expect.world`: a record compares the keys given, a table its rows matched by the columns given in any
+// order (entity ids are the host's), the same count. A scripted value its product's shape refuses is named, with why.
+{
+  const worldCard = decodeCard({
+    id: "world",
+    frame: [],
+    fiction: [{ id: "s", text: "门外。" }],
+    greetings: [{ text: "开场。" }],
+    rules: { fields: [], actions: [] },
+    lore: [],
+    guard: [],
+    products: [
+      {
+        id: "boat",
+        role: "world",
+        text: "Boat",
+        on: true,
+        shape: {
+          kind: "record",
+          keys: [
+            { key: "aboard", type: "boolean" },
+            { key: "moor", type: "text" },
+          ],
+        },
+        initial: { aboard: false, moor: "岸" },
+      },
+      {
+        id: "crew",
+        role: "world",
+        text: "Crew",
+        on: true,
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "name", type: "text" },
+            { key: "role", type: "text" },
+          ],
+        },
+      },
+      { id: "aside", role: "theater", text: "Aside", on: true, shape: { kind: "list" } },
+    ],
+  })
+  const step = (record: Record<string, unknown>, world: Record<string, unknown>) => ({
+    greeting: 0,
+    steps: [{ text: "上船", replies: { record: [record] }, expect: { world } }],
+  })
+  const crew = [
+    { name: "陈", role: "艄公" },
+    { name: "沈", role: "客" },
+  ]
+  const boarded = { boat: { aboard: true, moor: "江心" }, crew }
+  await runScenario(worldCard, step(boarded, { boat: { aboard: true } }))
+  await runScenario(worldCard, step(boarded, { crew: [{ name: "沈" }, { role: "艄公" }] }))
+  await assert.rejects(
+    runScenario(worldCard, step(boarded, { boat: { aboard: false } })),
+    /step 1: world\.boat\.aboard/,
+  )
+  await assert.rejects(
+    runScenario(worldCard, step(boarded, { crew: [{ name: "沈" }] })),
+    /world\.crew: expected 1 row\(s\), actual 2/,
+  )
+  await assert.rejects(
+    runScenario(worldCard, step(boarded, { crew: [{ name: "沈" }, { name: "沈" }] })),
+    /world\.crew\[1\]: no row matches \{"name":"沈"\}/,
+  )
+  await assert.rejects(
+    runScenario(worldCard, step(boarded, { nope: {} })),
+    /world\.nope: the card has no world product nope/,
+  )
+  // a rejected scripted value: a world product's tool and a theater call would each refuse it far from the script
+  await assert.rejects(
+    runScenario(worldCard, step({ boat: { aboard: "yes", moor: "江心" } }, {})),
+    /step 1: scripted record value boat was rejected: Expected boolean[^]*aboard/,
+  )
+  await assert.rejects(
+    runScenario(worldCard, step({ aside: 42 }, {})),
+    /step 1: scripted record value aside was rejected/,
+  )
+  const aside = await runScenario(worldCard, step({ aside: ["想家"] }, {}))
+  assert.deepEqual(aside[0].products.aside, ["想家"])
+}
+
 console.log("author: ok")
