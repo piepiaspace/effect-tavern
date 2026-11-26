@@ -4,7 +4,7 @@ import { fake, type FakeReply } from "@effect-tavern/provider"
 import { Effect, Schema, Stream } from "effect"
 import { makeCard, type Card } from "../src/card.ts"
 import { catalogsOf, resolve } from "../src/layer.ts"
-import { shapeSchema, type Catalog, type Col, type Shape } from "../src/product.ts"
+import { colSchema, shapeSchema, type Catalog, type Col, type Shape } from "../src/product.ts"
 import { makeSession } from "../src/session.ts"
 import { plain } from "./rows.ts"
 import { defaultAnswer, readStage } from "./script.ts"
@@ -38,42 +38,60 @@ export const decodeScenario = (value: unknown): Scenario =>
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v)
 const said = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
-/** `s` as a script is held to it before its step runs: a catalog column's options are every item its catalog declares.
+/** A catalog column as a script is held to it before its step runs: its options are every item its catalog declares.
  *  The run asks only the items whose `when` holds on the post-settlement state (`withCatalogs`), which exists only once
  *  the step has run, so that narrowing is left to the run (a pick it filters out fails the step there). A pick that is
  *  no item of the catalog at all throws here, naming the catalog. */
-const scriptShape = (s: Shape, v: unknown, catalogs: readonly Catalog[], path = ""): Shape => {
-  const col = (c: typeof Col.Type, row: unknown, at: string): typeof Col.Type => {
-    if (c.catalog === undefined) return c
-    const cat = catalogs.find((x) => x.id === c.catalog)
-    if (!cat) throw new Error(`${at}${c.key}: no catalog ${c.catalog}`)
-    const ids = [...new Set(cat.items.map((i) => i.id))]
-    const pick = isObject(row) ? row[c.key] : undefined
-    if (typeof pick === "string" && !ids.includes(pick))
-      throw new Error(`${at}${c.key}: ${JSON.stringify(pick)} is no item of catalog ${c.catalog} (${ids.join(", ")})`)
-    const { catalog: _, ...rest } = c
-    return { ...rest, options: ids }
-  }
+const scriptCol = (c: typeof Col.Type, row: unknown, at: string, catalogs: readonly Catalog[]): typeof Col.Type => {
+  if (c.catalog === undefined) return c
+  const cat = catalogs.find((x) => x.id === c.catalog)
+  if (!cat) throw new Error(`${at}${c.key}: no catalog ${c.catalog}`)
+  const ids = [...new Set(cat.items.map((i) => i.id))]
+  const pick = isObject(row) ? row[c.key] : undefined
+  if (pick !== undefined && !ids.length)
+    throw new Error(`${at}${c.key}: catalog ${c.catalog} has no item, so the run never asks for ${c.key}`)
+  if (typeof pick === "string" && !ids.includes(pick))
+    throw new Error(`${at}${c.key}: ${JSON.stringify(pick)} is no item of catalog ${c.catalog} (${ids.join(", ")})`)
+  const { catalog: _, ...rest } = c
+  return { ...rest, options: ids }
+}
+/** A column's schema; an enum with no option (a catalog with no item) takes nothing. */
+const colOf = (c: typeof Col.Type): Schema.Top =>
+  c.type === "enum" && !c.options?.length ? Schema.Never : colSchema(c)
+/** What the run may leave out of a shape on a turn (product.ts `resolveShape`): a catalog with no item whose `when`
+ *  holds drops its column, and with it a table (a row needs every column) or a record's key, and a record left with no
+ *  key. Which items hold is known only once the step has run, so a script may leave such a key out. */
+const droppable = (s: Shape): boolean =>
+  s.kind === "table"
+    ? s.columns.some((c) => c.catalog !== undefined)
+    : s.kind === "record" && s.keys.every((k) => ("shape" in k ? droppable(k.shape) : k.catalog !== undefined))
+/** The schema a scripted value `v` of shape `s` is held to: the product's (`shapeSchema`), each catalog column as
+ *  `scriptCol` reads it, and a record key the run may drop optional (given, it is checked all the same). */
+const scriptSchema = (s: Shape, v: unknown, catalogs: readonly Catalog[], path = ""): Schema.Top => {
   if (s.kind === "table") {
     const rows = Array.isArray(v) ? v : []
-    return {
-      ...s,
-      columns: s.columns.map((c) => {
-        for (const [i, row] of rows.entries()) col(c, row, `${path}[${i}].`)
-        return col(c, undefined, path)
-      }),
-    }
+    const columns = s.columns.map((c) => {
+      for (const [i, row] of rows.entries()) scriptCol(c, row, `${path}[${i}].`, catalogs)
+      return scriptCol(c, undefined, path, catalogs)
+    })
+    return Schema.Array(Schema.Struct(Object.fromEntries(columns.map((c) => [c.key, colOf(c)]))))
   }
-  if (s.kind !== "record") return s
+  if (s.kind !== "record") return shapeSchema(s)
   const at = isObject(v) ? v : {}
-  return {
-    kind: "record",
-    keys: s.keys.map((k) =>
-      "shape" in k
-        ? { key: k.key, shape: scriptShape(k.shape, at[k.key], catalogs, `${path}${k.key}.`) as typeof k.shape }
-        : col(k, at, path),
+  return Schema.Struct(
+    Object.fromEntries(
+      s.keys.map((k) => {
+        const field =
+          "shape" in k
+            ? scriptSchema(k.shape, at[k.key], catalogs, `${path}${k.key}.`)
+            : colOf(scriptCol(k, at, path, catalogs))
+        return [
+          k.key,
+          ("shape" in k ? droppable(k.shape) : k.catalog !== undefined) ? Schema.optionalKey(field) : field,
+        ]
+      }),
     ),
-  }
+  )
 }
 
 /** `want` held by `actual` with `expect.world`'s semantics: an object compares only the keys it gives (recursively); an
@@ -135,7 +153,7 @@ export const playScenario = async (
       const p = products.find((p) => p.id === id)
       if (!p) continue
       try {
-        Schema.decodeUnknownSync(shapeSchema(scriptShape(p.shape, v, catalogs)) as Schema.Codec<unknown>)(v)
+        Schema.decodeUnknownSync(scriptSchema(p.shape, v, catalogs) as Schema.Codec<unknown>)(v)
       } catch (e) {
         throw new Error(`scripted record value ${id} was rejected: ${said(e)}`, { cause: e })
       }

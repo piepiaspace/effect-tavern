@@ -708,6 +708,94 @@ assert.ok(paths.has(catalogError.path))
     runScenario(catalogCard, step({ mood: { face: "smirk" } }, {})),
     /step 1: scripted record value mood was rejected: face: "smirk" is no item of catalog faces/,
   )
+
+  // A catalog with no item whose `when` holds on the turn: the run drops what it backs (a record's key, a table, a record
+  // left with no key), so a script may leave those keys out; one it gives is still held to the catalog.
+  const rainy = { path: "天气", is: "雨" }
+  const droppedCard = decodeCard({
+    id: "drops",
+    frame: [],
+    fiction: [{ id: "s", text: "门外。" }],
+    greetings: [{ text: "开场。" }],
+    rules: { fields: [{ path: "天气", type: "enum", options: ["晴", "雨"], initial: "晴" }], actions: [] },
+    lore: [],
+    guard: [],
+    catalogs: [
+      {
+        id: "wet",
+        items: [
+          { id: "cape", when: rainy },
+          { id: "hat", when: rainy },
+        ],
+      },
+      { id: "none", items: [] },
+    ],
+    products: [
+      {
+        id: "look",
+        role: "theater",
+        text: "Look",
+        on: true,
+        shape: {
+          kind: "record",
+          keys: [
+            { key: "line", type: "text" },
+            { key: "wear", type: "enum", catalog: "wet" }, // a column: the key goes
+            { key: "cast", shape: { kind: "table", columns: [{ key: "wear", type: "enum", catalog: "wet" }] } }, // a table
+            { key: "deep", shape: { kind: "record", keys: [{ key: "wear", type: "enum", catalog: "wet" }] } }, // emptied
+            {
+              key: "kept",
+              shape: {
+                kind: "record",
+                keys: [
+                  { key: "n", type: "int" },
+                  { key: "wear", type: "enum", catalog: "wet" },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: "bare",
+        role: "theater",
+        text: "Bare",
+        on: true,
+        shape: {
+          kind: "record",
+          keys: [
+            { key: "line", type: "text" },
+            { key: "wear", type: "enum", catalog: "none" },
+          ],
+        },
+      },
+    ],
+  })
+  const dry = await runScenario(droppedCard, step({ look: { line: "晴", kept: { n: 1 } }, bare: { line: "空" } }, {}))
+  assert.deepEqual(dry[0].products.look, { line: "晴", kept: { n: 1 } })
+  assert.deepEqual(dry[0].products.bare, { line: "空" })
+  // what the run never drops is still demanded: a plain key, a nested record that keeps a plain key
+  await assert.rejects(
+    runScenario(droppedCard, step({ look: { kept: { n: 1 } } }, {})),
+    /step 1: scripted record value look was rejected: [^]*line/,
+  )
+  await assert.rejects(
+    runScenario(droppedCard, step({ look: { line: "晴", kept: {} } }, {})),
+    /step 1: scripted record value look was rejected: [^]*n/,
+  )
+  // a key given is checked against the catalog's items, in a row or a nested record too
+  await assert.rejects(
+    runScenario(droppedCard, step({ look: { line: "晴", cast: [{ wear: "boot" }] } }, {})),
+    /step 1: scripted record value look was rejected: cast\.\[0\]\.wear: "boot" is no item of catalog wet/,
+  )
+  await assert.rejects(
+    runScenario(droppedCard, step({ look: { line: "晴", deep: { wear: "boot" } } }, {})),
+    /step 1: scripted record value look was rejected: deep\.wear: "boot" is no item of catalog wet/,
+  )
+  await assert.rejects(
+    runScenario(droppedCard, step({ bare: { line: "空", wear: "x" } }, {})),
+    /step 1: scripted record value bare was rejected: wear: catalog none has no item, so the run never asks for wear/,
+  )
 }
 
 console.log("author: ok")
