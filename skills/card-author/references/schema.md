@@ -82,33 +82,23 @@ Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore
 
 ### 6. `products` & `catalogs`: World State, Chronicle & Theater
 
-- **`products`**: `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }`.
+- **`products`**: `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }`. `on` defaults to `true`; `on: false` ships the product switched off: it is not made on a turn until the player switches it on on the card's Writing page.
   - Cards declare their own products whole (the harness ships no default products; a player's default writing pack may supply `options`, `notes`, `inner` below the card).
-  - **Shapes:** `text` (`max?`), `list` (`max?`), `record` (`keys`, max 1 nested list/table/record), `table` (`columns` of `text | int | boolean | enum`, `max?`, row `filter?` `Cond`).
+  - **Shapes:** `text` (`max?`), `list` (`max?`), `record` (`keys`: each key a column, or `{ key, shape }` holding a nested list, table or record; nesting is not limited), `table` (`columns` of `text | int | boolean | enum`, `max?`, row `filter?` `Cond`).
   - **Explicit `role` (required on new products):**
-    1. `world`: Current mutable world state (`scene`, `people`, `bag`). Lives in `WorldState.world`; updated via sparse `DomainChange` ops (`insert_entity`, `patch_entity`, `remove_entity`, `patch_record`, `replace`) in `record`. No `fold`, identifier `id`, no column named `entityId` (assigned by host; `initial` for tables is `{ entityId: row }`). Supports `feed: true` (`Current:` line) and `recall: "<col>"` (lookup index). Readable in `Cond` as `world.<id>.<key>`.
+    1. `world`: Current mutable world state (`scene`, `people`, `bag`). Lives in `WorldState.world`; updated via sparse `DomainChange` ops (`insert_entity`, `patch_entity`, `remove_entity`, `patch_record`, `replace`) in `record`. No `fold`, identifier `id`, no column named `entityId` (assigned by host; `initial` for tables is `{ entityId: row }` in the card, but conditions and views see the table as an array of `{ entityId, ...columns }`). Supports `feed: true` (`Current:` line) and `recall: "<col>"` (lookup index). Readable in `Cond` as `world.<id>.<key>`.
     2. `chronicle`: Path-accumulated memory (`notes`). Uses `fold` (`"append"`, `"latest"`, or `{ key }`). `feed: true` feeds `Known:`; `recall` feeds lookup.
     3. `theater`: Player-only output (`inner`, `options`, commentary). Never `feed` or `recall`. `surface: "theater"` (default, drawn on the page) or `"composer"` (`list` shape, offered above the input box, never `trigger: "demand"`). `trigger: "turn"` (default) or `"demand"`. Each theater product uses an independent `record` call.
-- **`catalogs`**: `[{ id, baseUrl?, items: [{ id, when?, variants? }] }]`.
+- **`catalogs`**: `[{ id, kind?, baseUrl?, items: [{ id, label?, when?, focus?, aspect?, variants? }] }]`. `kind` is `image` or `audio` (a catalog's use must match it, lint `media-kind-mismatch`); item `label` names the attachment; `focus: [x, y]` (each `0..1`) and `aspect: "W / H"` (`0.25..4`) place an image.
   - Referenced by an `enum` column (`catalog: "<id>"` instead of `options`) on `chronicle` or `theater` products (never `world`).
   - At `record`, pickable enum values are dynamically restricted to items whose `when` holds (if none hold, that table/key is omitted for the turn; zero prompt bloat). Readers resolve `variants` under `baseUrl` by node seed.
 
 ### 7. `media` & `views`: Media Bindings & In-Stream `ViewShell`
 
 - **`media`**: `{ illustrations?: [{ product }], portraits?: [{ id?, label?, catalog }], gallery?: string[], bgm?: { product } }`.
-  - `catalogs` items bound to media require `https://` `baseUrl` and relative `variants` (`focus?: [x, y]` in `[0, 1]`, `aspect?: "W / H"` in `[0.25, 4]`).
-- **`views` (`ViewShell`)**: `[{ id, label?, consumes?: string[], residency?: "latest" | "turn", when?: Cond, media?: [{ id, catalog, label? }], html, css? }]`.
-  - **`consumes`**: Optional array of `theater` (or `surface: "composer"` on `Card.views`) product IDs claimed by this shell (`consumableSurface`; products bound in `media.illustrations`, empty strings, and duplicate IDs are rejected). Claimed products are suppressed from default `<Theater>` / `<Options>` chrome so they never render twice. Each product ID may appear in only one view on a card. Combine a status HUD and character inner thoughts into a single shell via `residency: "latest"` + `consumes: ["inner"]` rather than stacking fragmented widgets.
-  - **`residency`**: Defaults to `"turn"` when `consumes` is non-empty, and `"latest"` otherwise. `"latest"` mounts on the active branch head (carrying `latestContext: { fields, world }`); `"turn"` stays on every turn (skipping turns where all `consumes` products are `undefined`).
-  - **Data scope** exposes `fields`, `world` (on the latest view), `theater`, `media`, and `names`. A single consumed product also supplies `value` and top-level record key aliases.
-  - **Five controlled `data-*` directives** (scriptless Shadow DOM + `adoptedStyleSheets`; zero `eval`, zero external URLs):
-    1. **Text (`data-text="<path>"`)** — Writes pure `textContent` (`null` / `undefined` → `""`).
-    2. **Conditionals (`data-if="<path>"`, `data-unless="<path>"`)** — Unmounts subtree when falsy (`false`, `0`, `""`, `null`, `undefined`, or `[]`).
-    3. **Iteration (`data-each="<path>" data-as="<item>"`)** — Iterates arrays/tables, binding `<item>` and 1-based `<item>.$num` (radio `name` and paired `input[id]` / `label[for]` are automatically row-scoped).
-    4. **Controlled media (`data-media="<source>"`, optional `data-fit="cover|contain|natural"`, `data-lightbox`)** — Mounts `MediaFrame` from `media.<slotId>`, `portraits.<slotId>`, or `<catalogId>:<path>` (supporting both `theater.<productId>.<col>` and single-product `value.<col>` / `<col>` on catalog-backed columns).
-    5. **Attributes & CSS numbers (`data-attr-<k>="<path>"`, `data-var-<k>="<path>"`)** — `data-attr-<k>` sets scalar `data-<k>` for CSS attribute selectors; `data-var-<k>` sets `--<k>` strictly when the value is a finite `number`.
-  - **Host state markers**: Shadow host carries `[data-latest]` on the latest landed turn (`:host([data-latest])` in CSS); `<details data-open="latest">` opens on the latest turn and collapses on historical turns.
-  - **HTML/CSS whitelist (`compileView`, lint `bad-view`)**: Allows semantic HTML, `<details>`/`<summary>`, `radio`/`checkbox` `<input>` + `<label>`, inline `<svg>` + presentation attributes (`stroke-linecap`, `stroke-dasharray`, `fill-opacity`, `vector-effect`, etc.), local `url(#id)` references, `@media`/`@supports`/`@container`/`@keyframes`, and safe CSS functions (`var`, `calc`, `min`/`max`/`clamp`, colors, gradients, 2D/3D transforms, `drop-shadow`, shapes); rejects `<script>`, `<img>`, `<a href>`, `on*`, inline `style=""`, CSS escapes, `@import`, external `url()`, and unknown functions with `line:column` diagnostics.
+  - `catalogs` items bound to media require an `https://` `baseUrl` and relative `variants`.
+  - `bgm` binds a one-row table product whose `id` column picks from an `audio` catalog, so each turn records a track. It is a runtime contract only: the client has no player yet, and nothing plays it.
+- **`views` (`ViewShell`)**: `[{ id, label?, consumes?: string[], residency?: "latest" | "turn", when?: Cond, media?: [{ id, catalog, label? }], html, css? }]` — scriptless HTML templates with CSS, drawn in the story column and filled through `data-*` directives from a fixed data scope (`fields`, `world` in `latest` views only, `theater`, `media`, `names`, and `value` when exactly one product is consumed). Everything about them (the scope, residency and `consumes`, the directives, the whitelist, working patterns, the check/preview loop, limits, and porting a SillyTavern status bar) is in **[views.md](views.md)**; a complete passing card is `examples/status-view.yaml`.
 
 ### 8. `Cond`, `names`, `guard`, `lexicon` & `heading`
 

@@ -110,7 +110,7 @@ const EXPRESSION =
 const FETCH =
   "a view loads no file: an image comes from a catalog through data-media; for a background, put a data-media element behind the content with position: absolute"
 const FONTS =
-  "a view loads no font: use the host's fonts through var(--font-sans), var(--font-prose) or var(--font-mono)"
+  "a view loads no font: use the host's fonts through var(--font-sans) (the story's prose is set in it, at var(--text-prose)) or var(--font-mono)"
 
 interface Walk {
   html: string

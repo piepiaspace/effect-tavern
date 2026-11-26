@@ -15,13 +15,15 @@ sidebar:
 | `fiction` | 人物设定、群像、世界观散文及按状态切换的**分段（`Band`）**（仅 `narrate` 读） | `{ id, label?, text, when? }` |
 | `greetings` | 静态开场白（`text`）或动态引导开场（`note` + `start: true` 开局字段） | `[{ text?, do?, note? }]` |
 | `passages` | 写后幕间过渡、周目循环重置与终局节点（`boundary` / `over`） | `[{ when, text?, note?, do?, digest?, end? }]` |
-| `rules.fields` | 标量状态（`int` / `number` / `boolean` / `enum`）及量表绘制推导（`drawn`） | `{ path, type, initial, min?, max?, options?, hidden?, start?, view? }` |
+| `rules.fields` | 标量状态（`int` / `number` / `boolean` / `enum`）及量表绘制推导（`drawn`） | `{ path, type, initial, label?, group?, min?, max?, options?, hidden?, start?, view? }` |
 | `rules.actions` | 叙事前机械动作与带种子的概率检定 | `{ id, text, when?, roll?, hit?, miss?, do? }` |
 | `rules.readouts` | 叙事后选择题判据，使剧情能够推动标量字段 | `{ id, text, when?, options: [{ id, text, do }] }` |
-| `lore` | 纵向渐进揭示 `layers`（`unlock` 地板 + `offer` 窗口）、横向附录 `sections` 与 `ContextPolicy` | `{ id, layers, sections?, unlock, offer?, access?, activation?, residency? }` |
-| `products` | 结构化 `world`、`chronicle` 或 `theater` 产物声明 | `{ id, label?, text, shape, role, initial?, stage?, fold?, feed?, recall? }` |
-| `catalogs` | 静态附件目录（立绘、BGM、语音），在 `record` 阶段按条件过滤可选项 ID | `{ id, baseUrl?, items: [{ id, when?, variants? }] }` |
-| `guard` / `lexicon` | 事后核查禁令（`check`）与套话重写词表（`polish`） | `guard: string[]`、`lexicon: [{ pattern, hint? }]` |
+| `lore` | 纵向渐进揭示 `layers`（`unlock` 地板 + `offer` 窗口）、横向附录 `sections` 与 `ContextPolicy` | `{ id, layers, sections?, unlock, offer, access?, activation?, residency? }` |
+| `products` | 结构化 `world`、`chronicle` 或 `theater` 产物声明 | `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }` |
+| `catalogs` | 静态附件目录（立绘、BGM、语音），在 `record` 阶段按条件过滤可选项 ID | `{ id, kind?, baseUrl?, items: [{ id, label?, when?, focus?, aspect?, variants? }] }` |
+| `guard` / `lexicon` | 事后核查禁令（`check`）与套话重写词表（`polish`） | `guard: string[]`、`lexicon: [{ pattern, hint?, max? }]` |
+| `media` | 立绘、段后插图、卡面画廊与每轮曲目，绑定到目录 | `{ illustrations?, portraits?, gallery?, bgm? }` |
+| `views` | 由字段与产物绘制在正文流里的状态栏、面板与选项按钮（从不发给模型） | `{ id, label?, consumes?, residency?, when?, media?, html, css? }` |
 
 ### Lore 的纵向层（`layers`）与横向节（`sections`）：取代世界书蓝绿灯扫描
 传统酒馆世界书（`World Info` / `character_book`）靠“蓝灯常驻”与“绿灯关键词正则扫描”触发，极易因对话顺口提到某词而提前剧透，或换个说法就漏检。Effect Tavern 按内容结构将其拆为两条正交轴：
@@ -66,7 +68,83 @@ sidebar:
   4. **多开场卡的 `Field.initial` 取所有开场的最低公共基线**，单条路线的增量写进各自的 `greetings[n].do`。切勿把人物设定放进 `frame`（非行文类的卡片 `frame` 槽位会作为 `<world>` 送入包括 `direct` 在内的所有后台阶段）。
 </Aside>
 
-## 4. 制卡工坊与旧卡重制
+## 4. 流内视图：正文里的状态栏与面板
+
+视图（view）是一段带自有 CSS 的小型 HTML 模板，客户端把它画在某一回合正文的下方。它从不发给模型，也不运行任何脚本：客户端通过几个 `data-*` 属性把回合数据填进模板，并放在 Shadow DOM 里，视图的 CSS 只作用于它自己。完整规则见技能参考 `skills/card-author/references/views.md`，`skills/card-author/examples/status-view.yaml` 是一张能通过 `card check` 的完整示例卡。
+
+### 视图能读到什么
+
+每个指令只接受一条以点分隔的路径。没有表达式：不能比较、运算、取反、格式化，也没有 `{{宏}}`。
+
+| 路径 | 含义 |
+| --- | --- |
+| `fields.<字段>` | 字段的原始值。字段的 `min`、`max`、`label` 与枚举选项读不到，所以进度条的上限要写进 CSS。 |
+| `world.<产物>…` | `world` 产物，只在 `residency: latest` 的视图里有。记录按键读取；表是 `{ entityId, ...列 }` 行组成的数组。 |
+| `theater.<产物>…` | 本回合的 `theater` 产物，不必接管也能读。 |
+| `media.<槽位>` | 视图自己的图片槽位，目录里有条目适用时才有值。 |
+| `names.<键>` | `user`、`char` 以及卡片的其他名字。 |
+| `value` | 当 `consumes` 恰好列出一个产物时：该产物的值（若是记录，它的各个键也可直接作顶层名读取）。 |
+
+`chronicle` 产物、`lore`、事件与回合序号都读不到。
+
+### 视图出现在哪里
+
+- `residency: latest`（没有 `consumes` 时的默认值）：只挂在最新一回合，也是唯一能读 `world` 的一种。
+- `residency: turn`（有 `consumes` 时的默认值）：挂在每一个带有其接管产物的回合上，读那一回合自己的字段与小剧场。
+- `consumes` 接管 `theater` 产物（包括 `surface: composer` 的选项列表）。在视图适用的每一回合，默认界面都不再画被接管的产物，所以被 `latest` 视图接管的产物在历史回合上不会出现。需要留在每个历史回合上的内容（比如一封信），应交给它自己的 `turn` 视图。
+
+### 指令
+
+| 指令 | 作用 |
+| --- | --- |
+| `data-text="路径"` | 把值显示为文本。 |
+| `data-if` / `data-unless` | 值为真 / 为假时才画出该元素。 |
+| `data-each="路径" data-as="row"` | 按每一项重复元素的子节点；内部可读 `row.<列>` 与 `row.$num`。 |
+| `data-media="来源"` | 画一张目录图片：`media.<槽位>`、`portraits.<槽位>`，或目录列上的 `<目录>:<路径>`。可选 `data-fit`、`data-lightbox`。 |
+| `data-attr-<k>="路径"` | 写出 `data-<k>="值"`，供 CSS 属性选择器使用。 |
+| `data-var-<k>="路径"` | 值是数字时设置 `--<k>`，供 `calc()` 与 `clamp()` 使用。 |
+| `<details data-open="latest">` | 在最新回合展开，在历史回合收起。 |
+| `<button data-fill="路径">` | 把值填进输入框，从不发送。只在最新回合、没有回合进行中、值不是空白、且按钮有名字（`aria-label`，或按那一回合的数据显示出的文字）时可点。按钮里只放文字，不放控件或图片。 |
+
+页签用单选框加 CSS 的 `:checked ~` 实现；阈值用 `data-var-*` 上的 `clamp()`、带 `when` 的视图，或枚举字段加 `data-attr-*` 实现；颜色用 `light-dark()` 与应用的设计变量（如 `--ink`、`--line`、`--danger`）跟随主题。
+
+### 一个简短示例
+
+```yaml
+views:
+  - id: warmth
+    label: 炉温
+    css: |
+      .gauge { height: 6px; border-radius: 3px; background: var(--alpha-2); }
+      .fill { display: block; height: 100%; width: calc(var(--warmth, 0) / 10 * 100%); background: light-dark(#c2410c, #fb923c); }
+    html: |
+      <div class="gauge" role="meter" aria-label="炉温" data-var-warmth="fields.warmth"><span class="fill"></span></div>
+      <p data-unless="fields.warmth">炉火灭了。</p>
+```
+
+### 检查与预览
+
+<Steps>
+  <Step title="检查">
+    `bun run tavern card check <卡片>` 把视图里的每个问题报在 `views.<id>.html:<行>:<列>` 或 `views.<id>.css:<行>:<列>`（第 1 行是该块的第一行）并附提示，按卡片解析每条路径（拼错时给出“did you mean”），并检查值的类型是否合乎指令。
+  </Step>
+  <Step title="预览">
+    `bun run tavern card view <卡片> --views --scenario <场景.yaml> --html views.html` 离线播放场景，打印每个视图是否挂载、每个绑定解析到了什么，并写出一张静态页面。小剧场产物只在回合之后才有，所以要在场景里写好它们的值。
+  </Step>
+  <Step title="上架">
+    用 `card test` 锁定回合（`expect.world` 断言视图读到的世界状态），再 `bun run tavern card install <卡片>`。
+  </Step>
+</Steps>
+
+<Aside type="caution" title="视图做不到的事">
+  不能有脚本，也不能用 `<style>`、`<img>`、`<a>`、`<iframe>`、`<audio>`、`<video>`、`<canvas>`、`<form>`、行内 `style=`、`on*` 事件；CSS 里不能用 `@import`、`@font-face`、`@property`、`attr()`，`url()` 只能写 `url(#id)`。图片只来自 `https://` 目录。视图不能写状态，不能放声音，历史回合上读不到世界数据；`latest` 视图移到新回合时，页签与折叠状态会复位。
+</Aside>
+
+## 5. 媒体
+
+`media` 把目录绑定到阅读界面：`portraits`（立绘槽位，显示目录里第一个 `when` 成立的条目）、`illustrations`（一个 `chronicle` 或 `theater` 表产物，其各行把目录图片放在指定自然段之后）、`gallery`（在卡片页上展示的目录）与 `bgm`（一个单行表产物，每回合从 `audio` 目录里记下一首曲目）。绑定到媒体的目录需要 `https://` 的 `baseUrl` 与相对路径的 `variants`；条目可带 `label`、`focus: [x, y]` 与 `aspect: "W / H"`。客户端目前还没有音乐播放器，`bgm` 只记录曲目，不会播放。
+
+## 6. 制卡工坊与旧卡重制
 
 Effect Tavern 内置三项 AI 辅助工坊能力（`packages/runtime/src/workshop.ts`，同时暴露于 `/api/author/*` 与 `tavern card` CLI）：
 
@@ -86,5 +164,5 @@ Effect Tavern 内置三项 AI 辅助工坊能力（`packages/runtime/src/worksho
 | `first_mes` + `alternate_greetings` | `greetings[n].text`，并将不同开场路线的初始数值增量提炼进 `greetings[n].do` |
 | `character_book`（蓝灯常驻 / 绿灯关键词词条） | 常驻背景进 `fiction`；渐进秘密与附录进 `lore`（纵向 `layers` + 横向 `sections` + 首句自然钩子，丢弃正则触发词） |
 | `at_depth`（`@D0`–`@D4`）、作者注释、`post_history_instructions` | **严禁复刻深度插入。** 行文基调进 `frame`，事后禁令进 `guard`，套话黑名单进 `lexicon`，状态提醒进 `fiction` 分段 |
-| 正文 `<status>` 状态栏、MVU JSON 尾块与正则脚本 | **丢弃格式咒语与正则。** 标量轴进 `rules.fields`（`actions` / `readouts`），动态实体表进 `world` 类 `products`，小剧场进 `theater` |
+| 正文 `<status>` 状态栏、MVU JSON 尾块与正则脚本 | **丢弃格式咒语与正则。** 标量轴进 `rules.fields`（`actions` / `readouts`），动态实体表进 `world` 类 `products`，小剧场进 `theater`；状态栏的外观用流内视图重做（第 4 节） |
 | `{{user}}` / `{{char}}` 与 `{{setvar}}` / `{{roll}}` | 纯专名占位保留在 `names`；可变变量与随机宏改写为 `rules.fields`、`Cond`、`Effect` 与 `Action.roll` |

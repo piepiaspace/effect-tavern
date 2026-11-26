@@ -1,6 +1,7 @@
 # 渡口 (docs/illustration-card-brief.md): standard media sample card (#228).
 # Exercises state-driven portraits (`ferryman`, `passenger`), after-paragraph illustrations (`ferry_cg` -> `crossings`),
-# branch-local BGM (`score` -> `ferry_bgm`), card gallery (`crossings`, `ferryman`), and world-record gating (`world.boat.aboard`).
+# a branch-local track choice (`score` -> `ferry_bgm`: the card declares a track per weather; the client plays none yet),
+# card gallery (`crossings`, `ferryman`), and world-record gating (`world.boat.aboard`).
 id: ferry
 title: 渡口
 summary: |-
