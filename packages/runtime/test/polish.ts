@@ -173,6 +173,21 @@ const padTo = (s: string, len: number) => `${"雨".repeat(len - s.length - 1)}�
     "你有3点体力，他超过你2倍，不到1刻钟他就≥你了；「你大于3」，他说。5个你，7他。",
     "",
   ]
+  // mostly speech (the mask's other branch): runs of masked code units of every length, nested, with emoji, ended by a
+  // closing quote, a line break or the end of the text, with narration hits between them
+  const dialogue = [
+    "他说：「山川异域。」".repeat(40) + "他的指节发白。",
+    Array.from(
+      { length: 60 },
+      (_, i) => `他说：「${"像风".repeat(i % 7)}不是你，而是我。」${i % 5 ? "" : "她的指节发白。"}`,
+    ).join(""),
+    "「外『内「三层像刀」内』外」像风。『他不是你』而是我。「「「」」」指节发白。」』”’像雨。",
+    "「😀不是你，而是我😀」指节发白。“👩‍👩‍👧像风，像雨”他像雾。‘𝒜’仿佛，仿佛。「🀄",
+    "「未完的话像刀\n指节发白像风。“又一句没关上\r\n不是你而是我。『心声\n\n他的她。",
+    "“Don’t 像 that,” he said. ‘rock ’n’ roll 像 a game’ 他像风。don’t",
+    "你说：「我有3点体力，你超过他2倍」。你有3点体力。他说：「你大于3」，他超过你。「5个你」，7他。",
+    "「他说：「她说：「这是第三层像刀」」」".repeat(30) + "他的指节发白，不是你，而是我。「没关上",
+  ]
   const cards: [string, Card][] = [
     ...(await Promise.all(cardNames.map(async (n): Promise<[string, Card]> => [n, await loadCard(n)]))),
     ...(await Promise.all(
@@ -190,6 +205,14 @@ const padTo = (s: string, len: number) => `${"雨".repeat(len - s.length - 1)}�
       [`${n} fields 他 你`, prose(card), fieldsOf({ ...card, rules: { ...card.rules, fields: [他, 你] } }), 0],
     ]),
     ["tricky slop", tricky, slop, 0],
+    ["dialogue slop", dialogue, slop, 0],
+    ["dialogue slop floor", dialogue, slop, FLOOR],
+    [
+      "dialogue fields 他 你",
+      dialogue,
+      fieldsOf({ ...cards[0][1], rules: { ...cards[0][1].rules, fields: [他, 你] } }),
+      0,
+    ],
     ["tricky fields", tricky, fieldsOf(cards[0][1]), 0],
     ["tricky fields 他 你", tricky, fieldsOf({ ...cards[0][1], rules: { ...cards[0][1].rules, fields: [他, 你] } }), 0],
   ]
