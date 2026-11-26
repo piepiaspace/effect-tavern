@@ -15,20 +15,20 @@ sidebar:
 | `fiction` | 人物设定、群像、世界观散文及按状态切换的**分段（`Band`）**（仅 `narrate` 读） | `{ id, label?, text, when? }` |
 | `greetings` | 静态开场白（`text`）或动态引导开场（`note` + `start: true` 开局字段） | `[{ text?, do?, note? }]` |
 | `passages` | 写后幕间过渡、周目循环重置与终局节点（`boundary` / `over`） | `[{ when, text?, note?, do?, digest?, end? }]` |
-| `rules.fields` | 标量状态（`int` / `number` / `boolean` / `enum`）及量表绘制推导（`drawn`） | `{ path, type, initial, min?, max?, options?, hidden?, start?, view? }` |
+| `rules.fields` | 标量状态（`int` / `number` / `boolean` / `enum`）及量表绘制推导（`drawn`） | `{ path, type, initial, label?, group?, min?, max?, options?, hidden?, start?, view? }` |
 | `rules.actions` | 叙事前机械动作与带种子的概率检定 | `{ id, text, when?, roll?, hit?, miss?, do? }` |
 | `rules.readouts` | 叙事后选择题判据，使剧情能够推动标量字段 | `{ id, text, when?, options: [{ id, text, do }] }` |
-| `lore` | 纵向渐进揭示 `layers`（`unlock` 地板 + `offer` 窗口）、横向附录 `sections` 与 `ContextPolicy` | `{ id, layers, sections?, unlock, offer?, access?, activation?, residency? }` |
-| `products` | 结构化 `world`、`chronicle` 或 `theater` 产物声明 | `{ id, label?, text, shape, role, initial?, stage?, fold?, feed?, recall? }` |
-| `catalogs` | 静态附件目录（立绘、BGM、语音），在 `record` 阶段按条件过滤可选项 ID | `{ id, baseUrl?, items: [{ id, when?, variants? }] }` |
-| `guard` / `lexicon` | 事后核查禁令（`check`）与套话重写词表（`polish`） | `guard: string[]`、`lexicon: [{ pattern, hint? }]` |
+| `lore` | 纵向渐进揭示 `layers`（`unlock` 地板 + `offer` 窗口）、横向附录 `sections` 与 `ContextPolicy` | `{ id, layers, sections?, unlock, offer, access?, activation?, residency? }` |
+| `products` | 结构化 `world`、`chronicle` 或 `theater` 产物声明 | `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }` |
+| `catalogs` | 静态附件目录（立绘、BGM、语音），在 `record` 阶段按条件过滤可选项 ID | `{ id, kind?, baseUrl?, items: [{ id, label?, when?, focus?, aspect?, variants? }] }` |
+| `guard` / `lexicon` | 事后核查禁令（`check`）与套话重写词表（`polish`） | `guard: string[]`、`lexicon: [{ pattern, hint?, max? }]` |
 | `media` | 立绘、段后插图、卡面画廊与每轮曲目，绑定到目录 | `{ illustrations?, portraits?, gallery?, bgm? }` |
 | `views` | 由字段与产物绘制在正文流里的状态栏、面板与选项按钮（从不发给模型） | `{ id, label?, consumes?, residency?, when?, media?, html, css? }` |
 
 ### Lore 的纵向层（`layers`）与横向节（`sections`）：取代世界书蓝绿灯扫描
 传统酒馆世界书（`World Info` / `character_book`）靠“蓝灯常驻”与“绿灯关键词正则扫描”触发，极易因对话顺口提到某词而提前剧透，或换个说法就漏检。Effect Tavern 按内容结构将其拆为两条正交轴：
-- **层（`layers`）**表达随剧情解锁的真相深度：`unlock` 定义沿路径单调不退的解锁地板，`offer` 根据状态、当轮事件与计数器（`lore.<id>.since | shown`）打开下一层窗口；`layers[0]` 的首句即为供 `lookup` 浏览的自然语言检索钩子（`hook`）。
-- **节（`sections: [{ id, text }]`）**表达无需剧情解锁的横向背景附录（资源 ID 为 `card:<条目>#<节>`），首句即检索钩子，仅在 `lookup` 追问时按需读取，避免主词条过长挤占上下文。
+- **层**（`layers`）表达随剧情解锁的真相深度：`unlock` 定义沿路径单调不退的解锁地板，`offer` 根据状态、当轮事件与计数器（`lore.<id>.since | shown`）打开下一层窗口；`layers[0]` 的首句即为供 `lookup` 浏览的自然语言检索钩子（`hook`）。
+- **节**（`sections: [{ id, text }]`）表达无需剧情解锁的横向背景附录（资源 ID 为 `card:<条目>#<节>`），首句即检索钩子，仅在 `lookup` 追问时按需读取，避免主词条过长挤占上下文。
 
 ### 字段量表自动推导（`drawn`）
 客户端直接根据字段边界与 `fiction` 分段阈值决定绘制形态：
@@ -104,7 +104,7 @@ sidebar:
 | `data-attr-<k>="路径"` | 写出 `data-<k>="值"`，供 CSS 属性选择器使用。 |
 | `data-var-<k>="路径"` | 值是数字时设置 `--<k>`，供 `calc()` 与 `clamp()` 使用。 |
 | `<details data-open="latest">` | 在最新回合展开，在历史回合收起。 |
-| `<button data-fill="路径">` | 把值填进输入框，从不发送。只在最新回合、且没有回合进行中时可点。 |
+| `<button data-fill="路径">` | 把值填进输入框，从不发送。只在最新回合、没有回合进行中、值不是空白、且按钮有名字（`aria-label`，或按那一回合的数据显示出的文字）时可点。按钮里只放文字，不放控件或图片。 |
 
 页签用单选框加 CSS 的 `:checked ~` 实现；阈值用 `data-var-*` 上的 `clamp()`、带 `when` 的视图，或枚举字段加 `data-attr-*` 实现；颜色用 `light-dark()` 与应用的设计变量（如 `--ink`、`--line`、`--danger`）跟随主题。
 
@@ -126,7 +126,7 @@ views:
 
 <Steps>
   <Step title="检查">
-    `bun run tavern card check <卡片>` 把视图里的每个问题报在 `views.<id>.html:<行>:<列>`（第 1 行是该块的第一行）并附提示，按卡片解析每条路径（拼错时给出“did you mean”），并检查值的类型是否合乎指令。
+    `bun run tavern card check <卡片>` 把视图里的每个问题报在 `views.<id>.html:<行>:<列>` 或 `views.<id>.css:<行>:<列>`（第 1 行是该块的第一行）并附提示，按卡片解析每条路径（拼错时给出“did you mean”），并检查值的类型是否合乎指令。
   </Step>
   <Step title="预览">
     `bun run tavern card view <卡片> --views --scenario <场景.yaml> --html views.html` 离线播放场景，打印每个视图是否挂载、每个绑定解析到了什么，并写出一张静态页面。小剧场产物只在回合之后才有，所以要在场景里写好它们的值。

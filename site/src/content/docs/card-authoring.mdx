@@ -15,13 +15,13 @@ A card in Effect Tavern is a single declarative YAML or JSON document validated 
 | `fiction` | Character sheets, cast, world prose & state-gated **bands** (`narrate` only) | `{ id, label?, text, when? }` |
 | `greetings` | Static openings (`text`) or dynamic narrated openings (`note` + `start` fields) | `[{ text?, do?, note? }]` |
 | `passages` | Post-`record` chapter transitions, macro-loops & endings (`boundary` / `over`) | `[{ when, text?, note?, do?, digest?, end? }]` |
-| `rules.fields` | Scalar state (`int`, `number`, `boolean`, `enum`) & UI meter shape (`drawn`) | `{ path, type, initial, min?, max?, options?, hidden?, start?, view? }` |
+| `rules.fields` | Scalar state (`int`, `number`, `boolean`, `enum`) & UI meter shape (`drawn`) | `{ path, type, initial, label?, group?, min?, max?, options?, hidden?, start?, view? }` |
 | `rules.actions` | Pre-narration mechanical moves & seeded rolls | `{ id, text, when?, roll?, hit?, miss?, do? }` |
 | `rules.readouts` | Post-narration multiple-choice judgements moving prose-driven fields | `{ id, text, when?, options: [{ id, text, do }] }` |
-| `lore` | Progressive `layers` (`unlock` floor + `offer` window), `sections` appendices & `ContextPolicy` | `{ id, layers, sections?, unlock, offer?, access?, activation?, residency? }` |
-| `products` | Typed `world`, `chronicle`, or `theater` schemas (`text`, `list`, `record`, `table`) | `{ id, label?, text, shape, role, initial?, stage?, fold?, feed?, recall? }` |
-| `catalogs` | Attachment registries (illustrations, BGM, voice) picked by ID in `record` | `{ id, baseUrl?, items: [{ id, when?, variants? }] }` |
-| `guard` / `lexicon` | Post-prose prohibitions (`check`) & wildcard slop patterns (`polish`) | `guard: string[]`, `lexicon: [{ pattern, hint? }]` |
+| `lore` | Progressive `layers` (`unlock` floor + `offer` window), `sections` appendices & `ContextPolicy` | `{ id, layers, sections?, unlock, offer, access?, activation?, residency? }` |
+| `products` | Typed `world`, `chronicle`, or `theater` schemas (`text`, `list`, `record`, `table`) | `{ id, label?, text, shape, role, initial?, fold?, when?, on?, trigger?, feed?, recall?, surface? }` |
+| `catalogs` | Attachment registries (illustrations, BGM, voice) picked by ID in `record` | `{ id, kind?, baseUrl?, items: [{ id, label?, when?, focus?, aspect?, variants? }] }` |
+| `guard` / `lexicon` | Post-prose prohibitions (`check`) & wildcard slop patterns (`polish`) | `guard: string[]`, `lexicon: [{ pattern, hint?, max? }]` |
 | `media` | Portraits, after-paragraph illustrations, the gallery and a per-turn track, bound to catalogs | `{ illustrations?, portraits?, gallery?, bgm? }` |
 | `views` | Status bars, panels and option buttons drawn in the story column from fields and products (never sent to a model) | `{ id, label?, consumes?, residency?, when?, media?, html, css? }` |
 
@@ -104,7 +104,7 @@ Chronicle products, lore, events and the turn number are not readable.
 | `data-attr-<k>="path"` | Writes `data-<k>="value"` for CSS attribute selectors. |
 | `data-var-<k>="path"` | Sets `--<k>` when the value is a number, for `calc()` and `clamp()`. |
 | `<details data-open="latest">` | Open on the newest turn, closed on past ones. |
-| `<button data-fill="path">` | Puts the value into the input box; never sends. Enabled only on the newest turn with no turn in flight. |
+| `<button data-fill="path">` | Puts the value into the input box; never sends. Enabled only on the newest turn, with no turn in flight, a value that is not blank, and a name (an `aria-label`, or the words it shows with that turn's data). Holds words only: no control or image inside. |
 
 Tabs come from radio inputs and `:checked ~` in CSS; thresholds come from `clamp()` on a `data-var-*`, a view with a `when`, or an enum field with `data-attr-*`; colours follow the theme with `light-dark()` and the app's tokens such as `--ink`, `--line` and `--danger`.
 
@@ -126,7 +126,7 @@ views:
 
 <Steps>
   <Step title="Check">
-    `bun run tavern card check <card>` reports every view problem at `views.<id>.html:<line>:<column>` (line 1 is the first line of the block) with a hint, resolves every path against the card ("did you mean"), and checks each value's type against its directive.
+    `bun run tavern card check <card>` reports every view problem at `views.<id>.html:<line>:<column>` or `views.<id>.css:<line>:<column>` (line 1 is the first line of the block) with a hint, resolves every path against the card ("did you mean"), and checks each value's type against its directive.
   </Step>
   <Step title="Preview">
     `bun run tavern card view <card> --views --scenario <scenario.yaml> --html views.html` plays the scenario offline, prints whether each view mounts and what every binding resolved to, and writes a static page. Theater products exist only after a turn, so script them in the scenario.

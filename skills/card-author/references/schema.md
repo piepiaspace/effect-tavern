@@ -93,12 +93,12 @@ Source of truth: `packages/runtime/src/card.ts`, `fragment.ts`, `cond.ts`, `lore
   - Referenced by an `enum` column (`catalog: "<id>"` instead of `options`) on `chronicle` or `theater` products (never `world`).
   - At `record`, pickable enum values are dynamically restricted to items whose `when` holds (if none hold, that table/key is omitted for the turn; zero prompt bloat). Readers resolve `variants` under `baseUrl` by node seed.
 
-### 7. `media` & `views`: Media Bindings & In-Stream Views
+### 7. `media` & `views`: Media Bindings & In-Stream `ViewShell`
 
 - **`media`**: `{ illustrations?: [{ product }], portraits?: [{ id?, label?, catalog }], gallery?: string[], bgm?: { product } }`.
   - `catalogs` items bound to media require an `https://` `baseUrl` and relative `variants`.
   - `bgm` binds a one-row table product whose `id` column picks from an `audio` catalog, so each turn records a track. It is a runtime contract only: the client has no player yet, and nothing plays it.
-- **`views`**: `[{ id, label?, consumes?: string[], residency?: "latest" | "turn", when?: Cond, media?: [{ id, catalog, label? }], html, css? }]` — scriptless HTML templates with CSS, drawn in the story column and filled through `data-*` directives from a fixed data scope (`fields`, `world` in `latest` views only, `theater`, `media`, `names`, and `value` when exactly one product is consumed). Everything about them (the scope, residency and `consumes`, the directives, the whitelist, working patterns, the check/preview loop, limits, and porting a SillyTavern status bar) is in **[views.md](views.md)**; a complete passing card is `examples/status-view.yaml`.
+- **`views` (`ViewShell`)**: `[{ id, label?, consumes?: string[], residency?: "latest" | "turn", when?: Cond, media?: [{ id, catalog, label? }], html, css? }]` — scriptless HTML templates with CSS, drawn in the story column and filled through `data-*` directives from a fixed data scope (`fields`, `world` in `latest` views only, `theater`, `media`, `names`, and `value` when exactly one product is consumed). Everything about them (the scope, residency and `consumes`, the directives, the whitelist, working patterns, the check/preview loop, limits, and porting a SillyTavern status bar) is in **[views.md](views.md)**; a complete passing card is `examples/status-view.yaml`.
 
 ### 8. `Cond`, `names`, `guard`, `lexicon` & `heading`
 

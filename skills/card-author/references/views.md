@@ -9,9 +9,10 @@ from it or was checked by `tavern card check` inside it.
 
 ## 1. What a View Is
 
-A view is a small HTML template plus a stylesheet that the client draws inside the story column, below a turn's prose.
-It never reaches a model. It runs no script: the client fills the template from the turn's data through a fixed set of
-`data-*` attributes (directives), inside a Shadow DOM, so the view's CSS styles only the view.
+A view (a `ViewShell`, one entry of the card's `views`) is a small HTML template plus a stylesheet that the client
+draws inside the story column, below a turn's prose. It never reaches a model. It runs no script: the client fills the
+template from the turn's data through six `data-*` directives (§4), inside a Shadow DOM, so the view's CSS styles only
+the view.
 
 ```yaml
 views:
@@ -40,7 +41,7 @@ card and reports a wrong one with a "did you mean".
 | `world.<product>…`                      | A `role: world` product, **only in a `residency: latest` view**. A record is read by its keys (`world.hut.door`); a list is an array of strings; a **table is an array of rows `{ entityId, ...columns }`** (`data-each="world.supplies"`), although its `initial` in the card is written as `{ <entityId>: row }`. |
 | `theater.<product>…`                    | This turn's `role: theater` products (including `surface: composer` ones). A view may read any of them without consuming it.                                                                                                                                                                                        |
 | `media.<slot>`                          | The view's own `media` slot: the catalog item picked for it, truthy when one of the catalog's items has a `when` that holds (or no `when`). Used by `data-media` and `data-if`.                                                                                                                                     |
-| `names.<key>`                           | `names.user` (the player's name when one is given), `names.char`, and every key of the card's `names`.                                                                                                                                                                                                              |
+| `names.<key>`                           | `names.user` (the player character's name when one is given), `names.char`, and every key of the card's `names`.                                                                                                                                                                                                    |
 | `value`, and a record's keys            | Only when `consumes` lists **exactly one** product: `value` is that product's value on this turn; if it is a record, each of its keys is also a top-level name (`<key>` = `value.<key>`).                                                                                                                           |
 | `<row>`, `<row>.<column>`, `<row>.$num` | Inside an element with `data-each="…" data-as="<row>"`: the current item, its columns, and its 1-based position.                                                                                                                                                                                                    |
 
@@ -78,28 +79,36 @@ default. The example's `hud` does this for the composer `options`.
 
 ## 4. Directives
 
-| Directive                                   | Reads             | Does                                                                                                                                                                                          |
-| ------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `data-text="<path>"`                        | a scalar          | Sets the element's text (plain text, never HTML). An object or array shows nothing. The element's own children are not drawn.                                                                 |
-| `data-if="<path>"` / `data-unless="<path>"` | anything          | Mounts the element only when the value is truthy / falsy. Falsy: `false`, `0`, `""`, `null`, missing, and an empty array.                                                                     |
-| `data-each="<path>" data-as="<row>"`        | a list or a table | Repeats the element's **children** once per item; the element itself is drawn once, as the container. Both attributes are required together; the row name has no dots.                        |
-| `data-media="<source>"`                     | an image binding  | Draws a catalog image in the element (§6). Optional `data-fit="cover"` (default), `"contain"` or `"natural"`, and `data-lightbox` (click to enlarge). The element is not drawn without a hit. |
-| `data-attr-<name>="<path>"`                 | a scalar          | Writes `data-<name>="<value>"` on the element, for CSS attribute selectors (`[data-weather="暴雪"]`).                                                                                         |
-| `data-var-<name>="<path>"`                  | a finite number   | Sets the CSS variable `--<name>` on the element; anything else leaves it unset (write `var(--name, 0)`).                                                                                      |
-| `<details data-open="latest">`              | —                 | Open on the newest turn, closed on past ones. A plain `open` attribute is also allowed.                                                                                                       |
-| `<button data-fill="<path>">`               | a scalar          | A click puts the value into the input box; it **never sends**. The button is enabled only on the newest turn, with no turn in flight, and when the value is non-empty (style `:disabled`).    |
+Six directives: `data-text`, `data-if` / `data-unless`, `data-each` with `data-as`, `data-media` (with `data-fit` and
+`data-lightbox`), `data-attr-*` / `data-var-*`, and `data-fill` on a `<button>`; plus `data-open="latest"` on a
+`<details>`.
+
+| Directive                                   | Reads             | Does                                                                                                                                                                                                                                                                                                      |
+| ------------------------------------------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `data-text="<path>"`                        | a scalar          | Sets the element's text (plain text, never HTML). An object or array shows nothing. The element's own children are not drawn.                                                                                                                                                                             |
+| `data-if="<path>"` / `data-unless="<path>"` | anything          | Mounts the element only when the value is truthy / falsy. Falsy: `false`, `0`, `""`, `null`, missing, and an empty array.                                                                                                                                                                                 |
+| `data-each="<path>" data-as="<row>"`        | a list or a table | Repeats the element's **children** once per item; the element itself is drawn once, as the container. Both attributes are required together; the row name has no dots.                                                                                                                                    |
+| `data-media="<source>"`                     | an image binding  | Draws a catalog image in the element (§6). Optional `data-fit="cover"` (default), `"contain"` or `"natural"`, and `data-lightbox` (click to enlarge). The element is not drawn without a hit.                                                                                                             |
+| `data-attr-<name>="<path>"`                 | a scalar          | Writes `data-<name>="<value>"` on the element, for CSS attribute selectors (`[data-weather="暴雪"]`).                                                                                                                                                                                                     |
+| `data-var-<name>="<path>"`                  | a finite number   | Sets the CSS variable `--<name>` on the element; anything else leaves it unset (write `var(--name, 0)`).                                                                                                                                                                                                  |
+| `<details data-open="latest">`              | —                 | Open on the newest turn, closed on past ones. A plain `open` attribute is also allowed.                                                                                                                                                                                                                   |
+| `<button data-fill="<path>">`               | a scalar          | A click puts the value into the input box; it **never sends**. The button is enabled only on the newest turn, with no turn in flight, when the value is not blank (spaces only count as blank), and when it has a name with this turn's data (below); otherwise it is drawn disabled (style `:disabled`). |
 
 The host element carries `data-latest` on the newest turn, so `:host([data-latest]) …` styles the newest turn apart.
 
 Rules the check enforces:
 
 - **There are no expressions.** No comparisons (`fields.hp < 20`), arithmetic, negation (`!x`), formatting, filters, or
-  `{{macros}}`; a `{{…}}` in a view's html (outside an HTML comment) is an error, because a view is never
-  name-filled. Compare by
-  choosing the data (§5).
-- Every `<button>` must have `data-fill` and a name a player and an agent can find it by: words inside it, a
-  `data-text` on it or inside it, or an `aria-label`. `type` other than `button`, `name`, and `disabled` are rejected
-  on a button (the host sets `type` and `disabled`).
+  `{{macros}}`; a `{{…}}` in a view's html (outside an HTML comment) or css (outside a CSS comment) is an error,
+  because a view is never name-filled. Compare by choosing the data (§5).
+- Every `<button>` must have `data-fill` (and `data-fill` sits on nothing else) and a name a player and an agent can
+  find it by: a non-blank `aria-label`, words inside it, or a `data-text` on it or inside it, none of it under
+  `hidden` or `aria-hidden="true"`. On the turn, the name is what the button shows with that turn's data (an
+  `aria-label`, else its text, leaving out what `data-if` / `data-unless` hide), so a button whose only words come from
+  an empty `data-text` is drawn disabled. `type` other than `button`, `name`, and `disabled` are rejected on a button
+  (the host sets `type` and `disabled`).
+- A button holds words, nothing interactive or media: no `<button>`, `<input>`, `<label>`, `<details>` or `<summary>`
+  inside it, and no `data-media` or `data-lightbox` on it or inside it (put an image beside the button).
 - A view that consumes a `surface: composer` product but has no `data-fill` button is warned: its options would be drawn
   but could not be chosen.
 - Radio `name`s are made unique per turn and per view, and inside `data-each` an input's `id` and its label's `for`
@@ -340,8 +349,10 @@ player chose; the app's design tokens also reach a view. Ones you can rely on (d
 **Elements:** `button` (with `data-fill`), `div span p section article header footer aside h1`–`h6 ul ol li dl dt dd
 table thead tbody tr th td strong em b i u s del ins mark ruby rt rp abbr time kbd q cite wbr small sub sup code pre
 blockquote hr br figure figcaption details summary label`, `input` (`type="radio"` or `"checkbox"` only), and inline
-SVG: `svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath`, plus
-inside `<svg>` only `text tspan title desc use mask pattern` (`<use href="#id">` only).
+SVG: `svg`, and inside it `g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop
+clipPath text tspan title desc use mask pattern` (`<use href="#id">` only). The two sets do not mix: an SVG element
+outside an `<svg>` is an error (it would be an unknown HTML element; `<title>` would even be another element), and so
+is an HTML element inside one (it would be a dead SVG node; write SVG `<text>`, or close the `</svg>` first).
 
 **Attributes:** `class id title lang dir hidden aria-label aria-hidden role name for type checked open colspan rowspan`,
 SVG geometry and presentation attributes (`viewBox width height x y … d fill stroke stroke-width … transform
@@ -371,9 +382,13 @@ too.
    write instead. Paths are resolved against the card (`cuont is not a key of item … did you mean item.count?`), and
    types are checked (a `data-var-*` on an enum, a `data-each` on a record). Reading `theater.<id>` or `names.<key>`
    the card does not declare is a warning: a player's writing pack may supply it, but the card cannot rely on it.
+   A file that is not valid YAML (often a line under `html: |` or `css: |` indented less than the block) is one error
+   under rule `schema` at path `$`, before any view is read.
 3. **Preview offline:** `bun run tavern card view <card> --views --scenario <card>.scenario.yaml --html /tmp/views.html`.
    It prints, per view, whether it mounts on that turn (and why not), and what every binding resolved to
-   (`→ "暴雪"`, `→ [3 rows]`, `undefined (nothing at this path)`), then writes a static page drawing each mounted view.
+   (`→ "暴雪"`, `→ [3 rows]`, `undefined (nothing at this path)`); a `data-fill` line says what a press would put in
+   the input box, or why the button is disabled there (not the newest turn, nothing but blank at its path, or no name
+   with that data). Then it writes a static page drawing each mounted view, its buttons enabled or disabled the same way.
    Other flags: `--step <n>` (the turn after step n), `--state k=v`, `--greeting <n>`, `--json`. Without
    `--scenario` it reads the opening, where no theater product exists yet: theater products appear only after a turn,
    so script them in a scenario (`references/workshop-and-testing.md` §3). A product with `on: false` or
