@@ -1532,7 +1532,8 @@ export const makeSession = ({
     const rendered = applicable.filter((v) => head || residency(v) === "turn")
     if (rendered.some((v) => residency(v) === "latest"))
       node.latestContext = { fields: n.state, world: latestContext.world }
-    if (views.some((v) => v.when)) node.visibleViews = rendered.filter((v) => v.when).map((v) => v.id)
+    // a `latest` view applies on history too, though it mounts only on the head: its claim on `consumes` holds there
+    if (views.some((v) => v.when)) node.applicableViews = applicable.filter((v) => v.when).map((v) => v.id)
     if (!head && media?.viewMedia) {
       const slots = media.viewMedia.filter((slot) => rendered.some((v) => v.id === slot.viewId))
       if (slots.length) media.viewMedia = slots
