@@ -194,6 +194,12 @@ const prose = (card: Card, rule: string, lexicon: readonly Entry[], message: str
   )
 const DIGITS = "0123456789".split("")
 const COMPARE = ["大于", "小于", "高于", "低于", "超过", "不足", "达到", "不到", ">=", "<=", "≥", "≤", ">", "<"]
+/** The lexicon `field-in-prose` scans the card's prose with: each field next to a digit or a comparison. */
+export const fieldLexicon = (fields: Card["rules"]["fields"]): Entry[] =>
+  fields.flatMap((f) => [
+    ...[...DIGITS, ...COMPARE].map((w) => ({ pattern: `${f.path}*${w}` })),
+    ...DIGITS.map((d) => ({ pattern: `${d}*${f.path}` })),
+  ])
 const STATUS = "state is a field the client draws, a record or table product, or the card's `heading`"
 const MENU = "options are the `options` product, asked in record after the prose"
 const TAIL = "what comes after the prose each turn is a product (record stage), never an ask in the text"
@@ -230,7 +236,21 @@ const HOOK = 40 // ponytail: characters; a hook is the player's own words for th
 const rules: Rule[] = [
   (card) => {
     const out: Diagnostic[] = []
+    // half of a surrogate pair alone is no character: a file cannot carry it (YAML writes it as U+FFFD) (#254). In a
+    // /u pattern \p{Cs} matches only an unpaired surrogate. A key is text too: the author names the keys of `names`, a
+    // world table's `initial` entities, a record's rows.
+    const broken = (s: string, path: string, what: string) => {
+      if (/\p{Cs}/u.test(s))
+        out.push({
+          rule: "broken-text",
+          level: "error",
+          path,
+          message: `${what} holds half of a character (a lone UTF-16 surrogate), which no card file can carry`,
+          hint: "Retype or paste the text again around the broken character.",
+        })
+    }
     const visit = (v: unknown, path: string, key = "") => {
+      if (typeof v === "string") broken(v, path, "text")
       if (typeof v === "string" && ["id", "path", "event", "options", "key"].includes(key) && !identifier.test(v))
         out.push({
           rule: "bad-identifier",
@@ -239,7 +259,12 @@ const rules: Rule[] = [
           message: "identifier must be a token without whitespace",
         })
       if (Array.isArray(v)) v.forEach((x, i) => visit(x, `${path}[${i}]`, key))
-      else if (v && typeof v === "object") Object.entries(v).forEach(([k, x]) => visit(x, path ? `${path}.${k}` : k, k))
+      else if (v && typeof v === "object")
+        Object.entries(v).forEach(([k, x]) => {
+          const at = path ? `${path}.${k}` : k
+          broken(k, at, "the key")
+          visit(x, at, k)
+        })
     }
     visit(card, "")
     return out
@@ -615,10 +640,7 @@ const rules: Rule[] = [
     prose(
       card,
       "field-in-prose",
-      card.rules.fields.flatMap((f) => [
-        ...[...DIGITS, ...COMPARE].map((w) => ({ pattern: `${f.path}*${w}` })),
-        ...DIGITS.map((d) => ({ pattern: `${d}*${f.path}` })),
-      ]),
+      fieldLexicon(card.rules.fields),
       "a field next to a number or a comparison",
       "the narrator never sees numbers: put the text in a fiction variant with `when`, or in a readout",
     ),
