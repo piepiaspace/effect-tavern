@@ -8,14 +8,16 @@ import { STATE_HOLE } from "./cond.ts"
 import type { CompiledView, TemplateNode, ViewShell } from "./view-shell.ts"
 const words = (s: string) => new Set(s.split(" "))
 const tags = words(
-  "div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i u s del ins mark ruby rt rp abbr time kbd q cite wbr small sub sup code pre blockquote hr br figure figcaption details summary label input svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath",
+  "button div span p section article header footer aside h1 h2 h3 h4 h5 h6 ul ol li dl dt dd table thead tbody tr th td strong em b i u s del ins mark ruby rt rp abbr time kbd q cite wbr small sub sup code pre blockquote hr br figure figcaption details summary label input svg g path circle ellipse rect line polyline polygon defs linearGradient radialGradient stop clipPath",
 )
 // Only inside <svg>: in HTML, `title` and friends would be other elements.
 const svgTags = words("text tspan title desc use mask pattern")
 const attributes = words(
   "class id title lang dir hidden aria-label aria-hidden role name for type checked open colspan rowspan viewBox width height x y x1 y1 x2 y2 cx cy r rx ry dx dy points d fill stroke stroke-width stroke-linecap stroke-linejoin stroke-dasharray stroke-dashoffset stroke-miterlimit stroke-opacity fill-opacity fill-rule clip-rule opacity vector-effect offset stop-color clip-path mask transform text-anchor dominant-baseline font-size font-weight font-family letter-spacing maskUnits maskContentUnits patternUnits patternContentUnits patternTransform",
 )
-const directives = words("data-text data-if data-unless data-each data-as data-media data-fit data-lightbox data-open")
+const directives = words(
+  "data-text data-if data-unless data-each data-as data-media data-fit data-lightbox data-open data-fill",
+)
 // Never `attr` (typed attr() can turn a model-written data-attr-* value into a URL), nor anything that loads:
 // url() beyond #id, image-set, image, src, element, paint, cross-fade, -webkit-* images.
 const cssFunctions = words(
@@ -32,7 +34,8 @@ const pathPattern = /^[\p{L}\p{N}_$-]+(?:\.[\p{L}\p{N}_$-]+)*$/u
 export const isViewPath = (value: string) => pathPattern.test(value)
 /** The directives whose value is a path into the view's data scope. */
 export const pathDirective = (name: string) =>
-  ["data-text", "data-if", "data-unless", "data-each"].includes(name) || /^data-(?:attr|var)-[a-z0-9-]+$/.test(name)
+  ["data-text", "data-if", "data-unless", "data-each", "data-fill"].includes(name) ||
+  /^data-(?:attr|var)-[a-z0-9-]+$/.test(name)
 
 /** One thing wrong with a view, placed in its `html` or `css` block (lines and columns count from the block's first
  *  line). `fatal` is the gate's whitelist: compileView throws on it, as it always has. The rest (structure, macros,
@@ -69,19 +72,28 @@ const elementHints: Record<string, string> = {
   a: "a view links nowhere: use a <span> with a class",
   style: "move these rules into the view's css block",
   link: "a view loads no stylesheet: put the rules in its css block",
-  button: "a view has no buttons yet",
   iframe: "a view embeds no page",
 }
-const attributeHint = (name: string) =>
+const attributeHint = (name: string, tag: string) =>
   name === "style"
     ? "give the element a class and style it in the view's css block, or bind a number with data-var-<name> and read it as var(--<name>)"
     : /^on/i.test(name)
       ? NO_CODE
-      : name === "href" || name === "src" || name === "srcset"
-        ? "a view loads and links nothing: an image comes from a catalog through data-media"
-        : name.startsWith("data-")
-          ? "static data-* attributes are not allowed: use a class (data-attr-<name> binds a value from the data)"
-          : undefined
+      : name === "disabled" && tag === "button"
+        ? "the host disables a button while it cannot fill (a past turn, a turn in flight, nothing at its path): style that with :disabled"
+        : name === "href" || name === "src" || name === "srcset"
+          ? "a view loads and links nothing: an image comes from a catalog through data-media"
+          : name.startsWith("data-")
+            ? "static data-* attributes are not allowed: use a class (data-attr-<name> binds a value from the data)"
+            : undefined
+/** A view's one button (#248): it puts the text at a path into the composer, as a chip of the options does. */
+const FILL =
+  'a view\'s button fills the composer: write <button data-fill="<path>">…</button>, such as data-fill="opt" inside data-each="theater.options" data-as="opt"'
+/** Whether a button has a name the gate can see: text written in it, a data-text on it or inside it, or an aria-label. */
+const named = (n: { attrs: Record<string, string>; children: TemplateNode[] }): boolean =>
+  !!n.attrs["aria-label"]?.trim() ||
+  "data-text" in n.attrs ||
+  n.children.some((c) => (typeof c === "string" ? !!c.trim() : named(c)))
 const EXPRESSION =
   "views take plain paths only, no expressions: show or hide with data-if / data-unless on a boolean, mark a value with data-attr-<name> and a CSS attribute selector, scale with data-var-<name> and calc() / clamp() in css, or gate the whole view with its when"
 const FETCH =
@@ -122,11 +134,11 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
         name.startsWith("data-") && !namespace
           ? `${shown} is not a view directive`
           : `${shown} is not allowed in a view`,
-        attributeHint(name),
+        attributeHint(name, n.tagName),
       )
     if (local && !/^#[\w-]+$/.test(value)) bad(`href="${value}" is not a reference to an id in the view (#id)`)
     if (
-      (binding || ["data-text", "data-if", "data-unless", "data-each", "data-as"].includes(name)) &&
+      (binding || ["data-text", "data-if", "data-unless", "data-each", "data-as", "data-fill"].includes(name)) &&
       !pathPattern.test(value)
     )
       bad(`${name}="${value}" is not a path`, EXPRESSION)
@@ -148,6 +160,18 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
     if ((name === "clip-path" || name === "mask") && !localRef.test(value))
       bad(`${name}="${value}" is not a reference to an id in the view`, `write ${name}="url(#id)"`)
   }
+  const button = n.tagName === "button"
+  if (button && attrs["data-fill"] === undefined) fail("<button> has no data-fill", place, FILL)
+  if (!button && attrs["data-fill"] !== undefined && allowed)
+    fail(`<${n.tagName}>: data-fill belongs on a <button>`, attrPlaces["data-fill"] ?? place, FILL)
+  if (button && attrs.type !== undefined && attrs.type !== "button")
+    fail(
+      `<button type="${attrs.type}">: a view's button is always type="button"`,
+      attrPlaces.type ?? place,
+      "remove type: the host sets it",
+    )
+  if (button && attrs.name !== undefined)
+    fail("<button>: name is not allowed on a button", attrPlaces.name ?? place, "remove it, or use a class")
   if (n.tagName === "input" && !["radio", "checkbox"].includes(attrs.type))
     fail(`<input type="${attrs.type ?? ""}">: only radio and checkbox inputs are supported`)
   if ((attrs["data-as"] !== undefined) !== (attrs["data-each"] !== undefined))
@@ -157,6 +181,14 @@ function templateNode(n: Html.ChildNode, w: Walk): TemplateNode[] {
         : `<${n.tagName}> has data-as without data-each`,
     )
   const node = { tag: n.tagName, svg, attrs, children: n.childNodes.flatMap((c) => templateNode(c, w)) }
+  if (button && !named(node))
+    w.problems.push({
+      level: "error",
+      message: "<button> has no name: a player and an agent find a button by its words",
+      hint: "write its words inside it, give it data-text (or an element inside it with one), or an aria-label",
+      block: "html",
+      ...place,
+    })
   if (loc) w.places.set(node, { ...placeOf(w.html, loc.startOffset), attrs: attrPlaces })
   return [node]
 }

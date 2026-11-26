@@ -275,7 +275,7 @@ export function checkViewBindings(
 
   // What each path-taking directive needs of the value it reads.
   const needs = (attr: string): "scalar" | "array" | "number" | "any" =>
-    attr === "data-text" || attr.startsWith("data-attr-")
+    attr === "data-text" || attr === "data-fill" || attr.startsWith("data-attr-")
       ? "scalar"
       : attr === "data-each"
         ? "array"
@@ -288,7 +288,7 @@ export function checkViewBindings(
     if (need === "scalar" && ty.t !== "scalar")
       return {
         level: "error",
-        message: `${path} is ${describe(ty)}, which ${attr} cannot show`,
+        message: `${path} is ${describe(ty)}, which ${attr} cannot ${attr === "data-fill" ? "put in the composer" : "show"}`,
         hint: ty.t === "array" ? "iterate it with data-each and data-as" : "name one of its keys",
       }
     if (need === "array" && ty.t !== "array")

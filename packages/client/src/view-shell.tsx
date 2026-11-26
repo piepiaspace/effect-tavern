@@ -18,7 +18,9 @@ import {
 import { createEffect, createMemo, For, Show, onSettled } from "solid-js"
 import { residency, type CompiledView, type TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
 import type { TimelineNode } from "@effect-tavern/runtime/src/projection.ts"
-import type { CardView } from "./store.ts"
+import { Button } from "@ui-sdk/solid/button"
+import { updateComposition, working, type CardView } from "./store.ts"
+import { read } from "./bridge.ts"
 import { MediaFrame } from "./lightbox.tsx"
 import { presentation, safeCatalogUrl } from "./media.ts"
 import frameCss from "./lightbox.css?inline"
@@ -43,7 +45,9 @@ let mediaSheet: CSSStyleSheet | undefined
 // frame's zero content width. `:where` keeps it at zero specificity, so any author width wins.
 const mediaDefaults = `
 .view-image:not([data-fit=natural]) { width:100%;height:100% }
-:where(:has(> .view-image)) { width:100%;width:-webkit-fill-available;width:stretch }`
+:where(:has(> .view-image)) { width:100%;width:-webkit-fill-available;width:stretch }
+:where(button) { font:inherit;color:inherit }
+:where(button:enabled) { cursor:pointer }`
 function viewSheet(view: CompiledView) {
   let sheet = sheets.get(view)
   if (!sheet) sheets.set(view, (sheet = stylesheet(view.css ?? "")))
@@ -51,6 +55,7 @@ function viewSheet(view: CompiledView) {
 }
 
 export const ViewBlock = (props: Props) => {
+  const busy = read(working)
   const bindings = createMemo(() => {
     const context = residency(props.view) === "latest" ? (props.context ?? props.node.latestContext) : undefined
     return viewBindings({
@@ -137,6 +142,23 @@ export const ViewBlock = (props: Props) => {
           )
         }
         return branch(n.children, data, aliases, rowPrefix)
+      }
+      // The view's one button (#248): it fills the composer as an Options chip does and never sends; live only on the
+      // latest turn, with no turn in flight, and with text at its path. A ui-sdk part, so the agent bridge can press it.
+      if (n.tag === "button") {
+        const fill = () => scalar(get("data-fill")) ?? ""
+        return (
+          <Show when={visibleElement(a, data())}>
+            <Button
+              {...attributes()}
+              type="button"
+              disabled={!props.latest || busy() || !fill()}
+              onClick={() => updateComposition({ text: fill() })}
+            >
+              {body()}
+            </Button>
+          </Show>
+        )
       }
       return (
         <Show when={visibleElement(a, data()) && (!a["data-media"] || media())}>

@@ -1,6 +1,6 @@
 import { inspectView, type ViewProblem } from "./view-template.ts"
 import { checkViewBindings, closest } from "./view-check.ts"
-import { consumableSurface } from "./view-shell.ts"
+import { consumableSurface, type TemplateNode } from "./view-shell.ts"
 // Card lint (issue #27): what a card author's type checker says about a card. Pure: a card in, facts and fixes out; no
 // I/O, no console. The throws in `makeCard` / `resolve` stay decode-time invariants; lint reports what decodes but is
 // wired wrong (topology: events, fields, bands, layers) or written where code should do the work (prose: numbers and
@@ -752,6 +752,20 @@ const rules: Rule[] = [
       }
       const inspected = inspectView(view)
       const bound = checkViewBindings(inspected, view, card)
+      // A view that consumes a composer product takes its chips away: without a data-fill button nothing is chosen.
+      const fills = (nodes: TemplateNode[]): boolean =>
+        nodes.some((n) => typeof n !== "string" && ("data-fill" in n.attrs || fills(n.children)))
+      const offered = (view.consumes ?? []).filter((cid) => {
+        const p = products.get(cid)
+        return p?.role === "theater" && p.surface === "composer"
+      })
+      if (offered.length && !fills(inspected.tree))
+        bad(
+          `${offered.join(", ")} ${offered.length > 1 ? "are" : "is"} offered above the input box (surface: composer), and this view takes ${offered.length > 1 ? "their" : "its"} place without a data-fill button: the options are drawn but cannot be chosen`,
+          `${path}.html`,
+          `draw each as a button that fills the composer: <button data-fill="opt" data-text="opt"></button> inside data-each="${(view.consumes ?? []).length === 1 ? "value" : `theater.${offered[0]}`}" data-as="opt"`,
+          "warn",
+        )
       for (const catalog of bound.imageCatalogs) consumers.push({ catalog, expected: "image", path })
       const order = (p: ViewProblem) => [p.block === "css" ? 1 : 0, p.line ?? 0, p.column ?? 0]
       const byPlace = (a: ViewProblem, b: ViewProblem) => {
