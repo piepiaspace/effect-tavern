@@ -46,6 +46,7 @@ jobs:
           bun --bun run typecheck
           bun --bun run build
           bunx --bun nimbus-docs check
+          bun --bun run check:rendered
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5

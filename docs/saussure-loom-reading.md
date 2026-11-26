@@ -87,7 +87,7 @@
 - 标量推导：封闭的算术/钳制节点（`add / sub / mul / div / clamp / floor`），不是字符串表达式。
 
 收益：
-1. `Cond`（`when` / `unlock` / `offer` / `passages` / `over`）从“标量有限状态机”直接跃迁为**“关系型状态机”**；
+1. `Cond`（`when` / `unlock` / `offer` / `passages` / `over`）从“标量有限状态机”直接跃迁为“**关系型状态机**”；
 2. `narrate` 仍不看裸数字，只通过 `when` 门控的 `Band` 读到叙事化的状态描述；
 3. `finish_record` 可直接复用同一套 `Cond` 作为**集合级事务不变量**，违背即返回 `isError: true` 在当前 `record` 循环内让模型修正。
 

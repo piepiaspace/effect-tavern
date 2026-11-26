@@ -11,7 +11,7 @@
 1. **Desktop / Android 的 `/__db` 同步 JSON 桥接约束（读写双向常数复杂度）**
    在 [`packages/app/db.go`](../packages/app/db.go#L79-L142)、[`packages/app/web/sqlite.ts`](../packages/app/web/sqlite.ts#L5-L50) 与 [`packages/app/web/bundle.ts`](../packages/app/web/bundle.ts#L18-L20) 中，独立端将 `@effect-tavern/server` 打包在 WebView 主线程运行，通过同步 `XMLHttpRequest` + JSON 调用 Go 侧单连接 SQLite：
    - **地址与载荷解耦，禁止裸二进制跨桥**：**对象地址 `ObjectId` 严格由未压缩的原始 UTF-8 内容字节（`SHA-256`）决定**，调整压缩方式或传输编码绝不改变任何快照与追踪引用。由于 `db.go` 会将 `[]byte` 强转为 `string(b)` 后再走 JSON 编码（非法 UTF-8 会被静默替换为 `\uFFFD`），且 `tavern.db` 要求在 CLI（`bun:sqlite`）与移动端（`modernc.org/sqlite`）之间单文件直接互拷通用，SQLite `blob` 表统一采用纯 UTF-8 安全文本载荷（`"utf8" | "deflate-b64"`）。
-   - **业务逻辑集中在 TypeScript，Go 仅提供零业务语义的通用批事务**：不仅读路径（`calls.get` / `calls.list`）必须收敛为 **≤ 2 条集合 SQL**，写路径 `calls.add` 也绝不能按消息或引用边逐条 `.run()` 跨桥。`db.go` 与 `web/sqlite.ts` 仅新增零业务耦合的通用批执行模式（`mode: "batch"`）；`sqlite.ts` 写路径采用**「先单次探测库内已有哈希，再在单次批事务内写入新增 `blob` 正文、轻量 `call` 信封、全部 `call_ref` 引用边并执行窗口裁剪」**——跨桥往返次数为常数级（无并发回收时冷缓存 ≤ 2 次，与历史消息数无关），命中已有哈希的历史正文无需重复跨桥传输。内存已知哈希集合仅作热路径优化，必须在 GC 后失效并在外键约束报错时自动回退补写。
+   - **业务逻辑集中在 TypeScript，Go 仅提供零业务语义的通用批事务**：不仅读路径（`calls.get` / `calls.list`）必须收敛为 **≤ 2 条集合 SQL**，写路径 `calls.add` 也绝不能按消息或引用边逐条 `.run()` 跨桥。`db.go` 与 `web/sqlite.ts` 仅新增零业务耦合的通用批执行模式（`mode: "batch"`）；`sqlite.ts` 写路径采用「**先单次探测库内已有哈希，再在单次批事务内写入新增 `blob` 正文、轻量 `call` 信封、全部 `call_ref` 引用边并执行窗口裁剪**」——跨桥往返次数为常数级（无并发回收时冷缓存 ≤ 2 次，与历史消息数无关），命中已有哈希的历史正文无需重复跨桥传输。内存已知哈希集合仅作热路径优化，必须在 GC 后失效并在外键约束报错时自动回退补写。
 
 2. **Tool Wrap（`#220`）与普通消息同址去重，按有序原文片段无损还原**
    - **落盘现状**：[`packages/runtime/src/session.ts`](../packages/runtime/src/session.ts#L224-L230) 在组装 `Call` 事件时已剥离中间态 `wrap.messages` 与 `rawText`，落盘的 `Call.wrap` 仅含轻量 `WrapTrace`（`traces`、`sections`、`context`），不存在 `wrap.messages` 双存。
@@ -28,7 +28,7 @@
 
 > [!IMPORTANT]
 > **共同底座、独立写规则的设计原则**
-> 资产快照（Layer 3）与聊天追踪（Layer 2）共用同一个不可变对象池（Layer 1：只回答“这段字节存过吗、还有谁引用它”），但各自拥有独立的领域写入契约：编辑器关心**“用户认可并随时能精确退回哪一版”**，Inspector 关心**“当时究竟向模型发了什么、回了什么”**。
+> 资产快照（Layer 3）与聊天追踪（Layer 2）共用同一个不可变对象池（Layer 1：只回答“这段字节存过吗、还有谁引用它”），但各自拥有独立的领域写入契约：编辑器关心“**用户认可并随时能精确退回哪一版**”，Inspector 关心“**当时究竟向模型发了什么、回了什么**”。
 
 ---
 

@@ -39,7 +39,7 @@ import type {
 } from "@effect-tavern/runtime/src/projection.ts"
 import * as Atom from "./atom.ts"
 import { registry } from "./atom.ts"
-import { closable } from "./back.ts"
+import { closable, type Closable } from "./back.ts"
 import { type Key, t } from "./i18n.ts"
 
 export const stageNames: Record<Phase, Key> = {
@@ -60,6 +60,13 @@ export type Wire = Event | ({ kind: "error" } & Failure) | Attach | { kind: "str
 export { registry }
 export const log = Atom.make<L.Log<Node>>(L.of<Node>())
 export const draft = Atom.make<Draft | null>(null)
+/** A draft is open, and the node it hangs under (`undefined` with none; `null` is a draft at the root). Prose streams
+ *  into `draft` every frame: a reader that only asks whether one is open, or where, reads these and sleeps through it. */
+export const drafting = Atom.make((get) => get(draft) !== null)
+export const draftParent = Atom.make((get) => {
+  const d = get(draft)
+  return d ? d.parent : undefined
+})
 /** What the client draws the card by (GET /card): read once at open, before anything subscribes, hence keepAlive. */
 export const card = Atom.make<CardView | null>(null).pipe(Atom.keepAlive)
 /** The library (GET /stories, /personas, /cards/<id>/local): every card's stories and which is open (a story is one root's tree),
@@ -160,11 +167,11 @@ export const demanded = Atom.make<Id | null>(null)
  *  draft, and two streams would interleave into one `apply` queue). What holds the composer, the story and a new root. */
 export const openStreams = Atom.make(0)
 export const working = Atom.make(
-  (get) => get(openStreams) > 0 || (get(draft) !== null && get(error) === null) || get(stage) !== null,
+  (get) => get(openStreams) > 0 || (get(drafting) && get(error) === null) || get(stage) !== null,
 )
 /** A demand or a field edit updates the mounted HUD in place. A new turn waits for all record calls. */
 export const latestViewsReady = Atom.make(
-  (get) => !get(working) || get(demanded) !== null || (get(stage) === null && get(draft) === null),
+  (get) => !get(working) || get(demanded) !== null || (get(stage) === null && !get(drafting)),
 )
 /** The page over the reader: none, the card page, the Timeline, the settings, the Writing page (writing.tsx) or the
  *  Inspect page on one node. The reader stays mounted under it, so a turn in flight keeps streaming. "home" is no page
@@ -233,14 +240,18 @@ export const drawn = (line: Node[], d: Pick<Draft, "parent"> | null): Node[] =>
 // `editing` outlives its node's place on the line (another version checked out above it, a draft written above it),
 // and a step with no editor to close would be a back that does nothing. Registered here, ahead of the page stack
 // (pages.ts imports this module), so a page opened over the reader is stepped out of first and the edit under it still
-// counts. The line and the draft are read only while an edit is open: a streaming draft moves nothing otherwise.
-const offEditing = closable({
+// counts. The line and the draft's parent are read only while an edit is open, and never the draft's prose: a streamed
+// frame wakes nothing here (#248).
+export const editCloser: Closable = {
   steps: () => {
     const id = editing()
-    return id !== null && drawn(path(), draft()).some((n) => n.id === id) ? 1 : 0
+    if (id === null) return 0
+    const parent = draftParent()
+    return drawn(path(), parent === undefined ? null : { parent }).some((n) => n.id === id) ? 1 : 0
   },
   close: () => registry.set(editing, null),
-})
+}
+const offEditing = closable(editCloser)
 import.meta.hot?.dispose(offEditing) // a hot reload registers the new module's own
 
 /** The last node on the reading line and the one before it (its parent): what the header's dot, the Status table and

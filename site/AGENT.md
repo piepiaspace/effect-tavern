@@ -60,6 +60,12 @@ Rules:
 - **Icons use Nimbus's `Icon` + Phosphor.** `<Icon name="ph:<glyph>" class="w-4 h-4" />` from `@cloudflare/nimbus-docs/components/Icon.astro`. Glyphs: [phosphoricons.com](https://phosphoricons.com).
 - **Don't remove `<AgentDirective />` from `BaseLayout.astro`.** It points agents at `/llms.txt`.
 
+### Bold next to CJK punctuation
+
+CommonMark shows `**读数（Readings）**视图` with its asterisks, on GitHub and on this site: a `**` with punctuation on its inner side counts only when whitespace or punctuation is on its outer side. Keep the gloss or the punctuation outside the bold (`**读数**（Readings）视图`). `tools/mdlint` at the repository root does this where it is safe: it moves sentence marks and whole bracket or quote pairs, never a token's character (`Vite+`, `100%`, `v1.2.`) and never half a pair, and names every other place with its two hand fixes. The pre-commit hook runs it on staged `.mdx` (read as MDX: imports, JSX attributes and `{expressions}` are left alone), and `bun tools/mdlint/index.ts --fix <file>` (from the root) runs it by hand.
+
+`bun run check:rendered` (after `bun run build`; the deploy workflow runs it) fails when a built page shows `**` as text and names the page and the words around it.
+
 ## Adding things
 
 | Goal | Action |

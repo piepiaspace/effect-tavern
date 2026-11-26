@@ -45,6 +45,7 @@ import {
   type Msg,
   type Slotted,
 } from "./fragment.ts"
+import type { Source } from "./context.ts"
 import type { Input } from "./journal.ts"
 import { fillHoles } from "./names.ts"
 import type {
@@ -154,7 +155,7 @@ export type Ask =
       fiction: readonly Slotted[]
       history: readonly Msg[]
       summarized: boolean // history[0] is the fold
-      told: readonly { title: string; text: string; sourceRef?: SourceRef }[] // what lookup delivered: title and text, no id or revision
+      told: readonly { title: string; text: string; source?: Source; sourceRef?: SourceRef }[] // what lookup delivered: body for lore/pack, titled row for memory
       known?: string // digest at the opening of a new passage
       outcome: readonly string[]
       current?: string
@@ -250,9 +251,10 @@ const worldHead = (c: Common): Msg[] => [
   { role: "system" as const, text: STAGE_ROLE },
   ...(c.world.length ? [{ role: "system" as const, text: worldBlock(c.world) }] : []),
 ]
-/** A delivered entry in narrate's `<recalled_context>`: title, then text; a lore or pack entry's title is its text's first
- *  sentence (lore.ts `hook`), so there the text alone. */
-const entry = (d: { title: string; text: string }) => (d.text.startsWith(d.title) ? d.text : `${d.title}\n${d.text}`)
+/** A delivered entry in narrate's `<recalled_context>`: a card or pack entry's body alone (its front matter is the
+ *  index's); a recalled table row's title before its fields when they do not open with it. */
+const entry = (d: { title: string; text: string; source?: Source }) =>
+  d.source === "card" || d.source === "pack" || d.text.startsWith(d.title) ? d.text : `${d.title}\n${d.text}`
 const openLine = (open: readonly Told[]) => `Open: ${open.map((d) => `${d.id}=${d.text}`).join(" | ")}`
 /** The fold's opening, before its text: the same bytes in narrate's transcript and the off-stage ledger. */
 const SUMMARY = `<story_summary>\n${NOTE.summary}\n`

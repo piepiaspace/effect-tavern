@@ -149,9 +149,17 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   const lore = [
     ...listed.filter((r) => o.lore || !r.settled).map((r) => r.text),
     ...(settled ? [`(${settled} more fully unlocked, no window; --lore lists them)`] : []),
-    ...R.entries.map(
-      (e) => `${e.id}  (${e.from})${readable.has(`pack:${e.id}`) ? "  in the index" : ""}\n    ${hook(e.text)}`,
-    ),
+    ...R.entries.map((e) => {
+      const slash = e.id.indexOf("/")
+      const short = slash >= 0 ? e.id.slice(slash + 1) : e.id
+      const title = e.title?.trim() || short
+      const summary = e.summary?.trim()
+      const head = summary ? `${title} — ${summary}` : title
+      const secs = (e.sections ?? [])
+        .map((x) => `\n    #${x.id}${x.title?.trim() ? ` ${x.title.trim()}` : ""}`)
+        .join("")
+      return `${e.id}  (${e.from})${e.sections?.length ? `  ${e.sections.length} sections` : ""}${readable.has(`pack:${e.id}`) ? "  in the index" : ""}\n    ${head}${secs}`
+    }),
   ]
 
   const offered = L.offers(gated, [], events)
