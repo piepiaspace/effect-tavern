@@ -89,7 +89,7 @@ import {
 } from "./layer.ts"
 import { makeLore, namedLore, type Disclosure, type Lore } from "./lore.ts"
 import { compileCardViews } from "./view-template.ts"
-import { residency } from "./view-shell.ts"
+import { residency, viewMount } from "./view-shell.ts"
 import { displayedImages, viewBindings } from "./view-bindings.ts"
 import { nodeCondition, projectNodeMedia } from "./media.ts"
 import { lines, expand, unfilled } from "./names.ts"
@@ -1512,12 +1512,8 @@ export const makeSession = ({
     const gallery = card.media?.gallery
     const viewImages = gallery?.length
       ? applicable.flatMap((view) => {
-          if (
-            residency(view) === "turn" &&
-            view.consumes?.length &&
-            view.consumes.every((id) => node.theater[id] === undefined)
-          )
-            return []
+          // as on its own turn, where a `latest` view is on the head: only a turn view with nothing to show is out
+          if (viewMount(view, { applies: true, head: true, theater: node.theater }) === "turn-nothing") return []
           const bindings = viewBindings({
             view,
             node,
@@ -1529,7 +1525,10 @@ export const makeSession = ({
         })
       : []
     const head = n.id === held.log.head
-    const rendered = applicable.filter((v) => head || residency(v) === "turn")
+    // drawn here or on its own turn: everything that applies but a `latest` view off the head
+    const rendered = applicable.filter(
+      (v) => viewMount(v, { applies: true, head, theater: node.theater }) !== "latest-not-head",
+    )
     if (rendered.some((v) => residency(v) === "latest"))
       node.latestContext = { fields: n.state, world: latestContext.world }
     // a `latest` view applies on history too, though it mounts only on the head: its claim on `consumes` holds there

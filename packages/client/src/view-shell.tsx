@@ -17,7 +17,12 @@ import {
   type JSX,
 } from "@solidjs/web"
 import { createEffect, createMemo, For, Show, onSettled } from "solid-js"
-import { residency, type CompiledView, type TemplateNode } from "@effect-tavern/runtime/src/view-shell.ts"
+import {
+  residency,
+  VIEW_DEFAULTS,
+  type CompiledView,
+  type TemplateNode,
+} from "@effect-tavern/runtime/src/view-shell.ts"
 import type { TimelineNode } from "@effect-tavern/runtime/src/projection.ts"
 import { Button } from "@ui-sdk/solid/button"
 import { updateComposition, working, type CardView } from "./store.ts"
@@ -42,13 +47,6 @@ const stylesheet = (css: string) => {
 }
 const sheets = new WeakMap<CompiledView, CSSStyleSheet>()
 let mediaSheet: CSSStyleSheet | undefined
-// A `data-media` element the author left unsized fills the line: in a flex row it would otherwise shrink to the
-// frame's zero content width. `:where` keeps it at zero specificity, so any author width wins.
-const mediaDefaults = `
-.view-image:not([data-fit=natural]) { width:100%;height:100% }
-:where(:has(> .view-image)) { width:100%;width:-webkit-fill-available;width:stretch }
-:where(button) { font:inherit;color:inherit }
-:where(button:enabled) { cursor:pointer }`
 function viewSheet(view: CompiledView) {
   let sheet = sheets.get(view)
   if (!sheet) sheets.set(view, (sheet = stylesheet(view.css ?? "")))
@@ -181,7 +179,7 @@ export const ViewBlock = (props: Props) => {
     ({ sheet, id, latest }) => {
       host.dataset.view = id
       host.toggleAttribute("data-latest", latest)
-      root.adoptedStyleSheets = [(mediaSheet ??= stylesheet(frameCss + mediaDefaults)), sheet]
+      root.adoptedStyleSheets = [(mediaSheet ??= stylesheet(frameCss + VIEW_DEFAULTS)), sheet]
     },
   )
   // Keep the template's computations under the reader's Loading boundary.

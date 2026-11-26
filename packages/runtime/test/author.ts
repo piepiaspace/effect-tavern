@@ -580,4 +580,222 @@ const catalogError = lint(addresses).find((d) => d.rule === "unknown-catalog")!
 assert.equal(catalogError.path, "products.memory.shape.keys[0].shape.columns[0].catalog")
 assert.ok(paths.has(catalogError.path))
 
+// Scenario `expect.world`: a record compares the keys given, a table its rows matched by the columns given in any
+// order (entity ids are the host's), the same count. A scripted value its product's shape refuses is named, with why.
+{
+  const worldCard = decodeCard({
+    id: "world",
+    frame: [],
+    fiction: [{ id: "s", text: "门外。" }],
+    greetings: [{ text: "开场。" }],
+    rules: { fields: [], actions: [] },
+    lore: [],
+    guard: [],
+    products: [
+      {
+        id: "boat",
+        role: "world",
+        text: "Boat",
+        on: true,
+        shape: {
+          kind: "record",
+          keys: [
+            { key: "aboard", type: "boolean" },
+            { key: "moor", type: "text" },
+          ],
+        },
+        initial: { aboard: false, moor: "岸" },
+      },
+      {
+        id: "crew",
+        role: "world",
+        text: "Crew",
+        on: true,
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "name", type: "text" },
+            { key: "role", type: "text" },
+          ],
+        },
+      },
+      { id: "aside", role: "theater", text: "Aside", on: true, shape: { kind: "list" } },
+    ],
+  })
+  const step = (record: Record<string, unknown>, world: Record<string, unknown>) => ({
+    greeting: 0,
+    steps: [{ text: "上船", replies: { record: [record] }, expect: { world } }],
+  })
+  const crew = [
+    { name: "陈", role: "艄公" },
+    { name: "沈", role: "客" },
+  ]
+  const boarded = { boat: { aboard: true, moor: "江心" }, crew }
+  await runScenario(worldCard, step(boarded, { boat: { aboard: true } }))
+  await runScenario(worldCard, step(boarded, { crew: [{ name: "沈" }, { role: "艄公" }] }))
+  await assert.rejects(
+    runScenario(worldCard, step(boarded, { boat: { aboard: false } })),
+    /step 1: world\.boat\.aboard/,
+  )
+  await assert.rejects(
+    runScenario(worldCard, step(boarded, { crew: [{ name: "沈" }] })),
+    /world\.crew: expected 1 row\(s\), actual 2/,
+  )
+  await assert.rejects(
+    runScenario(worldCard, step(boarded, { crew: [{ name: "沈" }, { name: "沈" }] })),
+    /world\.crew\[1\]: no row matches \{"name":"沈"\}/,
+  )
+  await assert.rejects(
+    runScenario(worldCard, step(boarded, { nope: {} })),
+    /world\.nope: the card has no world product nope/,
+  )
+  // a rejected scripted value: a world product's tool and a theater call would each refuse it far from the script
+  await assert.rejects(
+    runScenario(worldCard, step({ boat: { aboard: "yes", moor: "江心" } }, {})),
+    /step 1: scripted record value boat was rejected: Expected boolean[^]*aboard/,
+  )
+  await assert.rejects(
+    runScenario(worldCard, step({ aside: 42 }, {})),
+    /step 1: scripted record value aside was rejected/,
+  )
+  const aside = await runScenario(worldCard, step({ aside: ["想家"] }, {}))
+  assert.deepEqual(aside[0].products.aside, ["想家"])
+
+  // a catalog column has no `options` until the run resolves it: a script is held to the catalog's declared items
+  const catalogCard = decodeCard({
+    id: "faces",
+    frame: [],
+    fiction: [{ id: "s", text: "门外。" }],
+    greetings: [{ text: "开场。" }],
+    rules: { fields: [], actions: [] },
+    lore: [],
+    guard: [],
+    catalogs: [{ id: "faces", items: [{ id: "smile" }, { id: "frown" }] }],
+    products: [
+      {
+        id: "cast",
+        role: "theater",
+        text: "Cast",
+        on: true,
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "name", type: "text" },
+            { key: "face", type: "enum", catalog: "faces" },
+          ],
+        },
+      },
+      {
+        id: "mood",
+        role: "theater",
+        text: "Mood",
+        on: true,
+        shape: { kind: "record", keys: [{ key: "face", type: "enum", catalog: "faces" }] },
+      },
+    ],
+  })
+  const picked = await runScenario(
+    catalogCard,
+    step({ cast: [{ name: "陈", face: "frown" }], mood: { face: "smile" } }, {}),
+  )
+  assert.deepEqual(picked[0].products.cast, [{ name: "陈", face: "frown" }])
+  assert.deepEqual(picked[0].products.mood, { face: "smile" })
+  await assert.rejects(
+    runScenario(catalogCard, step({ cast: [{ name: "陈", face: "smirk" }] }, {})),
+    /step 1: scripted record value cast was rejected: \[0\]\.face: "smirk" is no item of catalog faces/,
+  )
+  await assert.rejects(
+    runScenario(catalogCard, step({ mood: { face: "smirk" } }, {})),
+    /step 1: scripted record value mood was rejected: face: "smirk" is no item of catalog faces/,
+  )
+
+  // A catalog with no item whose `when` holds on the turn: the run drops what it backs (a record's key, a table, a record
+  // left with no key), so a script may leave those keys out; one it gives is still held to the catalog.
+  const rainy = { path: "天气", is: "雨" }
+  const droppedCard = decodeCard({
+    id: "drops",
+    frame: [],
+    fiction: [{ id: "s", text: "门外。" }],
+    greetings: [{ text: "开场。" }],
+    rules: { fields: [{ path: "天气", type: "enum", options: ["晴", "雨"], initial: "晴" }], actions: [] },
+    lore: [],
+    guard: [],
+    catalogs: [
+      {
+        id: "wet",
+        items: [
+          { id: "cape", when: rainy },
+          { id: "hat", when: rainy },
+        ],
+      },
+      { id: "none", items: [] },
+    ],
+    products: [
+      {
+        id: "look",
+        role: "theater",
+        text: "Look",
+        on: true,
+        shape: {
+          kind: "record",
+          keys: [
+            { key: "line", type: "text" },
+            { key: "wear", type: "enum", catalog: "wet" }, // a column: the key goes
+            { key: "cast", shape: { kind: "table", columns: [{ key: "wear", type: "enum", catalog: "wet" }] } }, // a table
+            { key: "deep", shape: { kind: "record", keys: [{ key: "wear", type: "enum", catalog: "wet" }] } }, // emptied
+            {
+              key: "kept",
+              shape: {
+                kind: "record",
+                keys: [
+                  { key: "n", type: "int" },
+                  { key: "wear", type: "enum", catalog: "wet" },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      {
+        id: "bare",
+        role: "theater",
+        text: "Bare",
+        on: true,
+        shape: {
+          kind: "record",
+          keys: [
+            { key: "line", type: "text" },
+            { key: "wear", type: "enum", catalog: "none" },
+          ],
+        },
+      },
+    ],
+  })
+  const dry = await runScenario(droppedCard, step({ look: { line: "晴", kept: { n: 1 } }, bare: { line: "空" } }, {}))
+  assert.deepEqual(dry[0].products.look, { line: "晴", kept: { n: 1 } })
+  assert.deepEqual(dry[0].products.bare, { line: "空" })
+  // what the run never drops is still demanded: a plain key, a nested record that keeps a plain key
+  await assert.rejects(
+    runScenario(droppedCard, step({ look: { kept: { n: 1 } } }, {})),
+    /step 1: scripted record value look was rejected: [^]*line/,
+  )
+  await assert.rejects(
+    runScenario(droppedCard, step({ look: { line: "晴", kept: {} } }, {})),
+    /step 1: scripted record value look was rejected: [^]*n/,
+  )
+  // a key given is checked against the catalog's items, in a row or a nested record too
+  await assert.rejects(
+    runScenario(droppedCard, step({ look: { line: "晴", cast: [{ wear: "boot" }] } }, {})),
+    /step 1: scripted record value look was rejected: cast\.\[0\]\.wear: "boot" is no item of catalog wet/,
+  )
+  await assert.rejects(
+    runScenario(droppedCard, step({ look: { line: "晴", deep: { wear: "boot" } } }, {})),
+    /step 1: scripted record value look was rejected: deep\.wear: "boot" is no item of catalog wet/,
+  )
+  await assert.rejects(
+    runScenario(droppedCard, step({ bare: { line: "空", wear: "x" } }, {})),
+    /step 1: scripted record value bare was rejected: wear: catalog none has no item, so the run never asks for wear/,
+  )
+}
+
 console.log("author: ok")

@@ -9,7 +9,7 @@ import { Here, Json } from "../bin/cli.ts"
 import { unrollCommand } from "../bin/unroll.ts"
 
 const card = Command.make("card").pipe(
-  Command.withSubcommands([...authorCommands, unrollCommand]),
+  Command.withSubcommands([...authorCommands(), unrollCommand]),
   Command.withGlobalFlags([Json]),
 )
 

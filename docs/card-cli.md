@@ -8,6 +8,7 @@
 bun run tavern card init my-card --template chat
 bun run tavern card check my-card.yaml --json
 bun run tavern card view my-card.yaml --stage direct --state hp=2 --events won --persona '你是一位旅人。'
+bun run tavern card view my-card.yaml --views --scenario my-card.scenario.yaml --html views.html
 bun run tavern card test my-card.yaml scenario.yaml
 ```
 
@@ -35,6 +36,44 @@ YAML/Schema 错误使用 `schema`，文件读取失败使用 `io`。
 预览没有历史、模型回复或历史披露；未披露 lore 的 since 为 Infinity、shown 为 0。narrate 默认把当前开窗列为 may，direct 展示导演的输入；
 导演实际选择及多回合状态应通过 `test` 验证。`record` 预览使用空正文。
 
+### 流内视图（`view --views`）
+
+`--views` 不打印阶段文档，而是读卡片的流内视图（`views`）在一个节点上绑定到什么。节点由真实会话在 fake 模型上
+产生（与 `test` 同一个执行器），经会话自己的 `timelineNode` 投影，与阅读器拿到的一致：默认是开场节点
+（`--greeting N`，默认 0；`--state k=v` 像玩家改数值那样设在该节点上）；`--scenario file` 播放一个场景
+（格式同 `test`，不断言 `expect`）并读最后一步留下的节点，`--step N`（从 1 起）读更早的一步。小剧场产物只在
+回合之后才有，开场节点上会逐个视图说明；`on: false` 或 `trigger: demand` 的产物只在玩家要求时生成，场景不会要求，也会注明。
+
+文本输出按卡片顺序列出每个视图：id、label、residency、`when` 在此是否成立、每个 consumes 产物此处有没有值、
+是否会挂载（不挂载时说明原因：守卫不成立 / turn 视图无可显示 / latest 视图不在 head；守卫不成立在哪个节点都先报它。
+判定与会话、阅读器共用 `packages/runtime/src/view-shell.ts` 的 `viewMount`）；然后按模板顺序列出每个绑定：
+指令、原样路径和解析结果（`"雨"`、`2`、`true`、`[3 rows]`、`{aboard, moor}`；解析不到是
+`undefined (nothing at this path)`，拼错的路径一眼可见）。`data-each` 给出行数和第一行的键，其内部绑定按第一行读；
+`data-media` 给出 catalog/item 与解析出的 URL，或 `no hit`；`data-var-*` 说明值是否是有限数字（否则被丢弃）；
+`data-text` 读到对象或数组时说明会渲染为空；`data-fill` 给出按下会填进输入框的文字，或按钮为何禁用（不在最新回合、
+路径上只有空白、按这份数据没有可访问名称；预览里没有进行中的回合）。最后是作用域的顶层形状：`fields` 的键、`world` 的产物及形状（世界表在
+视图里是 `{ entityId, ...columns }` 的数组；turn 视图没有 `world`）、此处有的 `theater` 产物、`media` 槽位、`names` 的键，
+以及只 consume 一个产物时的 `value` 和记录键别名。`--json` 输出同样的信息：`{card, node, at, views: [...]}`，
+每个视图含 `id`、`residency`、`when`、`consumes`、`mounted`、`reason`、`notes`、`bindings`、`scope`；`data-fill` 绑定另带
+`fill: { text, disabled? }`（`disabled` 为 `not-latest`、`blank` 或 `unnamed`）。
+
+`--html file` 另写一张自包含的静态页：每个挂载的视图放在声明式 shadow root（`<template shadowrootmode="open">`）里，
+作者的 CSS 与应用里一样只作用于自己，前面是与阅读器同一份默认规则（`view-shell.ts` 的 `VIEW_DEFAULTS`）；
+`data-media` 命中画成框里的 `<img>`（解析出的 https 地址），未命中不画；按钮画成 `<button type="button">`，
+按上面的规则禁用。页面带宿主的设计变量与媒体框样式：`packages/client/src/tokens.css` 与 `lightbox.css` 原文，由
+`tavern` 命令树（`packages/server/bin/tavern.ts`，编译时嵌入二进制）传给 runtime 的命令；runtime 本身不依赖
+客户端，单独挂载时页面会注明缺少设计变量。右上角切换浅色/深色，`?theme=light|dark` 也可指定。
+不还原：灯箱、画廊遮罩、媒体框的点阵占位与渐显、按下按钮、宿主字体之外的字形。
+渲染器在 `packages/runtime/src/view-preview.ts`，规则全部来自客户端同用的 `view-bindings.ts`。
+
+卡片由 `card view` 直接解码读取，不经过闸门，所以页面对任何卡片都是惰性的：卡片与模型的字符串只以转义后的文字或
+属性值出现在渲染器自己写出的元素与属性上；闸门会拒绝的 `aspect`、`focus` 不画；图片只用 `resolveCatalogUrl`
+构造的 https 地址；样式表里的 `<` 写成 CSS 转义 `\3c `，任何 CSS 都关不掉自己的 `<style>`
+（`packages/runtime/test/view-preview-hostile.ts`）。
+
+`--views` 与只影响阶段文档的 `--stage`、`--events`、`--pin`、`--persona`、`--lore`、`--hat` 互斥；
+`--scenario`、`--step`、`--html` 只与 `--views` 同用。违反、步号越界、文件读不到、卡片没有视图时返回 1；命令行写错返回 2。
+
 ## 场景契约
 
 场景格式严格校验，多余键报错。省略场景文件时执行一轮默认 fake 模型冒烟测试。
@@ -58,6 +97,7 @@ steps:
           # answers: {warmth: close}
     expect:
       # state: {hp: 2}
+      # world: {boat: {aboard: true}, crew: [{name: 沈}, {name: 陈}]}
       events: []
       windows: []
       lore: []
@@ -69,6 +109,14 @@ steps:
 后两者使用 `id#层数`：windows 是当前回合开窗候选，lore 是 lookup/主动选择及 check 确认的披露。
 `end` 对应实际回合结束原因（end/over/cap/stopped）。每步自动验证字段边界和 record 已提交；
 失败报告步骤序号并返回 1。相同 seed 和回答序列得到相同规则结果。
+
+`world` 按产物 id 断言世界状态，取视图和检查器看到的形状：记录只比较给出的键（逐层）；世界表是
+`{ entityId, ...columns }` 的数组，期望写成行的数组，行数必须相同，每个期望行按给出的列匹配一个不同的实际行，
+与顺序和宿主分配的 entityId 无关。id 不是卡片的世界产物时报错。
+
+record 回答里每个产物值先按卡片的产物形状校验：不合形状时报出是哪个产物、为什么（如
+`step 1: scripted record value boat was rejected: Expected boolean …`），而不是让世界产物的工具反复拒收直到脚本耗尽，
+或让小剧场调用失败后被静默丢弃、最后只在 `expect` 上看到 `undefined`。卡片没有的产物 id（如起步包的 notes/options）照旧忽略。
 
 ## 展开 ST 卡（unroll）
 

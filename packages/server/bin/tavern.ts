@@ -35,6 +35,11 @@ import type { CliHost } from "../src/cli-host.ts"
 import { play } from "../src/play.ts"
 import { reach } from "../src/reach.ts"
 import { start, told } from "../src/start.ts"
+import "./text.d.ts"
+// The host's look for `card view --views --html` (runtime bin/card.ts `HostSheets`): the client's own sheets, a text
+// import from the package the tavern serves (`--asset ../client/dist`), so `bun build --compile` embeds them too.
+import tokens from "@effect-tavern/client/src/tokens.css" with { type: "text" }
+import frame from "@effect-tavern/client/src/lightbox.css" with { type: "text" }
 
 export type ExitCode = 0 | 1 | 2 | 3
 
@@ -256,7 +261,7 @@ const tree = (world: World, ending: Ending) => {
   const card = Command.make("card").pipe(
     Command.withDescription("Cards: a file offline, the shelf, the author model"),
     Command.withSubcommands([
-      ...authorCommands,
+      ...authorCommands({ tokens, frame }),
       unrollCommand,
       install,
       cardList,

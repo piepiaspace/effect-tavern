@@ -5,7 +5,7 @@ import walk from "css-tree/walker"
 import { tokenize, tokenTypes } from "css-tree/tokenizer"
 import { HOLE } from "./names.ts"
 import { STATE_HOLE } from "./cond.ts"
-import type { CompiledView, TemplateNode, ViewShell } from "./view-shell.ts"
+import { voidElements, type CompiledView, type TemplateNode, type ViewShell } from "./view-shell.ts"
 import { hiddenFromName } from "./view-bindings.ts"
 const words = (s: string) => new Set(s.split(" "))
 const tags = words(
@@ -299,7 +299,6 @@ const optionalEnd: Record<string, readonly string[]> = {
   rt: ["rt", "rp"],
   rp: ["rt", "rp"],
 }
-const voidTags = words("area base br col embed hr img input link meta source track wbr")
 const rawText = words("style script textarea xmp iframe noembed noframes noscript title")
 
 /** What the browser does to markup that still parses: an element left open, an end tag it ignores, a start tag it
@@ -350,7 +349,8 @@ function checkStructure(html: string, fragment: Html.DocumentFragment, problems:
 
   for (const el of elements) {
     const tag = el.n.tagName
-    if (el.loc.endTag || voidTags.has(tag) || html.slice(el.loc.startTag!.startOffset, el.open).endsWith("/>")) continue
+    if (el.loc.endTag || voidElements.has(tag) || html.slice(el.loc.startTag!.startOffset, el.open).endsWith("/>"))
+      continue
     const rest = html.slice(el.close)
     const closedBy = /^<\/?([a-zA-Z][^\s/>]*)/.exec(rest)
     const byAncestorEnd =

@@ -52,13 +52,8 @@ const textOf = (m: Message) =>
   typeof m.content === "string" ? m.content : m.content.map((p) => ("text" in p ? p.text : "")).join("")
 const indent = (t: string) => t.replace(/^/gm, "    ")
 
-export const view = (card: Card, rows: Rows, o: Options = {}): View => {
-  const stage = o.stage ?? "narrate"
-  const rpg = makeCard(card.rules)
-  // The state: initial, a greeting's opening, then the overrides as `set` effects (validated like any effect).
-  const g = o.greeting === undefined ? undefined : card.greetings[o.greeting]
-  if (o.greeting !== undefined && !g) throw new Error(`greeting ${o.greeting}: the card has ${card.greetings.length}`)
-  const opened = rpg.apply(rpg.initial, g?.do ?? [])
+/** `--state k=v` pairs as `set` effects, each value typed by its field (validated like any effect where applied). */
+export const overrides = (card: Card, state: Record<string, string> | undefined) => {
   const types = new Map(card.rules.fields.map((f) => [f.path, f.type]))
   const coerce = (path: string, v: string) =>
     types.get(path) === "boolean"
@@ -70,10 +65,17 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
       : types.get(path) === "enum" || !types.has(path)
         ? v
         : Number(v)
-  const s = rpg.apply(
-    opened.s,
-    Object.entries(o.state ?? {}).map(([path, v]) => ({ path, set: coerce(path, v) })),
-  ).s
+  return Object.entries(state ?? {}).map(([path, v]) => ({ path, set: coerce(path, v) }))
+}
+
+export const view = (card: Card, rows: Rows, o: Options = {}): View => {
+  const stage = o.stage ?? "narrate"
+  const rpg = makeCard(card.rules)
+  // The state: initial, a greeting's opening, then the overrides as `set` effects (validated like any effect).
+  const g = o.greeting === undefined ? undefined : card.greetings[o.greeting]
+  if (o.greeting !== undefined && !g) throw new Error(`greeting ${o.greeting}: the card has ${card.greetings.length}`)
+  const opened = rpg.apply(rpg.initial, g?.do ?? [])
+  const s = rpg.apply(opened.s, overrides(card, o.state)).s
 
   // ───────── head ─────────
   const R = resolve(card, rows)
