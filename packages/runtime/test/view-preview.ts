@@ -249,4 +249,24 @@ assert.deepEqual(
   assert.match(previewPage(input, { title: "T", caption: "c" }), /tokens were not available/)
 }
 
+// A turn view on the head is the latest too (the client's `latest` is the newest landed turn, for every residency)
+{
+  const turn = compiled({ id: "t", consumes: ["scene"], html: '<details data-open="latest"><p>x</p></details>' })
+  const input = {
+    views: [turn],
+    node: node({ theater: { scene: "雨" } }),
+    products: [{ id: "scene", role: "theater" as const, shape: { kind: "text" as const } }],
+    names: {},
+    catalogs,
+    head: true,
+    opening: false,
+  }
+  const page = previewPage(input, { title: "T", caption: "c" })
+  assert.match(page, /<div class="view-shell" data-view="t" data-latest><template/)
+  assert.match(page, /<details open><p>x<\/p><\/details>/)
+  const past = previewPage({ ...input, head: false }, { title: "T", caption: "c" })
+  assert.match(past, /<div class="view-shell" data-view="t"><template/)
+  assert.match(past, /<details><p>x<\/p><\/details>/)
+}
+
 console.log("view-preview: ok")

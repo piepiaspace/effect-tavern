@@ -322,7 +322,7 @@ const attrs = (o: Record<string, string | true>) =>
     .join("")
 
 /** One view's template drawn on the node as static markup: ViewBlock's `branch` as a string. `latest` is whether the
- *  view sits on the head (`data-open="latest"` opens there). */
+ *  node is the head, for a view of any residency (`data-open="latest"` opens there, as in the client). */
 export const renderView = (
   view: CompiledView,
   bindings: ReturnType<typeof viewBindings>,
@@ -425,7 +425,8 @@ export const previewPage = (
     if (!m.mounted)
       return `<section class="preview-view off">${head}<p class="preview-off">not mounted here: ${escapeText(reasonWords[m.reason!])}</p></section>`
     const b = bindingsOf(input, view)
-    const latest = residency(view) === "latest" && input.head
+    // the client passes `latest` (the newest landed turn) to every view of a section, whatever its residency
+    const latest = input.head
     const body = renderView(view, b, { nodeId: input.node.id, latest, catalogs: input.catalogs })
     const sheets = `<style>${(frame ?? "").replace(/<\/style/gi, "<\\/style")}\n${FRAME_FILL}</style><style>${(view.css ?? "").replace(/<\/style/gi, "<\\/style")}</style>`
     return `<section class="preview-view">${head}<div class="view-boundary"><div class="view-shell" data-view="${escapeAttr(view.id)}"${latest ? " data-latest" : ""}><template shadowrootmode="open">${sheets}${body}</template></div></div></section>`
