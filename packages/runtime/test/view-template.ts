@@ -1,6 +1,8 @@
 // compileView's whitelist (#248): what a view may write, and the fetch and escape paths that stay shut.
 import assert from "node:assert/strict"
 import { compileView, inspectView } from "../src/view-template.ts"
+import { accessibleName } from "../src/view-bindings.ts"
+import type { TemplateNode } from "../src/view-shell.ts"
 
 const css = (rule: string) => () => compileView({ html: "<p></p>", css: rule })
 const html = (markup: string) => () => compileView({ html: markup })
@@ -201,7 +203,7 @@ for (const [markup, want] of [
       "error! html:3:3 <img> is not a view element | show a catalog image with data-media",
       "error! html:3:20 <a> is not a view element | a view links nowhere",
       "error! html:3:38 <script> is not a view element | a view runs no code",
-      "error! html:3:60 <button> is not a view element | a view has no buttons yet",
+      'error! html:3:60 <button> has no data-fill | a view\'s button fills the composer: write <button data-fill="<path>">',
       "error! html:3:78 <style> is not a view element | move these rules into the view's css block",
     ],
   ],
@@ -234,6 +236,132 @@ assert.deepEqual(
     "error! css:4:1 unsupported view CSS: @import | a view loads no stylesheet: put the rules in its css block",
   ],
 )
+// The fill button (#248): one kind of button, which puts the text at a path into the composer. It has data-fill, a
+// name the gate can see, and no type but button; the host owns disabled.
+for (const markup of [
+  "<button data-fill='opt'>选这条</button>",
+  "<button data-fill='opt' data-text='opt'></button>",
+  "<button data-fill='row.text' type='button'><span data-text='row.text'></span></button>",
+  "<button data-fill='opt' aria-label='选这条' class='pick' title='t' data-if='opt' data-attr-kind='opt' data-var-n='n'><svg viewBox='0 0 1 1'><path d='M0 0'/></svg></button>",
+])
+  assert.doesNotThrow(html(markup), markup)
+for (const [markup, want] of [
+  ["<button data-fill='opt'>x</button>", []],
+  [
+    "<button>选</button>",
+    [
+      'error! html:1:1 <button> has no data-fill | a view\'s button fills the composer: write <button data-fill="<path>">',
+    ],
+  ],
+  ["<div data-fill='opt'>x</div>", ["error! html:1:6 <div>: data-fill belongs on a <button> | a view's button fills"]],
+  [
+    "<button type='submit' data-fill='opt'>x</button>",
+    ['error! html:1:9 <button type="submit">: a view\'s button is always type="button" | remove type'],
+  ],
+  [
+    "<button data-fill='opt'> <span class='x'></span></button>",
+    [
+      "error html:1:1 <button> has no name: a player and an agent find a button by its words | write its words inside it",
+    ],
+  ],
+  ["<button data-fill='opt' aria-label=' '></button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='a + b'>x</button>", ['error! html:1:9 <button>: data-fill="a + b" is not a path']],
+  [
+    "<button data-fill='opt' disabled name='n' value='v' form='f' formaction='x' autofocus popovertarget='p' command='c' commandfor='d'>x</button>",
+    [
+      "error! html:1:25 <button>: disabled is not allowed in a view | the host disables a button while it cannot fill",
+      "error! html:1:43 <button>: value is not allowed in a view",
+      "error! html:1:53 <button>: form is not allowed in a view",
+      "error! html:1:62 <button>: formaction is not allowed in a view",
+      "error! html:1:77 <button>: autofocus is not allowed in a view",
+      "error! html:1:87 <button>: popovertarget is not allowed in a view",
+      "error! html:1:105 <button>: command is not allowed in a view",
+      "error! html:1:117 <button>: commandfor is not allowed in a view",
+      "error! html:1:34 <button>: name is not allowed on a button",
+    ],
+  ],
+] as [string, string[]][]) {
+  const got = said({ html: markup })
+  for (const w of want)
+    assert.ok(
+      got.some((g) => g.startsWith(w.split(" | ")[0]) && (!w.includes(" | ") || g.includes(w.split(" | ")[1]))),
+      `${markup}\nwant: ${w}\ngot:\n${got.join("\n")}`,
+    )
+  assert.equal(got.length, want.length, `${markup}\n${got.join("\n")}`)
+}
+assert.deepEqual(JSON.parse(JSON.stringify(compileView({ html: "<button data-fill='opt'>x</button>" }))), [
+  { tag: "button", svg: false, attrs: { "data-fill": "opt" }, children: ["x"] },
+])
+assert.throws(() => compileView({ html: "<button>x</button>" }), /^Error: <button> has no data-fill at 1:1$/)
+// A hidden subtree names nothing; neither image nor control sits in or on a button.
+for (const [markup, want] of [
+  ["<button data-fill='opt'><span aria-hidden='true'>→</span></button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt' aria-hidden='true'>x</button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt'><span hidden data-text='opt'></span></button>", ["error html:1:1 <button> has no name"]],
+  ["<button data-fill='opt'><b aria-hidden='false'>→</b><span aria-hidden='true'>!</span>选</button>", []],
+  [
+    "<button data-fill='opt' data-media='media.face'>x</button>",
+    [
+      "error! html:1:25 <button>: data-media cannot sit on a <button>: a button holds words, not an image | put the image beside the button",
+    ],
+  ],
+  [
+    "<button data-fill='opt'>x<span><i data-media='media.face' data-lightbox></i></span></button>",
+    [
+      "error! html:1:35 <i>: data-media cannot sit inside the <button> at 1:1: a button holds words, not an image",
+      "error! html:1:59 <i>: data-lightbox cannot sit inside the <button> at 1:1",
+    ],
+  ],
+  [
+    "<button data-fill='opt'>x<input type='checkbox'><label>l</label><details><summary>s</summary></details></button>",
+    [
+      "error! html:1:26 <input> cannot sit inside the <button> at 1:1: a button holds words, not another control | put the control beside the button",
+      "error! html:1:49 <label> cannot sit inside the <button> at 1:1",
+      "error! html:1:65 <details> cannot sit inside the <button> at 1:1",
+      "error! html:1:74 <summary> cannot sit inside the <button> at 1:1",
+    ],
+  ],
+  [
+    "<button data-fill='a'>x<button data-fill='b'>y</button></button>",
+    [
+      "error html:1:1 <button> is never closed: the browser closes it at 1:24, where another <button> starts, since a button cannot hold a button | put the buttons side by side",
+      "error html:1:56 </button> has nothing open to close",
+    ],
+  ],
+] as [string, string[]][]) {
+  const got = said({ html: markup })
+  for (const w of want)
+    assert.ok(
+      got.some((g) => g.startsWith(w.split(" | ")[0]) && (!w.includes(" | ") || g.includes(w.split(" | ")[1]))),
+      `${markup}\nwant: ${w}\ngot:\n${got.join("\n")}`,
+    )
+  assert.equal(got.length, want.length, `${markup}\n${got.join("\n")}`)
+}
+// What a button is named with the data it renders: the host enables it only when this is not empty.
+{
+  const [button] = compileView({
+    html: "<button data-fill='opt'><span aria-hidden='true'>→</span><span data-if='hint' data-text='hint'></span><span data-unless='hint'>选</span><i data-each='tags' data-as='t'><b data-text='t'></b></i></button>",
+  }) as Exclude<TemplateNode, string>[]
+  assert.equal(accessibleName(button, { hint: "递茶", tags: [] }), "递茶")
+  assert.equal(accessibleName(button, { hint: "", tags: [] }), "选")
+  assert.equal(accessibleName(button, { hint: "", tags: ["甲", "乙"] }), "选甲 乙")
+  const [byText] = compileView({ html: "<button data-fill='a' data-text='b'></button>" }) as Exclude<
+    TemplateNode,
+    string
+  >[]
+  assert.equal(accessibleName(byText, { a: "递茶", b: "" }), "")
+  assert.equal(accessibleName(byText, { a: "递茶", b: 3 }), "3")
+  const [labelled] = compileView({
+    html: "<button data-fill='a' aria-label=' 选 '><b data-text='b'></b></button>",
+  }) as Exclude<TemplateNode, string>[]
+  assert.equal(accessibleName(labelled, { a: "x", b: "" }), "选")
+  const [hidden] = compileView({ html: "<button data-fill='a'><b hidden data-text='a'></b></button>" }) as Exclude<
+    TemplateNode,
+    string
+  >[]
+  assert.equal(accessibleName(hidden, { a: "x" }), "")
+}
+
 // The css is never name-filled either: a macro in a string or a custom property is placed in the css block.
 assert.deepEqual(
   said({

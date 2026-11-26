@@ -36,6 +36,9 @@ import { closable, mountBack } from "../src/back.ts"
 import { Swipe } from "../src/swipe.ts"
 import { onKey, open as openPage } from "../src/pages.ts"
 import { Demand, Sheet } from "../src/readings.tsx"
+import { ViewBlock } from "../src/view-shell.tsx"
+import { compileView } from "@effect-tavern/runtime/src/view-template.ts"
+import type { CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import { card, page, registry, type CardView, type StoryRow } from "../src/store.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { timelineNode } from "./fixtures.ts"
@@ -136,6 +139,33 @@ let heldPicked = false
 const [wave, setWave] = createSignal<Hat>({ id: "h-wave", name: "浪潮", deliver: "tool", toolChoice: "auto" })
 let waveSaved: Hat | undefined
 let waveStaged: Hat | undefined
+// A card view's fill buttons (#248), on the latest turn: one fills from the consumed product, one an untrimmed field (as
+// an Options chip fills it), one a blank field (never live); `nameless` holds the ones that have no name with this data.
+const fillView = (id: string, html: string): CompiledView => ({
+  id,
+  consumes: ["diary"],
+  residency: "turn",
+  html,
+  tree: compileView({ html }),
+})
+const fills = fillView(
+  "fills",
+  '<button class="fill-diary" data-fill="value">抄下日记</button><button class="fill-padded" data-fill="fields.padded">照抄</button><button class="fill-blank" data-fill="fields.blank">空白</button>',
+)
+const nameless = fillView(
+  "nameless",
+  '<button class="fill-text" data-fill="value" data-text="fields.empty"></button><button class="fill-hidden" data-fill="value"><span aria-hidden="true">→</span></button><button class="fill-unless" data-fill="value"><span data-unless="value">无</span></button>',
+)
+// its own card, since the shared one is swapped out later in the run
+const fillCard = {
+  id: "fills",
+  layer: { products: [{ id: "diary", role: "theater", shape: { kind: "text" } }], names: {} },
+} as unknown as CardView
+const fillNode = {
+  ...timelineNode(9, null, "正文"),
+  theater: { diary: "雨停了" },
+  fields: { padded: "  留下  ", blank: "   ", empty: "" },
+}
 const sheet = dialogHandle()
 const prompt = dialogHandle()
 const modal = dialogHandle()
@@ -248,6 +278,9 @@ render(
         />
         <MediaFrame id="media-broken-probe" as="figure" url="data:image/png;base64,broken" label="断缆旧图" lightbox />
         <MediaFrame id="media-missing-probe" as="figure" url={undefined} label="未明江景" lightbox />
+      </div>
+      <div id="fill-probe">
+        <ViewBlock view={fills} card={fillCard} node={fillNode} latest />
       </div>
       {/* the install's keys, as the canvas's top strip and the drawer's foot hold them */}
       <span id="install-keys">
@@ -761,6 +794,55 @@ const run = async () => {
   closeLightbox()
   await quiet()
   check(!document.querySelector(".lightbox"), "closeLightbox() dismisses Lightbox")
+
+  // A card view's fill button: a ui-sdk Button the agent finds by its words and presses, which fills the composer as an
+  // Options chip does and sends nothing; blank text at its path, or no name with this data, leaves it disabled.
+  const fillProbe = (cls: string) =>
+    document.querySelector("#fill-probe .view-shell")?.shadowRoot?.querySelector<HTMLButtonElement>(`button.${cls}`)
+  const fillEntry = (label: string) => agent.snapshot().find((e) => e.label === label && !e.offPage)
+  check(await until(() => !!fillProbe("fill-diary")), "the fill probe view mounts its buttons")
+  for (const label of ["抄下日记", "照抄"])
+    check(
+      fillEntry(label)?.component === "button" && fillEntry(label)?.actions.includes("press"),
+      `${label} is pressable`,
+    )
+  check(
+    fillProbe("fill-blank")?.disabled && fillEntry("空白")?.disabled && !fillEntry("空白")?.actions.length,
+    `a fill button with only whitespace at its path is disabled: ${JSON.stringify(fillEntry("空白"))}`,
+  )
+  const fillDiary = await agent.act({ steps: [{ ref: "抄下日记", action: "press" }] })
+  await quiet()
+  check(
+    fillDiary.ok && registry.get(composition).text === "雨停了",
+    `pressing a fill button fills the composer (${fillDiary.error?.message ?? "ok"}): ${registry.get(composition).text}`,
+  )
+  const fillPadded = await agent.act({ steps: [{ ref: "照抄", action: "press" }] })
+  await quiet()
+  check(
+    fillPadded.ok && registry.get(composition).text === "  留下  ",
+    `a fill button fills its text as it stands, as a chip does: ${JSON.stringify(registry.get(composition).text)}`,
+  )
+  // Its name is the content it renders with this data: a data-text that is empty, content only under aria-hidden, or
+  // only under a data-unless that holds names nothing, so the button stays disabled however much its fill holds.
+  const namelessHost = document.createElement("div")
+  document.body.append(namelessHost)
+  const disposeNameless = render(
+    () => <ViewBlock view={nameless} card={fillCard} node={fillNode} latest />,
+    namelessHost,
+  )
+  await quiet()
+  const namelessButtons = [...(namelessHost.querySelector(".view-shell")?.shadowRoot?.querySelectorAll("button") ?? [])]
+  check(
+    namelessButtons.length === 3 && namelessButtons.every((b) => b.disabled),
+    `a fill button with no name is disabled: ${namelessButtons.map((b) => `${b.className}:${b.disabled}`).join(" ")}`,
+  )
+  check(
+    agent.snapshot().every((e) => e.offPage || e.label || !e.actions.length),
+    "a nameless fill button offers the agent nothing to press",
+  )
+  disposeNameless()
+  namelessHost.remove()
+  await quiet()
 
   // ModelDialog 3-way structured output menu (`schema` | `tool` | `json`) via @ui-sdk agent bridge
   openModel?.({ id: "uncut-model" })

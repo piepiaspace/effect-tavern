@@ -764,6 +764,49 @@ assert.ok(of({ ...base, greetings: [{ text: "  " }] }).includes("error empty-gre
       "views.v.consumes[0]: cg is bound in media.illustrations, which draws it as pictures in the prose; a view cannot consume it too",
     ],
   )
+  // The fill button (#248): data-fill reads a scalar like data-text, a row alias included, and a view that takes a
+  // composer product's place without one is warned: its options are drawn but cannot be chosen.
+  const filled: Card = {
+    ...viewed,
+    products: [
+      ...viewed.products!,
+      { id: "options", role: "theater", surface: "composer", text: "建议", shape: { kind: "list", max: 3 } },
+      { id: "hints", role: "theater", surface: "composer", text: "提示", shape: { kind: "list", max: 3 } },
+    ],
+    views: [
+      {
+        id: "picks",
+        consumes: ["options"],
+        html: '<ul data-each="value" data-as="opt"><li><button data-fill="opt" data-text="opt"></button></li></ul>',
+      },
+      {
+        id: "rows",
+        residency: "latest",
+        html: [
+          '<div data-each="world.guests" data-as="g">',
+          '  <button data-fill="g.name">a</button><button data-fill="g.age">b</button><button data-fill="g.$num">c</button>',
+          '  <button data-fill="g.nmae">d</button><button data-fill="g">e</button><button data-fill="world.guests">f</button>',
+          "</div>",
+        ].join("\n"),
+      },
+      {
+        id: "mute",
+        consumes: ["hints", "inner"],
+        html: '<ul data-each="theater.hints" data-as="h"><li data-text="h"></li></ul>',
+      },
+    ],
+  }
+  assert.deepEqual(
+    lint(filled)
+      .filter((d) => d.rule === "bad-view")
+      .map((d) => `${d.level} ${d.path}: ${d.message} | ${d.hint ?? ""}`),
+    [
+      'error views.rows.html:3:11: <button> data-fill="g.nmae": nmae is not a key of g, a table row with keys entityId, name, age: did you mean g.name? | ',
+      'error views.rows.html:3:48: <button> data-fill="g": g is a table row with keys entityId, name, age, which data-fill cannot put in the composer | name one of its keys',
+      'error views.rows.html:3:80: <button> data-fill="world.guests": world.guests is a table, which data-fill cannot put in the composer | iterate it with data-each and data-as',
+      'warn views.mute.html: hints is offered above the input box (surface: composer), and this view takes its place without a data-fill button: the options are drawn but cannot be chosen | draw each as a button that fills the composer: <button data-fill="opt" data-text="opt"></button> inside data-each="theater.hints" data-as="opt"',
+    ],
+  )
 }
 
 // The fixture cards (test/cards): no errors, and exactly these warnings (a new one fails here until it is meant).

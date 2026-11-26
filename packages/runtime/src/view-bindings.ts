@@ -132,6 +132,38 @@ export const visibleElement = (a: Record<string, string>, scope: Scope) =>
   (!a["data-if"] || truth(readPath(scope, a["data-if"]))) &&
   (!a["data-unless"] || !truth(readPath(scope, a["data-unless"])))
 
+/** A subtree an assistive technology skips when it names a control: `hidden`, or `aria-hidden="true"`. */
+export const hiddenFromName = (a: Record<string, string>) => "hidden" in a || a["aria-hidden"] === "true"
+type Element = Exclude<TemplateNode, string>
+/** The name a view's element has with this data, as the browser computes it from the content the template renders: a
+ *  non-blank aria-label, else the shown text (a data-text value, written text, a data-each's rows), leaving out what
+ *  data-if / data-unless hide and every hidden subtree. Empty when the element has no name. */
+export function accessibleName(n: Element, scope: Scope): string {
+  const content = (e: Element, scope: Scope): string => {
+    const label = e.attrs["aria-label"]?.trim()
+    if (label) return label
+    const a = e.attrs
+    if ("data-text" in a) {
+      const v = readPath(scope, a["data-text"])
+      return ["string", "boolean", "number"].includes(typeof v) ? String(v) : ""
+    }
+    if ("data-each" in a) {
+      const items = readPath(scope, a["data-each"])
+      return Array.isArray(items)
+        ? items.map((item, i) => children(e.children, rowScope(scope, a["data-as"], item, i))).join(" ")
+        : ""
+    }
+    return children(e.children, scope)
+  }
+  const children = (nodes: TemplateNode[], scope: Scope): string =>
+    nodes
+      .map((c) =>
+        typeof c === "string" ? c : hiddenFromName(c.attrs) || !visibleElement(c.attrs, scope) ? "" : content(c, scope),
+      )
+      .join("")
+  return content(n, scope).trim()
+}
+
 export function displayedImages(tree: TemplateNode[], bindings: ReturnType<typeof viewBindings>) {
   const hits: MediaVariantTarget[] = []
   function visit(nodes: TemplateNode[], scope: Scope, aliases: Record<string, string>) {

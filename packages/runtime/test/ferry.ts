@@ -98,7 +98,7 @@ for (const badConsumes of [[""], ["  "], ["inner", "inner"]]) {
       {
         id: "card_deck",
         consumes: ["choices"],
-        html: "<ul data-each='value' data-as='c'><li data-text='c'></li></ul>",
+        html: "<ul data-each='value' data-as='c'><li><button data-fill='c' data-text='c'></button></li></ul>",
       },
     ],
   })

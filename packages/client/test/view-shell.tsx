@@ -10,7 +10,7 @@ import { boot, open, showCard } from "../src/pages.ts"
 import { ViewBlock } from "../src/view-shell.tsx"
 import { MediaFrame } from "../src/lightbox.tsx"
 import { turn } from "../src/turn.ts"
-import { apply, card, clear, demanded, error, log, openStreams, registry, working } from "../src/store.ts"
+import { apply, card, clear, composition, demanded, error, log, openStreams, registry, working } from "../src/store.ts"
 import { importCard, fetchCardOf } from "../src/wire.ts"
 import type { CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import type { TimelineNode } from "@effect-tavern/runtime/src/projection.ts"
@@ -98,7 +98,7 @@ views:
         <input type="radio" name="hudtab" id="hudtab1" checked>
         <div class="inner-thought" data-if="theater.inner" data-text="theater.inner"></div>
         <ul class="hud-next" data-if="theater.options" data-each="theater.options" data-as="opt">
-          <li data-text="opt"></li>
+          <li><button class="fill" data-fill="opt" data-text="opt"></button></li>
         </ul>
       </div>
   - id: slip_view
@@ -109,6 +109,7 @@ views:
       <aside class="slip">
         <input type="radio" name="sliptab" id="sliptab1" checked>
         <span class="slip-body" data-text="value"></span>
+        <button class="slip-fill" data-fill="value" aria-label="抄下便签">抄</button>
       </aside>
 `
 
@@ -378,15 +379,50 @@ async function run() {
     require(document.querySelectorAll("#node-1 .product.theater").length ===
       0, "committed Turn 1 has zero .product.theater wrappers")
 
+    // 2b. The view's fill buttons stand in for the suppressed chips: named by their option, live on the latest turn,
+    // and a press puts the text in the composer, as a chip does, without sending anything.
+    const fills = () => [...(node1Hud()?.querySelectorAll<HTMLButtonElement>("button.fill") ?? [])]
+    require(fills().length === 2 &&
+      fills().every((b) => !b.disabled && b.type === "button"), "ri_hud fill buttons are live on the latest turn")
+    const fillEntry = (label: string) =>
+      agent.snapshot().find((e) => e.component === "button" && e.label === label && !e.offPage)
+    require(["递上热茶", "询问礼拜日程"].every((label) =>
+      fillEntry(label)?.actions.includes("press"),
+    ), `the agent sees each fill button by its option: ${JSON.stringify(
+      agent
+        .snapshot()
+        .filter((e) => e.component === "button")
+        .map((e) => [e.label, e.actions]),
+    )}`)
+    const slipFill = (id: number) =>
+      document
+        .querySelector<HTMLElement>(`#node-${id} .view-shell[data-view=slip_view]`)
+        ?.shadowRoot?.querySelector<HTMLButtonElement>("button.slip-fill")
+    require(slipFill(1) && !slipFill(1)!.disabled, "a turn view's fill button is live on the latest turn")
+    const nodesBefore = registry.get(log).nodes.size
+    const filled = await agent.act({ steps: [{ ref: "询问礼拜日程", action: "press" }] })
+    require(filled.ok, `press a fill button: ${filled.error?.message}`)
+    await quiet()
+    require(registry.get(composition).text === "询问礼拜日程" &&
+      box.value ===
+        "询问礼拜日程", `a fill button fills the composer: ${JSON.stringify(registry.get(composition))} / ${box.value}`)
+    require(registry.get(openStreams) === 0 &&
+      !registry.get(working) &&
+      registry.get(log).nodes.size === nodesBefore, "a fill button sends nothing")
+
     // 3. Consumed theater product remains re-rollable via footer `<Demand>` (`小剧场`)
     await modelControl({
       clear: true,
-      demands: [{ inner: "重抽后的心声：但愿他喜欢刚烤好的司康饼。" }],
+      demands: [{ inner: "重抽后的心声：但愿他喜欢刚烤好的司康饼。", delay: 600 }],
     })
     const mountedHud = node1HudHost()
     const demandLabel = t("readings.asideOf", { n: 2 })
     const askInner = await agent.act({ steps: [{ ref: demandLabel, action: "press", args: ["理的心声"] }] })
     require(askInner.ok, `Demand re-roll 理的心声: ${askInner.error?.message}`)
+    require(await until(
+      () => registry.get(working) && fills().length === 2 && fills().every((b) => b.disabled),
+    ), "fill buttons are disabled while a turn is in flight")
+    require(!fillEntry("递上热茶")?.actions.length, "the agent cannot press a fill button while a turn is in flight")
     require(await until(
       () =>
         !registry.get(working) &&
@@ -398,9 +434,12 @@ async function run() {
       0, "re-rolled consumed inner still renders only inside ri_hud")
 
     require(mountedHud === node1HudHost(), "Demand preserves the HUD element")
+    require(fills().every((b) => !b.disabled), "fill buttons are live again once the turn settles")
     require(registry.get(demanded) === null, "successful Demand releases its node")
 
-    // 4. Turn 2 lands: Turn 1 is history, where `latest` ri_hud does not mount yet still claims `inner` (#248)
+    // 4. Turn 2, sent from the line a fill button put in the composer. While it is in flight the turn view's button on
+    // Turn 1 is disabled; once it lands Turn 1 is history, where `latest` ri_hud (and its fill buttons) does not mount
+    // yet still claims `inner` (#248), and where the turn view's fill button stays disabled.
     await modelControl({
       clear: true,
       turns: [
@@ -408,11 +447,15 @@ async function run() {
       ],
       demands: [{ inner: "第二轮心声", delay: 750 }, { note_slip: "第二张便签" }, { options: ["告辞", "留下"] }],
     })
-    box.focus()
-    box.value = "道别"
-    box.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    const pressed = await agent.act({ steps: [{ ref: "询问礼拜日程", action: "press" }] })
+    require(pressed.ok, `press a fill button before Turn 2: ${pressed.error?.message}`)
+    await quiet()
+    require(registry.get(composition).text === "询问礼拜日程", "Turn 2's line comes from a fill button")
     require(await until(() => !sendBtn()?.disabled), "composer send button enabled for Turn 2")
     sendBtn()!.click()
+    require(await until(
+      () => registry.get(working) && !!slipFill(1)?.disabled,
+    ), "a turn view's fill button is disabled while a turn is in flight")
     const node2HudHost = () => document.querySelector<HTMLElement>("#node-2 .view-shell[data-view=ri_hud]")
     require(await until(
       () => registry.get(log).nodes.get(2)?.settlementStatus === "pending",
@@ -428,6 +471,13 @@ async function run() {
     ), "Turn 2 record settlement commits")
     await quiet()
     require(Boolean(node2HudHost()) && !node1HudHost(), "ri_hud moves to Turn 2 and stays off history")
+    require(registry.get(log).nodes.get(2)?.input.text === "询问礼拜日程", "Turn 2 carries the filled line")
+    require(!!slipFill(1)?.disabled &&
+      slipFill(2) &&
+      !slipFill(2)!.disabled, "a turn view's fill button is disabled on a past turn and live on the latest")
+    const node2Fills = [...(node2HudHost()?.shadowRoot?.querySelectorAll<HTMLButtonElement>("button.fill") ?? [])]
+    require(node2Fills.map((b) => b.textContent).join() === "告辞,留下" &&
+      node2Fills.every((b) => !b.disabled), "the latest HUD's fill buttons hold the new options, live")
     require(registry.get(log).nodes.get(1)?.theater.inner !== undefined &&
       document.querySelectorAll(".product.theater").length === 0, "historical Turn 1 keeps inner claimed, no grey box")
     await modelControl({ clear: true, demands: [{ inner: "旧轮重抽的心声" }] })
@@ -463,6 +513,7 @@ async function run() {
     require([...document.querySelectorAll(".inspect .prod .pid")].some(
       (el) => el.textContent === "理的心声",
     ), "Inspector labels node products")
+
     await postResult({ failures: diagnostics.end().diagnostics.map((d) => d.message) })
   } finally {
     disposeApp()
