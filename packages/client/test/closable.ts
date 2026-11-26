@@ -6,7 +6,7 @@
 // (another version checked out above it, a draft written above it) is no step. The history side is the browser's
 // (test/back.tsx).
 import assert from "node:assert/strict"
-import { flush } from "solid-js"
+import { createMemo, createRoot, flush } from "solid-js"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { StoryRow, Tab } from "../src/store.ts"
 
@@ -33,7 +33,7 @@ globalThis.fetch = (async (url: string) => {
 const { closable, stepBack } = await import("../src/back.ts")
 const { close, guardClose, open, openStory, stepsOf } = await import("../src/pages.ts")
 const { pane, section, setPane } = await import("../src/settings-navigation.ts")
-const { activeOf, draft, editing, log, page, registry, stories, tabs } = await import("../src/store.ts")
+const { activeOf, draft, editCloser, editing, log, page, registry, stories, tabs } = await import("../src/store.ts")
 const { wide } = await import("../src/viewport.ts")
 
 const rest = () => new Promise((r) => setTimeout(r)) // a close's reads (the story back in the slots) answered
@@ -121,6 +121,30 @@ assert.equal(registry.get(editing), 2, "nor does an edit under a draft's cut")
 registry.set(draft, null)
 stepBack()
 assert.equal(registry.get(editing), null, "back on the page, the edit is a step again")
+// the edit's step reads where a draft hangs, never its prose: a streamed frame wakes nothing (#248)
+{
+  registry.set(editing, 2)
+  registry.set(draft, { parent: 2, text: "" } as never)
+  let runs = 0
+  const [steps, dispose] = createRoot((dispose) => {
+    const steps = createMemo(() => (runs++, editCloser.steps()))
+    return [steps, dispose] as const
+  })
+  flush()
+  assert.equal(steps(), 1)
+  const asked = runs
+  for (const s of ["山", "川", "异", "域"]) {
+    registry.update(draft, (d) => (d ? { ...d, text: d.text + s } : d))
+    flush()
+  }
+  assert.deepEqual([steps(), runs], [1, asked], "four frames streamed, the step not asked again")
+  registry.set(draft, { parent: 1, text: "" } as never) // a draft under turn 1: the edit on 2 is cut off the page
+  flush()
+  assert.deepEqual([steps(), runs > asked], [0, true])
+  dispose()
+  registry.set(draft, null)
+  registry.set(editing, null)
+}
 lineTo(1)
 
 // a phone's settings: a record's detail returns to the list, then the page closes

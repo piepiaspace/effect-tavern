@@ -39,7 +39,7 @@ import type {
 } from "@effect-tavern/runtime/src/projection.ts"
 import * as Atom from "./atom.ts"
 import { registry } from "./atom.ts"
-import { closable } from "./back.ts"
+import { closable, type Closable } from "./back.ts"
 import { type Key, t } from "./i18n.ts"
 
 export const stageNames: Record<Phase, Key> = {
@@ -240,14 +240,18 @@ export const drawn = (line: Node[], d: Pick<Draft, "parent"> | null): Node[] =>
 // `editing` outlives its node's place on the line (another version checked out above it, a draft written above it),
 // and a step with no editor to close would be a back that does nothing. Registered here, ahead of the page stack
 // (pages.ts imports this module), so a page opened over the reader is stepped out of first and the edit under it still
-// counts. The line and the draft are read only while an edit is open: a streaming draft moves nothing otherwise.
-const offEditing = closable({
+// counts. The line and the draft's parent are read only while an edit is open, and never the draft's prose: a streamed
+// frame wakes nothing here (#248).
+export const editCloser: Closable = {
   steps: () => {
     const id = editing()
-    return id !== null && drawn(path(), draft()).some((n) => n.id === id) ? 1 : 0
+    if (id === null) return 0
+    const parent = draftParent()
+    return drawn(path(), parent === undefined ? null : { parent }).some((n) => n.id === id) ? 1 : 0
   },
   close: () => registry.set(editing, null),
-})
+}
+const offEditing = closable(editCloser)
 import.meta.hot?.dispose(offEditing) // a hot reload registers the new module's own
 
 /** The last node on the reading line and the one before it (its parent): what the header's dot, the Status table and
