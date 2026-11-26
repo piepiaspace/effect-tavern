@@ -557,3 +557,41 @@ console.log("catalog picks ok")
   assert.deepEqual(T.context(child.id).world.people, {})
   assert.ok(!T.detail(child.id).changes.some((c) => c.kind === "patch_entity"))
 }
+
+// Full-row put reports an update, even at capacity. Replaying it after an ancestor removal creates the row.
+{
+  const before = { name: "Lawrence", stance: "waiting" }
+  const after = { name: "Lawrence", stance: "present" }
+  const T = makeSession({
+    card: {
+      ...chat,
+      products: [
+        {
+          ...people,
+          shape: {
+            kind: "table",
+            max: 1,
+            columns: [
+              { key: "name", type: "text" },
+              { key: "stance", type: "text" },
+            ],
+          },
+          initial: { lawrence: before },
+        },
+      ],
+    },
+    rows: () => productsOff,
+    model: () => fake((o) => defaultAnswer(readStage(o))),
+  })
+  const root = T.greet({ text: "Start" }).node!.id
+  const child = T.greet({ text: "Enter", do: [{ world: "people", entityId: "lawrence", put: after }] }, root).node!.id
+  assert.deepEqual(T.node(child).worldChanges, [
+    { kind: "patch_entity", collection: "people", entityId: "lawrence", patch: after, prev: before },
+  ])
+  assert.deepEqual(T.detail(child).productChanges, [{ id: "people", change: "patch", value: [after] }])
+  assert.deepEqual(T.setField(root, [{ world: "people", entityId: "lawrence", remove: true }]).invalidated, [child])
+  assert.deepEqual(T.node(child).worldChanges, [
+    { kind: "insert_entity", collection: "people", entityId: "lawrence", data: after },
+  ])
+  assert.deepEqual(T.context(child).world.people, { lawrence: after })
+}

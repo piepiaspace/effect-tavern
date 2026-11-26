@@ -4,7 +4,8 @@ import { Schema } from "effect"
 import { cuts, drawn, Field, Greeting, decodeCard, decodeRules, makeCard, rollOf, type Beat } from "../src/card.ts"
 import { full, loadCard, plain } from "./cards/index.ts"
 import { cardView, facets } from "../src/session.ts"
-import { holds } from "../src/cond.ts"
+import { holds, lookup } from "../src/cond.ts"
+import { fieldMeta } from "../src/field-meta.ts"
 
 // ───────── the session's self-check card as data: fight (judged chance) / rest / talk, gold and hp with bounds ─────────
 const tavern = makeCard(
@@ -320,3 +321,32 @@ assert.equal(
 
 console.log(tavern.menu(tavern.initial).join("\n"))
 console.log("ok")
+
+// A declared band may have no match below its first threshold. Unknown properties are author errors.
+{
+  const fields = { "stats.heat": -1, age: 8 }
+  const meta = fieldMeta(
+    [
+      { path: "stats.heat", type: "int", initial: -1, bands: [{ id: "warm", min: 0, label: "Warm" }] },
+      { path: "age", type: "int", initial: 8 },
+    ],
+    fields,
+  )
+  const state = { fields, meta, derived: { "party.size": 0 }, world: { party: {} } }
+  assert.equal(lookup(state, "derived.party.size"), 0)
+  assert.equal(lookup(state, "meta.stats.heat.label"), "stats.heat")
+  assert.equal(lookup(state, "meta.stats.heat.bandLabel"), undefined)
+  assert.equal(holds({ path: "stats.heat", band: "warm" }, state), false)
+  assert.equal(lookup(state, "world.party.missing.name"), undefined)
+  for (const path of [
+    "derived.typo",
+    "derived.constructor",
+    "meta.missing.band",
+    "meta.age.band",
+    "meta.age.ratio",
+    "meta.age.typo",
+    "meta.age.toString",
+    "meta.stats.heat.band.label",
+  ])
+    assert.throws(() => lookup(state, path), /unknown state path/)
+}

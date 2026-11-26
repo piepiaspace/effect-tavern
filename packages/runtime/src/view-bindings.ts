@@ -1,3 +1,4 @@
+import { statePathKeys } from "./cond.ts"
 import { fieldMeta } from "./field-meta.ts"
 import type { Field } from "./card.ts"
 import type { ConstValue } from "./view-shell.ts"
@@ -6,16 +7,9 @@ import type { CompiledView, TemplateNode } from "./view-shell.ts"
 import type { NodeMedia, MediaVariantTarget } from "./media.ts"
 import { rows, type Product, type Shape, type TableShape } from "./product.ts"
 export type Scope = Record<string, unknown>
-/** Field metadata and named derived values use flat declaration IDs, which may contain dots. */
-export function bindingKeys(path: string) {
-  const parts = path.split(".")
-  if (parts[0] === "derived" && parts.length > 1) return ["derived", parts.slice(1).join(".")]
-  if (parts[0] === "meta" && parts.length > 2) return ["meta", parts.slice(1, -1).join("."), parts.at(-1)!]
-  return parts
-}
 export const readPath = (scope: Scope, path: string) => {
   if (Object.hasOwn(scope, path)) return scope[path]
-  return bindingKeys(path).reduce<unknown>(
+  return statePathKeys(path, (id) => Object.hasOwn(scope.meta ?? {}, id)).reduce<unknown>(
     (v, k) => (v && typeof v === "object" && Object.hasOwn(v, k) ? (v as Scope)[k] : undefined),
     scope,
   )

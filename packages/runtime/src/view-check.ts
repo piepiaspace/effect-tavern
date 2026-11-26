@@ -1,7 +1,7 @@
 // A view's bindings checked against the card (#248): every path a directive reads is resolved in a static scope built
 // from the card the way view-bindings.ts `viewBindings` builds the live one, and its type is checked against what the
 // directive needs. A path that resolves to nothing renders as nothing, so each one is said here, with the closest name.
-import { bindingKeys } from "./view-bindings.ts"
+import { statePathKeys } from "./cond.ts"
 import type { Card, Field } from "./card.ts"
 import type { Shape } from "./product.ts"
 import { residency, type ConstValue, type TemplateNode, type ViewShell } from "./view-shell.ts"
@@ -122,7 +122,11 @@ const step = (ty: Ty, k: string, at: string): Step => {
       },
     }
   }
-  return { problem: { level: "error", message: `${at} is ${ty.what}: it has no key ${k}` } }
+  const hint =
+    at.startsWith("meta.") && at.endsWith(".band") && k === "label"
+      ? "read " + at + "Label for the band label"
+      : undefined
+  return { problem: { level: "error", message: `${at} is ${ty.what}: it has no key ${k}`, ...(hint && { hint }) } }
 }
 
 /** The card's world products as a view or a condition reads them under `world.` */
@@ -156,6 +160,15 @@ export function worldPathProblem(card: Pick<Card, "products">, path: string): Vi
     ty = next.ty
     at += "." + k
   }
+  if (ty.t !== "scalar")
+    return {
+      level: "error",
+      message: at + " is " + describe(ty) + "; a condition compares a scalar",
+      hint:
+        p.shape.kind === "table" && path === "world." + id
+          ? "name an entity and column, or declare a table aggregate in rules.derived"
+          : "continue the path to a scalar value",
+    }
 }
 
 export interface ViewBindingCheck {
@@ -347,14 +360,14 @@ export function checkViewBindings(
     return {
       level: "error",
       message: `${root} is not something this view can read${suggestion ? `: did you mean ${suggestion}?` : ""}`,
-      hint: `a path starts with fields., ${latest ? "world., " : ""}theater., names., media.${primaryTy ? ", value." : ""} or a data-as row name`,
+      hint: `a path starts with fields., meta., consts., ${latest ? "world., derived., " : ""}theater., names., media.${primaryTy ? ", value." : ""} or a data-as row name`,
     }
   }
   const resolve = (path: string, locals: ReadonlyMap<string, Ty>): Resolved => {
     // readPath tries the whole path as one key first: that is how `<row>.$num` is read.
     const whole = locals.get(path)
     if (whole) return { ty: whole, problems: [] }
-    const [root, ...keys] = bindingKeys(path)
+    const [root, ...keys] = statePathKeys(path, (id) => dotted.some((f) => f.path === id))
     let ty = locals.get(root) ?? roots.get(root)
     if (!ty) return { problems: [unknownRoot(root, path, locals)] }
     const problems: ViewProblem[] = []

@@ -4,7 +4,7 @@ export function fieldMeta(fields: readonly Field[], state: Readonly<Record<strin
   return Object.fromEntries(
     fields.map((f) => {
       const value = state[f.path]
-      const meta: Record<string, string | number> = { label: f.label ?? f.path }
+      const meta: Record<string, string | number | undefined> = { label: f.label ?? f.path }
       if (f.min !== undefined) meta.min = f.min
       if (f.max !== undefined) meta.max = f.max
       if (typeof value === "number") {
@@ -13,10 +13,10 @@ export function fieldMeta(fields: readonly Field[], state: Readonly<Record<strin
           const width = f.max - f.min
           meta.ratio = Number.isFinite(width) ? (x - f.min) / width : (x / 2 - f.min / 2) / (f.max / 2 - f.min / 2)
         }
-        const band = f.bands?.findLast((b) => value >= b.min)
-        if (band) {
-          meta.band = band.id
-          meta.bandLabel = band.label
+        if (f.bands) {
+          const band = f.bands.findLast((b) => value >= b.min)
+          meta.band = band?.id
+          meta.bandLabel = band?.label
         }
       }
       return [f.path, meta]

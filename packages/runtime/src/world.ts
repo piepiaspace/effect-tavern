@@ -160,7 +160,8 @@ export function worldChange(
     decode(Schema.Struct(columns), partial ? e.patch : e.put)
   }
   if ("put" in e) {
-    if (world && !exists && shape.max !== undefined && Object.keys(rows).length >= shape.max)
+    if (exists) return { kind: "patch_entity", collection: p.id, entityId, patch: e.put, prev: rows[entityId] }
+    if (world && shape.max !== undefined && Object.keys(rows).length >= shape.max)
       throw new Error(p.id + ": collection is full")
     return { kind: "insert_entity", collection: p.id, entityId, data: e.put }
   }

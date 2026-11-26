@@ -26,21 +26,34 @@ export const namespaceOf = (path: string) => {
   const root = path.split(".", 1)[0]
   return stateNamespaces.includes(root) ? root : undefined
 }
-export const lookup = (s: State, path: string) => {
-  // Bare paths address rule fields; world and lore are explicit namespaces.
-  if (s.fields && Object.hasOwn(s.fields, path)) return (s.fields as State)[path]
-  if (path.startsWith("fields.") && s.fields && Object.hasOwn(s.fields, path.slice(7)))
-    return (s.fields as State)[path.slice(7)]
-  if (path.startsWith("derived.") && s.derived) return (s.derived as State)[path.slice(8)]
-  if (path.startsWith("meta.")) {
-    const parts = path.slice(5).split(".")
-    const key = parts.pop()!
-    return (s.meta as Record<string, Record<string, unknown>> | undefined)?.[parts.join(".")]?.[key]
+/** Named aggregates and declared field IDs may contain dots. Other segments traverse objects. */
+export function statePathKeys(path: string, hasMetaField: (id: string) => boolean) {
+  const parts = path.split(".")
+  if (parts[0] === "derived" && parts.length > 1) return ["derived", path.slice(8)]
+  if (parts[0] === "meta" && parts.length > 3) {
+    for (let end = parts.length - 1; end > 2; end--) {
+      const id = parts.slice(1, end).join(".")
+      if (hasMetaField(id)) return ["meta", id, ...parts.slice(end)]
+    }
   }
-  const v = path in s ? s[path] : path.split(".").reduce<unknown>((o, k) => (o as State | undefined)?.[k], s)
-  if (v === undefined && path.startsWith("world.")) return undefined
-  if (v === undefined) throw new Error(`unknown state path ${path}`)
-  return v
+  return parts
+}
+export const lookup = (s: State, path: string) => {
+  // Rule field IDs are flat, even when they contain dots. Row predicates can also name a column directly.
+  const field = path.replace(/^fields\./, "")
+  if (s.fields && Object.hasOwn(s.fields, field)) return (s.fields as State)[field]
+  if (Object.hasOwn(s, path)) return s[path]
+  let value: unknown = s
+  const keys = statePathKeys(path, (id) => Object.hasOwn(s.meta ?? {}, id))
+  if (keys[0] === "meta" && keys.length !== 3) throw new Error("unknown state path " + path)
+  for (const key of keys) {
+    if (value == null || !Object.hasOwn(value, key)) {
+      if (path.startsWith("world.")) return undefined
+      throw new Error("unknown state path " + path)
+    }
+    value = (value as State)[key]
+  }
+  return value
 }
 export const holds = (c: Cond, s: State, events: readonly string[] = []): boolean => {
   if ("all" in c) return c.all.every((x) => holds(x, s, events))

@@ -443,7 +443,7 @@ export const makeSession = ({
   const products = () => layer().products
   // ───────── Derived facts along a path (src/derived.ts) ─────────
   const derived = makeDerived({
-    catalogs: card.catalogs ?? [],
+    catalogs: catalogs(),
     rpg,
     L,
     lore: card.lore,

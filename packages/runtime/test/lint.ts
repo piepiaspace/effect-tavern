@@ -910,3 +910,143 @@ console.log("ok")
   assert.ok(bad.some((d) => d.rule === "unknown-path" && d.message.includes("name")))
   assert.equal(bad.filter((d) => d.rule === "bad-derived").length, 3)
 }
+
+// These strings are data, including columns whose names are also schema keywords.
+{
+  const row = { id: "A name", event: "An event", options: "Two words", path: "A path", key: "A key" }
+  const columns = Object.keys(row).map((key) => ({ key, type: "text" as const }))
+  const card: Card = {
+    ...base,
+    views: [{ id: "panel", consts: { items: [row] }, html: '<p data-text="consts.items.0.id"></p>' }],
+    products: [
+      { id: "guest", role: "world", text: "Guest", shape: { kind: "record", keys: columns }, initial: row },
+      { id: "crew", role: "world", text: "Crew", shape: { kind: "table", columns }, initial: { captain: row } },
+    ],
+    greetings: [
+      {
+        text: "Start",
+        do: [
+          { world: "guest", replace: row },
+          { world: "guest", patch: row },
+          { world: "crew", entityId: "captain", put: row },
+          { world: "crew", entityId: "captain", patch: row },
+        ],
+      },
+    ],
+    fiction: [{ id: "bad id", text: "Text" }],
+  }
+  assert.deepEqual(
+    lint(card)
+      .filter((d) => d.rule === "bad-identifier")
+      .map((d) => d.path),
+    ["fiction[0].id"],
+  )
+  const broken = lint({ ...card, views: [{ ...card.views![0], consts: { items: [{ id: "bad \ud800" }] } }] })
+  assert.ok(broken.some((d) => d.rule === "broken-text" && d.path === "views[0].consts.items[0].id"))
+}
+
+{
+  const card: Card = {
+    ...base,
+    rules: {
+      fields: [
+        { path: "mode", type: "boolean", initial: true, start: true, hidden: true },
+        {
+          path: "stats.heat",
+          type: "int",
+          initial: 0,
+          min: 0,
+          max: 10,
+          start: true,
+          bands: [
+            { id: "low", min: 0, label: "Low" },
+            { id: "mid", min: 3, label: "Mid" },
+            { id: "high", min: 6, label: "High" },
+          ],
+        },
+      ],
+      actions: [],
+    },
+    fiction: [
+      { id: "mode", text: "Yes", when: { path: "fields.mode", is: true } },
+      { id: "low", text: "Low", when: { path: "meta.stats.heat.band", is: "low" } },
+      { id: "high", text: "High", when: { path: "meta.stats.heat.band", is: "high" } },
+    ],
+    views: [
+      {
+        id: "hud",
+        html: '<p data-text="meta.stats.heat.bandLabel"></p><p data-text="meta.stats.heat.band.label"></p><p data-text="wat.x"></p>',
+      },
+    ],
+  }
+  const diagnostics = lint(card)
+  assert.deepEqual(
+    diagnostics.filter((d) => d.rule === "dead-field"),
+    [],
+  )
+  assert.ok(diagnostics.some((d) => d.rule === "band-gap" && d.message.includes("3..5")))
+  const viewErrors = diagnostics.filter((d) => d.rule === "bad-view")
+  assert.equal(viewErrors.length, 2)
+  assert.ok(
+    viewErrors.some((d) => d.message.includes("has no key label") && d.hint?.includes("meta.stats.heat.bandLabel")),
+  )
+  assert.ok(
+    viewErrors.some((d) => d.hint?.includes("meta.") && d.hint.includes("consts.") && d.hint.includes("derived.")),
+  )
+}
+
+{
+  const card: Card = {
+    ...base,
+    catalogs: [{ id: "jobs", items: [{ id: "captain", when: { any: [] } }] }],
+    products: [
+      {
+        id: "crew",
+        role: "world",
+        text: "Crew",
+        shape: {
+          kind: "table",
+          columns: [
+            { key: "job", type: "enum", catalog: "jobs" },
+            { key: "shift", type: "enum", options: ["day", "night"] },
+          ],
+        },
+      },
+      {
+        id: "scene",
+        role: "world",
+        text: "Scene",
+        shape: { kind: "record", keys: [{ key: "places", shape: { kind: "list" } }] },
+      },
+    ],
+    rules: {
+      ...base.rules,
+      derived: [
+        ["job", "captain"],
+        ["shift", "night"],
+        ["job", "capitan"],
+        ["shift", "nigth"],
+      ].map(([path, is], i) => ({ id: "filter" + i, op: "count", table: "crew", where: { path, is } })),
+    },
+    fiction: [
+      "world.scene",
+      "world.scene.places",
+      "world.crew",
+      "world.crew.lawrence",
+      "world.crew.lawrence.job",
+      "world.scene.places.length",
+    ].map((path, i) => ({ id: "f" + i, text: "Yes", when: { path, is: i === 5 ? 0 : "day" } })),
+  }
+  const ds = lint(card)
+  assert.deepEqual(
+    ds
+      .filter((d) => d.rule === "unknown-path")
+      .map((d) => d.message.split(":")[0])
+      .sort(),
+    ["world.crew", "world.crew.lawrence", "world.scene", "world.scene.places"],
+  )
+  assert.deepEqual(
+    ds.filter((d) => d.rule === "bad-derived").map((d) => d.path),
+    ["rules.derived.filter2", "rules.derived.filter3"],
+  )
+}

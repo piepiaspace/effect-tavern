@@ -121,6 +121,7 @@ export interface ViewReport {
 }
 export interface ScopeShape {
   consts: string[]
+  derived: string[] | null
   fields: string[] | null // null: a latest view reads them from latestContext, a turn view from the node; absent when neither
   world: Record<string, string> | null // product id → its shape as a view sees it; null for a turn view
   theater: Record<string, string>
@@ -313,6 +314,7 @@ export const scopeShape = (view: CompiledView, scope: Scope, aliases: Record<str
     world: world ? Object.fromEntries(Object.entries(world).map(([k, v]) => [k, shapeOfValue(v)])) : null,
     theater: Object.fromEntries(Object.entries(obj(scope.theater) ?? {}).map(([k, v]) => [k, shapeOfValue(v)])),
     consts: Object.keys(obj(scope.consts) ?? {}),
+    derived: residency(view) === "latest" && world ? Object.keys(obj(scope.derived) ?? {}) : null,
     media: Object.keys(obj(scope.media) ?? {}),
     names: Object.keys(obj(scope.names) ?? {}),
     ...(view.consumes?.length === 1 && { value: shapeOfValue(scope.value) }),
@@ -598,6 +600,7 @@ export const previewText = (reports: readonly ViewReport[]): string => {
     }
     const s = r.scope
     out.push("scope")
+    if (s.derived?.length) out.push("  derived  " + s.derived.join(", "))
     if (s.consts.length) out.push("  consts   " + s.consts.join(", "))
     out.push(`  fields   ${s.fields ? s.fields.join(" ") || "(none)" : "(none)"}`)
     out.push(

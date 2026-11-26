@@ -124,12 +124,14 @@ assert.deepEqual(
 // A misspelled path is reported as resolving to nothing, never silently empty
 {
   const view = compiled({ id: "typo", residency: "latest", html: '<p data-text="feilds.sky"></p>' })
-  const n = node({ latestContext: { fields: { sky: "雨" }, world: {} } })
+  const n = node({ latestContext: { fields: { sky: "雨" }, world: {}, derived: { crewCount: 0 } } })
   const [b] = bindingReport(view, viewBindings({ view, node: n, names: {}, context: n.latestContext }), catalogs)
   assert.deepEqual([b.type, b.value, b.effect], ["undefined", "undefined", "renders empty"])
   const [r] = previewViews({ views: [view], node: n, products: [], names: {}, catalogs, head: true, opening: false })
   assert.match(previewText([r]), /<p> data-text feilds\.sky +→ undefined \(nothing at this path\)/)
   assert.deepEqual(r.scope.fields, ["sky"])
+  assert.deepEqual(r.scope.derived, ["crewCount"])
+  assert.match(previewText([r]), /^  derived +crewCount$/m)
 }
 
 // One consumed record product: its keys are bare aliases, `value` is the record, and a catalog column resolves to an
@@ -168,6 +170,8 @@ assert.deepEqual(
   const [r] = previewViews({ views: [view], node: n, products, names: {}, catalogs, head: true, opening: false })
   assert.deepEqual(r.consumes, [{ id: "scene", value: true, type: "object" }])
   assert.deepEqual(r.scope.aliases, ["mood", "pic"])
+  assert.equal(r.scope.derived, null)
+  assert.doesNotMatch(previewText([r]), /^  derived /m)
   assert.equal(r.scope.world, null) // a turn view has no world
   const media = r.bindings.filter((b) => b.directive === "data-media")
   assert.deepEqual(media[0].media, { catalog: "cg", item: "dock", url: "https://media.example/cg/dock.webp" })

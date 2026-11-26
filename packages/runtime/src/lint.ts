@@ -90,7 +90,10 @@ interface Piece {
   at: number // the sample the Conds are evaluated at
 }
 const counter = /^lore\.[^.]+\.(since|shown)$/ // lore counters: readable like a field, never declared
-const fieldOf = (fields: ReadonlyMap<string, Field>, path: string): Pick<Field, "type" | "min" | "max" | "options"> =>
+const fieldOf = (
+  fields: ReadonlyMap<string, Field>,
+  path: string,
+): Pick<Field, "type" | "min" | "max" | "options" | "bands"> =>
   fields.get(path.replace(/^fields\./, "")) ?? (counter.test(path) ? { type: "int", min: 0 } : { type: "number" })
 const pieces = (f: Pick<Field, "type" | "min" | "max">, cuts: readonly number[]): Piece[] => {
   const int = f.type === "int"
@@ -132,32 +135,31 @@ const safely = (c: Cond, s: Record<string, unknown>, events: readonly string[] =
     return false // a type mismatch (lt on a boolean) holds nowhere
   }
 }
+const fieldPath = (path: string) =>
+  path.startsWith("meta.") ? path.slice(5, path.lastIndexOf(".")) : path.replace(/^fields\./, "")
+type PathCondition = Extract<Cond, { path: string }>
+const fieldCuts = (c: PathCondition, f: Pick<Field, "min" | "max" | "bands">) => {
+  if ("band" in c || (c.path.startsWith("meta.") && !c.path.endsWith(".ratio"))) return f.bands?.map((b) => b.min) ?? []
+  const n = "value" in c ? c.value : c.is
+  if (typeof n !== "number") return []
+  return c.path.startsWith("meta.") && f.min !== undefined && f.max !== undefined ? [f.min + n * (f.max - f.min)] : [n]
+}
 /** Whether some state inside the fields' bounds, and some set of this turn's events, satisfies `c`. Exhaustive over the
  *  pieces of each field it reads. ponytail: a cartesian product, fine for the handful of fields one Cond reads. */
 const satisfiable = (c: Cond, fields: ReadonlyMap<string, Field>): boolean => {
-  const axis = (path: string) =>
-    path.startsWith("meta.") ? path.slice(5, path.lastIndexOf(".")) : path.replace(/^fields\./, "")
   const ls = leaves(c).filter((l): l is Extract<Cond, { path: string }> => "path" in l)
   const values = (path: string): unknown[] => {
     const f = fieldOf(fields, path)
     if (f.type === "boolean") return [true, false]
     if (f.type === "enum") return [...(f.options ?? [])]
-    const own = ls.filter((l) => axis(l.path) === path)
-    const cuts = own.flatMap((l) => {
-      if ("band" in l || (l.path.startsWith("meta.") && !l.path.endsWith(".ratio")))
-        return fields.get(path)?.bands?.map((b) => b.min) ?? []
-      const n = "value" in l ? l.value : l.is
-      if (typeof n !== "number") return []
-      return l.path.startsWith("meta.") && f.min !== undefined && f.max !== undefined
-        ? [f.min + n * (f.max - f.min)]
-        : [n]
-    })
+    const own = ls.filter((l) => fieldPath(l.path) === path)
+    const cuts = own.flatMap((l) => fieldCuts(l, f))
     return [
       ...pieces(f, cuts).map((p) => p.at),
       ...own.flatMap((l) => ("is" in l && typeof l.is !== "number" && !fields.has(path) ? [l.is] : [])),
     ]
   }
-  const paths = [...new Set(ls.map((l) => axis(l.path)))]
+  const paths = [...new Set(ls.map((l) => fieldPath(l.path)))]
   const evs = [...new Set(eventsOf(c))]
   const states = paths.reduce<Record<string, unknown>[]>(
     (acc, p) => acc.flatMap((s) => values(p).map((v) => ({ ...s, [p]: v }))),
@@ -286,10 +288,18 @@ const rules: Rule[] = [
           bad("where reads only row columns and entityId")
           continue
         }
-        const col = l.path === "entityId" ? "text" : shape.columns.find((c) => c.key === l.path)?.type
-        const expected = col === "int" ? "number" : col === "boolean" ? "boolean" : "string"
-        if (!col || ("op" in l && col !== "int") || ("is" in l && typeof l.is !== expected))
+        const col = shape.columns.find((c) => c.key === l.path)
+        const type = l.path === "entityId" ? "text" : col?.type
+        const expected = type === "int" ? "number" : type === "boolean" ? "boolean" : "string"
+        if (!type || ("op" in l && type !== "int") || ("is" in l && typeof l.is !== expected)) {
           bad("invalid where column or comparison: " + l.path)
+        } else if (col?.type === "enum" && "is" in l && typeof l.is === "string") {
+          const ids = col.options ?? card.catalogs?.find((c) => c.id === col.catalog)?.items.map((i) => i.id)
+          if (ids && !ids.includes(l.is)) {
+            const near = closest(l.is, ids)
+            bad("unknown enum value " + l.is + " for " + l.path + (near ? ": did you mean " + near + "?" : ""))
+          }
+        }
       }
     }
     return out
@@ -348,21 +358,29 @@ const rules: Rule[] = [
           hint: "Retype or paste the text again around the broken character.",
         })
     }
-    const visit = (v: unknown, path: string, key = "") => {
+    const visit = (v: unknown, path: string, key = "", data = false) => {
       if (typeof v === "string") broken(v, path, "text")
-      if (typeof v === "string" && ["id", "path", "event", "options", "key"].includes(key) && !identifier.test(v))
+      if (
+        !data &&
+        typeof v === "string" &&
+        ["id", "path", "event", "options", "key"].includes(key) &&
+        !identifier.test(v)
+      )
         out.push({
           rule: "bad-identifier",
           level: "warn",
           path,
           message: "identifier must be a token without whitespace",
         })
-      if (Array.isArray(v)) v.forEach((x, i) => visit(x, `${path}[${i}]`, key))
+      if (Array.isArray(v)) v.forEach((x, i) => visit(x, `${path}[${i}]`, key, data))
       else if (v && typeof v === "object")
         Object.entries(v).forEach(([k, x]) => {
           const at = path ? `${path}.${k}` : k
           broken(k, at, "the key")
-          visit(x, at, k)
+          const payload =
+            /^views\[\d+\]\.consts$|^products\[\d+\]\.initial$/.test(at) ||
+            (Object.hasOwn(v, "world") && ["replace", "put", "patch"].includes(k))
+          visit(x, at, k, data || payload)
         })
     }
     visit(card, "")
@@ -590,8 +608,8 @@ const rules: Rule[] = [
       ...written(card, "greetings["),
     ])
     const read = new Set([
-      ...conds(card).flatMap(([, c]) => reads(c)),
-      ...(card.heading ? [card.heading] : []),
+      ...conds(card).flatMap(([, c]) => reads(c).map(fieldPath)),
+      ...(card.heading ? [fieldPath(card.heading)] : []),
       ...card.rules.actions.flatMap((a) =>
         a.roll && typeof a.roll === "object" && "path" in a.roll ? [a.roll.path] : [],
       ),
@@ -661,15 +679,11 @@ const rules: Rule[] = [
             x.when &&
             !eventsOf(x.when).length &&
             reads(x.when).length &&
-            reads(x.when).every((p) => p.replace(/^fields\./, "") === f.path),
+            reads(x.when).every((p) => fieldPath(p) === f.path),
         )
         if (bands.length < 2) return [] // one conditional fragment is an addition, not a set of alternatives
-        const cuts = bands.flatMap((x) =>
-          leaves(x.when!).flatMap((l) =>
-            "value" in l ? [l.value] : "is" in l && typeof l.is === "number" ? [l.is] : [],
-          ),
-        )
-        const ps = pieces(f, [...cuts, ...(f.bands ?? []).map((b) => b.min)]).map((p) => ({
+        const cuts = bands.flatMap((x) => leaves(x.when!).flatMap((l) => ("path" in l ? fieldCuts(l, f) : [])))
+        const ps = pieces(f, cuts).map((p) => ({
           p,
           on: bands
             .filter((x) => safely(x.when!, { fields: { [f.path]: p.at }, meta: fieldMeta([f], { [f.path]: p.at }) }))
