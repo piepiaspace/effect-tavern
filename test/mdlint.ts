@@ -5,6 +5,9 @@ import { spawnSync } from "node:child_process"
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import remarkGfm from "remark-gfm"
+import remarkParse from "remark-parse"
+import { unified } from "unified"
 import { check, fix, partners } from "../tools/mdlint/emphasis.ts"
 
 const root = join(import.meta.dir, "..")
@@ -289,6 +292,32 @@ for (const [name, source, fixed, found, left, mdx] of cases) {
   const planted = agent.slice(0, end) + " 说**「甲」乙**丙" + agent.slice(end)
   const [found] = check(planted)
   assert.ok(found && found.start > rule && found.start < end + 20, "a span planted in the rule's paragraph is found")
+}
+
+// in the repository's Markdown no bold holds one half of a bracket or quote pair (`「**甲」乙**`): it renders, so the
+// check passes it, but it is what a move of one half leaves behind
+{
+  type Node = { type: string; children?: Node[]; position?: { start: { offset?: number }; end: { offset?: number } } }
+  const parser = unified().use(remarkParse).use(remarkGfm)
+  const files = spawnSync("git", ["ls-files", "-z", "--", "*.md", "*.mdx"], { cwd: root, encoding: "utf8" })
+  const split: string[] = []
+  for (const file of files.stdout.split("\0").filter(Boolean)) {
+    const s = readFileSync(join(root, file), "utf8")
+    const walk = (node: Node) => {
+      if (node.type === "strong" && node.position) {
+        const a = node.position.start.offset!
+        const b = node.position.end.offset!
+        const from = s.lastIndexOf("\n", a) + 1
+        const to = s.indexOf("\n", b) < 0 ? s.length : s.indexOf("\n", b)
+        const inside = (i: number) => from + i >= a && from + i < b
+        for (const [i, j] of partners(s.slice(from, to)))
+          if (i < j && inside(i) !== inside(j)) split.push(`${file}: ${s.slice(a, b)}`)
+      }
+      for (const child of node.children ?? []) walk(child)
+    }
+    walk(parser.parse(s))
+  }
+  assert.ok(split.length === 0, `bold holding half a bracket or quote pair:\n${split.join("\n")}`)
 }
 
 // the command, on a file outside the repository (a PR body under /tmp)
