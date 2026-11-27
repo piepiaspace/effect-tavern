@@ -1,5 +1,5 @@
 // The install's library: one SQLite file through `bun:sqlite` (built into Bun), used as a
-// document store: a row is an id and a JSON column, nothing is ever joined. The tables mirror the types. `pack`: the
+// document store: a row is an id and a JSON column, trace rows share long text through blob references. The asset tables mirror the types. `pack`: the
 // player's writing packs (runtime layer.ts `Layer`), mounted per card by `local.mounts`; `pack_default`: one row or none,
 // the pack every card stands on below itself (layer.ts `Rows.defaultPack`). `local`: one row a card, the player on that card (`Local`).
 // `persona`: named frame fragments, the player's own (who they are in the fiction; a card still gives a
@@ -35,11 +35,13 @@ import type {
 export type { StoredStory as StoryRow, Hit, Persona } from "@effect-tavern/runtime/src/library.ts"
 import type { Names } from "@effect-tavern/provider/src/names.ts"
 import type { Provider, Secret } from "@effect-tavern/provider/src/providers.ts"
-import { STORY_ROW, unreachable } from "./sqlite-queries.ts"
+import { STORY_ROW, gcSteps } from "./sqlite-queries.ts"
 export { STORY_ROW } from "./sqlite-queries.ts"
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { checkpointObject, checkpointValue } from "./checkpoint.ts"
 import { checkpointStore, migrateCheckpoints, upgradeCheckpointDates, anchorSteps } from "./sqlite-checkpoints.ts"
+import { storyCalls } from "./sqlite-calls.ts"
+export { traced } from "./sqlite-calls.ts"
 import { batch, run, type Step } from "./sqlite-batch.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { locked, type Layer, type Local } from "@effect-tavern/runtime/src/layer.ts"
@@ -68,9 +70,6 @@ create table if not exists call (seq integer primary key autoincrement, story in
   json text not null, foreign key (story, node) references node (story, id) on delete cascade);
 create index if not exists call_node on call (story, node);
 `
-/** How many nodes of a story keep their calls: the Inspector's trace is for recent turns, and a call holds the whole
- *  request (the wire strips it for a player client, serve.ts `shown`), so an unbounded trace would grow the library by a fold budget per turn. */
-export const traced = 200
 /** Columns added to a table after libraries were made with it, applied once to an unversioned library when the table lacks it. */
 const migrations: readonly { table: string; column: string; add: string }[] = [
   { table: "story", column: "starred", add: "alter table story add column starred integer not null default 0" },
@@ -474,10 +473,7 @@ export const openSqlite = (file: string, onClose?: () => void) => {
     del: (id: string) => void q(`delete from ${table} where id = ?`).run(id),
   })
   const checkpoints = checkpointStore(db)
-  const gc = (pages = 64) => {
-    db.exec(`delete from blob where ${unreachable}`)
-    if (Number.isSafeInteger(pages) && pages > 0) db.exec(`pragma incremental_vacuum(${pages})`)
-  }
+  const gc = (pages?: number) => void batch(db, gcSteps(pages))
   const removeAsset = (kind: "card" | "hat" | "pack" | "persona", id: string, related: Step[] = []) => {
     batch(db, [
       ...related,
@@ -745,33 +741,7 @@ export const openSqlite = (file: string, onClose?: () => void) => {
         return [...hits.values()]
       },
     },
-    /** One story's trace: calls by node id, in the order they were made. */
-    calls: (story: Id) => ({
-      get: (node: Id): unknown[] =>
-        (q("select json from call where story = ? and node = ? order by seq").all(story, node) as Row[]).map((r) =>
-          parse<unknown>(r),
-        ),
-      list: (): Record<number, unknown[]> => {
-        const by: Record<number, unknown[]> = {}
-        for (const r of q("select node, json from call where story = ? order by seq").all(story) as Row[])
-          (by[r["node"] as number] ??= []).push(parse<unknown>(r))
-        return by
-      },
-      /** Files a node's calls, then drops the calls of every node of the story but the last `traced`. "Last" is by each
-       *  node's newest call (seq), across every branch of the tree: an amended old node is recent again and keeps its
-       *  trace, a node off the reading path counts like any other, and a dropped node's calls are already gone (cascade).
-       *  The index on (story, node) keeps the trim (and that cascade) to the story's own rows. */
-      add: (node: Id, calls: readonly unknown[]) =>
-        tx(() => {
-          if (!calls.length) return
-          for (const c of calls)
-            q("insert into call (story, node, json) values (?, ?, ?)").run(story, node, JSON.stringify(c))
-          q(
-            `delete from call where story = ? and node not in
-               (select node from call where story = ? group by node order by max(seq) desc limit ?)`,
-          ).run(story, story, traced)
-        }),
-    }),
+    calls: (story: Id) => storyCalls(db, story),
     /** log.ts's Store over one story: read the tree whole, write each Change as rows in one transaction. */
     store: <T extends Noded>(story: Id): Store<T> => ({
       read: (): Snapshot<T> => {
@@ -782,18 +752,24 @@ export const openSqlite = (file: string, onClose?: () => void) => {
         )
         return { nodes, head: s["head"] as Id | null, next: s["next"] as Id }
       },
-      write: (c: Change<T>, log: Log<T>) =>
-        tx(() => {
-          for (const id of c.dropped ?? []) q("delete from node where story = ? and id = ?").run(story, id)
-          if (c.node)
-            // an update in place, never `or replace`: SQLite's REPLACE deletes the row first, which cascades to `call`
-            // and wipes the trace of a node that `demand` or `edit` only amended
-            q(
+      write: (c: Change<T>, log: Log<T>) => {
+        const steps = (c.dropped ?? []).map((id) => run("delete from node where story=? and id=?", story, id))
+        if (c.node)
+          // REPLACE deletes the row and cascades to the trace that an amendment must keep.
+          steps.push(
+            run(
               `insert into node (story, id, parent, json) values (?, ?, ?, ?)
-                 on conflict (story, id) do update set parent = excluded.parent, json = excluded.json`,
-            ).run(story, c.node.id, c.node.parent, JSON.stringify(c.node))
-          q("update story set head = ?, next = ?, updated = ? where id = ?").run(log.head, log.next, Date.now(), story)
-        }),
+               on conflict (story, id) do update set parent=excluded.parent, json=excluded.json`,
+              story,
+              c.node.id,
+              c.node.parent,
+              JSON.stringify(c.node),
+            ),
+          )
+        steps.push(run("update story set head=?, next=?, updated=? where id=?", log.head, log.next, Date.now(), story))
+        if (c.dropped?.length) steps.push(...gcSteps())
+        batch(db, steps)
+      },
     }),
     close: () => {
       if (closed) return

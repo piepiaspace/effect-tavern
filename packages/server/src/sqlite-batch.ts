@@ -9,9 +9,12 @@ export interface Step {
 }
 export const run = (sql: string, ...params: Param[]): Step => ({ mode: "run", sql, params })
 
-export function batch(db: Database, steps: Step[]): unknown[] {
-  const host = db as Database & { batch?: (steps: Step[]) => unknown[] }
-  if (host.batch) return host.batch(steps)
+export const rows = (sql: string, ...params: Param[]): Step => ({ mode: "rows", sql, params })
+
+export type BatchDatabase = Database | { batch(steps: Step[]): unknown[] }
+
+export function batch(db: BatchDatabase, steps: Step[]): unknown[] {
+  if ("batch" in db) return db.batch(steps)
   return db
     .transaction(() =>
       steps.map((step) => {

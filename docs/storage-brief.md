@@ -10,8 +10,8 @@
 
 1. **Desktop / Android 的 `/__db` 同步 JSON 桥接约束（读写双向常数复杂度）**
    在 [`packages/app/db.go`](../packages/app/db.go#L79-L142)、[`packages/app/web/sqlite.ts`](../packages/app/web/sqlite.ts#L5-L50) 与 [`packages/app/web/bundle.ts`](../packages/app/web/bundle.ts#L18-L20) 中，独立端将 `@effect-tavern/server` 打包在 WebView 主线程运行，通过同步 `XMLHttpRequest` + JSON 调用 Go 侧单连接 SQLite：
-   - **地址与载荷解耦，禁止裸二进制跨桥**：**对象地址 `ObjectId` 严格由未压缩的原始 UTF-8 内容字节（`SHA-256`）决定**，调整压缩方式或传输编码绝不改变任何快照与追踪引用。由于 `db.go` 会将 `[]byte` 强转为 `string(b)` 后再走 JSON 编码（非法 UTF-8 会被静默替换为 `\uFFFD`），且 `tavern.db` 要求在 CLI（`bun:sqlite`）与移动端（`modernc.org/sqlite`）之间单文件直接互拷通用，SQLite `blob` 表统一采用纯 UTF-8 安全文本载荷（`"utf8" | "deflate-b64"`）。
-   - **业务逻辑集中在 TypeScript，Go 仅提供零业务语义的通用批事务**：不仅读路径（`calls.get` / `calls.list`）必须收敛为 **≤ 2 条集合 SQL**，写路径 `calls.add` 也绝不能按消息或引用边逐条 `.run()` 跨桥。`db.go` 与 `web/sqlite.ts` 仅新增零业务耦合的通用批执行模式（`mode: "batch"`）；`sqlite.ts` 写路径采用「**先单次探测库内已有哈希，再在单次批事务内写入新增 `blob` 正文、轻量 `call` 信封、全部 `call_ref` 引用边并执行窗口裁剪**」——跨桥往返次数为常数级（无并发回收时冷缓存 ≤ 2 次，与历史消息数无关），命中已有哈希的历史正文无需重复跨桥传输。内存已知哈希集合仅作热路径优化，必须在 GC 后失效并在外键约束报错时自动回退补写。
+   - **地址与载荷解耦，禁止裸二进制跨桥**：**对象地址 `ObjectId` 严格由未压缩的原始 UTF-8 内容字节（`SHA-256`）决定**，调整压缩方式或传输编码绝不改变任何快照与追踪引用。由于 `db.go` 会将 `[]byte` 强转为 `string(b)` 后再走 JSON 编码（非法 UTF-8 会被静默替换为 `\uFFFD`），且 `tavern.db` 要求在 CLI（`bun:sqlite`）与移动端（`modernc.org/sqlite`）之间单文件直接互拷通用，Phase 2 以 `encoding = "utf8"` 存储正文。
+   - **追踪读写**。每个非空 `calls.add` 先在一个批次中查询缺失哈希及即将超出窗口的节点，再用一个批事务写入新增正文、信封和各条 Call 的引用，必要时裁剪并回收。已有正文只传哈希。`get` 和 `list` 各用一个批次取得有序信封和按哈希去重的正文字典。
 
 2. **Tool Wrap（`#220`）与普通消息同址去重，按有序原文片段无损还原**
    - **落盘现状**：[`packages/runtime/src/session.ts`](../packages/runtime/src/session.ts#L224-L230) 在组装 `Call` 事件时已剥离中间态 `wrap.messages` 与 `rawText`，落盘的 `Call.wrap` 仅含轻量 `WrapTrace`（`traces`、`sections`、`context`），不存在 `wrap.messages` 双存。
@@ -19,7 +19,7 @@
    - **跨阶段同址复用**：普通文本消息的 `msgs[i].content`、`out` 中的长文本（含 `lookup` / `record` 原生工具阶段 `StageStep.messages` 中的消息正文）以及 `WrapSection.body` 均对**纯正文的原始 UTF-8 字节**取 SHA-256（外层保留 `{ role, providerOptions, ... }` 等消息结构骨架；短于最小阈值如 `128 B` 或含孤立代理项的字符串保持内联）。这样即使历史消息上的缓存断点 `providerOptions` 随轮次后移，或消息在普通阶段与 Tool Wrap 阶段之间切换，依然 100% 命中同一个 `ObjectId`。
 
 3. **开发库实测体积结构与 `auto_vacuum = INCREMENTAL`**
-   - 开发库样本（8 个故事、29 个 `node`、65 条 `call`）显示：全部可编辑资产（`card` + `hat` + `pack` + `local` + `persona`）合计 **46.6 KB**，`node` 表 **170.9 KB**，而 `call` 表达 **562.4 KB**（`msgs` **276 KB**、`out` **278 KB**）。短对话样本仅对 `msgs` 做静态消息级去重约为 `3.04×`；整库实际收益、长故事每新增一轮的物理增量与主线程耗时留待实测基准验证。
+   - 开发库样本（8 个故事、29 个 `node`、65 条 `call`）显示：全部可编辑资产（`card` + `hat` + `pack` + `local` + `persona`）合计 **46.6 KB**，`node` 表 **170.9 KB**，而 `call` 表达 **562.4 KB**（`msgs` **276 KB**、`out` **278 KB**）。短对话样本仅对 `msgs` 做静态消息级去重约为 `3.04×`；长故事的文件增量与读写耗时见 §7.3。
    - 新库在启用 WAL 和建表前设置 `PRAGMA auto_vacuum = INCREMENTAL`。存量库从 `NONE` 升级时，先在事务外完成一次 `VACUUM`，再提交 v10 快照迁移。日常 GC 按页数预算执行 `PRAGMA incremental_vacuum(pages)`，`tavern doctor --verbose` 只读报告体积和空闲页。
 
 4. **稀疏默认覆盖、工坊乐观锁与上游 `origin.edited` 的正交边界**
@@ -135,8 +135,8 @@ stateDiagram-v2
 flowchart TD
   subgraph WritePath["A. 回合落盘路径 (calls.add · 常数次跨桥)"]
     W1["收到节点追踪 Call[]"] --> W2["JS 侧结构化脱水 · 提取长文本与 WrapSection.body 正文 UTF-8 字节并算 SHA-256"]
-    W2 --> W3["跨桥 1 · 单条 json_each 探测库内尚未存在的 ObjectId 差集"]
-    W3 --> W4["跨桥 2 (单批事务) · 仅传输缺失 blob 正文批量 INSERT OR IGNORE"]
+    W2 --> W3["跨桥 1 · 探测缺失哈希和窗口外节点"]
+    W3 --> W4["跨桥 2 (单批事务) · 仅传输缺失 blob 正文并插入"]
     W4 --> W5["同批事务 · INSERT INTO call 写入 $v:1 信封 + 批量登记 call_ref 引用边"]
     W5 --> W6["同批事务 · 滑动窗口裁剪旧节点 call (ON DELETE CASCADE 级联释放 call_ref)"]
   end
@@ -148,8 +148,8 @@ flowchart TD
   end
 
   subgraph GCPath["C. 可达性回收与渐进空间归还 (GC & Incremental Vacuum)"]
-    G1["触发时机 · 删除故事 / 删除资产"] --> G2["关系集合差清扫 · DELETE FROM blob WHERE NOT EXISTS checkpoint AND NOT EXISTS call_ref"]
-    G2 --> G3["使内存已知哈希缓存失效 + PRAGMA incremental_vacuum(pages) 渐进归还空闲页"]
+    G1["触发时机 · 裁剪追踪 / 删除分支、故事或资产"] --> G2["关系集合差清扫 · DELETE FROM blob WHERE NOT EXISTS checkpoint AND NOT EXISTS call_ref"]
+    G2 --> G3["PRAGMA incremental_vacuum(pages) 渐进归还空闲页"]
   end
 ```
 
@@ -163,8 +163,8 @@ flowchart TD
 erDiagram
   BLOB {
     text hash PK "未压缩原始 UTF-8 字节的 sha256 hex (64 chars)"
-    text encoding "'utf8' | 'deflate-b64'"
-    text body "UTF-8 原文或压缩后 base64 文本"
+    text encoding "'utf8'"
+    text body "UTF-8 原文"
     integer byte_len "原始未压缩 UTF-8 字节数"
     integer created_at "unix ms"
   }
@@ -257,14 +257,29 @@ CLI 默认使用 `~/.tavern/tavern.db`，可用 `--data` 指定数据目录。De
 2. **`Revert` 精确性承诺与双侧并发锁**：`Revert` 成功即保证落盘后 `workingHash === anchorHash`（`Clean`）；遇到 Hat 重名占用或 Local 缺失写作包/人设引用时拒绝静默改写，返回 `409 checkpoint-conflict` 保留现场。`Pin` 与 `Revert` 在同步请求入口同时校验 `expectedWorkingHash` 与 `expectedAnchorHash`。
 3. **存量库一次性打底初始化（消除 `Unanchored`）**：`sqlite.ts` 升级步骤将库内现存 `hat`、普通 `pack`、`card`、`persona` 及已存在的 `local` 覆盖行一次性写入 `blob` + `checkpoint`（卡片同步记录当时的 `origin.edited` 位）；无覆盖的现存卡 `local` 天然锚定 `EMPTY_OVERLAY_HASH`。
    - 迁移与运行时按同一 `kind` 规范化后取哈希。卡片从行主键补回 `id`，Hat 统一执行 `normalizeHatDelivery`，Persona 仅取 `{ id, name, text }`。普通 Pack 使用解码后的可写层，Local 使用 `layerDelta`。验收时用同一资产的存量行与业务读取值分别建锚，断言地址相等。
-4. **分期节奏与延迟启用压缩**：
-   - **压缩策略**：一期 `blob` 表包含 `encoding` 列但仅写 `"utf8"`（零压缩耗时、100% 透明）；二期依据真实长故事体积测量决定是否对超阈值块启用 `"deflate-b64"`。
+4. **分期节奏与正文编码**：
+   - **压缩策略**：Phase 1 和 Phase 2 均写入 UTF-8 原文，共享同一个对象池。
    - **Phase 1（Layer 1 + Layer 3 + 通用桥接批处理）**：落地 `blob` 与 `checkpoint` 表、迁移一次性打底、`/checkpoints/:kind/:id` 接口与五类可编辑资产业务接缝、`db.go` / `web/sqlite.ts` 通用 `batch` 模式、可达性 GC + `incremental_vacuum` 及 `tavern doctor` 存储诊断，接通编辑页快照顶栏。
    - **Phase 2（Layer 2 + 长故事基准测试）**：落地 `call` (`$v: 1`) + `call_ref` 正文级去重与 `WrapSection.body` 切片编解码，统一 `calls.get` / `calls.list` 批量还原路径，并产出长故事实测报告。
 
 ### 7.2 硬验收条件（Acceptance Invariants）
 
 - **追踪读写逐字符无损（Round-trip Identity）**：构造包含中文、emoji（UTF-16 代理对）、多段推理/工具握手消息、`providerOptions` 缓存断点、自定义模板 `{{context}}` 的真实 `Call`，经 `calls.add` 写入后再分别由 `calls.get(node)` 与 `calls.list()` 读出，以现有落盘边界的 JSON 值（`JSON.parse(JSON.stringify(call))`）为 expected，两者均满足 `deepStrictEqual(actual, expected)`，`tool.description` 逐字符相等，Inspector 所有 `Span` 与 `WrapSection` 偏移无需重算原样精确指向原文。
-- **跨桥常数复杂度与增量传输（Bridge O(1)）**：在 WebView `/__db` 垫片测试下，单轮 `calls.add` 跨桥请求次数不随历史消息轮数（如 10 轮 vs 150 轮）增长（无并发回收时冷缓存 ≤ 2 次请求），且库内已存在哈希对应的历史消息正文不出现在批写入载荷中。
+- **跨桥常数复杂度与增量传输（Bridge O(1)）**：在 WebView `/__db` 垫片测试下，单轮 `calls.add` 跨桥请求次数不随历史消息轮数（如 10 轮 vs 150 轮）增长（含第 201 个节点触发裁剪，共 ≤ 2 次请求），且库内已存在哈希对应的历史消息正文不出现在批写入载荷中。
 - **快照精确回退与并发安全（Checkpoint Exactness）**：对五类资产覆盖验证「新建 -> 编辑偏离 -> 回退必为 `Clean`」「改卡 -> `Pin` -> 再改 -> 回退仍保留 `origin.edited: true`」「Hat 重名 / Local 删包后回退报 `409 checkpoint-conflict` 且现场未损」「跨页修改工作态或推进锚点后旧页 `Pin`/`Revert` 报 `409 checkpoint-changed`」。
 - **外键防悬空与可达性回收（GC Safety）**：任一仍被 `checkpoint` 或未裁剪 `call_ref` 引用的 `blob` 物理不可删（`RESTRICT`）；删除故事、滚动裁剪超 200 节点追踪或删除资产后执行 GC，孤儿 `blob` 清零而存活快照与追踪读取 100% 正常。
+
+### 7.3 Phase 2 长故事基准
+
+使用同一组 100 轮中文故事输入，通过运行时的 `requestDetailed` 为每轮组装 `narrate` 和 `check` 两条调用。设定约 40 KB，每轮正文约 5.8 KB，带入最近 20 轮历史。两版各从写好相同 100 个故事节点的库开始计量。每次单节点读取和最后的整故事读取都与原始 Call 的 JSON 值逐项比对。
+
+| 模式与格式 | 逻辑载荷（MB） | 追踪带来的主库增量（MB） | 后 50 轮平均增量（KB/轮） | 单轮写入 p50 / p95（ms） | 单节点读取 p50 / p95（ms） | 整故事读取（ms） |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 普通 · 内联 | 20.98 | 21.21 | 225.5 | 0.36 / 1.13 | 0.07 / 0.10 | 34.96 |
+| 普通 · UTF-8 去重 | 2.57 | 3.34 | 35.1 | 1.31 / 2.84 | 0.13 / 0.16 | 5.91 |
+| Tool Wrap · 内联 | 21.40 | 21.60 | 229.6 | 0.38 / 1.15 | 0.07 / 0.10 | 34.07 |
+| Tool Wrap · UTF-8 去重 | 3.02 | 3.75 | 39.7 | 1.34 / 2.96 | 0.14 / 0.17 | 8.62 |
+
+逻辑载荷为 `call.json` 与被追踪引用的唯一正文之和。主库增量在关闭最后一个连接后测量，包含引用表、索引和页开销。表中使用十进制 KB 和 MB。耗时取 Apple M5、Bun 1.4.5 本地 SQLite 三次独立运行的中位数。WebView 测试另对桥接请求计数，普通写入和跨越 200 节点窗口的写入均为两次，单节点和整故事读取各一次。
+
+用 `bun packages/server/test/storage-bench.ts` 复测当前实现。向命令追加一份已安装依赖的 `9909f91` 工作树路径，可用同一批输入同时测出内联基线。基准使用临时数据库。Phase 2 仍使用库版本 11，新程序可混读旧内联行和新信封；降级到 `9909f91` 后，该版本的 Inspector 会直接收到新信封。

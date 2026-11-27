@@ -12,10 +12,15 @@ import { DatabaseSync } from "node:sqlite"
 import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
 import { canonicalJson, hashUtf8, type CheckpointKind } from "@effect-tavern/runtime/src/storage.ts"
 import { library } from "../src/library.ts"
+import type { Call } from "../src/turn.ts"
 import { open, traced } from "../src/data.ts"
 
 const v9Schema = readFileSync(new URL("fixtures/v9.sql", import.meta.url), "utf8")
 type Row = Record<string, unknown>
+
+function call(phase: Call["phase"], out: unknown = null): Call {
+  return { kind: "call", phase, out, msgs: [], usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, ms: 0 }
+}
 
 // A populated pre-checkpoint file with auto_vacuum=NONE. Its on-disk addresses agree with the editor's projections.
 {
@@ -36,14 +41,22 @@ type Row = Record<string, unknown>
     insertCard.run(
       "old",
       "Old",
-      JSON.stringify({ ...blank, title: "Old" }),
+      JSON.stringify({ ...blank, title: "Old", summary: "山中旧事".repeat(32) }),
       JSON.stringify({ via: "file", edited: true }),
     )
     insertCard.run("free", "Free", JSON.stringify(blank), JSON.stringify({ via: "builtin" }))
     insertCard.run("blank", "Blank", JSON.stringify(blank), null)
     assert.equal(old.query("pragma auto_vacuum").values()[0][0], 0)
+    old.exec("insert into story(id,card,updated) values(17,'old',0); insert into node(story,id,json) values(17,0,'{}')")
+    const legacyCall = call("record", "旧追踪")
+    old.query("insert into call(story,node,json) values(17,0,?)").run(JSON.stringify(legacyCall))
     old.close()
     const d = open(file)
+    const mixed = d.calls(17)
+    const nextCall = call("narrate", "新追踪".repeat(100))
+    mixed.add(0, [nextCall])
+    assert.deepEqual(mixed.get(0), [legacyCall, nextCall])
+    assert.deepEqual(mixed.list(), { 0: [legacyCall, nextCall] })
     const lib = library({ data: d })
     const { default: personaDefault, ...persona } = lib.personas.list()[0]
     const { default: packDefault, ...pack } = lib.packs.list()[0]
@@ -65,11 +78,20 @@ type Row = Record<string, unknown>
     }
     assert.throws(() => lib.checkpoints.get("card", "free"))
     const story = d.stories.create("blank")
-    const hash = hashUtf8(canonicalJson(lib.cards.get("old")))
+    const body = canonicalJson(lib.cards.get("old"))
+    const hash = hashUtf8(body)
+    const tree = L.hold(d.store(story))
+    tree.commit(L.add(tree.log, { parent: null }))
+    d.calls(story).add(0, [call("narrate", body)])
+    const branch = tree.commit(L.add(tree.log, { parent: 0 })).node!
+    const branchText = "被删的支线".repeat(30)
+    d.calls(story).add(branch.id, [call("narrate", [body, branchText])])
+    tree.commit(L.drop(tree.log, branch.id))
+    assert.deepEqual(d.calls(story).get(0), [call("narrate", body)])
     d.close()
-    // Phase 2 has no call_ref writer yet. Exercise the physical foreign keys on the closed library.
     const db = new Database(file)
     db.exec("pragma foreign_keys=on")
+    assert.equal(db.query("select 1 from blob where hash=?").get(hashUtf8(branchText)), null)
     assert.equal(db.query("pragma user_version").values()[0][0], 11)
     assert.equal(db.query("pragma auto_vacuum").values()[0][0], 2)
     assert.equal(
@@ -77,9 +99,6 @@ type Row = Record<string, unknown>
       1,
     )
     assert.throws(() => db.query("delete from blob where hash=?").run(hash), /foreign key/i)
-    db.query("insert into node(story,id,json) values(?,0,'{}')").run(story)
-    const seq = db.query("insert into call(story,node,json) values(?,0,'{}')").run(story).lastInsertRowid
-    db.query("insert into call_ref values(?,?)").run(seq, hash)
     db.close()
     const edited = open(file)
     edited.cards.del("old")
@@ -146,13 +165,13 @@ back.commit(L.amend(back.log, 0, { reply: undefined }))
 
 // Calls: filed under a node in order, read back by node; gone with the node, and with the story.
 const trace = data.calls(story)
-trace.add(0, [{ phase: "narrate" }, { phase: "record" }])
-trace.add(2, [{ phase: "lookup" }])
+trace.add(0, [call("narrate"), call("record")])
+trace.add(2, [call("lookup")])
 back.commit(L.amend(back.log, 0, { text: "r'" })) // an amend updates the node in place (never cascades to its calls)
-trace.add(0, [{ phase: "record" }]) // and appends its own call
+trace.add(0, [call("record")]) // and appends its own call
 assert.deepEqual(trace.list(), {
-  0: [{ phase: "narrate" }, { phase: "record" }, { phase: "record" }],
-  2: [{ phase: "lookup" }],
+  0: [call("narrate"), call("record"), call("record")],
+  2: [call("lookup")],
 })
 back.commit(L.drop(back.log, 2))
 assert.deepEqual(Object.keys(trace.list()), ["0"])
@@ -166,15 +185,15 @@ assert.deepEqual(Object.keys(trace.list()), ["0"])
   const count = traced + 5
   for (let i = 0; i < count; i++) {
     const n = t.commit(L.add(t.log, { parent: i ? i - 1 : null, text: String(i) })).node!
-    calls.add(n.id, [{ node: n.id }, { node: n.id, phase: "record" }])
+    calls.add(n.id, [call("narrate", n.id), call("record", n.id)])
   }
   const ids = (from: number) => Array.from({ length: count - from }, (_, k) => String(from + k))
   assert.deepEqual(Object.keys(calls.list()), ids(5))
-  assert.deepEqual(calls.list()[5], [{ node: 5 }, { node: 5, phase: "record" }])
-  calls.add(0, [{ node: 0, again: true }])
+  assert.deepEqual(calls.list()[5], [call("narrate", 5), call("record", 5)])
+  calls.add(0, [call("narrate", "again")])
   assert.deepEqual(Object.keys(calls.list()), ["0", ...ids(6)])
-  assert.deepEqual(calls.list()[0], [{ node: 0, again: true }])
-  data.calls(story).add(0, [{ phase: "other story" }]) // another story's trim leaves this one alone
+  assert.deepEqual(calls.list()[0], [call("narrate", "again")])
+  data.calls(story).add(0, [call("narrate", "other story")]) // another story's trim leaves this one alone
   assert.equal(Object.keys(calls.list()).length, traced)
   data.stories.del(long)
 }

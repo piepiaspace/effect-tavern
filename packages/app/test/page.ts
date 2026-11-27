@@ -9,6 +9,9 @@ import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Database } from "bun:sqlite"
+import { Database as PageDatabase } from "../web/sqlite.ts"
+import { storyCalls, traced } from "../../server/src/sqlite-calls.ts"
+import type { Call } from "../../server/src/turn.ts"
 import { runInNewContext } from "node:vm"
 import { bundleGuard, bundleServer, withServer } from "../web/bundle.ts"
 import { verbatim } from "../../runtime/test/cards/index.ts"
@@ -527,6 +530,63 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
     body: JSON.stringify({ kind: "greet" }),
   })
   assert.match(await reopened.text(), /^event: change$/m) // the opening's write is a transaction of its own
+  if (schemeOrigin === "https://mygo.localhost") {
+    const sent: string[] = []
+    const received: string[] = []
+    class Metered extends XMLHttpRequest {
+      override send(body: string) {
+        super.send(body)
+        sent.push(body)
+        received.push(this.responseText)
+      }
+    }
+    const original = globalThis.XMLHttpRequest
+    Object.assign(globalThis, { XMLHttpRequest: Metered })
+    try {
+      const calls = storyCalls(new PageDatabase(":memory:"), again.current)
+      const head = "共享的设定正文".repeat(30)
+      const firstOnly = "第一轮独有的检查结果".repeat(12)
+      const history: string[] = []
+      const nodeRow = db.query("insert into node(story,id,json) values(?,?,'{}')")
+      for (let i = 1; i <= traced + 1; i++) {
+        nodeRow.run(again.current, i)
+        const prose = `第${i}轮` + "山路".repeat(60)
+        const call: Call = {
+          kind: "call",
+          phase: "narrate",
+          msgs: [head, ...history.slice(-20)].map((content) => ({ role: "user", content })),
+          out: prose,
+          ms: 0,
+          usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        }
+        const check: Call = { ...call, phase: "check", msgs: [], out: i === 1 ? firstOnly : head }
+        sent.length = received.length = 0
+        calls.add(i, [call, check])
+        assert.equal(sent.length, 2, `write at node ${i}`)
+        if (i > 1) assert.ok(!sent.some((body) => body.includes(head) || body.includes(history.at(-1)!)))
+        history.push(prose)
+        if ([5, 50, traced + 1].includes(i)) {
+          sent.length = received.length = 0
+          assert.deepEqual(calls.get(i), [call, check])
+          assert.equal(sent.length, 1)
+          assert.deepEqual(calls.list()[i], [call, check])
+          assert.equal(sent.length, 2)
+          assert.equal(received[1].split(head).length - 1, 1)
+        }
+      }
+      const phases = db.query(
+        "select json_extract(c.json,'$.call.phase') from call c join call_ref r on r.seq=c.seq join blob b on b.hash=r.hash where c.story=? and c.node=? and b.body=? order by c.seq",
+      )
+      assert.deepEqual(phases.values(again.current, traced + 1, head), [["narrate"], ["check"]])
+      assert.deepEqual(phases.values(again.current, traced + 1, history.at(-1)!), [["narrate"]])
+      assert.deepEqual(calls.get(1), [])
+      assert.equal(db.query("select 1 from blob where body=?").get(firstOnly), null)
+      // Every call from node 1 expired, but nodes 2..21 still refer to its prose.
+      assert.ok(db.query("select 1 from blob where body=?").get(history[0]))
+    } finally {
+      Object.assign(globalThis, { XMLHttpRequest: original })
+    }
+  }
   db.close()
 }
 

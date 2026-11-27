@@ -17,7 +17,7 @@ import { open, type Data } from "../src/data.ts"
 import { library, NoModel } from "../src/library.ts"
 import { shelf } from "../src/shelf.ts"
 import { openLogbook } from "../src/logbook.ts"
-import { makeTurn, type Call, type Out } from "../src/turn.ts"
+import { makeTurn, type Out } from "../src/turn.ts"
 
 // the localhost upstreams below stay off a shell proxy: through one, a refused socket comes back as the proxy's 502
 process.env.NO_PROXY = "localhost,127.0.0.1"
@@ -810,7 +810,8 @@ for (const skip of [false, true]) {
       )),
     ]
     const node = es.flatMap((e) => (e.kind === "change" && e.node ? [e.node.id] : [])).at(-1)!
-    return { node, calls: (lib.calls(id).list()[node] as Call[]).filter((c) => c.phase === "check") }
+    const calls = lib.calls(id).list()[node]
+    return { node, calls: calls.filter((c) => c.phase === "check") }
   }
   const off = await checks(null)
   assert.deepEqual(

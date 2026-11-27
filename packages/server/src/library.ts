@@ -541,7 +541,7 @@ export const library = ({
     },
     trace: (id: Id, node: Id) => {
       if (!session(id).log.nodes.has(node)) throw new Error(`no node ${node}`)
-      return data.calls(id).get(node) as Call[]
+      return data.calls(id).get(node)
     },
     exists,
     /** The card a story is of. */

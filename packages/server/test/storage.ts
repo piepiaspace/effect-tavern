@@ -6,6 +6,8 @@ import { stripTraceRawText } from "@effect-tavern/runtime/src/preview.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { decideCheckpoint, layerDelta, restoreLayerDelta } from "../src/checkpoint.ts"
 import { dehydrateCall, hydrateCall } from "../src/stored-call.ts"
+import { open } from "../src/data.ts"
+import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { Call } from "../src/turn.ts"
 
 const working = { hash: hashUtf8('{"name":"draft"}'), originEdited: true }
@@ -149,6 +151,10 @@ const hat: Hat = {
   tool: { description: "剧场🎭 {{context}} 收尾" },
   narrate: { lead: [{ role: "tool", toolName: "boot", toolInput: '{"v":2}', text: "ok", reasoning: "Booting" }] },
 }
+const data = open(":memory:")
+const story = data.stories.create("wrap")
+const tree = L.hold(data.store(story))
+const calls = data.calls(story)
 for (const wrapped of [false, true]) {
   const req = requestDetailed(common, ask, { hat: { ...hat, wrap: wrapped }, ttl: "1h" })
   const { messages, traces, tool, wrap } = req
@@ -160,9 +166,13 @@ for (const wrapped of [false, true]) {
     tool: { name: tool.name, description: tool.description, param: tool.param },
     wrap: wrap && { traces: stripTraceRawText(wrap.traces), sections: wrap.sections, context: wrap.context },
   }
-  const packed = dehydrateCall(trace)
-  const result = hydrateCall(packed.envelope, packed.objects)
-  assert.deepEqual(result, JSON.parse(JSON.stringify(trace)))
+  const node = tree.commit(L.add(tree.log, { parent: tree.log.head })).node!.id
+  calls.add(node, [trace, recordCall])
+  const expected = JSON.parse(JSON.stringify([trace, recordCall]))
+  const filed = calls.get(node)
+  assert.deepEqual(filed, expected)
+  assert.deepEqual(calls.list()[node], expected)
+  const [result] = filed
   assert.ok(messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === "tool-call")))
   assert.ok(messages.some((m) => Array.isArray(m.content) && m.content.some((p) => p.type === "reasoning")))
   if (!wrap) {
@@ -184,4 +194,5 @@ for (const wrapped of [false, true]) {
     }
   }
 }
+data.close()
 console.log("Storage checkpoint and call codec contracts passed")
