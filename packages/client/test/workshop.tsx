@@ -108,6 +108,12 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
       },
     })
   }
+  const checkpoint = /^\/checkpoints\/card\/([^/]+)$/.exec(path)
+  if (checkpoint && method === "GET") {
+    const id = decodeURIComponent(checkpoint[1])
+    if (!held.has(id)) return Response.json({ error: `no card ${id}` }, { status: 404 })
+    return Response.json({ standing: { status: "clean", hash: "0".repeat(64), updatedAt: null }, rev: revOf(id) })
+  }
   const whole = /^\/cards\/([^/]+)\/whole$/.exec(path)
   if (whole) {
     const id = decodeURIComponent(whole[1])

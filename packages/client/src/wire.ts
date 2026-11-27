@@ -26,6 +26,12 @@ import type { Layer, Local } from "@effect-tavern/runtime/src/layer.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { PreviewNarrateResult } from "@effect-tavern/runtime/src/preview.ts"
 import type { Action } from "@effect-tavern/runtime/src/session.ts"
+import type {
+  CheckpointConflict,
+  CheckpointKind,
+  CheckpointMutation,
+  CheckpointStanding,
+} from "@effect-tavern/runtime/src/storage.ts"
 import { IncompleteStream, readTurnEvents } from "@effect-tavern/runtime/src/sse.ts"
 import type { Call } from "./inspect.ts"
 import type { Hit } from "./stories.ts"
@@ -215,8 +221,14 @@ export const searchStories = (q: string): Promise<Hit[]> =>
 /** Where a story's export is: a link the browser downloads (the server names the file by the title). */
 export const exportUrl = (id: number, ext: "md" | "json"): string => `${base}/stories/${id}/export.${ext}`
 const at = (id: string) => `${base}/personas/${encodeURIComponent(id)}`
-export const putPersona = async ({ id, ...body }: Persona): Promise<void> =>
-  registry.set(personas, await got(call(at(id), { method: "PUT", body: JSON.stringify(body) })))
+let personaWrite: Promise<void> = Promise.resolve()
+export const pendingPersonaWrite = () => personaWrite
+export const putPersona = ({ id, ...body }: Persona): Promise<void> =>
+  (personaWrite = personaWrite
+    .catch(() => {})
+    .then(async () => {
+      registry.set(personas, await got(call(at(id), { method: "PUT", body: JSON.stringify(body) })))
+    }))
 export const deletePersona = async (id: string): Promise<void> => {
   registry.set(personas, await got(call(at(id), { method: "DELETE" })))
   await Promise.all([fetchLocals(), fetchStories()]) // the pick on any card or story it held is gone with it
@@ -419,6 +431,57 @@ export const putPack = (id: string, edit: (p: Layer) => Layer): Promise<void> =>
 export const deletePack = async (id: string): Promise<void> => {
   registry.set(packs, await got(call(`${base}/packs/${enc(id)}`, { method: "DELETE" })))
   await fetchLocals() // the mount on any card it held is gone with it
+}
+
+export interface CheckpointStatus {
+  standing: CheckpointStanding
+  rev?: string
+}
+
+export type CheckpointOutcome =
+  | ({ ok: true } & CheckpointStatus)
+  | ({ ok: false; code: "checkpoint-changed" } & CheckpointStatus)
+  | { ok: false; code: "checkpoint-conflict"; conflict: CheckpointConflict }
+
+export const fetchCheckpoint = (kind: CheckpointKind, id: string, signal?: AbortSignal): Promise<CheckpointStatus> =>
+  got<CheckpointStatus>(call(`${base}/checkpoints/${enc(kind)}/${enc(id)}`, { signal }))
+
+export const mutateCheckpoint = async (
+  kind: CheckpointKind,
+  id: string,
+  body: CheckpointMutation,
+): Promise<CheckpointOutcome> => {
+  const res = await call(`${base}/checkpoints/${enc(kind)}/${enc(id)}`, json("POST", body))
+  if (res.ok) {
+    const data = await responseValue<CheckpointStatus>(res)
+    return { ok: true, ...data }
+  }
+  if (res.status === 409) {
+    const clone = res.clone()
+    let payload: unknown
+    try {
+      payload = await res.json()
+    } catch {
+      throw await responseError(clone)
+    }
+    if (payload && typeof payload === "object" && "code" in payload) {
+      if (payload.code === "checkpoint-changed" && "standing" in payload) {
+        const data = payload as { standing: CheckpointStanding; rev?: string }
+        return {
+          ok: false,
+          code: "checkpoint-changed",
+          standing: data.standing,
+          ...(data.rev !== undefined && { rev: data.rev }),
+        }
+      }
+      if (payload.code === "checkpoint-conflict" && "conflict" in payload) {
+        const data = payload as { conflict: CheckpointConflict }
+        return { ok: false, code: "checkpoint-conflict", conflict: data.conflict }
+      }
+    }
+    throw await responseError(clone)
+  }
+  throw await responseError(res)
 }
 /** What the settings page reads when it opens (pages.ts): every list it draws, the cards and the model names its
  *  menus name things by. */

@@ -11,6 +11,7 @@ import { composer } from "@effect-tavern/runtime/src/product.ts"
 import { createSignal, For, Show } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
+import { CheckpointControl } from "./checkpoint-control.tsx"
 import { blurField, Modal, newId, Switch, dialogHandle } from "./controls.tsx"
 import { Back, Next, Stack, Plus, StarFill, User } from "./icons.tsx"
 import {
@@ -35,7 +36,7 @@ import { openPicker } from "./dialogs.tsx"
 import { kindOf } from "./record.ts"
 import { moot, pressing, sentence, SWITCHES, takenBy, type SwitchKey } from "./switches.ts"
 import { previewFromPlay } from "./prompt-tree-state.ts"
-import { pendingLocalWrite, putLocal, refreshActiveCard } from "./wire.ts"
+import { fetchLocal, pendingLocalWrite, putLocal, refreshActiveCard } from "./wire.ts"
 import { type Key, t } from "./i18n.ts"
 
 const putLocalAndRefresh = async (cardId: string, edit: (l: Local) => Local) => {
@@ -149,6 +150,17 @@ export const WritingPage = () => {
   const nameKeys = () => cardNameKeys(layer()?.holes, layer()?.names)
   const extra = () => extraOf(loc())
   const dropped = () => layer()?.dropped ?? []
+  const flushLocal = async () => {
+    blurField()
+    await pendingLocalWrite()
+    return true
+  }
+  const onRevertedLocal = async () => {
+    const id = cardId()
+    if (!id) return
+    await fetchLocal(id)
+    await refreshActiveCard()
+  }
 
   return (
     <div class="inspect wpage">
@@ -168,6 +180,14 @@ export const WritingPage = () => {
             <Show when={freeChat()} fallback={<Show when={title()}>{(c) => <span class="tag clip">{c()}</span>}</Show>}>
               <span class="tag">{t("writing.freeChatScope")}</span>
             </Show>
+            <CheckpointControl
+              kind="local"
+              id={cardId()}
+              watch={loc()}
+              small={false}
+              flush={flushLocal}
+              onReverted={onRevertedLocal}
+            />
             <button
               type="button"
               class="icon"

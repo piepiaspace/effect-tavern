@@ -25,3 +25,4 @@
 @import "./workshop.css" layer(components);
 @import "./prompt-tree.css" layer(components);
 @import "./lightbox.css" layer(components);
+@import "./checkpoint-control.css" layer(components);

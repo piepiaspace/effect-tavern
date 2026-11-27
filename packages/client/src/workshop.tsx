@@ -17,7 +17,8 @@ import type { JSX } from "@solidjs/web"
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { askRemoveCard, openImportCard } from "./cards.tsx"
-import { ask, dialogHandle, Modal } from "./controls.tsx"
+import { CheckpointControl } from "./checkpoint-control.tsx"
+import { ask, blurField, dialogHandle, Modal } from "./controls.tsx"
 import { host } from "./host.ts"
 import { Back, Export, Import, Plus, Stack, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
@@ -25,7 +26,7 @@ import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./man
 import { close, editCard, guardClose, newCard, showCard } from "./pages.ts"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { activeOf, cards, characterCards, focus, registry, tabs } from "./store.ts"
-import { cardFile, onDownload, saveCard, saveUrl, wholeCard } from "./wire.ts"
+import { cardFile, fetchCards, onDownload, saveCard, saveUrl, wholeCard } from "./wire.ts"
 
 /** How long after the last keystroke the card is written. */
 const DELAY = 800
@@ -269,6 +270,13 @@ export const ManuscriptPage = () => {
   const [standing, setStanding] = createSignal<Standing>({ is: "clean" })
   const [busy, setBusy] = createSignal(false) // a write waiting or under way: aria-busy on the standing
   const [reads, setReads] = createSignal(0) // moved to read the card again (the notice's way out)
+  const [checkpointTick, setCheckpointTick] = createSignal(0)
+  createEffect(
+    () => [standing(), busy()] as const,
+    ([, isBusy]) => {
+      if (!isBusy) setCheckpointTick((n) => n + 1)
+    },
+  )
   // the page is on a card (the tab's): read it whole; leaving it, for another card or another page, saves what is left
   createEffect(
     () => [at(), activeId(), reads()] as const,
@@ -372,6 +380,11 @@ export const ManuscriptPage = () => {
     setOpened(null)
     setReads((n) => n + 1)
   }
+  const flushCard = async () => (blurField(), (await here()?.desk?.flush()) ?? false)
+  const onRevertedCard = async () => {
+    reread()
+    await fetchCards()
+  }
   const notice = () => {
     const s = standing()
     return unsaved(s) ? s : null
@@ -390,6 +403,13 @@ export const ManuscriptPage = () => {
           <Show when={here()?.desk && at()}>
             {(id) => (
               <>
+                <CheckpointControl
+                  kind="card"
+                  id={id()}
+                  watch={checkpointTick()}
+                  flush={flushCard}
+                  onReverted={onRevertedCard}
+                />
                 <a
                   class="icon sm"
                   href={cardFile(id())}

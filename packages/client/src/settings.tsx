@@ -98,6 +98,7 @@ import {
   type HatStage,
 } from "./connections.ts"
 import { Cards } from "./cards.tsx"
+import { CheckpointControl } from "./checkpoint-control.tsx"
 import { leaveArea, leaveInput } from "./layer-tabs.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
@@ -122,6 +123,9 @@ import { type Key, t } from "./i18n.ts"
 import {
   deleteHat,
   deletePersona,
+  fetchHats,
+  fetchPersonas,
+  pendingPersonaWrite,
   putDecision,
   putHat,
   putPersona,
@@ -624,6 +628,15 @@ const Templates = (props: Pane) => {
       setFailure({ id: h.id, message: e instanceof Error ? e.message : String(e) }),
     )
   }
+  const flushHat = async () => {
+    commitPending()
+    return await saving
+  }
+  const onRevertedHat = async () => {
+    setDraft(null)
+    setFailure(null)
+    await fetchHats()
+  }
   return (
     <>
       <aside class="master-card" aria-label={t("settings.templates")}>
@@ -753,6 +766,13 @@ const Templates = (props: Pane) => {
                       </div>
                     </PopoverContent>
                   </Popover>
+                  <CheckpointControl
+                    kind="hat"
+                    id={h().id}
+                    watch={savedHat()}
+                    flush={flushHat}
+                    onReverted={onRevertedHat}
+                  />
                   <button type="button" class="icon sm" aria-label={t("common.export")} onClick={exportHat}>
                     <Export />
                   </button>
@@ -1526,6 +1546,15 @@ const Personas = (props: Pane) => {
     void refreshActiveCard() // the install's first persona is its default: the card under this page may wear it now
     props.onPick(id)
   }
+  const flushPersona = async () => {
+    blurField()
+    await pendingPersonaWrite()
+    return true
+  }
+  const onRevertedPersona = async () => {
+    await fetchPersonas()
+    await refreshActiveCard()
+  }
   return (
     <>
       <aside class="master-card" aria-label={t("settings.personas")}>
@@ -1567,6 +1596,13 @@ const Personas = (props: Pane) => {
                 />
                 <For each={onCards(x().id)}>{(t) => <span class="tag clip">{t}</span>}</For>
                 <span class="spacer" />
+                <CheckpointControl
+                  kind="persona"
+                  id={x().id}
+                  watch={x()}
+                  flush={flushPersona}
+                  onReverted={onRevertedPersona}
+                />
                 <button
                   type="button"
                   class="icon sm"

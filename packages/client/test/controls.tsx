@@ -10,6 +10,7 @@ import type { ModelEntry, Provider } from "@effect-tavern/provider/src/providers
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Composer } from "../src/composer.tsx"
 import { CardPage } from "../src/card.tsx"
+import { CheckpointControl } from "../src/checkpoint-control.tsx"
 import { ModelDialog } from "../src/models.tsx"
 import { DeliveryTool } from "../src/settings.tsx"
 import { InstallKeys, Sidebar } from "../src/side.tsx"
@@ -60,9 +61,49 @@ const compatProvider: Provider = {
 }
 let savedModels: readonly ModelEntry[] = compatProvider.models
 registry.set(providers, [compatProvider])
+const HASH_A = "a".repeat(64)
+const HASH_B = "b".repeat(64)
+let cpStanding:
+  | { status: "clean"; hash: string; updatedAt: number | null }
+  | { status: "drifted"; workingHash: string; anchorHash: string; updatedAt: number | null } = {
+  status: "clean",
+  hash: HASH_A,
+  updatedAt: null,
+}
+let cpNextConflict: { reason: "hat-name-taken"; name: string; takenByHatId: string } | null = null
+let cpDelayNextGet: (() => void) | null = null
+let cpPendingGet: Promise<void> | null = null
+const cpCalls: string[] = []
 globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
   if (typeof init?.body === "string") requests.push(init.body)
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  if (url.includes("/checkpoints/hat/h-cp")) {
+    if ((init?.method ?? "GET") === "GET") {
+      cpCalls.push("GET")
+      const snapshot = cpStanding
+      if (cpPendingGet) {
+        const waitFor = cpPendingGet
+        cpPendingGet = null
+        await waitFor
+      }
+      return Response.json({ standing: snapshot, rev: "r1" })
+    }
+    const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { action?: string }
+    cpCalls.push(`POST:${body.action}`)
+    if (cpNextConflict) {
+      const conflict = cpNextConflict
+      cpNextConflict = null
+      return Response.json({ code: "checkpoint-conflict", conflict }, { status: 409 })
+    }
+    if (body.action === "pin") {
+      cpStanding = { status: "clean", hash: HASH_B, updatedAt: Date.now() }
+      return Response.json({ standing: cpStanding, rev: "r2" })
+    }
+    if (body.action === "revert") {
+      cpStanding = { status: "clean", hash: HASH_A, updatedAt: null }
+      return Response.json({ standing: cpStanding, rev: "r3" })
+    }
+  }
   if (init?.method === "PUT" && url.includes("/providers/compat-prov")) {
     const next = { id: "compat-prov", ...JSON.parse(typeof init.body === "string" ? init.body : "{}") } as Provider
     savedModels = next.models
@@ -1203,6 +1244,138 @@ const run = async () => {
 
   disposePops()
   host.remove()
+
+  // ── CheckpointControl (#238): clean baseline, drifted inline confirm + cancel + revert, 409 conflict, beforePin + pin ──
+  const cpHost = document.createElement("div")
+  cpHost.style.cssText = "position:fixed;top:16px;right:16px;z-index:20"
+  document.body.appendChild(cpHost)
+  const [cpWatch, setCpWatch] = createSignal(0)
+  let cpReverted = 0
+  let cpFlushMakesDrifted = false
+  let cpPopClosedBeforeReverted = false
+  const cpEvents: string[] = []
+  const cpFlush = async () => {
+    cpEvents.push("flush")
+    if (cpFlushMakesDrifted) {
+      cpFlushMakesDrifted = false
+      cpStanding = { status: "drifted", workingHash: HASH_B, anchorHash: HASH_A, updatedAt: null }
+      setCpWatch((n) => n + 1)
+      flush()
+    }
+    return true
+  }
+  const cpOnReverted = () => {
+    cpReverted += 1
+    flush()
+    cpPopClosedBeforeReverted = !cpHost.querySelector(".checkpoint-trigger")?.hasAttribute("data-open")
+    cpEvents.push("onReverted")
+  }
+  const disposeCp = render(
+    () => <CheckpointControl kind="hat" id="h-cp" watch={cpWatch()} flush={cpFlush} onReverted={cpOnReverted} />,
+    cpHost,
+  )
+  flush()
+  await quiet()
+
+  // 1. Clean state: open via agent, check baseline text and absence of destructive actions
+  const cpOpenClean = await agent.act({ steps: [{ ref: "快照", action: "setOpen", args: [true] }] })
+  await quiet()
+  const cpPopClean = document.querySelector<HTMLElement>(".checkpoint-pop")
+  check(
+    cpOpenClean.ok &&
+      !!cpPopClean &&
+      cpPopClean.textContent.includes("与初始基线一致") &&
+      !cpPopClean.textContent.includes("回退…"),
+    `CheckpointControl clean state shows baseline without action buttons: ${cpPopClean?.textContent}`,
+  )
+  escape()
+  await quiet()
+
+  // 1b. Opening the capsule flushes pending unblurred/debounced edits so drifted actions appear immediately
+  cpFlushMakesDrifted = true
+  await agent.act({ steps: [{ ref: "快照", action: "setOpen", args: [true] }] })
+  await quiet()
+  const cpPopBtn = (label: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>(".checkpoint-pop button")].find(
+      (b) => b.textContent.trim() === label,
+    )
+  check(
+    !!cpPopBtn("更新快照") && !!cpPopBtn("回退…"),
+    `CheckpointControl flushes on open and reveals drifted actions: ${document.querySelector(".checkpoint-pop")?.textContent}`,
+  )
+  escape()
+  await quiet()
+
+  // 2. Drifted state: open -> Revert… -> Cancel -> Revert… -> Confirm revert closes pop, invokes onReverted & returns to clean
+  check(
+    cpHost.querySelector(".checkpoint-trigger")?.getAttribute("data-status") === "drifted",
+    "CheckpointControl trigger reflects drifted status",
+  )
+  await agent.act({ steps: [{ ref: "快照", action: "setOpen", args: [true] }] })
+  await quiet()
+  cpPopBtn("回退…")?.click()
+  await quiet()
+  check(
+    !!cpPopBtn("取消") && !!cpPopBtn("确认回退"),
+    `CheckpointControl enters inline confirm state: ${document.querySelector(".checkpoint-pop")?.textContent}`,
+  )
+  cpPopBtn("取消")?.click()
+  await quiet()
+  check(
+    !!cpPopBtn("更新快照") && !!cpPopBtn("回退…"),
+    "CheckpointControl cancel exits inline confirm back to drifted actions",
+  )
+  cpPopBtn("回退…")?.click()
+  await quiet()
+  cpPopBtn("确认回退")?.click()
+  await quiet()
+  check(
+    cpReverted === 1 &&
+      cpPopClosedBeforeReverted &&
+      cpHost.querySelector(".checkpoint-trigger")?.getAttribute("data-status") === "clean",
+    `CheckpointControl confirm revert closes pop before onReverted (${cpPopClosedBeforeReverted}, ${cpReverted}) and returns to clean`,
+  )
+
+  // 3. 409 checkpoint-conflict (hat-name-taken): renders alert in-place and does not call onReverted
+  cpStanding = { status: "drifted", workingHash: HASH_B, anchorHash: HASH_A, updatedAt: null }
+  cpNextConflict = { reason: "hat-name-taken", name: "叙事模板", takenByHatId: "h-other" }
+  setCpWatch((n) => n + 1)
+  flush()
+  await quiet()
+  await agent.act({ steps: [{ ref: "快照", action: "setOpen", args: [true] }] })
+  await quiet()
+  cpPopBtn("回退…")?.click()
+  await quiet()
+  cpPopBtn("确认回退")?.click()
+  await quiet()
+  const cpAlert = document.querySelector<HTMLElement>(".checkpoint-pop [role='alert']")
+  check(
+    !!cpAlert && cpAlert.textContent.includes("叙事模板") && cpReverted === 1,
+    `CheckpointControl 409 conflict shows alert in-place without calling onReverted: ${cpAlert?.textContent}`,
+  )
+
+  // 4. Pin: runs flush before POST pin, returns to clean, and ignores a stale slow GET that resolves after pin
+  cpEvents.length = 0
+  cpCalls.length = 0
+  cpPendingGet = new Promise<void>((r) => {
+    cpDelayNextGet = r
+  })
+  setCpWatch((n) => n + 1)
+  flush()
+  cpPopBtn("更新快照")?.click()
+  await quiet()
+  cpDelayNextGet?.()
+  cpDelayNextGet = null
+  await quiet()
+  check(
+    cpEvents[0] === "flush" &&
+      cpCalls.includes("POST:pin") &&
+      cpHost.querySelector(".checkpoint-trigger")?.getAttribute("data-status") === "clean",
+    `CheckpointControl pin runs flush then POST pin and ignores stale GET (events=${cpEvents.join(",")}, calls=${cpCalls.join(",")})`,
+  )
+
+  disposeCp()
+  cpHost.remove()
 
   const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)
