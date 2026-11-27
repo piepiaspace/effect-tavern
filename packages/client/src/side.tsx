@@ -28,7 +28,7 @@ import {
   Prev,
   Settings,
   Shade,
-  Snippets,
+  Plus,
   Stack,
   Sun,
   Tag,
@@ -39,7 +39,7 @@ import {
 } from "./icons.tsx"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { openSettings } from "./settings-navigation.ts"
-import { browse, close, editCard, open, openStory, requestCardTab, showCard, toHome } from "./pages.ts"
+import { browse, editCard, open, openStory, requestCardTab, showCard, toHome } from "./pages.ts"
 import {
   admits,
   facetCounts,
@@ -86,19 +86,18 @@ import { flip as flipLocale, t } from "./i18n.ts"
 
 /** What the theme key is called on each pick: its name says the state it is in, as the language key's does. */
 const THEME_NAME = { system: "side.themeSystem", light: "side.themeLight", dark: "side.themeDark" } as const
-/** The install's keys: settings, the theme (one key round three picks, the system's side, light, dark: theme.ts) and
+/** The install's keys: settings (a door, not a toggle: the open settings are the page, its tab and the strip's Back;
+ *  the key there does nothing, so it never resets the section the player is on), the theme (one key round three picks, the system's side, light, dark: theme.ts) and
  *  the interface's language (a flip). `onLeave` is the drawer's, closed before settings opens. */
 export const InstallKeys = (props: { onLeave?: () => void }) => {
   const pg = read(page)
-  const inSettings = () => latest(pg) === "settings"
   return (
     <>
       <button
         type="button"
         class="icon sm"
         aria-label={t("common.settings")}
-        aria-pressed={inSettings() ? "true" : "false"}
-        onClick={() => (props.onLeave?.(), inSettings() ? close() : openSettings())}
+        onClick={() => (props.onLeave?.(), latest(pg) !== "settings" && openSettings())}
       >
         <Settings />
       </button>
@@ -599,7 +598,7 @@ export const Sidebar = (props: {
                         </>
                       }
                     >
-                      <Snippets aria-hidden="true" />
+                      <Plus aria-hidden="true" />
                     </Show>
                   </PopoverTrigger>
                   <PopoverContent
@@ -755,7 +754,7 @@ export const Sidebar = (props: {
               disabled={at() === null}
               onClick={() => (freeChat() ? leaveFor(toShelf) : toCard())}
             >
-              <Snippets aria-hidden="true" />
+              <Plus aria-hidden="true" />
               <span>{freeChat() ? t("side.newChat") : t("side.newStory")}</span>
             </button>
           </section>

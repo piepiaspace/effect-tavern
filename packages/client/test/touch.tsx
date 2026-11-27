@@ -24,7 +24,7 @@ import { cardView } from "@effect-tavern/runtime/src/session.ts"
 import { App, chunks } from "../src/App.tsx"
 import { openManager, openPicker } from "../src/dialogs.tsx"
 import { flip, locale } from "../src/i18n.ts"
-import { Close, Snippets } from "../src/icons.tsx"
+import { Close, Plus } from "../src/icons.tsx"
 import { Failed } from "../src/readings.tsx"
 import { close as closePage, open as openPage } from "../src/pages.ts"
 import { InstallKeys } from "../src/side.tsx"
@@ -242,7 +242,7 @@ const run = async () => {
         )}
       </For>
       <button type="button" class="chip add" aria-label="+">
-        <Snippets aria-hidden="true" />
+        <Plus aria-hidden="true" />
       </button>
     </div>
   )
@@ -391,13 +391,12 @@ const run = async () => {
   check(
     await until(
       () =>
-        settingsBtn.getAttribute("aria-pressed") === "true" &&
         stage.dataset.loading === "true" &&
         stage.getAttribute("aria-busy") === "true" &&
         Boolean(document.querySelector(".home-page")) &&
         !document.querySelector(".settings"),
     ),
-    "settings key flips aria-pressed and stage marks busy immediately during chunk hold",
+    "settings key marks the stage busy immediately during chunk hold",
   )
   check(await until(() => document.querySelector(".settings")), `the settings open: ${at()}`)
   watch.disconnect()

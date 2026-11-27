@@ -846,12 +846,6 @@
   align-items: center;
   gap: var(--space-half);
 }
-/* a pressed key is where you are (the settings); the theme key's state is the whole screen and its own glyph */
-:is(.shell-top, .side-foot) .icon[aria-pressed="true"] {
-  background: var(--alpha-1);
-  color: var(--ink);
-}
-
 .brand-glyph {
   width: 14px;
   height: 14px;
@@ -1236,13 +1230,10 @@
     gap: var(--space-1); /* the stage keys' pitch: the two rows match key for key */
   }
   /* two rows of keys, two layers: the strip's are the ground's (the install's, touched rarely), in ink-3 and a step
-     up when pressed or under the pointer; the stage keys stand on the card (this story's, touched in play) in the
+     up under the pointer; the stage keys stand on the card (this story's, touched in play) in the
      icon's own ink-2. One right edge, one pitch, two weights: aligned, never read as one 2×3 toolbar */
   .shell-top .icon {
     color: var(--ink-3);
-  }
-  .shell-top .icon[aria-pressed="true"]:not(:disabled) {
-    color: var(--ink-2);
   }
   @media (hover: hover) and (pointer: fine) {
     .shell-top .icon:hover:not(:disabled) {
