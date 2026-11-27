@@ -119,6 +119,11 @@ export const shelf = (
       data.cards.del(id)
       changed(id)
     },
+    /** The card and its file text from a single read. */
+    file: (id: string): { card: Card; text: string } => {
+      const card = get(id)
+      return { card, text: printCard(card) }
+    },
     /** The card as a card file's text: what `install` reads back to the same card. */
     text: (id: string): string => printCard(get(id)),
     /** A blank card of a fresh id, the workshop's: on the shelf at once, playable as it stands. `title` is what the

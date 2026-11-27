@@ -447,20 +447,18 @@ export const handle = (
     const cardFile = method === "GET" && /^\/cards\/([^/]+)\/export\.yaml$/.exec(url)
     if (cardFile) {
       const id = decodeURIComponent(cardFile[1])
-      let card
-      let text
+      let exported
       try {
-        card = lib.cards.get(id)
-        text = lib.cards.text(id)
+        exported = lib.cards.file(id)
       } catch (e) {
         return bad(e, 404)
       }
-      const body = encoder.encode(text)
+      const body = encoder.encode(exported.text)
       return new Response(body, {
         headers: {
           "content-length": String(body.byteLength),
           "content-type": "application/yaml; charset=utf-8",
-          "content-disposition": cardDisposition(card),
+          "content-disposition": cardDisposition(exported.card),
         },
       })
     }

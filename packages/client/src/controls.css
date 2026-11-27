@@ -637,10 +637,10 @@ a[download].icon {
   .chip:has(> .del) > * {
     pointer-events: auto;
   }
-  :is(.home-mech-toggle, .chip > .del) {
+  :is(.home-mech-index, .home-mech-toggle, .chip > .del) {
     position: relative;
   }
-  :is(.home-mech-toggle, .chip > .del)::after {
+  :is(.home-mech-index, .home-mech-toggle, .chip > .del)::after {
     content: "";
     position: absolute;
     z-index: -1;

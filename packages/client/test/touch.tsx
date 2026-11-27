@@ -211,6 +211,14 @@ const run = async () => {
     check(hit(a.right - 1, a.top + 10) === sound, "the sound toggle's face is its own to its right edge")
     check(hit(b.left + 1, b.top + 10) === motion, "and the motion toggle's to its left")
   } else check(false, "the home mechanism has its two toggles")
+  const idx = document.querySelector<HTMLElement>(".home-mech-index")
+  const hitIndex = (x: number, y: number) => document.elementFromPoint(x, y)?.closest(".home-mech-index") ?? null
+  if (idx) {
+    const r = idx.getBoundingClientRect()
+    const midX = r.left + r.width / 2
+    check(hitIndex(midX, r.top - 10) === (coarse ? idx : null), "10px above the index counter")
+    check(hitIndex(midX, r.bottom + 10) === (coarse ? idx : null), "10px under the index counter")
+  } else check(false, "the home mechanism has its index counter")
 
   // reach: a tag's ×, in the rows that draw it (the workspace's as side.tsx draws it, the tag manager's as dialogs.tsx
   // does), mounted on their own over the app: two narrow rows that wrap onto a second line, the workspace's ending in

@@ -72,7 +72,7 @@ const TAKE: Record<DepotView["entries"][number]["state"], Key> = {
 /** Confirms deleting a card (noting its story count when any exist) and removes the card with its stories. */
 export const askRemoveCard = (
   c: { id: string; title: string },
-  options?: { before?: () => void; onDone?: () => void; onFail?: (e: unknown) => void },
+  options?: { before?: () => void; onRemoved?: () => void; onDone?: () => void; onFail?: (e: unknown) => void },
 ): void => {
   const count = (registry.get(stories)?.stories ?? []).filter((s) => s.card === c.id).length
   const prompt =
@@ -81,7 +81,7 @@ export const askRemoveCard = (
       : t("cards.confirmRemoveCard", { name: c.title })
   ask(prompt, () => {
     options?.before?.()
-    void removeCard(c.id).then(
+    void removeCard(c.id, options?.onRemoved).then(
       () => options?.onDone?.(),
       (e) => options?.onFail?.(e),
     )

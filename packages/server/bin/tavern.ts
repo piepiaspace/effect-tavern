@@ -182,7 +182,7 @@ const tree = (world: World, ending: Ending) => {
       await host.remove(id)
       out(c.json ? JSON.stringify({ id, removed: true }) : `Removed ${id}`)
     }),
-  ).pipe(Command.withDescription("Remove an installed card; refused while it has stories"))
+  ).pipe(Command.withDescription("Remove an installed card and its stories"))
   const output = Flag.String("output").pipe(
     Flag.withAlias("o"),
     Flag.withDescription("write candidate YAML to file instead of stdout"),

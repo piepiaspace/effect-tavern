@@ -1,6 +1,6 @@
 import type { Listing } from "@effect-tavern/runtime/src/library.ts"
 export type { Listing } from "@effect-tavern/runtime/src/library.ts"
-import { host, runHostSave } from "./host.ts"
+import { host, runHostSave, saveFile } from "./host.ts"
 import { responseError, responseValue } from "./response.ts"
 import type { ListedModel as Listed } from "@effect-tavern/provider/src/providers.ts"
 import { readCache } from "./read-cache.ts"
@@ -305,7 +305,7 @@ export const cardFile = (id: string): string => `${base}/cards/${enc(id)}/export
 
 // A file the page made (a pack, the lexicon), saved: the host seam's (host.ts), where the browser downloads it and
 // the app's host has the player pick the place.
-export { saveFile } from "./host.ts"
+export { saveFile }
 /** Fetches `href` and hands its bytes and `content-disposition` filename to the standalone host's native save dialog. */
 export const downloadHref = (href: string): Promise<boolean> =>
   runHostSave(async (h) => {
@@ -314,6 +314,14 @@ export const downloadHref = (href: string): Promise<boolean> =>
     const named = r.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
     return h.save(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
   })
+/** Fetches `href` and saves it under its `content-disposition` filename (native picker in the app, browser download otherwise). */
+export const saveUrl = async (href: string): Promise<boolean> => {
+  if (host()) return downloadHref(href)
+  const r = await fetch(href)
+  if (!r.ok) throw await responseError(r)
+  const named = r.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+  return saveFile(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
+}
 /** A download link's click (`cardFile`, `exportUrl`): the browser's own download (returns `undefined`), or in the app
  *  the file fetched, checked (`!r.ok` throws `responseError` before touching the save dialog) and handed to its host
  *  under the name the server's content-disposition gives it. There the answer is whether it was saved: false when

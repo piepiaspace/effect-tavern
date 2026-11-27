@@ -25,7 +25,7 @@ import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./man
 import { close, editCard, guardClose, newCard, showCard } from "./pages.ts"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { activeOf, cards, characterCards, focus, registry, tabs } from "./store.ts"
-import { cardFile, downloadHref, onDownload, saveCard, wholeCard } from "./wire.ts"
+import { cardFile, onDownload, saveCard, saveUrl, wholeCard } from "./wire.ts"
 
 /** How long after the last keystroke the card is written. */
 const DELAY = 800
@@ -118,6 +118,12 @@ const desk = (read: Card, at: string, say: (s: Standing) => void, busy: (on: boo
         if (!(await save())) return false
       } while (edited !== manuscript)
       return true
+    },
+    clean: () => timer === undefined && running === 0 && !failed && same(cardOf(read, manuscript), shelf),
+    pause: () => {
+      clearTimeout(timer)
+      timer = undefined
+      told()
     },
     /** The page's text given up: what is on the shelf stands, and a save still waiting writes nothing. */
     letGo: () => {
@@ -390,14 +396,14 @@ export const ManuscriptPage = () => {
                   download
                   aria-label={t("cards.exportCard")}
                   onClick={(e) => {
-                    if (!host()) return
+                    const d = here()?.desk
+                    if (!host() && (!d || d.clean())) return
                     e.preventDefault()
                     const href = e.currentTarget.href
                     void (async () => {
-                      const d = here()?.desk
                       if (d && !(await d.flush())) return
-                      await downloadHref(href)
-                    })().catch(() => {})
+                      await saveUrl(href)
+                    })().catch((err) => setStanding(standingOf(err)))
                   }}
                 >
                   <Export />
@@ -406,12 +412,17 @@ export const ManuscriptPage = () => {
                   type="button"
                   class="icon sm"
                   aria-label={t("cards.removeCard")}
-                  onClick={() =>
+                  onClick={() => {
+                    const d = here()?.desk
                     askRemoveCard(
                       { id: id(), title: manuscript().title.trim() || id() },
-                      { before: () => here()?.desk?.letGo() },
+                      {
+                        before: () => d?.pause(),
+                        onRemoved: () => d?.letGo(),
+                        onFail: (err) => setStanding(standingOf(err)),
+                      },
                     )
-                  }
+                  }}
                 >
                   <Trash />
                 </button>

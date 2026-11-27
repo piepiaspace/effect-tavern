@@ -170,16 +170,15 @@
 .home-nav:active {
   scale: 0.94;
 }
-/* On touch devices keep the buttons visually hidden until keyboard/screen-reader focus so swipe stays uncluttered
-   while tablets with keyboards and assistive tech still reach both named controls */
+/* On touch devices keep the flank step buttons subtly visible and 44px-reachable since stage swipe is disabled */
 @media (hover: none), (pointer: coarse) {
   .home-nav {
-    opacity: 0;
-    pointer-events: none;
+    width: 44px;
+    height: 44px;
+    opacity: 0.24;
   }
   .home-nav:focus-visible {
     opacity: 1;
-    pointer-events: auto;
   }
 }
 /* Compact layout for short / landscape phone viewports so the emblem, title, and primary action cards stay reachable */

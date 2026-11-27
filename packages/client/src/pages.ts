@@ -390,14 +390,15 @@ export const newStory = async (card: string): Promise<boolean> => {
   return landed
 }
 /** A card off the shelf, together with its stories and any tabs that were on it. */
-export const removeCard = async (id: string): Promise<void> => {
+export const removeCard = async (id: string, beforeShed?: () => void): Promise<void> => {
   const deleted = (registry.get(stories)?.stories ?? []).filter((s) => s.card === id).map((s) => s.id)
-  const was = tab().story
   await wire.removeCard(id)
+  beforeShed?.()
   if (deleted.length) reading.drop(deleted)
   shed(id, deleted)
-  registry.update(stories, (s) => (s ? { ...s, current: tab().story } : s))
-  if (was !== null && deleted.includes(was)) await navigate(() => reading.activate(null))
+  const now = tab().story
+  registry.update(stories, (s) => (s ? { ...s, current: now } : s))
+  if (now === null) await navigate(() => reading.activate(null))
   else await wire.refreshActiveCard().catch(() => {}) // a story's tab that was browsing it is on its own card again
 }
 export const deleteStory = async (id: number): Promise<void> => onDelete(await wire.deleteStory(id), [id])

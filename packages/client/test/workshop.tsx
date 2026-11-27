@@ -62,6 +62,8 @@ const shelf = (): ShelfCard[] =>
 const post = globalThis.fetch
 const requests: string[] = []
 const saves: Card[] = []
+const exported: string[] = []
+let failNextDelete = false
 let pendingSave: Promise<void> | undefined
 globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
@@ -85,6 +87,10 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
     return Response.json({ card: shelf().find((c) => c.id === card.id), cards: shelf() })
   }
   if (method === "DELETE" && path.startsWith("/cards/")) {
+    if (failNextDelete) {
+      failNextDelete = false
+      return Response.json({ error: "storage busy" }, { status: 503 })
+    }
     const id = decodeURIComponent(path.slice(7))
     held.delete(id)
     origins.delete(id)
@@ -94,7 +100,8 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
     const id = decodeURIComponent(path.slice(7, -12))
     const found = held.get(id)
     if (!found) return Response.json({ error: `no card ${id}` }, { status: 404 })
-    return new Response(`id: ${id}\n`, {
+    exported.push(found.title ?? id)
+    return new Response(`id: ${id}\ntitle: ${found.title ?? id}\n`, {
       headers: {
         "content-type": "application/yaml; charset=utf-8",
         "content-disposition": `attachment; filename="card.yaml"; filename*=UTF-8''${encodeURIComponent(`${found.title ?? id}.yaml`)}`,
@@ -457,13 +464,40 @@ const run = async () => {
     `Escape stays on ManuscriptPage showing 409 conflict notice: ${words()}`,
   )
 
+  // Browser export immediately after typing flushes pending edits before fetching export.yaml; a failed delete keeps
+  // the desk alive so subsequent edits still autosave cleanly.
+  await press("重新读取")
+  check(
+    await until(() => fields("卡片名")[0]?.value === "别处又改了一版" && !document.querySelector(".workshop-notice")),
+    "reread resets conflict before export/delete checks",
+  )
+  await type("卡片名", "刚改完立刻导出")
+  document.querySelector<HTMLAnchorElement>('a[aria-label="导出卡片"]')!.click()
+  check(
+    await until(() => exported.at(-1) === "刚改完立刻导出"),
+    `browser export flushes pending edit before downloading: ${JSON.stringify(exported)}`,
+  )
+  failNextDelete = true
+  await press("删除卡片")
+  await press("删除", document.querySelector(".confirm")!)
+  check(
+    await until(() => pg() === "manuscript" && Boolean(document.querySelector(".workshop-notice"))),
+    "failed delete surfaces error notice on ManuscriptPage",
+  )
+  await type("卡片名", "删失败后仍能保存")
+  check(
+    await until(() => held.get("made")?.title === "删失败后仍能保存"),
+    "desk keeps saving edits after a failed delete",
+  )
+
   // Deleting a card directly from ManuscriptPage abandons unsaved edits without orphan PUTs and lands on Workshop list;
   // Workshop list also supports direct card import.
+  await type("一句话简介", "删除前未落盘的字")
   const savesBeforeDelete = saves.length
   await press("删除卡片")
   await press("删除", document.querySelector(".confirm")!)
   check(
-    await until(() => pg() === "workshop" && !held.has("made") && !words().includes("别处又改了一版")),
+    await until(() => pg() === "workshop" && !held.has("made") && !words().includes("删失败后仍能保存")),
     `deleting from ManuscriptPage returns to Workshop list and drops the card: ${words()}`,
   )
   check(saves.length === savesBeforeDelete, "deleting from ManuscriptPage does not flush stale edits")
