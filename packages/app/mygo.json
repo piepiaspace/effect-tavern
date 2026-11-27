@@ -24,7 +24,7 @@
   },
   "updates": {
     "publicKey": "Bksyszg4I/PeK8SDznGN8IOUT/e5uTEt/H4Ro2JI5AY=",
-    "github": "piepiaspace/effect-tavern"
+    "url": "https://github.com/piepiaspace/effect-tavern/releases/download/app-updates"
   },
   "linux": {
     "formats": ["deb"]

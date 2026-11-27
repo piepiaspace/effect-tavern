@@ -230,7 +230,34 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tail -n +2 dist/release.txt > notes.md
+          # the app's own update files live in the one rolling release app-updates (updates.url in packages/app/mygo.json)
+          mkdir updates
+          for f in dist/effect-tavern-*.tar.gz dist/*.delta; do if [ -e "$f" ]; then mv "$f" updates/; fi; done
+          cp dist/update-*.json updates/
+          # the manifests stay here too for apps before 0.12, which read the latest v* release; drop the cp above and
+          # move them once no install older than 0.12 is left
           gh release create "$GITHUB_REF_NAME" dist/* install.sh install.ps1 --notes-file notes.md
+      # archives and deltas first, the manifests last, so an app never reads a manifest whose files are missing; then
+      # keep the archives of the last 3 versions (the next build makes its deltas from them) and only this version's deltas
+      - name: App updates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view app-updates > /dev/null 2>&1 ||
+            gh release create app-updates --prerelease --title "App updates" --notes "The app's self-update files. Download the app from the latest release."
+          gh release upload app-updates updates/effect-tavern-* --clobber
+          gh release upload app-updates updates/update-*.json --clobber
+          current=${GITHUB_REF_NAME#v}
+          gh release view app-updates --json assets -q '.assets[].name' > names
+          keep=$(sed -n 's/^effect-tavern-\([0-9.]*\)-[a-z].*\.tar\.gz$/\1/p' names | sort -uV | tail -3)
+          while read -r n; do
+            case $n in
+              *.delta) v=${n#*-to-}; v=${v%%-*}; [ "$v" = "$current" ] && continue ;;
+              *.tar.gz) v=${n#effect-tavern-}; v=${v%%-*}; echo "$keep" | grep -qx "$v" && continue ;;
+              *) continue ;;
+            esac
+            gh release delete-asset app-updates "$n" -y
+          done < names
 
   distribute:
     needs: publish
