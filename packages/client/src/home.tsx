@@ -19,18 +19,21 @@ import { cards, characterCards, homeDrafts, homeSending, setHomeDraft, tabs } fr
 import { theme } from "./theme.ts"
 import { t } from "./i18n.ts"
 
-const BRAND_SRC = "/brand/projector-rosette-04.svg"
 const finePointer = () =>
   typeof window !== "undefined" && window.matchMedia?.("(hover: hover) and (pointer: fine)").matches
 
 export const BrandGlyph = () => (
-  <img
-    class="brand-glyph"
-    data-dark={theme() === "dark" ? "true" : "false"}
-    src={BRAND_SRC}
-    alt=""
-    aria-hidden="true"
-  />
+  <svg class="brand-glyph" viewBox="0 0 975.238 1024" aria-hidden="true">
+    <path
+      d="M 780.19 1024 L 780.19 536.381 C 780.19 449.276 733.721 368.788 658.286 325.236 C 583.281 615.073 400.049 865.144 146.286 1024 Z"
+      fill="var(--brand)"
+    />
+    <path
+      d="M 0 1024 L 0 487.619 C 0 218.314 218.314 0 487.619 0 C 756.924 0 975.238 218.314 975.238 487.619 L 975.238 1024 L 780.19 1024 L 780.19 536.381 C 780.19 449.276 733.721 368.788 658.286 325.236 C 583.281 615.073 400.049 865.144 146.286 1024 L 0 1024 Z"
+      fill="currentColor"
+      fill-rule="evenodd"
+    />
+  </svg>
 )
 
 export const Home = () => {

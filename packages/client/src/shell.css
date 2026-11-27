@@ -847,20 +847,13 @@
   gap: var(--space-half);
 }
 .brand-glyph {
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   flex: none;
-  object-fit: contain;
-  mix-blend-mode: multiply;
-  opacity: 0.72;
-}
-.brand-glyph[data-dark="true"] {
-  filter: invert(1);
-  mix-blend-mode: screen;
-  opacity: 0.8;
+  opacity: 0.78;
 }
 .shell-tab[aria-current="page"] .brand-glyph {
-  opacity: 0.92;
+  opacity: 0.96;
 }
 /* ── 读数 (readings.tsx `StatusPage`): a page over the reader, the standing portraits at the left, Status and the world
    products at the right. Each column bounded to 26rem and scrolling on its own, the portrait sized to the column's
