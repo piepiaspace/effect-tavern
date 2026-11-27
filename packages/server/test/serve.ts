@@ -55,6 +55,119 @@ const lib = library({
   model,
 })
 
+// Installation-level checkpoints through the wire, without a story header.
+{
+  const data = open(":memory:")
+  const l = library({ data, model })
+  const wire = handle(l)
+  const endpoint = (kind: string, id: string, body?: unknown) =>
+    wire(
+      new Request(
+        `http://localhost/checkpoints/${kind}/${id}`,
+        body === undefined ? {} : { method: "POST", body: JSON.stringify(body) },
+      ),
+    )
+  const get = async (kind: string, id: string) => {
+    const r = await endpoint(kind, id)
+    assert.equal(r.status, 200)
+    return r.json()
+  }
+  const mutation = (action: string, s: Awaited<ReturnType<typeof get>>) => ({
+    action,
+    expectedWorkingHash: s.standing.workingHash ?? s.standing.hash,
+    expectedAnchorHash: s.standing.anchorHash ?? s.standing.hash,
+    rev: s.rev,
+  })
+  const apply = async (kind: string, id: string, action: string) => {
+    const r = await endpoint(kind, id, mutation(action, await get(kind, id)))
+    assert.equal(r.status, 200, await r.clone().text())
+    const status = await r.json()
+    assert.equal(status.standing.status, "clean")
+    assert.deepEqual(status, await get(kind, id))
+    return status
+  }
+  assert.equal((await endpoint("bad", "id")).status, 400)
+  assert.equal((await endpoint("hat", "missing")).status, 404)
+  assert.equal((await endpoint("hat", "id", {})).status, 400)
+
+  const card = l.cards.install(chat, { via: "file" })
+  const id = card.id
+  const editCard = (title: string) => {
+    const whole = l.cards.whole(id)
+    l.cards.save(id, { ...whole.card, title }, whole.rev)
+  }
+  const original = l.cards.whole(id).card
+  editCard("Draft")
+  const revision = await get("card", id)
+  assert.equal(revision.rev, l.cards.whole(id).rev)
+  const stale = await endpoint("card", id, { ...mutation("pin", revision), rev: "old" })
+  assert.equal(stale.status, 409)
+  assert.equal((await stale.json()).rev, revision.rev)
+  await apply("card", id, "revert")
+  assert.deepEqual(l.cards.get(id), original)
+  assert.equal(l.cards.list().find((c) => c.id === id)?.origin.edited, undefined)
+  editCard("Accepted")
+  await apply("card", id, "pin")
+  editCard("Discard")
+  const story = l.stories.create(id)
+  const session = l.session(story)
+  await apply("card", id, "revert")
+  assert.equal(l.cards.get(id).title, "Accepted")
+  assert.equal(l.cards.list().find((c) => c.id === id)?.origin.edited, true)
+  assert.notEqual(l.session(story), session)
+
+  const free = l.cards.ensureFreeChat()
+  assert.equal((await endpoint("card", free.id)).status, 404)
+  const local = (card: string, fields: object) => l.locals.write({ id: "local", name: card, card, ...fields })
+  local(free.id, { tags: ["temporary"] })
+  await apply("local", free.id, "revert")
+  assert.equal(data.locals.get(free.id), undefined)
+  l.packs.put({ id: "p", name: "First", default: true })
+  l.personas.put({ id: "who", name: "Old", text: "First", default: true })
+  l.packs.put({ id: "p", name: "Second", default: false })
+  l.personas.put({ id: "who", name: "New", text: "Second", default: false })
+  await apply("pack", "p", "revert")
+  await apply("persona", "who", "revert")
+  assert.equal(data.packs.default(), null)
+  assert.equal(data.personas.fallback(), null)
+  assert.equal(data.packs.list().find((p) => p.id === "p")?.name, "First")
+  assert.deepEqual(data.personas.list(), [{ id: "who", name: "Old", text: "First" }])
+  local(id, { mounts: ["p"], persona: "who" })
+  const pinned = await apply("local", id, "pin")
+  l.cards.install({ ...original, title: "Update" }, { via: "link" }, { replace: true })
+  assert.equal((await get("card", id)).standing.status, "clean")
+  assert.deepEqual(await get("local", id), pinned)
+  l.packs.del("p")
+  l.personas.del("who")
+  const pruned = data.locals.get(id)
+  const missing = await endpoint("local", id, mutation("revert", await get("local", id)))
+  assert.equal(missing.status, 409)
+  assert.deepEqual((await missing.json()).conflict, {
+    reason: "missing-references",
+    missingPacks: ["p"],
+    missingPersona: "who",
+  })
+  assert.deepEqual(data.locals.get(id), pruned)
+  l.hats.put({ id: "h", name: "First" })
+  l.hats.put({ id: "h", name: "Second" })
+  l.hats.put({ id: "other", name: "First" })
+  const before = await get("hat", "h")
+  const taken = await endpoint("hat", "h", mutation("revert", before))
+  assert.equal(taken.status, 409)
+  assert.deepEqual((await taken.json()).conflict, { reason: "hat-name-taken", name: "First", takenByHatId: "other" })
+  assert.deepEqual(await get("hat", "h"), before)
+  l.hats.del("other")
+  await apply("hat", "h", "revert")
+  l.hats.put({ id: "h", name: "Second" })
+  await apply("hat", "h", "pin")
+  const stalePin = await endpoint("hat", "h", mutation("pin", before))
+  assert.equal(stalePin.status, 409)
+  assert.equal((await stalePin.json()).code, "checkpoint-changed")
+  l.cards.remove(id)
+  assert.equal((await endpoint("local", id)).status, 404)
+  data.close()
+}
+
 const wired = (v: unknown) => JSON.parse(JSON.stringify(v)) as unknown // what JSON keeps: no `undefined` keys
 const sse = (text: string) =>
   text

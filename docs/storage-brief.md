@@ -20,7 +20,7 @@
 
 3. **开发库实测体积结构与 `auto_vacuum = INCREMENTAL`**
    - 开发库样本（8 个故事、29 个 `node`、65 条 `call`）显示：全部可编辑资产（`card` + `hat` + `pack` + `local` + `persona`）合计 **46.6 KB**，`node` 表 **170.9 KB**，而 `call` 表达 **562.4 KB**（`msgs` **276 KB**、`out` **278 KB**）。短对话样本仅对 `msgs` 做静态消息级去重约为 `3.04×`；整库实际收益、长故事每新增一轮的物理增量与主线程耗时留待实测基准验证。
-   - 存量库当前 `PRAGMA auto_vacuum = 0`（`NONE`）。新库建表前直接启用 `PRAGMA auto_vacuum = INCREMENTAL`；存量库在迁移初始化或 `tavern doctor` 清理时配合一次 `VACUUM` 激活增量回收页头，日常 GC 仅按页数预算执行 `PRAGMA incremental_vacuum(pages)` 渐进归还空闲页。
+   - 新库在启用 WAL 和建表前设置 `PRAGMA auto_vacuum = INCREMENTAL`。存量库从 `NONE` 升级时，先在事务外完成一次 `VACUUM`，再提交 v10 快照迁移。日常 GC 按页数预算执行 `PRAGMA incremental_vacuum(pages)`，`tavern doctor --verbose` 只读报告体积和空闲页。
 
 4. **稀疏默认覆盖、工坊乐观锁与上游 `origin.edited` 的正交边界**
    - **稀疏覆盖资产（`local`）**：[`packages/server/src/library.ts`](../packages/server/src/library.ts#L456) 中，有效卡片下的 `local` 行代表**相对默认值的用户覆盖差集（Overlay Delta）**。“无覆盖”本身即为合法的天然初始基线（规范化为空对象 `"{}"`，对应共享哈希 `H_empty`，按需物化入 `blob`），与“所属卡片已删除（`404 no-card`）”严格区分；回退到 `H_empty` 即清除覆盖、继续跟随当前写作包与卡片默认值，绝不将当时的合并展示态固化为死配置。
@@ -116,6 +116,7 @@ stateDiagram-v2
 1. **按业务操作定锚点（UI、CLI、服务端调用统一语义）**：
    - **安装或覆盖安装（`create`、`cards.install` 含 `replace: true`、`importLink`、`depots.pull`、`hats/packs` 新建或生成新 ID 的文件导入）**：将落盘版本同时设为工作态与锚点（`Clean`）。玩家在书架将卡片从 `v1.0` 一路更新至 `v1.3` 后进工坊微调改坏，点「回退」即精确回到 `v1.3`。
    - **编辑与自动保存（工坊 `save`、`hats/packs/personas/locals` 编辑写回，以及未来编辑器内「用文件内容覆盖当前编辑项」）**：只改工作态，不动锚点。
+   - 自由对话卡的正文由程序管理，它的 `local` 仍是用户可编辑资产。所有卡首次创建时为 `local` 建立空锚点，覆盖安装普通卡时保留已有的 `local` 锚点和工作态。
 2. **硬不变量 · `Revert` 成功即保证 `Clean`（拒绝静默改写漂移）**：
    - 恢复资产必须经过领域校验并在提交后触发完整副作用，但**绝不允许静默篡改快照内容导致写回后哈希仍不等于 `anchorHash`**：
      - **`hat`**：校验 `normalizeHatDelivery` 与 `hatToolProblem`；若锚点中的 `hat.name` 已被另一顶不同 ID 的 Hat 占用，**不调用自动编号改名的 `uniqueHatName`**，而是拒绝恢复并返回 `409 checkpoint-conflict`（指明冲突名称），保留现场交由用户处理。
@@ -147,7 +148,7 @@ flowchart TD
   end
 
   subgraph GCPath["C. 可达性回收与渐进空间归还 (GC & Incremental Vacuum)"]
-    G1["触发时机 · 删除故事 / 删除资产 / tavern doctor 维护"] --> G2["关系集合差清扫 · DELETE FROM blob WHERE NOT EXISTS checkpoint AND NOT EXISTS call_ref"]
+    G1["触发时机 · 删除故事 / 删除资产"] --> G2["关系集合差清扫 · DELETE FROM blob WHERE NOT EXISTS checkpoint AND NOT EXISTS call_ref"]
     G2 --> G3["使内存已知哈希缓存失效 + PRAGMA incremental_vacuum(pages) 渐进归还空闲页"]
   end
 ```
@@ -201,7 +202,7 @@ erDiagram
 ### 4.2 `/__db` 宿主桥接最小通用扩展（`packages/app/db.go` & `web/sqlite.ts`）
 
 不在 Go 层引入任何 `blob` / `call` / `checkpoint` 业务概念，仅在现有 `exec | run | rows` 之上增加一个原子批模式 `batch`：
-- 请求载荷：`{ mode: "batch", steps: Array<{ sql: string, params?: Param[], mode: "exec" | "run" | "rows" }> }`；
+- 请求为 `{ mode: "batch", steps: Array<{ sql: string, params?: Param[], mode: "exec" | "run" | "rows", requireRow?: boolean }> }`。`rows` 步骤使用 `requireRow: true` 时，空结果会使整批回滚。
 - Go 执行语义：在 `dbMu` 锁定的单连接 `dbConn` 上显式开启 `BEGIN IMMEDIATE`，按序执行 `steps`，任一步报错立即 `ROLLBACK` 并返回错误状态码，全部成功则 `COMMIT` 并一次性返回结果数组；
 - 适用范围：预先确定的 SQL 步骤可一次跨桥原子执行。若后续写入依赖 TypeScript 对查询结果的判断，需在批内用 SQL 前置条件验证此前读到的状态，校验失败则回滚。两条批量读取 SQL 同样需要共享一致的读快照。 `bun:sqlite` 与 WebView 共享 100% 同一份 `packages/server/src/sqlite.ts` 源码。
 

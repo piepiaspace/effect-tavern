@@ -41,6 +41,7 @@ export interface Words {
     notOnPathNext: (dir: string) => string
     data: (dir: string, size: string) => string
     dataNew: (dir: string) => string
+    dataReclaimable: string
     dataBroken: (dir: string) => string
     dataBrokenNext: (dir: string) => string
     free: (free: string) => string
@@ -135,6 +136,7 @@ export const words: Record<Lang, Words> = {
       notOnPathNext: (dir) => `把 ${dir} 放进 PATH，或重新运行安装命令`,
       data: (dir, size) => `${dir} 可读写，${size}`,
       dataNew: (dir) => `${dir} 还没有建立，第一次启动时建立`,
+      dataReclaimable: "库中有可回收空间，删除资产或故事时会自动清理",
       dataBroken: (dir) => `${dir} 读写不了`,
       dataBrokenNext: (dir) => `检查它的权限：chmod -R u+rw ${dir}`,
       free: (free) => `还剩 ${free}`,
@@ -234,6 +236,7 @@ export const words: Record<Lang, Words> = {
       notOnPathNext: (dir) => `Put ${dir} on PATH, or run the install command again`,
       data: (dir, size) => `${dir} readable and writable, ${size}`,
       dataNew: (dir) => `${dir} not made yet; the first start makes it`,
+      dataReclaimable: "The library has reclaimable space. Deleting an asset or story runs cleanup.",
       dataBroken: (dir) => `${dir} cannot be read or written`,
       dataBrokenNext: (dir) => `Check its permissions: chmod -R u+rw ${dir}`,
       free: (free) => `${free} free`,

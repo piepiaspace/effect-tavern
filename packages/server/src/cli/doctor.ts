@@ -10,6 +10,7 @@ import { accessSync, constants, existsSync, readdirSync, realpathSync, statSync 
 import { dirname, join } from "node:path"
 import { announced, holder } from "../announce.ts"
 import { STORY_ROW } from "../data.ts"
+import { unreachable } from "../sqlite-checkpoints.ts"
 import { titled } from "../logbook/lines.ts"
 import { cells, troubleOf, wrap, width, type Facts, type Lang } from "../term/index.ts"
 import { mb } from "../term/codes.ts"
@@ -144,6 +145,47 @@ const when = (iso: string) => {
   return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`
 }
 
+function storageStats(file: string) {
+  const db = new Database(file, { readonly: true })
+  try {
+    return db.transaction(() => {
+      const pages = db
+        .query<{ page_count: number; freelist_count: number; auto_vacuum: number }, []>(
+          `select * from pragma_page_count, pragma_freelist_count, pragma_auto_vacuum`,
+        )
+        .get()!
+      const tables = new Set(
+        db
+          .query<{ name: string }, []>("select name from sqlite_schema where type='table' and name in ('blob','call')")
+          .all()
+          .map((r) => r.name),
+      )
+      const blobs = tables.has("blob")
+        ? db
+            .query<{ blob_count: number; blob_bytes: number; orphan_blobs: number; orphan_bytes: number }, []>(
+              `select count(*) as blob_count, coalesce(sum(octet_length(body)),0) as blob_bytes,
+         count(*) filter(where ${unreachable}) as orphan_blobs,
+         coalesce(sum(octet_length(body)) filter(where ${unreachable}),0) as orphan_bytes from blob`,
+            )
+            .get()!
+        : undefined
+      const call_bytes = tables.has("call")
+        ? db.query<{ bytes: number }, []>("select coalesce(sum(octet_length(json)),0) as bytes from call").get()!.bytes
+        : 0
+      const stats = { ...pages, call_bytes, ...blobs }
+      return {
+        facts: Object.entries(stats)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(" "),
+        reclaimable:
+          !!blobs?.orphan_blobs || (pages.freelist_count >= 64 && pages.freelist_count >= pages.page_count / 4),
+      }
+    })()
+  } finally {
+    db.close()
+  }
+}
+
 export const checks = async (c: Config, world: World): Promise<Finding[]> => {
   const w = words[c.lang].doctor
   const self: Self = world.self ?? thisProgram(world.env)
@@ -192,17 +234,29 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
       ok = false
     }
     let size: number | undefined
+    let storage: ReturnType<typeof storageStats> | undefined
+    let dbError: string | undefined
     try {
       size = sizeOf(c.data)
     } catch {
       ok = false
     }
+    const file = join(c.data, "tavern.db")
+    if (ok && existsSync(file)) {
+      try {
+        storage = storageStats(file)
+      } catch (e) {
+        dbError = String(e)
+      }
+    }
     add({
       check: "data",
-      mark: ok ? "ok" : "fail",
-      what: ok ? w.data(show(c.data), mb(size ?? 0)) : w.dataBroken(show(c.data)),
+      mark: !ok || dbError ? "fail" : storage?.reclaimable ? "warn" : "ok",
+      what: dbError ? w.dataBroken(show(file)) : ok ? w.data(show(c.data), mb(size ?? 0)) : w.dataBroken(show(c.data)),
+      ...(storage?.reclaimable && { next: w.dataReclaimable }),
+      ...(dbError && { raw: dbError }),
       ...(!ok && { next: w.dataBrokenNext(show(c.data)) }),
-      facts: `data=${c.data} bytes=${size ?? "?"}`,
+      facts: [`data=${c.data} bytes=${size ?? "?"}`, storage?.facts].filter(Boolean).join(" "),
     })
   }
 

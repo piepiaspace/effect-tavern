@@ -421,7 +421,7 @@ Technical details: tavern doctor --verbose
   它被更新的版本打开过，这个版本读不了。
   > 输入 tavern update 更新到最新版本，再启动。
   数据没有被改动。
-  user_version 999 > 9
+  user_version 999 > 10
 
 == tavern update (from source) zh
 ✗ 从源码运行时不能自己更新
@@ -481,7 +481,7 @@ Technical details: tavern doctor --verbose
   > Update to the latest version with tavern
     update, then start again.
   Your data was not changed.
-  user_version 999 > 9
+  user_version 999 > 10
 
 == tavern update (from source) en
 ✗ A run from source does not update itself

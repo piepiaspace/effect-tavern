@@ -35,7 +35,8 @@ import type {
 export type { StoredStory as StoryRow, Hit, Persona } from "@effect-tavern/runtime/src/library.ts"
 import type { Names } from "@effect-tavern/provider/src/names.ts"
 import type { Provider, Secret } from "@effect-tavern/provider/src/providers.ts"
-import type { Card } from "@effect-tavern/runtime/src/card.ts"
+import { checkpointStore, migrateCheckpoints, unreachable } from "./sqlite-checkpoints.ts"
+import { batch, run, type Step } from "./sqlite-batch.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { locked, type Layer, type Local } from "@effect-tavern/runtime/src/layer.ts"
 import type { ProductPatch } from "@effect-tavern/runtime/src/product.ts"
@@ -287,15 +288,16 @@ const steps: readonly (string | ((db: Database) => void))[] = [
   "drop table if exists draft",
   "create table if not exists network (id integer primary key check (id = 1), json text not null)",
   defaultPack,
+  migrateCheckpoints,
 ]
 const latest = baseline + steps.length
-const upgrade = (db: Database) => {
-  const version = (db.query("pragma user_version").get() as { user_version: number }).user_version
+const upgrade = (db: Database, version: number) => {
   if (version === latest) return
-  if (version > latest) throw new LibraryNewer(version, latest)
   if (version < baseline) rebase(db)
   for (let v = Math.max(version, baseline); v < latest; v++) {
     const step = steps[v - baseline]
+    if (step === migrateCheckpoints && db.query("pragma auto_vacuum").values()[0][0] !== 2)
+      db.exec("pragma auto_vacuum=incremental; vacuum")
     db.exec("begin immediate")
     try {
       if (typeof step === "string") db.exec(step)
@@ -426,8 +428,11 @@ const rebase = (db: Database) => {
 export const openSqlite = (file: string, onClose?: () => void) => {
   const db = new Database(file, { create: true, strict: true })
   try {
+    const version = db.query<{ user_version: number }, []>("pragma user_version").get()!.user_version
+    if (version > latest) throw new LibraryNewer(version, latest)
+    if (version === 0) db.exec("pragma auto_vacuum=incremental")
     db.exec("pragma journal_mode = wal; pragma foreign_keys = on;")
-    upgrade(db)
+    upgrade(db, version)
   } catch (e) {
     db.close()
     throw e
@@ -456,7 +461,27 @@ export const openSqlite = (file: string, onClose?: () => void) => {
       void q(`insert or replace into ${table} (id, name, json) values (?, ?, ?)`).run(id, name, JSON.stringify(rest)),
     del: (id: string) => void q(`delete from ${table} where id = ?`).run(id),
   })
+  const checkpoints = checkpointStore(db)
+  const gc = (pages = 64) => {
+    db.exec(`delete from blob where ${unreachable}`)
+    if (Number.isSafeInteger(pages) && pages > 0) db.exec(`pragma incremental_vacuum(${pages})`)
+  }
+  const removeAsset = (kind: "card" | "hat" | "pack" | "persona", id: string, related: Step[] = []) => {
+    batch(db, [
+      ...related,
+      run(`delete from ${kind} where id=?`, id),
+      run("delete from checkpoint where entity_id=? and (kind=? or (?='card' and kind='local'))", id, kind, kind),
+    ])
+    gc()
+  }
+  const editable = <T extends Hat | Layer>(kind: "hat" | "pack") => ({
+    list: named<T>(kind).list,
+    put: ({ id, name, ...body }: T) => checkpoints.putNamed(kind, id, name, JSON.stringify(body)),
+    del: (id: string) => removeAsset(kind, id),
+  })
   return {
+    checkpoints,
+    gc,
     /** The file open: the one asked for, or this process's own when another process holds that one. */
     file,
     /** The player on each card, a row a card, decoded at the wire (serve.ts). */
@@ -474,17 +499,8 @@ export const openSqlite = (file: string, onClose?: () => void) => {
           name: r["name"] as string,
           text: parse<string>(r)!,
         })),
-      put: (p: Persona) =>
-        void q("insert or replace into persona (id, name, json) values (?, ?, ?)").run(
-          p.id,
-          p.name,
-          JSON.stringify(p.text),
-        ),
-      del: (id: string) =>
-        tx(() => {
-          q("delete from persona where id = ?").run(id)
-          q("delete from persona_default where persona = ?").run(id)
-        }),
+      put: (p: Persona) => checkpoints.putNamed("persona", p.id, p.name, JSON.stringify(p.text)),
+      del: (id: string) => removeAsset("persona", id, [run("delete from persona_default where persona=?", id)]),
       /** The persona marked the install's default, or none. */
       fallback: (): string | null =>
         ((q("select persona from persona_default where id = 1").get() as Row | null)?.["persona"] as
@@ -496,14 +512,10 @@ export const openSqlite = (file: string, onClose?: () => void) => {
           ? q("delete from persona_default").run()
           : q("insert or replace into persona_default (id, persona) values (1, ?)").run(id)),
     },
-    hats: named<Hat>("hat"),
+    hats: editable<Hat>("hat"),
     packs: {
-      ...named<Layer>("pack"),
-      del: (id: string) =>
-        tx(() => {
-          q("delete from pack where id = ?").run(id)
-          q("delete from pack_default where pack = ?").run(id)
-        }),
+      ...editable<Layer>("pack"),
+      del: (id: string) => removeAsset("pack", id, [run("delete from pack_default where pack=?", id)]),
       /** The pack marked the install's default, or none. */
       default: (): string | null =>
         ((q("select pack from pack_default where id = 1").get() as Row | null)?.["pack"] as string | undefined) ?? null,
@@ -549,27 +561,12 @@ export const openSqlite = (file: string, onClose?: () => void) => {
       },
       /** A card written whole, with its facets (session.ts `facets`, the caller's reading) and its origin as projections
        *  beside the json, so the shelf's rows never decode a card. */
-      put: ({ id, ...card }: Card, facets: Facets, origin: Origin) =>
-        void q(
-          "insert or replace into card (id, title, json, updated, summary, facets, origin) values (?, ?, ?, ?, ?, ?, ?)",
-        ).run(
-          id,
-          card.title ?? id,
-          JSON.stringify(card),
-          Date.now(),
-          card.summary ?? null,
-          JSON.stringify(facets),
-          JSON.stringify(origin),
-        ),
+      put: checkpoints.putCard,
       /** One card's json column, parsed (decoded by the caller); none when the table has no such id. */
       get: (id: string): unknown => parse<unknown>(q("select json from card where id = ?").get(id) as Row | null),
       /** The card, its stories (with their nodes and calls via cascade), and the player's local row on it. */
       del: (id: string) =>
-        tx(() => {
-          q("delete from story where card = ?").run(id)
-          q("delete from card where id = ?").run(id)
-          q("delete from local where card = ?").run(id)
-        }),
+        removeAsset("card", id, [run("delete from story where card=?", id), run("delete from local where card=?", id)]),
     },
     depots: named<DepotRow>("depot"),
     /** Stories, a card's or every card's, newest first, each with its title (the player's, or none), its star, its turns and the
@@ -648,16 +645,22 @@ export const openSqlite = (file: string, onClose?: () => void) => {
             yields ? 1 : 0,
           ).lastInsertRowid,
         ),
-      del: (id: Id) => void q("delete from story where id = ?").run(id), // its nodes cascade
+      del: (id: Id) => {
+        q("delete from story where id = ?").run(id)
+        gc()
+      },
       /** Several at once, one transaction: the batch cleanup. Only the card's own go (any card's when it is absent);
        *  another card's, or no story, is skipped. The ids deleted are answered. */
-      delMany: (card: string | undefined, ids: readonly Id[]): Id[] =>
-        tx(() =>
+      delMany: (card: string | undefined, ids: readonly Id[]): Id[] => {
+        const deleted = tx(() =>
           ids.filter(
             (id) =>
               q("delete from story where id = ?1 and (?2 is null or card = ?2)").run(id, card ?? null).changes > 0,
           ),
-        ),
+        )
+        if (deleted.length) gc()
+        return deleted
+      },
       /** The card's stories (every card's when it is absent) whose head's line holds `q` in a player's line, a note or the prose (the text parts of
        *  the reply), one Hit per story: the earliest hit node on the line (a snippet of the field that hit, the
        *  line first, then the note, then the prose), numbered by the turns up to it, and the count of hit nodes.

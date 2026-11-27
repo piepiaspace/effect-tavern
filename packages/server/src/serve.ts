@@ -148,6 +148,8 @@ import { backup, cardDisposition, disposition, markdown } from "./export.ts"
 import { PreviewError, Routing, type Library, type PublicEvent } from "./library.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { Refused } from "./shelf.ts"
+import { CheckpointRefused } from "./checkpoint.ts"
+import { CheckpointKind, CheckpointMutation } from "@effect-tavern/runtime/src/storage.ts"
 import { Busy } from "./turn.ts"
 import type { Wire } from "./wire.ts"
 
@@ -255,6 +257,8 @@ export const handle = (
     /** The path and query as the routes match them. */
     const url = at.pathname + at.search
     const bad = (e: unknown, status = 400) => {
+      if (e instanceof CheckpointRefused)
+        return json(e.detail.code === "no-checkpoint" ? 404 : 409, { error: e.message, ...e.detail })
       const code = e instanceof Busy || e instanceof Refused || e instanceof PreviewError ? e.code : undefined
       return json(
         e instanceof Busy
@@ -331,6 +335,15 @@ export const handle = (
         })
       return reply(() => (lib.stories.del(id), stories()), 409) // busy: a turn runs on it
     }
+    const checkpointAt = /^\/checkpoints\/([^/]+)\/([^/]+)$/.exec(url)
+    if (checkpointAt && (method === "GET" || method === "POST"))
+      return reply(async () => {
+        const kind = Schema.decodeUnknownSync(CheckpointKind)(checkpointAt[1])
+        const id = decodeURIComponent(checkpointAt[2])
+        return method === "GET"
+          ? lib.checkpoints.get(kind, id)
+          : lib.checkpoints.mutate(kind, id, await read(Schema.decodeUnknownSync(CheckpointMutation)))
+      })
     if (method === "GET" && url === "/personas") return json(200, lib.personas.list())
     const personaAt = /^\/personas\/([^/]+)$/.exec(url)
     if (personaAt && (method === "PUT" || method === "DELETE")) {

@@ -55,6 +55,16 @@ const blank = (id: string, title?: string): Card => ({
   guard: [],
 })
 
+/** Through the gate or not at all: the card, or `card-invalid` carrying every error line. */
+export const checkedCard = (value: unknown): Card => {
+  const { card, diagnostics } = validateCard(value)
+  const errors = diagnostics.filter((d) => d.level === "error")
+  if (!card || errors.length)
+    throw new Refused("card-invalid", errors.map((d) => `${d.level} ${d.rule} ${d.path}: ${d.message}`).join("\n"))
+  return card
+}
+export const cardRevision = (stored: unknown): string => bytesToHex(sha1(utf8ToBytes(JSON.stringify(stored))))
+
 export const shelf = (
   data: Data,
   { changed = () => {}, removing = () => {} }: { changed?: (id: string) => void; removing?: (id: string) => void } = {},
@@ -65,18 +75,9 @@ export const shelf = (
     if (raw === undefined) throw noCard(id)
     return decodeCard({ ...(raw as object), id })
   }
-  /** Through the gate or not at all: the card, or `card-invalid` carrying every error line. */
-  const gate = (value: unknown): Card => {
-    const { card, diagnostics } = validateCard(value)
-    const errors = diagnostics.filter((d) => d.level === "error")
-    if (!card || errors.length)
-      throw new Refused("card-invalid", errors.map((d) => `${d.level} ${d.rule} ${d.path}: ${d.message}`).join("\n"))
-    return card
-  }
-  /** A card's revision: a digest of it as stored, so it moves with every write and with nothing else. */
-  const rev = (id: string): string => bytesToHex(sha1(utf8ToBytes(JSON.stringify(data.cards.get(id)))))
-  const put = (card: Card, origin: Origin): CardRow => {
-    data.cards.put(card, facets(card), origin)
+  const rev = (id: string): string => cardRevision(data.cards.get(id))
+  const put = (card: Card, origin: Origin, anchor = true): CardRow => {
+    data.cards.put(card, facets(card), origin, anchor)
     changed(card.id)
     return row(card.id)!
   }
@@ -96,7 +97,7 @@ export const shelf = (
         } catch (e) {
           throw new Refused("card-invalid", `error schema $: ${e instanceof Error ? e.message : String(e)}`)
         }
-      const card = gate(value)
+      const card = checkedCard(value)
       if (row(card.id)?.origin.via === "builtin")
         throw new Refused("card-invalid", `error schema id: ${card.id} is reserved`)
       if (!replace && row(card.id)) throw new Refused("card-exists", `card ${card.id} is already installed`, 409)
@@ -110,7 +111,7 @@ export const shelf = (
       let id: string = FREE_CHAT_ID
       let n = 1
       while (row(id)) id = `${FREE_CHAT_ID}-${n++}`
-      return put(gate(blank(id, title?.trim() || "自由对话")), { via: "builtin" })
+      return put(checkedCard(blank(id, title?.trim() || "自由对话")), { via: "builtin" })
     },
     /** Gone, with its stories and the player's local row on it. */
     remove: (id: string) => {
@@ -132,7 +133,7 @@ export const shelf = (
       let id: string
       do id = `card-${crypto.randomUUID().slice(0, 8)}`
       while (row(id))
-      return put(gate(blank(id, title?.trim())), { via: "workshop" })
+      return put(checkedCard(blank(id, title?.trim())), { via: "workshop" })
     },
     /** The card whole with its revision: what the workshop reads, and names again when it saves. */
     whole: (id: string): { card: Card; rev: string } => ({ card: get(id), rev: rev(id) }),
@@ -146,10 +147,10 @@ export const shelf = (
       if (had.origin.via === "builtin") throw new Refused("card-invalid", `error schema id: ${id} is reserved`)
       if (was !== undefined && was !== rev(id))
         throw new Refused("card-changed", `card ${id} has changed since it was read`, 409)
-      const card = gate(value)
+      const card = checkedCard(value)
       if (card.id !== id) throw new Refused("card-invalid", `error schema id: the card is ${card.id}, not ${id}`)
       if (JSON.stringify(card) === JSON.stringify(get(id))) return had
-      return put(card, had.origin.via === "workshop" ? had.origin : { ...had.origin, edited: true })
+      return put(card, had.origin.via === "workshop" ? had.origin : { ...had.origin, edited: true }, false)
     },
   }
 }

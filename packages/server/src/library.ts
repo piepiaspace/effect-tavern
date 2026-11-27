@@ -85,6 +85,7 @@ import { names } from "./names.ts"
 import { outbound } from "./proxy-host.ts"
 import { readHttps } from "./remote.ts"
 import { shelf } from "./shelf.ts"
+import type { CheckpointKind, CheckpointMutation } from "@effect-tavern/runtime/src/storage.ts"
 import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
 
 export type PublicError = Failure & { kind: "error"; code: Code; phase: Phase }
@@ -170,6 +171,13 @@ export const library = ({
   // The install's cards (shelf.ts). A card replaced or removed takes the open sessions on it along: an idle one is
   // dropped and reopens on the new card, one with a turn in flight finishes on the card it began on unless the card
   // itself is being removed, in which case its turn is aborted before its stories are deleted.
+  const changed = (card: string) => {
+    for (const [id, cached] of sessions) {
+      if (data.stories.get(id)?.card !== card) continue
+      if (cached.turn.busy !== null || cached.turn.pendingFailure) cached.stale = true
+      else sessions.delete(id)
+    }
+  }
   const cards = shelf(data, {
     removing: (card) => {
       for (const [id, cached] of sessions) {
@@ -178,13 +186,7 @@ export const library = ({
         sessions.delete(id)
       }
     },
-    changed: (card) => {
-      for (const [id, cached] of sessions) {
-        if (data.stories.get(id)?.card !== card) continue
-        if (cached.turn.busy !== null || cached.turn.pendingFailure) cached.stale = true
-        else sessions.delete(id)
-      }
-    },
+    changed,
   })
   const routing = (): Routing => (data.routing.read() as Routing | undefined) ?? {}
   const providerOf = (id: string): Provider => {
@@ -433,6 +435,11 @@ export const library = ({
       return `${p?.name || pair.provider} / ${pair.model}`
     },
     author: author(() => model("author")),
+    checkpoints: {
+      get: data.checkpoints.get,
+      mutate: (kind: CheckpointKind, id: string, request: CheckpointMutation) =>
+        data.checkpoints.mutate(kind, id, request, changed),
+    },
     policy,
     session,
     /** A story's turn in flight (turn.ts), beside its session. */

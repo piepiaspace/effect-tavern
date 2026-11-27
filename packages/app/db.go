@@ -18,10 +18,16 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+type dbStep struct {
+	SQL        string `json:"sql"`
+	Params     []any  `json:"params"`
+	Mode       string `json:"mode"` // exec | run | rows
+	RequireRow bool   `json:"requireRow,omitempty"`
+}
+
 type dbCall struct {
-	SQL    string `json:"sql"`
-	Params []any  `json:"params"`
-	Mode   string `json:"mode"` // exec | run | rows
+	dbStep
+	Steps []dbStep `json:"steps"`
 }
 
 var (
@@ -89,30 +95,79 @@ func serveDB(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest, err)
 		return
 	}
-	for i, p := range c.Params {
-		c.Params[i] = param(p)
-	}
 	dbMu.Lock()
 	defer dbMu.Unlock()
 	ctx := context.Background()
+	var result any
+	var err error
+	if c.Mode == "batch" {
+		var results []any
+		results, err = dbBatch(ctx, c.Steps)
+		result = map[string]any{"results": results}
+	} else {
+		result, err = dbSingle(ctx, c.dbStep)
+	}
+	if err != nil {
+		status := http.StatusUnprocessableEntity
+		if errors.Is(err, errDBMode) {
+			status = http.StatusBadRequest
+		}
+		fail(status, err)
+		return
+	}
+	json.NewEncoder(w).Encode(result)
+}
+
+var errDBMode = errors.New("unknown database operation")
+
+func dbBatch(ctx context.Context, steps []dbStep) ([]any, error) {
+	if _, err := dbConn.ExecContext(ctx, "begin immediate"); err != nil {
+		return nil, err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			dbConn.ExecContext(ctx, "rollback")
+		}
+	}()
+	results := make([]any, 0, len(steps))
+	for _, step := range steps {
+		result, err := dbSingle(ctx, step)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, result)
+	}
+	if _, err := dbConn.ExecContext(ctx, "commit"); err != nil {
+		return nil, err
+	}
+	committed = true
+	return results, nil
+}
+
+func dbSingle(ctx context.Context, c dbStep) (any, error) {
+	for i, p := range c.Params {
+		c.Params[i] = param(p)
+	}
 	switch c.Mode {
 	case "exec", "run":
 		res, err := dbConn.ExecContext(ctx, c.SQL, c.Params...)
 		if err != nil {
-			fail(http.StatusUnprocessableEntity, err)
-			return
+			return nil, err
 		}
 		n, _ := res.RowsAffected()
 		id, _ := res.LastInsertId()
-		json.NewEncoder(w).Encode(map[string]int64{"changes": n, "lastInsertRowid": id})
+		return map[string]int64{"changes": n, "lastInsertRowid": id}, nil
 	case "rows":
 		rows, err := dbConn.QueryContext(ctx, c.SQL, c.Params...)
 		if err != nil {
-			fail(http.StatusUnprocessableEntity, err)
-			return
+			return nil, err
 		}
 		defer rows.Close()
-		cols, _ := rows.Columns()
+		cols, err := rows.Columns()
+		if err != nil {
+			return nil, err
+		}
 		out := [][]any{}
 		for rows.Next() {
 			vals := make([]any, len(cols))
@@ -121,8 +176,7 @@ func serveDB(w http.ResponseWriter, r *http.Request) {
 				ptrs[i] = &vals[i]
 			}
 			if err := rows.Scan(ptrs...); err != nil {
-				fail(http.StatusUnprocessableEntity, err)
-				return
+				return nil, err
 			}
 			for i, v := range vals {
 				if b, ok := v.([]byte); ok {
@@ -132,11 +186,13 @@ func serveDB(w http.ResponseWriter, r *http.Request) {
 			out = append(out, vals)
 		}
 		if err := rows.Err(); err != nil {
-			fail(http.StatusUnprocessableEntity, err)
-			return
+			return nil, err
 		}
-		json.NewEncoder(w).Encode(map[string]any{"columns": cols, "rows": out})
+		if c.RequireRow && len(out) == 0 {
+			return nil, errors.New("batch precondition failed")
+		}
+		return map[string]any{"columns": cols, "rows": out}, nil
 	default:
-		fail(http.StatusBadRequest, errors.New("mode: exec, run or rows"))
+		return nil, errDBMode
 	}
 }

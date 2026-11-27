@@ -36,6 +36,13 @@ export function decideCheckpoint(
   return { action: "revert", hash: anchor.hash, originEdited: anchor.originEdited } as const
 }
 
+type Decision = ReturnType<typeof decideCheckpoint>
+export class CheckpointRefused extends Error {
+  constructor(readonly detail: Extract<Decision, { code: string }> | { code: "no-checkpoint" }) {
+    super(detail.code)
+  }
+}
+
 /** Identity comes from the checkpoint owner. Empty top-level collections have no effect;
  * nested values (including false, empty names and an explicit null persona) are user data. */
 export function layerDelta(row: Local | undefined): Record<string, unknown> {

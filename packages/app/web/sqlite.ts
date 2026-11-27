@@ -13,7 +13,8 @@ const base64 = (bytes: Uint8Array): string => {
   return btoa(s)
 }
 
-const call = (body: { sql: string; params?: Param[]; mode: "exec" | "run" | "rows" }): any => {
+type Step = { sql: string; params?: Param[]; mode: "exec" | "run" | "rows"; requireRow?: boolean }
+const call = (body: Step | { mode: "batch"; steps: Step[] }): any => {
   const x = new XMLHttpRequest()
   x.open("POST", "/__db", false)
   const text = JSON.stringify(body, (_k, v) =>
@@ -61,6 +62,9 @@ export class Database {
   }
   exec(sql: string) {
     call({ sql, mode: "exec" })
+  }
+  batch(steps: Step[]) {
+    return call({ mode: "batch", steps }).results
   }
   query(sql: string) {
     return new Statement(sql)

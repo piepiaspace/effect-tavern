@@ -18,6 +18,8 @@ import {
 import { createServer, type Server } from "node:net"
 import { join } from "node:path"
 import { gzipSync } from "node:zlib"
+import { Database } from "bun:sqlite"
+import { open } from "../src/data.ts"
 import { run } from "../bin/tavern.ts"
 import type { Self, World } from "../src/cli/config.ts"
 import { desktop, deviceOf, noDevice, termux, type Device } from "../src/cli/device.ts"
@@ -540,6 +542,26 @@ try {
     assert.equal(earlier.raw, failedAttempts[0].error)
     assert.ok(earlier.file.endsWith("/turns.1.jsonl"))
     assert.ok(!JSON.stringify(after).includes("private request"))
+    const file = join(data, "tavern.db")
+    open(file).close()
+    const inspect = async () => {
+      const result = await tavern(["doctor", "--verbose", "--json"], offline)
+      return JSON.parse(result.out).checks.find((c: { check: string }) => c.check === "data")
+    }
+    const db = new Database(file)
+    db.query("insert into blob values(?, 'utf8', ?, 3, 0)").run("a".repeat(64), "我")
+    const diagnosis = await inspect()
+    assert.equal(diagnosis.mark, "warn")
+    assert.match(diagnosis.facts, /orphan_blobs=1 orphan_bytes=3/)
+    assert.match(diagnosis.facts, /auto_vacuum=2/)
+    assert.match(diagnosis.facts, /call_bytes=0/)
+    assert.equal(db.query("select 1 from blob where body='我'").values().length, 1)
+    db.exec("drop table checkpoint; drop table call_ref; drop table blob; pragma user_version=9")
+    const legacy = await inspect()
+    assert.equal(legacy.mark, "ok")
+    assert.match(legacy.facts, /page_count=/)
+    assert.equal(db.query("pragma user_version").values()[0][0], 9)
+    db.close()
   }
 
   // ---- failures in plain words, through explain: both languages, and one JSON line each -------------------------

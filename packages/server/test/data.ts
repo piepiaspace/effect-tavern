@@ -10,9 +10,72 @@ import { join } from "node:path"
 import { Database } from "bun:sqlite"
 import { DatabaseSync } from "node:sqlite"
 import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
+import { canonicalJson, hashUtf8, type CheckpointKind } from "@effect-tavern/runtime/src/storage.ts"
+import { normalizeHatDelivery } from "@effect-tavern/runtime/src/fragment.ts"
 import { open, traced } from "../src/data.ts"
 
 type Row = Record<string, unknown>
+
+// A populated pre-checkpoint file with auto_vacuum=NONE. Its on-disk addresses agree with the editor's projections.
+{
+  const dir = mkdtempSync(join(tmpdir(), "tavern-v9-checkpoints-"))
+  const file = join(dir, "tavern.db")
+  try {
+    open(file).close()
+    const old = new Database(file)
+    old.exec(`drop table checkpoint; drop table call_ref; drop table blob;
+      pragma user_version=9; pragma auto_vacuum=none; vacuum;
+      insert into hat values('tool','Tool','{"deliver":"tool"}');
+      insert into persona values('p','Me','"我"');
+      insert into card(id,title,json,updated,origin) values ('old','Old','{"title":"Old"}',0,'{"via":"file","edited":true}'),
+        ('free','Free','{}',0,'{"via":"builtin"}'),('blank','Blank','{}',0,null);
+      insert into local values('free','{"id":"local","name":"free","card":"free","tags":["mine"]}');
+    `)
+    assert.equal(old.query("pragma auto_vacuum").values()[0][0], 0)
+    old.close()
+    const d = open(file)
+    const db = new Database(file)
+    db.exec("pragma foreign_keys=on")
+    const targets: [CheckpointKind, string, unknown][] = [
+      ["card", "old", { id: "old", title: "Old" }],
+      ["local", "old", {}],
+      ["local", "blank", {}],
+      ["local", "free", { tags: ["mine"] }],
+      ["hat", "tool", normalizeHatDelivery(d.hats.list()[0])],
+      ["persona", "p", d.personas.list()[0]],
+      ["pack", "starter", createStarterPack()],
+    ]
+    for (const [kind, id, value] of targets) {
+      const standing = d.checkpoints.get(kind, id).standing
+      assert.equal(standing.status, "clean")
+      assert.equal(standing.hash, hashUtf8(canonicalJson(value)))
+    }
+    assert.equal(db.query("pragma user_version").values()[0][0], 10)
+    assert.equal(db.query("pragma auto_vacuum").values()[0][0], 2)
+    assert.equal(
+      db.query("select origin_edited from checkpoint where kind='card' and entity_id='old'").values()[0][0],
+      1,
+    )
+    assert.throws(() => d.checkpoints.get("card", "free"))
+    const hash = hashUtf8(canonicalJson({ id: "old", title: "Old" }))
+    const remove = db.query("delete from blob where hash=?")
+    assert.throws(() => remove.run(hash), /foreign key/i)
+    const story = d.stories.create("blank")
+    db.query("insert into node(story,id,json) values(?,0,'{}')").run(story)
+    const seq = db.query("insert into call(story,node,json) values(?,0,'{}')").run(story).lastInsertRowid
+    db.query("insert into call_ref values(?,?)").run(seq, hash)
+    d.cards.del("old")
+    assert.throws(() => remove.run(hash), /foreign key/i)
+    d.stories.delMany("blank", [story])
+    assert.deepEqual(db.query("select * from call_ref").all(), [])
+    assert.equal(db.query("select 1 from blob where hash=?").get(hash), null)
+    assert.equal(d.checkpoints.get("local", "blank").standing.status, "clean")
+    db.close()
+    d.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+}
 
 interface N extends L.Noded {
   text: string
@@ -655,7 +718,7 @@ data.close()
   assert.equal(retried.packs.list()[0].fragments!.find((f) => f.id === "style")!.text, "Keep me")
   retried.close()
   const upgraded = new DatabaseSync(file)
-  assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 9)
+  assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 10)
   assert.equal(upgraded.prepare("select name from sqlite_master where name = 'player'").get(), undefined)
   assert.equal(
     upgraded.prepare("select json_extract(json, '$.settlementStatus') as s from node where id = 0").get()!.s,
@@ -696,14 +759,14 @@ data.close()
   open(freshFile).close()
   const fresh = new DatabaseSync(freshFile)
   const prior = new DatabaseSync(file)
-  assert.equal((fresh.prepare("pragma user_version").get() as Row)["user_version"], 9)
+  assert.equal((fresh.prepare("pragma user_version").get() as Row)["user_version"], 10)
   assert.deepEqual(fresh.prepare("pragma table_info(story)").all(), prior.prepare("pragma table_info(story)").all())
   prior.close()
   // a library from before the workshop wrote the shelf itself: its draft table goes on open, its cards stay
   fresh.exec(`create table draft (id text primary key, json text not null);
     insert into draft (id, json) values ('x', '{}');
     insert into card (id, title, json, updated) values ('kept', '留下', '{}', 0);
-    pragma user_version = 6`)
+    drop table checkpoint; drop table call_ref; drop table blob; pragma user_version = 6`)
   fresh.close()
   open(freshFile).close()
   const stepped = new DatabaseSync(freshFile)
@@ -713,9 +776,9 @@ data.close()
       stepped.prepare("select name from sqlite_master where name = 'draft'").get(),
       stepped.prepare("select title from card where id = 'kept'").get()!["title"],
     ],
-    [9, undefined, "留下"],
+    [10, undefined, "留下"],
   )
-  stepped.exec("pragma user_version = 10")
+  stepped.exec("pragma user_version = 11")
   stepped.close()
   assert.throws(() => open(freshFile), /newer than supported/)
   rmSync(dir, { recursive: true, force: true })
@@ -744,7 +807,9 @@ data.close()
     const file = join(dir, name)
     open(file).close()
     const old = new DatabaseSync(file)
-    old.exec("delete from pack; drop table pack_default; pragma user_version = 8")
+    old.exec(
+      "delete from pack; drop table pack_default; drop table checkpoint; drop table call_ref; drop table blob; pragma user_version = 8",
+    )
     for (const [id, json] of Object.entries(packs))
       old
         .prepare("insert into pack (id, name, json) values (?, ?, ?)")
