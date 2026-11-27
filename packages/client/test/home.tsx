@@ -155,11 +155,27 @@ void (async () => {
         "clicking prev figure switches back to projector-rosette-04",
       )
     }
-    // the stage turns its figures on a sideways stroke, and says so: the page's swipe (swipe.ts) leaves it alone
+    // the stage leaves touch strokes alone so swipe navigation never collides with the mechanism; tapping the
+    // telemetry index pill steps cleanly to the next figure without touch drag gestures
+    const stage = document.querySelector<HTMLElement>(".home-mech-stage")
     check(
-      document.querySelector<HTMLElement>(".home-mech-stage")?.dataset["swipe"] === "own",
-      "the mechanism's stage keeps sideways strokes for itself",
+      stage !== null && stage.dataset["swipe"] === undefined,
+      "the mechanism's stage does not capture horizontal touch swipes",
     )
+    const indexBtn = document.querySelector<HTMLButtonElement>(".home-mech-index")
+    check(indexBtn !== null, "telemetry index renders as a clean step button")
+    if (indexBtn && prevFig) {
+      indexBtn.click()
+      check(
+        await until(() => emblem()?.getAttribute("data-brand") === "cinema-astrolabe-01"),
+        "tapping telemetry index steps to cinema-astrolabe-01",
+      )
+      prevFig.click()
+      check(
+        await until(() => emblem()?.getAttribute("data-brand") === "projector-rosette-04"),
+        "clicking prev figure switches back to projector-rosette-04",
+      )
+    }
     const soundToggle = document.querySelector<HTMLButtonElement>(".home-mech-sound")
     check(soundToggle !== null, "mechanical sound toggle should render")
     const toggle = document.querySelector<HTMLButtonElement>(".home-mech-toggle:not(.home-mech-sound)")
@@ -204,8 +220,8 @@ void (async () => {
       "mobile drawer should not show workshop button in its top bar",
     )
     check(
-      document.querySelector(`.drawer .side-top-end button[aria-label="${t("side.manageCards")}"]`) === null,
-      "mobile drawer should not show manage-cards button in its top bar",
+      document.querySelector(`.drawer .side-top-end button[aria-label="${t("cards.importFile")}"]`) !== null,
+      "mobile drawer shelf header exposes direct card import button",
     )
     document.querySelector<HTMLButtonElement>(`.drawer button[aria-label="${t("common.close")}"]`)!.click()
     await until(() => document.querySelector(".drawer") === null)
@@ -239,9 +255,43 @@ void (async () => {
       b.textContent?.trim(),
     )
     check(
-      homeActions.includes(t("side.workshop")) && homeActions.includes(t("side.manageCards")),
-      `home actions should expose workshop and manage-cards (got [${homeActions.join(", ")}])`,
+      homeActions.includes(t("side.workshop")) && homeActions.includes(t("cards.importFile")),
+      `home actions should expose import-card and workshop (got [${homeActions.join(", ")}])`,
     )
+    document.querySelector<HTMLButtonElement>(".home-actions button")!.click()
+    check(
+      await until(() => document.querySelector(".import-card") !== null),
+      "tapping Import card on Home opens the shared import dialog directly",
+    )
+    await quiet()
+    const modalEl = document.querySelector<HTMLElement>(".modal")!
+    const modalRect = modalEl.getBoundingClientRect()
+    const closeBtn = modalEl.querySelector<HTMLButtonElement>(`button[aria-label="${t("common.close")}"]`)!
+    const closeRect = closeBtn.getBoundingClientRect()
+    const linkInputBox = modalEl
+      .querySelector<HTMLElement>("#card-link")!
+      .closest(".input-box")!
+      .getBoundingClientRect()
+    const importSubmitBox = [...modalEl.querySelectorAll<HTMLButtonElement>("button")]
+      .find((b) => b.textContent?.trim() === t("common.import"))!
+      .getBoundingClientRect()
+    check(
+      getComputedStyle(modalEl).position === "fixed" &&
+        Math.abs(modalRect.left + modalRect.right - innerWidth) < 2 &&
+        modalRect.width >= 300 &&
+        modalRect.width <= 400,
+      `ImportCardDialog outside .settings renders as a centered modal card: ${JSON.stringify(modalRect)} in ${innerWidth}px`,
+    )
+    check(
+      closeRect.width <= 32 && closeRect.height <= 32,
+      `ImportCardDialog close button uses compact .icon.sm size: ${closeRect.width}x${closeRect.height}`,
+    )
+    check(
+      Math.abs(linkInputBox.top - importSubmitBox.top) < 8 && importSubmitBox.left >= linkInputBox.right,
+      `ImportCardDialog link row lays out horizontally: input=${JSON.stringify(linkInputBox)} btn=${JSON.stringify(importSubmitBox)}`,
+    )
+    closeBtn.click()
+    await until(() => document.querySelector(".import-card") === null)
 
     // 5. Starting a fresh free chat from home: submits text, lazily creates card + story in reader, sends act.
     registry.set(cards, [])

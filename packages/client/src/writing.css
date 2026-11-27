@@ -10,6 +10,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   font-size: var(--text-body);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--space-3)), transparent);
 }
 .wpage :is(h1, h2, h3, h4, p) {
   margin: 0;

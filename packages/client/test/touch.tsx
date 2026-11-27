@@ -21,20 +21,20 @@ import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import type { Provider } from "@effect-tavern/provider/src/providers.ts"
 import * as L from "@effect-tavern/runtime/src/log.ts"
 import { cardView } from "@effect-tavern/runtime/src/session.ts"
-import { App } from "../src/App.tsx"
+import { App, chunks } from "../src/App.tsx"
 import { openManager, openPicker } from "../src/dialogs.tsx"
 import { flip, locale } from "../src/i18n.ts"
 import { Close, Snippets } from "../src/icons.tsx"
 import { Failed } from "../src/readings.tsx"
 import { close as closePage, open as openPage } from "../src/pages.ts"
-import { openSettings } from "../src/settings-navigation.ts"
+import { InstallKeys } from "../src/side.tsx"
 import { card, cards, log, page, providers, registry, routing, stories, tabs, type StoryRow } from "../src/store.ts"
 import { timelineNode } from "./fixtures.ts"
 import { quiet, tracked, until } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
-bridge.begin()
+bridge.begin({ attribution: { fallbackFlashes: false } })
 if (locale() !== "zh-CN") flip()
 
 const coarse = matchMedia("(pointer: coarse)").matches
@@ -338,16 +338,65 @@ const run = async () => {
   unmount()
   tagRows.remove()
 
-  // a lazy page's first entry: home stays until the page is there (each change the DOM goes through is looked at)
+  // a lazy page's first entry: home stays until the page is there (each change the DOM goes through is looked at), and
+  // a >200ms chunk load triggered by a click shows immediate pending state without a SILENT_HOLD diagnostic
+  const slowChunk = (kind: "workshop" | "settings", ms: number) => {
+    const base = chunks[kind]!
+    chunks[kind] = {
+      preload: () => new Promise<void>((r) => setTimeout(r, ms)).then(() => base.preload()),
+    }
+  }
+  slowChunk("workshop", 250)
+  slowChunk("settings", 250)
+  const stage = document.querySelector<HTMLElement>(".stage")!
+  const workshopDoor = [...document.querySelectorAll<HTMLButtonElement>(".home-card")].find((b) =>
+    b.textContent?.includes("制卡工坊"),
+  )!
+  workshopDoor.click()
+  check(
+    await until(
+      () =>
+        stage.dataset.loading === "true" &&
+        stage.getAttribute("aria-busy") === "true" &&
+        Boolean(document.querySelector(".home-page")) &&
+        !document.querySelector(".workshop-page"),
+    ),
+    "stage marks busy while workshop chunk loads over home",
+  )
+  check(await until(() => document.querySelector(".workshop-page")), `the workshop opens: ${at()}`)
+  check(stage.dataset.loading === undefined, "stage clears busy once workshop lands")
+  await quiet()
+  closePage()
+  await until(() => at() === '"home"')
+  await quiet()
+
+  const keysHost = document.createElement("div")
+  document.body.append(keysHost)
+  const unmountKeys = render(() => <InstallKeys />, keysHost)
+  const settingsBtn = keysHost.querySelector<HTMLButtonElement>('button[aria-label="设置"]')!
   const empty: string[] = []
   const watch = new MutationObserver(() => {
     if (!document.querySelector(".home-page, .settings")) empty.push(at())
   })
   watch.observe(document.getElementById("root")!, { childList: true, subtree: true })
-  openSettings("personas")
+  settingsBtn.click()
+  check(
+    await until(
+      () =>
+        settingsBtn.getAttribute("aria-pressed") === "true" &&
+        stage.dataset.loading === "true" &&
+        stage.getAttribute("aria-busy") === "true" &&
+        Boolean(document.querySelector(".home-page")) &&
+        !document.querySelector(".settings"),
+    ),
+    "settings key flips aria-pressed and stage marks busy immediately during chunk hold",
+  )
   check(await until(() => document.querySelector(".settings")), `the settings open: ${at()}`)
   watch.disconnect()
   check(empty.length === 0, `the stage was left empty on the way: ${JSON.stringify(empty)}`)
+  check(stage.dataset.loading === undefined, "stage clears busy once settings lands")
+  unmountKeys()
+  keysHost.remove()
   await quiet()
   closePage()
   await until(() => at() === '"home"')

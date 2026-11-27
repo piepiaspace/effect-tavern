@@ -5,10 +5,10 @@
 import { render } from "@solidjs/web"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import { createSignal } from "solid-js"
-import { Cards } from "../src/cards.tsx"
+import { Cards, ImportCardDialog } from "../src/cards.tsx"
 import { Confirm } from "../src/controls.tsx"
 import { flip, locale } from "../src/i18n.ts"
-import type { DepotRow, DepotView, ShelfCard } from "../src/store.ts"
+import { registry, stories, type DepotRow, type DepotView, type ShelfCard } from "../src/store.ts"
 import "../src/app.css"
 import { quiet, tracked } from "./settle.ts"
 
@@ -63,17 +63,18 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
   }
   if (method === "DELETE" && path.startsWith("/cards/")) {
     const id = decodeURIComponent(path.slice(7))
-    if (id === "busy") return refuse(409, "card-in-use", "card busy has 1 story")
     shelf = shelf.filter((c) => c.id !== id)
     return Response.json(shelf)
   }
   if (method === "GET" && path.endsWith("/export.yaml")) {
     const id = decodeURIComponent(path.slice(7, -12))
-    if (!shelf.some((c) => c.id === id)) return refuse(404, "no-card", `no card ${id}`)
+    const found = shelf.find((c) => c.id === id)
+    if (!found) return refuse(404, "no-card", `no card ${id}`)
+    const base = (found.title || id).replace(/[\\/:*?"<>|]+/g, " ").trim() || id
     return new Response(`id: ${id}\n`, {
       headers: {
         "content-type": "application/yaml; charset=utf-8",
-        "content-disposition": `attachment; filename="${id}.yaml"; filename*=UTF-8''${encodeURIComponent(`${id}.yaml`)}`,
+        "content-disposition": `attachment; filename="card.yaml"; filename*=UTF-8''${encodeURIComponent(`${base}.yaml`)}`,
       },
     })
   }
@@ -110,6 +111,7 @@ render(
       {/* the page's first column, so the list and the detail sit in the columns they have on the page */}
       <nav class="nav-card" />
       <Cards picked={picked()} onPick={(id) => (setPicked(id), setPane("detail"))} onBack={() => setPane("list")} />
+      <ImportCardDialog />
       <Confirm />
     </div>
   ),
@@ -307,7 +309,7 @@ const run = async () => {
   await press("重试")
   check(rows()[0] === "一某作者1.1已安装第一张" && !key("重试"), `Retry reads it again: ${rows().join("|")}`)
 
-  // back on the shelf: each card says where it came from; one with stories stays, one without goes
+  // back on the shelf: each card says where it came from; deleting a card with stories warns of the story count and removes both
   await toList()
   check(
     text(".master-list .p-row").join("|") === "已安装2|样例卡库卡库",
@@ -316,19 +318,34 @@ const run = async () => {
   await press("已安装2")
   check(rows().join("|") === "甲二文件|一样例卡库1.1", `the shelf with origins: ${rows().join("|")}`)
   shelf = [...shelf, { id: "busy", title: "有故事", origin: { via: "workshop" } }]
+  registry.set(stories, {
+    current: 1,
+    stories: [
+      {
+        id: 1,
+        card: "busy",
+        title: "旧档",
+        starred: false,
+        persona: null,
+        updated: 1,
+        turns: 2,
+        last: null,
+        busy: null,
+      },
+    ],
+  })
   await give("gamma.yaml", "id: gamma\ntitle: 丙\n") // any write reads the shelf again
   check(rows().includes("有故事工坊"), `a workshop card says so: ${rows().join("|")}`)
   await press("删除卡片", row("有故事"))
   check(
-    text(".confirm p")[0] === "删除卡片「有故事」？" && key("删除"),
-    `a delete asks: ${text(".confirm").join(" | ")}`,
+    text(".confirm p")[0] === "删除卡片「有故事」及其1个故事？" && key("删除"),
+    `a delete names its story count: ${text(".confirm").join(" | ")}`,
   )
   await answer("删除")
   check(
-    text(".refusal span")[0] === "这张卡还有故事",
-    `a card with stories is refused: ${text(".refusal").join(" | ")}`,
+    !rows().some((r) => r.startsWith("有故事")) && (registry.get(stories)?.stories.length ?? 0) === 0,
+    `a card with stories is deleted cleanly along with its stories: ${rows().join("|")}`,
   )
-  check(rows().includes("有故事工坊"), "and stays")
   await press("删除卡片", row("丙"))
   await answer("删除")
   check(
@@ -368,13 +385,28 @@ const run = async () => {
     `a 404 export never reaches save and shows its error: ${text(".refusal").join(" | ")}`,
   )
   shelf = [missing, ...shelf]
-  await press("导出卡片", row("甲二"))
+  let releaseSave: (() => void) | undefined
+  ;(globalThis as { tavernHost?: unknown }).tavernHost = {
+    save: async (file: Blob, name: string) => {
+      saved.push({ name, text: await file.text() })
+      if (releaseSave) await new Promise<void>((r) => (releaseSave = r))
+      return kept
+    },
+  }
+  releaseSave = () => {}
+  const exportBtn = key("导出卡片", row("甲二"))!
+  exportBtn.click()
+  exportBtn.click() // a rapid second tap while the save picker is opening/open must not queue a second save
+  await quiet()
+  releaseSave()
+  releaseSave = undefined
+  await quiet()
   check(
     saved.length === 1 &&
-      saved[0].name === "alpha.yaml" &&
+      saved[0].name === "甲二.yaml" &&
       saved[0].text === "id: alpha\n" &&
       !document.querySelector(".refusal"),
-    `a valid export hands bytes and filename to the host: ${JSON.stringify(saved)}`,
+    `a valid export hands bytes and title-based filename once to the host: ${JSON.stringify(saved)}`,
   )
   kept = false
   await press("导出卡片", row("甲二"))

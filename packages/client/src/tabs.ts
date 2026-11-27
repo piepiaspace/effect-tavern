@@ -157,18 +157,18 @@ export const forget = (ids: readonly Id[]): void => {
   })
 }
 
-/** A card removed from the shelf (it had no story left). A tab on its page is a home tab; a story's tab that was
- *  browsing it (pages.ts `showCard` keeps the story) is back on its story's own card, the removed card's page and
- *  manuscript out of its stack. The settings page stays up either way: the removal was made from it. A tab that was in
- *  the workshop, on its list or on the card, is on the list. */
-export const shed = (card: string): void => {
+/** A card removed from the shelf, together with its `deletedStories`. A tab on its page or on one of its deleted
+ *  stories returns to `settings` (when removed there), `workshop` (when removed from the workshop or manuscript), or
+ *  `home`; another card's story tab that was browsing `card` returns to its own story's card. */
+export const shed = (card: string, deletedStories: readonly Id[] = []): void => {
   const s = now()
   const rows = registry.get(stories)?.stories ?? []
   registry.set(tabs, {
     ...s,
     list: s.list.map((t): Tab => {
-      if (t.card !== card) return t
-      if (t.story === null) {
+      const storyGone = t.story !== null && deletedStories.includes(t.story)
+      if (t.card !== card && !storyGone) return t
+      if (t.story === null || storyGone) {
         const page: Page =
           t.page === "settings" ? "settings" : t.page === "workshop" || t.page === "manuscript" ? "workshop" : "home"
         return { id: t.id, story: null, card: null, page, under: page === "home" ? [] : ["home"] }

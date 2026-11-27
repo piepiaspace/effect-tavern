@@ -9,6 +9,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   font-size: var(--text-body);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--space-3)), transparent);
 }
 /* no bar holds the top of this page or of the Writing page (writing.css), so where the page lies under the status bar
    (an iPhone) its text would scroll up behind the clock: a strip of the page's surface, as tall as the safe area,
@@ -60,6 +61,7 @@
   @container stage (width >= 52rem) {
     .manifest {
       overflow: hidden;
+      mask-image: none;
     }
     /* two columns: the name, the introduction and the chips, and under them the openings' list, on the left; the
      opening on the right. The list's own column waits for a stage wide enough to give the prose its measure beside
@@ -147,10 +149,12 @@
   user-select: none;
   -webkit-user-select: none;
 }
-.manifest .title .icon {
+.manifest .title > .icon:first-child {
   margin-left: calc((var(--icon) - var(--control)) / 2);
 }
 .manifest h1 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: var(--text-title);
   font-weight: 650;
@@ -159,6 +163,21 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.manifest .title-actions {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-half);
+  color: var(--ink-2);
+}
+.manifest .title-actions .icon.sm {
+  width: var(--control-sm);
+  height: var(--control-sm);
+}
+.manifest .title-actions .icon.sm svg {
+  width: var(--icon-sm);
+  height: var(--icon-sm);
 }
 /* the introduction: prose, so it wraps, and past its height it scrolls; its height is its text's */
 .manifest .intro {

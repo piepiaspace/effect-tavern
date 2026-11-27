@@ -16,14 +16,16 @@ import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import type { JSX } from "@solidjs/web"
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
-import { ask, Confirm, dialogHandle, Modal } from "./controls.tsx"
-import { Back, Plus, Stack, Trash } from "./icons.tsx"
+import { askRemoveCard, openImportCard } from "./cards.tsx"
+import { ask, dialogHandle, Modal } from "./controls.tsx"
+import { host } from "./host.ts"
+import { Back, Export, Import, Plus, Stack, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./manuscript.ts"
 import { close, editCard, guardClose, newCard, showCard } from "./pages.ts"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { activeOf, cards, characterCards, focus, registry, tabs } from "./store.ts"
-import { saveCard, wholeCard } from "./wire.ts"
+import { cardFile, downloadHref, onDownload, saveCard, wholeCard } from "./wire.ts"
 
 /** How long after the last keystroke the card is written. */
 const DELAY = 800
@@ -151,6 +153,10 @@ export const Workshop = () => {
         <h1>{t("side.workshop")}</h1>
         <span class="workshop-end">
           <Show when={list().length}>
+            <button type="button" class="btn" onClick={() => openImportCard()}>
+              <Import aria-hidden="true" />
+              <span>{t("cards.importFile")}</span>
+            </button>
             <NewCard />
           </Show>
         </span>
@@ -161,18 +167,43 @@ export const Workshop = () => {
           fallback={
             <div class="workshop-none">
               <p>{t("workshop.none")}</p>
-              <NewCard primary />
+              <div class="workshop-none-actions">
+                <NewCard primary />
+                <button type="button" class="btn" onClick={() => openImportCard()}>
+                  <Import aria-hidden="true" />
+                  <span>{t("cards.importFile")}</span>
+                </button>
+              </div>
             </div>
           }
         >
           <ul class="workshop-list">
             <For each={list()} keyed={(c) => c.id}>
               {(c) => (
-                <li>
-                  <button type="button" class="tile workshop-card" onClick={() => void editCard(c().id)}>
+                <li class="tile workshop-item">
+                  <button type="button" class="workshop-card" onClick={() => void editCard(c().id)}>
                     <span class="title">{c().title}</span>
                     <Show when={c().summary}>{(s) => <span class="summary">{s()}</span>}</Show>
                   </button>
+                  <span class="workshop-item-actions">
+                    <a
+                      class="icon sm"
+                      href={cardFile(c().id)}
+                      download
+                      aria-label={t("cards.exportCard")}
+                      onClick={(e) => void onDownload(e)?.catch(() => {})}
+                    >
+                      <Export />
+                    </a>
+                    <button
+                      type="button"
+                      class="icon sm"
+                      aria-label={t("cards.removeCard")}
+                      onClick={() => askRemoveCard(c())}
+                    >
+                      <Trash />
+                    </button>
+                  </span>
                 </li>
               )}
             </For>
@@ -350,14 +381,52 @@ export const ManuscriptPage = () => {
           <span class="workshop-standing" role="status" aria-busy={busy() ? "true" : "false"}>
             {standing().is === "saving" ? t("workshop.saving") : standing().is === "saved" ? t("workshop.saved") : ""}
           </span>
+          <Show when={here()?.desk && at()}>
+            {(id) => (
+              <>
+                <a
+                  class="icon sm"
+                  href={cardFile(id())}
+                  download
+                  aria-label={t("cards.exportCard")}
+                  onClick={(e) => {
+                    if (!host()) return
+                    e.preventDefault()
+                    const href = e.currentTarget.href
+                    void (async () => {
+                      const d = here()?.desk
+                      if (d && !(await d.flush())) return
+                      await downloadHref(href)
+                    })().catch(() => {})
+                  }}
+                >
+                  <Export />
+                </a>
+                <button
+                  type="button"
+                  class="icon sm"
+                  aria-label={t("cards.removeCard")}
+                  onClick={() =>
+                    askRemoveCard(
+                      { id: id(), title: manuscript().title.trim() || id() },
+                      { before: () => here()?.desk?.letGo() },
+                    )
+                  }
+                >
+                  <Trash />
+                </button>
+              </>
+            )}
+          </Show>
           <button
             type="button"
             class="btn"
+            aria-label={t("promptTree.preview")}
             disabled={!here()?.desk}
             onClick={() => void leave((cardId) => openPromptTree({ cardId, mode: "sandbox" }))}
           >
             <Stack aria-hidden="true" />
-            <span>{t("promptTree.preview")}</span>
+            <span class="workshop-preview-label">{t("promptTree.preview")}</span>
           </button>
           <button
             type="button"
@@ -516,7 +585,6 @@ export const ManuscriptPage = () => {
           )}
         </Show>
       </Modal>
-      <Confirm />
     </div>
   )
 }

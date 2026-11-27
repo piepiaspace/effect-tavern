@@ -30,7 +30,7 @@ export const HomeMechanism = (props: {
   total: number
   /** Switch direction for directional entrance animation ("next" | "prev" | "none"). */
   dir: "next" | "prev" | "none"
-  /** Called on touch horizontal swipe to switch figures. */
+  /** Step to the previous or next figure (e.g. from the telemetry index pill). */
   onStep: (delta: -1 | 1) => void
   /** Incremented on each keystroke in the home composer to nudge the mechanism forward. */
   pulse: number
@@ -51,7 +51,6 @@ export const HomeMechanism = (props: {
   const watched = createMemo(() => active() && !covered())
 
   let rootEl: HTMLDivElement | undefined
-  let stageEl: HTMLDivElement | undefined
   let frameEl: HTMLDivElement | undefined
   let reticleSvg: SVGSVGElement | undefined
   let vernierArc: SVGGElement | undefined
@@ -96,14 +95,10 @@ export const HomeMechanism = (props: {
   }
 
   const clamp1 = (v: number) => Math.max(-1, Math.min(1, v))
-  /** The one input the mechanism follows: a mouse over the page, or a finger on the stage while it presses. It aims the
-   *  vernier and the dial, moves the figure's glints and warms the sound; the page's sheen follows it. (px, py) is
-   *  taken from the stage's middle for a finger, where it touches, and from about the stage's place on the page for a
-   *  mouse. */
+  /** Desktop mouse parallax: aims the vernier and the dial, moves the figure's glints, warms the sound, and shifts
+   *  the page's sheen. Touch pointers leave the mechanism passive so swipes never collide with navigation. */
   let pageEl: HTMLElement | null = null
   const page = () => (pageEl ??= rootEl?.closest<HTMLElement>(".home-page") ?? null)
-  /** `box` is what the pointer is aimed within (the stage for a finger, the page for a mouse) and `cy` the height in it
-   *  taken as the middle. */
   const aim = (e: PointerEvent, box: HTMLElement | null | undefined, cy: number) => {
     const r = box?.getBoundingClientRect()
     if (!r?.width || !r.height) return
@@ -128,23 +123,6 @@ export const HomeMechanism = (props: {
     page()?.style.setProperty("--home-spot", "0")
   }
 
-  // A finger (touch, pen) on the stage is what a mouse over the page is (`aim`), for as long as it presses: the
-  // mechanism turns toward it, opens its iris, lights its hairlines and speeds up as under a hovering mouse, and the
-  // press itself kicks the wheel as a keystroke does. The stage and its drawing frame stay where they are. A stroke
-  // that went sideways turns to the next or previous figure on release; a vertical one is the page's scroll, which
-  // cancels the press. The stage captures the pointer (a pen has no implicit capture, a finger does), and the press
-  // also ends whenever no release can reach it: the figure (and with it the stage) replaced, the mechanism covered or
-  // no longer watched.
-  const press = { id: -1, x0: 0, y0: 0, dx: 0, locked: "" as "" | "x" | "y" }
-  const letGo = () => {
-    if (press.id === -1) return
-    press.id = -1
-    phys.hovered = false
-    rootEl?.removeAttribute("data-pressed")
-    unaim()
-    if (shouldRun()) props.sound.iris(false)
-  }
-
   let wake: (() => void) | undefined
   let halt: (() => void) | undefined
   let bindFigure: ((fig: HomeFigure | null) => void) | undefined
@@ -159,7 +137,6 @@ export const HomeMechanism = (props: {
   createEffect(
     () => props.figure,
     (fig, prev) => {
-      letGo()
       activeFigure = fig
       if (fig) {
         props.sound.setProfile(fig.sound ?? DEFAULT_SOUND_PROFILE)
@@ -202,7 +179,10 @@ export const HomeMechanism = (props: {
   )
 
   createEffect(watched, (w) => {
-    if (!w) letGo()
+    if (!w) {
+      phys.hovered = false
+      unaim()
+    }
     phys.watched = w
     syncAudio()
     if (w) wake?.()
@@ -371,42 +351,6 @@ export const HomeMechanism = (props: {
     setPaused((v) => !v)
   }
 
-  const onStagePointerDown = (e: PointerEvent) => {
-    if (e.pointerType === "mouse" || press.id !== -1) return
-    press.id = e.pointerId
-    press.x0 = e.clientX
-    press.y0 = e.clientY
-    press.dx = 0
-    press.locked = ""
-    try {
-      stageEl?.setPointerCapture(e.pointerId)
-    } catch {} // a pointer no longer down (or a synthetic one) cannot be captured; its release still ends the press
-    phys.hovered = true
-    rootEl?.setAttribute("data-pressed", "")
-    if (!phys.paused) phys.vel = Math.min(phys.vel + 18, 65)
-    aim(e, stageEl, 0.5)
-    if (shouldRun()) props.sound.iris(true)
-  }
-  const onStagePointerMove = (e: PointerEvent) => {
-    if (e.pointerId !== press.id) return
-    aim(e, stageEl, 0.5)
-    const dx = e.clientX - press.x0
-    const dy = e.clientY - press.y0
-    if (!press.locked && (Math.abs(dx) >= 8 || Math.abs(dy) >= 8))
-      press.locked = Math.abs(dx) > Math.abs(dy) * 1.25 ? "x" : "y"
-    press.dx = dx
-  }
-  const onStagePointerEnd = (e: PointerEvent) => {
-    if (e.pointerId !== press.id) return
-    const stroke = press.locked === "x" ? press.dx : 0
-    letGo()
-    if (Math.abs(stroke) >= 36) props.onStep(stroke < 0 ? 1 : -1)
-  }
-  // a cancel (the page's scroll took it) or a capture lost without a release
-  const onStagePointerCancel = (e: PointerEvent) => {
-    if (e.pointerId === press.id) letGo()
-  }
-
   const counterText = () => `${String(props.index + 1).padStart(2, "0")}/${String(props.total).padStart(2, "0")}`
 
   return (
@@ -428,17 +372,7 @@ export const HomeMechanism = (props: {
     >
       <Show when={props.figure} keyed fallback={<div class="home-mech-stage" />}>
         {(fig) => (
-          <div
-            ref={(el) => (stageEl = el)}
-            class="home-mech-stage"
-            data-dir={props.dir}
-            data-swipe="own" // a sideways stroke here turns the figure: the page's swipe (swipe.ts) leaves it alone
-            onPointerDown={onStagePointerDown}
-            onPointerMove={onStagePointerMove}
-            onPointerUp={onStagePointerEnd}
-            onPointerCancel={onStagePointerCancel}
-            onLostPointerCapture={onStagePointerCancel}
-          >
+          <div class="home-mech-stage" data-dir={props.dir}>
             <HairlineFrame spec={fig.frame} ref={(el) => (reticleSvg = el)} onVernier={(el) => (vernierArc = el)}>
               {fig.ExtraHairline?.()}
             </HairlineFrame>
@@ -452,9 +386,14 @@ export const HomeMechanism = (props: {
       {/* Subtle hairline telemetry + Web Audio sound toggle + WCAG 2.2.2 pause/play control */}
       <div class="home-mech-bar">
         <Show when={props.total > 1}>
-          <span class="home-mech-index" aria-hidden="true">
+          <button
+            type="button"
+            class="home-mech-index"
+            aria-label={t("home.nextFigure")}
+            onClick={() => props.onStep(1)}
+          >
             {counterText()}
-          </span>
+          </button>
           <span class="home-mech-sep" aria-hidden="true" />
         </Show>
         <span class="home-mech-readout" ref={(el) => (readoutEl = el)} aria-hidden="true">

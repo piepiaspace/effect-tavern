@@ -159,6 +159,7 @@ const nameless = fillView(
 // its own card, since the shared one is swapped out later in the run
 const fillCard = {
   id: "fills",
+  rules: { fields: [], actions: [] },
   layer: { products: [{ id: "diary", role: "theater", shape: { kind: "text" } }], names: {} },
 } as unknown as CardView
 const fillNode = {

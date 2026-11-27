@@ -389,11 +389,16 @@ export const newStory = async (card: string): Promise<boolean> => {
   })
   return landed
 }
-/** A card off the shelf, with the tabs that were on its page (it has no story left, or the server refuses). */
+/** A card off the shelf, together with its stories and any tabs that were on it. */
 export const removeCard = async (id: string): Promise<void> => {
+  const deleted = (registry.get(stories)?.stories ?? []).filter((s) => s.card === id).map((s) => s.id)
+  const was = tab().story
   await wire.removeCard(id)
-  shed(id)
-  await wire.refreshActiveCard().catch(() => {}) // a story's tab that was browsing it is on its own card again
+  if (deleted.length) reading.drop(deleted)
+  shed(id, deleted)
+  registry.update(stories, (s) => (s ? { ...s, current: tab().story } : s))
+  if (was !== null && deleted.includes(was)) await navigate(() => reading.activate(null))
+  else await wire.refreshActiveCard().catch(() => {}) // a story's tab that was browsing it is on its own card again
 }
 export const deleteStory = async (id: number): Promise<void> => onDelete(await wire.deleteStory(id), [id])
 export const deleteStories = async (ids: readonly number[]): Promise<void> =>

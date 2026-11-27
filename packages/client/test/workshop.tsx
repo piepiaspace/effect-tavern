@@ -8,6 +8,8 @@ import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { Show } from "solid-js"
 import { read } from "../src/bridge.ts"
+import { ImportCardDialog } from "../src/cards.tsx"
+import { Confirm } from "../src/controls.tsx"
 import { flip, locale } from "../src/i18n.ts"
 import { close, editCard, onKey, open } from "../src/pages.ts"
 import { page, type ShelfCard } from "../src/store.ts"
@@ -74,6 +76,31 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
     origins.set(card.id, { via: "workshop" })
     return Response.json({ card: shelf().find((c) => c.id === card.id), cards: shelf() })
   }
+  if (method === "POST" && path.startsWith("/cards")) {
+    const id = /^id: (\S+)/m.exec(body)?.[1]
+    if (!id) return Response.json({ error: "error schema $: no id", code: "card-invalid" }, { status: 400 })
+    const card = blank(id, /^title: (.+)/m.exec(body)?.[1] ?? id)
+    put(card)
+    origins.set(card.id, { via: "file" })
+    return Response.json({ card: shelf().find((c) => c.id === card.id), cards: shelf() })
+  }
+  if (method === "DELETE" && path.startsWith("/cards/")) {
+    const id = decodeURIComponent(path.slice(7))
+    held.delete(id)
+    origins.delete(id)
+    return Response.json(shelf())
+  }
+  if (method === "GET" && path.endsWith("/export.yaml")) {
+    const id = decodeURIComponent(path.slice(7, -12))
+    const found = held.get(id)
+    if (!found) return Response.json({ error: `no card ${id}` }, { status: 404 })
+    return new Response(`id: ${id}\n`, {
+      headers: {
+        "content-type": "application/yaml; charset=utf-8",
+        "content-disposition": `attachment; filename="card.yaml"; filename*=UTF-8''${encodeURIComponent(`${found.title ?? id}.yaml`)}`,
+      },
+    })
+  }
   const whole = /^\/cards\/([^/]+)\/whole$/.exec(path)
   if (whole) {
     const id = decodeURIComponent(whole[1])
@@ -115,6 +142,8 @@ render(
       <Show when={pg() === "manuscript"}>
         <ManuscriptPage />
       </Show>
+      <ImportCardDialog />
+      <Confirm />
     </div>
   ),
   document.getElementById("root")!,
@@ -426,6 +455,27 @@ const run = async () => {
   check(
     pg() === "manuscript" && words().includes("在别处被改过了"),
     `Escape stays on ManuscriptPage showing 409 conflict notice: ${words()}`,
+  )
+
+  // Deleting a card directly from ManuscriptPage abandons unsaved edits without orphan PUTs and lands on Workshop list;
+  // Workshop list also supports direct card import.
+  const savesBeforeDelete = saves.length
+  await press("删除卡片")
+  await press("删除", document.querySelector(".confirm")!)
+  check(
+    await until(() => pg() === "workshop" && !held.has("made") && !words().includes("别处又改了一版")),
+    `deleting from ManuscriptPage returns to Workshop list and drops the card: ${words()}`,
+  )
+  check(saves.length === savesBeforeDelete, "deleting from ManuscriptPage does not flush stale edits")
+  await press("导入卡片")
+  const fileInput = document.querySelector<HTMLInputElement>('.import-card input[type="file"]')!
+  const dt = new DataTransfer()
+  dt.items.add(new File(["id: imported\ntitle: 导入卡\n"], "imported.yaml"))
+  fileInput.files = dt.files
+  fileInput.dispatchEvent(new Event("change", { bubbles: true }))
+  check(
+    await until(() => !document.querySelector(".import-card") && words().includes("导入卡")),
+    `importing directly in Workshop adds the card to the list: ${words()}`,
   )
 
   const diagnostics = bridge.end().diagnostics

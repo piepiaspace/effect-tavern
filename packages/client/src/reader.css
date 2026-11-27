@@ -48,6 +48,10 @@ body {
   display: flex;
   flex-direction: column;
 }
+.panel[data-covered="true"] {
+  visibility: hidden;
+  pointer-events: none;
+}
 .scroll {
   flex: 1;
   min-height: 0;

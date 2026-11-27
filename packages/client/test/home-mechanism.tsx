@@ -45,7 +45,7 @@ render(
       <HomeMechanism
         figure={DEFAULT_FIGURE}
         index={0}
-        total={1}
+        total={2}
         dir="none"
         onStep={(d) => void steps.push(d)}
         pulse={0}
@@ -99,8 +99,8 @@ const run = async () => {
   check(await moving(), "and the frames start again")
   await quiet()
 
-  // a finger on the stage: the mechanism aims at it and counts it a hover while it presses; a stroke sideways turns the
-  // figure on release, and the stage itself never moves with it
+  // a finger on the stage: touch presses and horizontal strokes leave the mechanism completely passive so they never
+  // collide with page swipes or trigger unwanted friction sound; stepping happens cleanly via the index pill
   const stage = document.querySelector<HTMLElement>(".home-mech-stage")!
   const r = stage.getBoundingClientRect()
   const touch = (type: string, x: number) =>
@@ -114,30 +114,22 @@ const run = async () => {
       }),
     )
   const x0 = r.left + r.width / 2
+  warmth.length = 0
   touch("pointerdown", x0)
-  touch("pointermove", x0 + 20)
   touch("pointermove", x0 + 60)
-  check(!stage.style.transform, `the stage stays put under a finger: ${stage.style.transform}`)
+  touch("pointerup", x0 + 60)
   const page = document.querySelector<HTMLElement>(".home-page")!
   const mech = document.querySelector<HTMLElement>(".home-mech")!
   const spot = () => page.style.getPropertyValue("--home-spot")
-  check(mech.hasAttribute("data-pressed") && spot() === "1", `pressed, it is a hover: ${spot()}`)
-  check((warmth.at(-1) ?? 0) > 0, `and aims right of the middle: ${warmth.join()}`)
-  touch("pointerup", x0 + 60)
-  check(steps.join() === "-1", `a stroke to the right turns to the previous figure: ${steps.join()}`)
-  check(!mech.hasAttribute("data-pressed") && spot() === "0" && warmth.at(-1) === 0, "released, it lets go")
-
-  // no release reaches a press once the window goes inactive: the press ends there, and the next one is heard
-  touch("pointerdown", x0)
-  check(mech.hasAttribute("data-pressed"), "pressed again")
-  standIn.active = false
-  check(await until(() => !mech.hasAttribute("data-pressed")), "inactive, the press ends")
-  standIn.active = true
-  check(await sounds("resume"), "and the window comes back")
-  touch("pointerdown", x0)
-  touch("pointermove", x0 + 20)
-  touch("pointerup", x0 + 20)
-  check(steps.join() === "-1", `a short one turns nothing: ${steps.join()}`)
+  check(!stage.style.transform, `the stage stays put under a finger: ${stage.style.transform}`)
+  check(!mech.hasAttribute("data-pressed") && spot() !== "1", `touch press does not light hover/spot: ${spot()}`)
+  check(
+    warmth.length === 0 && steps.length === 0,
+    `touch stroke does not aim or step: ${warmth.join()} / ${steps.join()}`,
+  )
+  document.querySelector<HTMLButtonElement>(".home-mech-index")?.click()
+  await quiet()
+  check(steps.join() === "1", `tapping the telemetry index pill steps cleanly: ${steps.join()}`)
 
   const diagnostics = bridge.end().diagnostics
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)

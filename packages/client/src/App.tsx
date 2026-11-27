@@ -16,7 +16,18 @@ import * as L from "@effect-tavern/runtime/src/log.ts"
 import type { Phase } from "@effect-tavern/runtime/src/session.ts"
 import type { JSX } from "@solidjs/web"
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createEffect, createMemo, createSignal, Errored, For, lazy, Loading, onSettled, Show } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  Errored,
+  For,
+  isPending,
+  lazy,
+  Loading,
+  onSettled,
+  Show,
+} from "solid-js"
 import { read } from "./bridge.ts"
 import { Composer } from "./composer.tsx"
 import { dust } from "./dust.ts"
@@ -92,7 +103,7 @@ const Workshop = lazy(() => import("./workshop.tsx"), { export: "Workshop" })
 const Timeline = lazy(() => import("./timeline.tsx"), { export: "Timeline" })
 const WritingPage = lazy(() => import("./writing.tsx"), { export: "WritingPage" })
 /** Each lazily loaded page's code, by the page's kind. */
-const chunks: Partial<Record<string, { preload: () => Promise<unknown> }>> = {
+export const chunks: Partial<Record<string, { preload: () => Promise<unknown> }>> = {
   card: CardPage,
   inspect: Inspect,
   "prompt-tree": PromptTreePage,
@@ -739,7 +750,7 @@ const Section = (props: { node: Node; n: number; last: boolean; view: ReturnType
   )
 }
 
-const Reader = () => {
+const Reader = (props: { covered?: boolean }) => {
   const line = read(path)
   const d = read(draft)
   const phase = read(stage)
@@ -758,7 +769,7 @@ const Reader = () => {
     return activeStoryMatchesCard(view?.id) ? view : null
   })
   return (
-    <div class="panel">
+    <div class="panel" data-covered={props.covered ? "true" : undefined} inert={props.covered}>
       <div class="scroll">
         <main>
           {/* keyed by id: a snapshot read back (after a stop) refreshes each section in place instead of rebuilding them */}
@@ -818,8 +829,8 @@ export const App = () => {
   })
   return (
     <Swipe enabled={!wide()} aria-label={t("side.swipe")}>
-      <Shell>
-        <Reader />
+      <Shell loading={isPending(() => pg())}>
+        <Reader covered={pg() !== "reader"} />
         {/* the pages fill the stage card over the reader (shell.css), each with its own head and Back; home has none */}
         <Show when={pg() === "home"}>
           <Home />

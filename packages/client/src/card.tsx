@@ -12,8 +12,9 @@ import { tokens } from "@effect-tavern/runtime/src/tokens.ts"
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
+import { askRemoveCard } from "./cards.tsx"
 import { Segment, Switch } from "./controls.tsx"
-import { Back, Change, Clue, Next, Prev, Up } from "./icons.tsx"
+import { Back, Change, Clue, Edit, Export, Next, Prev, Trash, Up } from "./icons.tsx"
 import { MediaFrame } from "./lightbox.tsx"
 import { admitsOpening, chips, firstLine, openingTags } from "./manifest.ts"
 import { activeStoryMatchesCard, galleryReadsEvent, resolveGallery } from "./media.ts"
@@ -25,6 +26,7 @@ import {
   cardTabReq,
   clearCardTab,
   close,
+  editCard,
   newStory,
   open,
   openCard,
@@ -33,10 +35,10 @@ import {
   requestCardTab,
   type CardTab,
 } from "./pages.ts"
-import { activeOf, card, log, path, routing, stories, tabs, working } from "./store.ts"
+import { activeOf, card, isFreeChat, log, path, routing, stories, tabs, working } from "./store.ts"
 import type { CardView } from "./store.ts"
 import { turn } from "./turn.ts"
-import { fetchContext, fetchDetail } from "./wire.ts"
+import { cardFile, fetchContext, fetchDetail, onDownload } from "./wire.ts"
 import { t } from "./i18n.ts"
 
 const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 })
@@ -271,6 +273,35 @@ export const CardPage = () => {
                   )}
                 </Show>
                 <h1>{c().title}</h1>
+                <Show when={!isFreeChat(c())}>
+                  <span class="title-actions">
+                    <button
+                      type="button"
+                      class="icon sm"
+                      aria-label={t("side.workshop")}
+                      onClick={() => void editCard(c().id)}
+                    >
+                      <Edit />
+                    </button>
+                    <a
+                      class="icon sm"
+                      href={cardFile(c().id)}
+                      download
+                      aria-label={t("cards.exportCard")}
+                      onClick={(e) => void onDownload(e)?.catch(() => {})}
+                    >
+                      <Export />
+                    </a>
+                    <button
+                      type="button"
+                      class="icon sm"
+                      aria-label={t("cards.removeCard")}
+                      onClick={() => askRemoveCard(c())}
+                    >
+                      <Trash />
+                    </button>
+                  </span>
+                </Show>
               </div>
               <Show when={c().summary}>
                 {(s) => (

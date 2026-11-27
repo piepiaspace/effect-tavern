@@ -279,6 +279,7 @@
   flex-direction: column;
   gap: var(--space-5);
   padding: var(--space-5) var(--space-4) calc(var(--space-6) + var(--safe-bottom));
+  mask-image: linear-gradient(to bottom, #000 calc(100% - var(--space-4)), transparent);
 }
 
 /* ── controls ── */
@@ -2036,6 +2037,8 @@
 .cards-detail .late,
 .import-card .late {
   margin: 0;
+  font-size: var(--text-footnote);
+  color: var(--ink-3);
   animation: cards-late 0s linear 250ms both;
 }
 @keyframes cards-late {

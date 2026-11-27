@@ -203,8 +203,21 @@
   }
 }
 .home-mech-index {
+  padding: 0;
   color: var(--ink-3);
+  font: inherit;
+  line-height: 1;
+  letter-spacing: inherit;
   opacity: 0.85;
+  transition: color var(--dur-2) var(--ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .home-mech-index:hover {
+    color: var(--ink);
+  }
+}
+.home-mech-index:active {
+  color: var(--ink);
 }
 .home-hairline-svg {
   position: absolute;
@@ -261,10 +274,6 @@
   .home-mech:hover .home-hairline-svg .hl-vernier {
     opacity: 1;
   }
-}
-/* a finger pressing the stage is a hover (home-mechanism.tsx `press`) */
-.home-mech[data-pressed] .home-hairline-svg :is(.hl-belt, .hl-vernier) {
-  opacity: 1;
 }
 .home-emblem-wrap {
   position: relative;

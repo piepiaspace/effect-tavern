@@ -1,6 +1,6 @@
 import type { Listing } from "@effect-tavern/runtime/src/library.ts"
 export type { Listing } from "@effect-tavern/runtime/src/library.ts"
-import { host } from "./host.ts"
+import { host, runHostSave } from "./host.ts"
 import { responseError, responseValue } from "./response.ts"
 import type { ListedModel as Listed } from "@effect-tavern/provider/src/providers.ts"
 import { readCache } from "./read-cache.ts"
@@ -285,13 +285,20 @@ export const saveCard = async (card: Card, rev: string, last = false): Promise<s
   await refreshActiveCard().catch(() => {}) // the write stands whatever becomes of this read
   return answer.rev
 }
-/** Gone from the shelf (refused with `card-in-use` while it has stories). pages.ts `removeCard` is the caller: a tab
- *  on the card goes home with it. */
+/** Gone from the shelf, together with its stories and local row. pages.ts `removeCard` cleans up open tabs. */
 export const removeCard = async (id: string): Promise<void> => {
   registry.set(cards, await got(call(`${base}/cards/${enc(id)}`, { method: "DELETE" })))
   if (registry.get(card)?.id === id) registry.set(card, null)
-  // the player's row on it went with it on the server: a card of this id that comes back starts without one
+  // the player's row and stories on it went with it on the server
   registry.update(locals, ({ [id]: _gone, ...rest }) => rest)
+  registry.update(stories, (s) =>
+    s
+      ? {
+          current: s.stories.find((r) => r.id === s.current)?.card === id ? null : s.current,
+          stories: s.stories.filter((r) => r.card !== id),
+        }
+      : s,
+  )
 }
 /** Where a card downloads from as a file: a plain link, the browser's own download. */
 export const cardFile = (id: string): string => `${base}/cards/${enc(id)}/export.yaml`
@@ -299,20 +306,22 @@ export const cardFile = (id: string): string => `${base}/cards/${enc(id)}/export
 // A file the page made (a pack, the lexicon), saved: the host seam's (host.ts), where the browser downloads it and
 // the app's host has the player pick the place.
 export { saveFile } from "./host.ts"
+/** Fetches `href` and hands its bytes and `content-disposition` filename to the standalone host's native save dialog. */
+export const downloadHref = (href: string): Promise<boolean> =>
+  runHostSave(async (h) => {
+    const r = await fetch(href)
+    if (!r.ok) throw await responseError(r)
+    const named = r.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+    return h.save(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
+  })
 /** A download link's click (`cardFile`, `exportUrl`): the browser's own download (returns `undefined`), or in the app
  *  the file fetched, checked (`!r.ok` throws `responseError` before touching the save dialog) and handed to its host
  *  under the name the server's content-disposition gives it. There the answer is whether it was saved: false when
  *  the player cancelled the picker, so whatever offered the export stays as it was. */
 export const onDownload = (e: MouseEvent & { currentTarget: HTMLAnchorElement }): Promise<boolean> | undefined => {
-  const h = host()
-  if (!h) return undefined
+  if (!host()) return undefined
   e.preventDefault()
-  const href = e.currentTarget.href
-  return fetch(href).then(async (r) => {
-    if (!r.ok) throw await responseError(r)
-    const named = r.headers.get("content-disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
-    return h.save(await r.blob(), named ? decodeURIComponent(named) : href.slice(href.lastIndexOf("/") + 1))
-  })
+  return downloadHref(e.currentTarget.href)
 }
 export const fetchDepots = async (): Promise<void> => registry.set(depots, await got(call(`${base}/depots`)))
 /** Adds a library by its address and answers the list as it now stands. */

@@ -17,14 +17,23 @@ import { ask, dialogHandle, Modal, ToList, type Pane } from "./controls.tsx"
 import { Export, Import, Sync, Trash } from "./icons.tsx"
 import { type Key, t } from "./i18n.ts"
 import { removeCard } from "./pages.ts"
-import { cards, characterCards, depots, type DepotView, type Origin } from "./store.ts"
+import {
+  cards,
+  characterCards,
+  depots,
+  registry,
+  stories,
+  type DepotView,
+  type Origin,
+  type ShelfCard,
+} from "./store.ts"
+import { coarse } from "./viewport.ts"
 import { addDepot, cardFile, importCard, importLink, onDownload, pullCard, removeDepot, viewDepot } from "./wire.ts"
 
 /** The list's first row: the shelf itself, beside the libraries. */
 export const INSTALLED = "installed"
 const REFUSED: Record<string, Key> = {
   "card-exists": "cards.exists",
-  "card-in-use": "cards.inUse",
   "card-invalid": "cards.invalid",
   "depot-unreadable": "cards.unreadable",
   "no-depot": "cards.unreadable",
@@ -34,6 +43,10 @@ const REFUSED: Record<string, Key> = {
 }
 /** What a card file is, to the picker and the drop: the two forms a card is written in. */
 const ACCEPT = [".yaml", ".yml", ".json"]
+const isAndroid = () => typeof navigator !== "undefined" && /\bAndroid\b/i.test(navigator.userAgent)
+/** Touch/Android native pickers filter by OS MIME tables where `.yaml` is often unknown or `application/octet-stream`,
+ *  greying out `.yaml` files when `accept` lists `.json`. Validate by filename here so every `.yaml`/`.yml`/`.json` can be picked. */
+const validCardFile = (f: File) => (/\.(?:ya?ml|json)$/i.test(f.name) ? null : "file-type")
 const MB = CARD_BYTES / (1024 * 1024)
 type Note = { text: string; lines?: string }
 /** A refusal in the client's words by its code, and under a card that failed the gate the lines it failed on. */
@@ -46,7 +59,7 @@ const worded = (e: unknown): Note => {
   }
 }
 /** One card on its way in, from a file or a link: what to call it when asking, and the import itself. */
-type Arrival = { name: string; run: (replace: boolean) => Promise<unknown> }
+type Arrival = { name: string; run: (replace: boolean) => Promise<ShelfCard> }
 const codeOf = (e: unknown): string | undefined =>
   e instanceof Error && "code" in e && typeof e.code === "string" ? e.code : undefined
 const TAKE: Record<DepotView["entries"][number]["state"], Key> = {
@@ -55,6 +68,164 @@ const TAKE: Record<DepotView["entries"][number]["state"], Key> = {
   update: "cards.update",
   taken: "cards.replace",
 }
+
+/** Confirms deleting a card (noting its story count when any exist) and removes the card with its stories. */
+export const askRemoveCard = (
+  c: { id: string; title: string },
+  options?: { before?: () => void; onDone?: () => void; onFail?: (e: unknown) => void },
+): void => {
+  const count = (registry.get(stories)?.stories ?? []).filter((s) => s.card === c.id).length
+  const prompt =
+    count > 0
+      ? t("cards.confirmRemoveCardStories", { name: c.title, n: count })
+      : t("cards.confirmRemoveCard", { name: c.title })
+  ask(prompt, () => {
+    options?.before?.()
+    void removeCard(c.id).then(
+      () => options?.onDone?.(),
+      (e) => options?.onFail?.(e),
+    )
+  })
+}
+
+// The shared import dialog: opened from the shelf, home, workshop, or settings. One card by file or by direct link;
+// an existing id asks to replace in place. Singleton-guarded so mounting in Shell and standalone pages never collides.
+const importer = dialogHandle()
+const [importUrl, setImportUrl] = createSignal("")
+const [asking, setAsking] = createSignal<Arrival | null>(null)
+const [refusedImport, setRefusedImport] = createSignal<Note | null>(null)
+const [importing, setImporting] = createSignal(false)
+let importBusy = false
+let onImportedCard: ((card: ShelfCard) => void) | undefined
+
+const settleImport = () => {
+  setAsking(null)
+  setRefusedImport(null)
+}
+const bringCard = (card: Arrival, replace = false) => {
+  if (importBusy) return
+  settleImport()
+  importBusy = true
+  setImporting(true)
+  void card
+    .run(replace)
+    .then(
+      (row) => {
+        setImportUrl("")
+        const cb = onImportedCard
+        onImportedCard = undefined
+        importer.close()
+        cb?.(row)
+      },
+      (e) => {
+        if (codeOf(e) === "card-exists" && !replace) setAsking(card)
+        else setRefusedImport(worded(e))
+        void importer.open()
+      },
+    )
+    .finally(() => {
+      importBusy = false
+      setImporting(false)
+    })
+}
+const importFromFile = (f: File) =>
+  void f.text().then((text) => bringCard({ name: f.name, run: (r) => importCard(text, r) }))
+const importFromLink = (at = importUrl()) => {
+  const clean = at.trim()
+  if (clean) bringCard({ name: hostOf(clean), run: (r) => importLink(clean, r) })
+}
+
+/** Opens the card import dialog from any surface; `onImported` runs when a card lands on the shelf. */
+export const openImportCard = (onImported?: (card: ShelfCard) => void): void => {
+  onImportedCard = onImported
+  settleImport()
+  void importer.open()
+}
+
+export const ImportCardDialog = () => (
+  <Modal
+    title={t("cards.importFile")}
+    narrow
+    controller={importer}
+    onClose={() => {
+      onImportedCard = undefined
+      settleImport()
+    }}
+  >
+    <div class="modal-body import-card">
+      {/* a file dropped or picked is imported at once and never held: the zone is a way in, not a list */}
+      <FileInput
+        accept={coarse() || isAndroid() ? undefined : ACCEPT}
+        validate={validCardFile}
+        maxSize={CARD_BYTES}
+        disabled={importing()}
+        onValueChange={(_files, details) => {
+          const f = details.added[0]
+          details.cancel()
+          if (f) importFromFile(f)
+        }}
+        onReject={(rejected) => {
+          setAsking(null)
+          setRefusedImport({
+            text: rejected[0]?.reasons.includes("file-too-large") ? t("cards.tooLarge", { n: MB }) : t("cards.invalid"),
+          })
+        }}
+      >
+        <FileInputDropzone class="dropzone">
+          <Import aria-hidden="true" />
+          <p>{t("cards.dropFile")}</p>
+          <FileInputTrigger class="btn sm">{t("cards.chooseFile")}</FileInputTrigger>
+          <p class="hint mono">{ACCEPT.join(" ")}</p>
+        </FileInputDropzone>
+      </FileInput>
+      <div class="field-group">
+        <label class="label" for="card-link">
+          {t("cards.fromLink")}
+        </label>
+        <div class="row">
+          <div class="input-box sm grow">
+            <input
+              id="card-link"
+              type="url"
+              inputmode="url"
+              autocapitalize="none"
+              autocorrect="off"
+              spellcheck="false"
+              enterkeyhint="go"
+              placeholder="https://…"
+              value={importUrl()}
+              onInput={(e) => (setImportUrl(e.currentTarget.value), settleImport())}
+              onKeyDown={(e) => e.key === "Enter" && !e.isComposing && e.keyCode !== 229 && importFromLink()}
+            />
+          </div>
+          <button
+            type="button"
+            class="btn sm"
+            disabled={!importUrl().trim() || importing()}
+            onClick={() => importFromLink()}
+          >
+            {t("common.import")}
+          </button>
+        </div>
+      </div>
+      {/* a heavy card takes the gate a few seconds: said once the wait is long enough to want a word */}
+      <Show when={importing()}>
+        <p class="hint late">{t("cards.importing")}</p>
+      </Show>
+      <Show when={asking()}>
+        {(card) => (
+          <div class="setting-card none asking" role="alert">
+            <span>{t("cards.confirmReplace", { name: card().name })}</span>
+            <button type="button" class="btn xs" disabled={importing()} onClick={() => bringCard(card(), true)}>
+              {t("cards.replace")}
+            </button>
+          </div>
+        )}
+      </Show>
+      <Refusal note={refusedImport()} />
+    </div>
+  </Modal>
+)
 
 export const Cards = (props: Pane) => {
   const shelf = read(cards)
@@ -125,29 +296,6 @@ export const Cards = (props: Pane) => {
       .finally(() => ((busy = false), setWriting(false)))
   }
 
-  // The import dialog: one card, by its file or by its link. What it is refused for shows in the dialog, and an id
-  // already on the shelf is asked about there (`asking`), under the name the card arrived by.
-  const importer = dialogHandle()
-  const [link, setLink] = createSignal("")
-  const [asking, setAsking] = createSignal<Arrival | null>(null)
-  const [refusedImport, setRefusedImport] = createSignal<Note | null>(null)
-  const settle = () => (setAsking(null), setRefusedImport(null))
-  const bring = (card: Arrival, replace = false) => {
-    settle()
-    write(
-      () => card.run(replace).then(() => (setLink(""), importer.close())),
-      (e) => {
-        if (codeOf(e) === "card-exists" && !replace) setAsking(card)
-        else setRefusedImport(worded(e))
-        void importer.open() // the import began outside the dialog (a card's link in the library box): its answer shows here
-      },
-    )
-  }
-  const fromFile = (f: File) => void f.text().then((text) => bring({ name: f.name, run: (r) => importCard(text, r) }))
-  const fromLink = (at = link()) => {
-    const url = at.trim()
-    if (url) bring({ name: hostOf(url), run: (r) => importLink(url, r) })
-  }
   const take = (d: string, e: DepotView["entries"][number]) => {
     const pull = (replace: boolean) => write(() => pullCard(d, e.id, replace).then(() => load(d)))
     if (e.state === "absent") pull(false)
@@ -214,7 +362,7 @@ export const Cards = (props: Pane) => {
                     <button
                       type="button"
                       class="btn xs"
-                      onClick={() => (setUrl(""), setRefusedUrl(null), fromLink(at()))}
+                      onClick={() => (setUrl(""), setRefusedUrl(null), importFromLink(at()))}
                     >
                       {t("cards.importThis")}
                     </button>
@@ -234,7 +382,7 @@ export const Cards = (props: Pane) => {
                 <ToList onBack={props.onBack} />
                 <h2>{t("cards.installed")}</h2>
                 <span class="spacer" />
-                <button type="button" class="btn sm" onClick={() => (settle(), void importer.open())}>
+                <button type="button" class="btn sm" onClick={() => openImportCard()}>
                   <Import aria-hidden="true" /> <span>{t("cards.importFile")}</span>
                 </button>
               </header>
@@ -264,12 +412,7 @@ export const Cards = (props: Pane) => {
                           type="button"
                           class="icon sm"
                           aria-label={t("cards.removeCard")}
-                          onClick={() =>
-                            ask(
-                              t("cards.confirmRemoveCard", { name: c().title }),
-                              () => void removeCard(c().id).then(done, fail),
-                            )
-                          }
+                          onClick={() => askRemoveCard(c(), { onDone: done, onFail: fail })}
                         >
                           <Trash />
                         </button>
@@ -357,76 +500,6 @@ export const Cards = (props: Pane) => {
           )}
         </Show>
       </section>
-      <Modal title={t("cards.importFile")} narrow controller={importer} onClose={settle}>
-        <div class="modal-body import-card">
-          {/* a file dropped or picked is imported at once and never held: the zone is a way in, not a list */}
-          <FileInput
-            accept={ACCEPT}
-            maxSize={CARD_BYTES}
-            disabled={writing()}
-            onValueChange={(_files, details) => {
-              const f = details.added[0]
-              details.cancel()
-              if (f) fromFile(f)
-            }}
-            onReject={(rejected) => {
-              setAsking(null)
-              setRefusedImport({
-                text: rejected[0]?.reasons.includes("file-too-large")
-                  ? t("cards.tooLarge", { n: MB })
-                  : t("cards.invalid"),
-              })
-            }}
-          >
-            <FileInputDropzone class="dropzone">
-              <Import aria-hidden="true" />
-              <p>{t("cards.dropFile")}</p>
-              <FileInputTrigger class="btn sm">{t("cards.chooseFile")}</FileInputTrigger>
-              <p class="hint mono">{ACCEPT.join(" ")}</p>
-            </FileInputDropzone>
-          </FileInput>
-          <div class="field-group">
-            <label class="label" for="card-link">
-              {t("cards.fromLink")}
-            </label>
-            <div class="row">
-              <div class="input-box sm grow">
-                <input
-                  id="card-link"
-                  type="url"
-                  inputmode="url"
-                  autocapitalize="none"
-                  autocorrect="off"
-                  spellcheck="false"
-                  enterkeyhint="go"
-                  placeholder="https://…"
-                  value={link()}
-                  onInput={(e) => (setLink(e.currentTarget.value), settle())}
-                  onKeyDown={(e) => e.key === "Enter" && !e.isComposing && e.keyCode !== 229 && fromLink()}
-                />
-              </div>
-              <button type="button" class="btn sm" disabled={!link().trim() || writing()} onClick={() => fromLink()}>
-                {t("common.import")}
-              </button>
-            </div>
-          </div>
-          {/* a heavy card takes the gate a few seconds: said once the wait is long enough to want a word */}
-          <Show when={writing()}>
-            <p class="hint late">{t("cards.importing")}</p>
-          </Show>
-          <Show when={asking()}>
-            {(card) => (
-              <div class="setting-card none asking" role="alert">
-                <span>{t("cards.confirmReplace", { name: card().name })}</span>
-                <button type="button" class="btn xs" disabled={writing()} onClick={() => bring(card(), true)}>
-                  {t("cards.replace")}
-                </button>
-              </div>
-            )}
-          </Show>
-          <Refusal note={refusedImport()} />
-        </div>
-      </Modal>
     </>
   )
 }

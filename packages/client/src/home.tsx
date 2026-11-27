@@ -6,14 +6,14 @@
 import { createEffect, createSignal, onSettled, Show } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
+import { openImportCard } from "./cards.tsx"
 import { FIGURE_COUNT, FIGURE_ENTRIES, loadFigure, loadFigureIndex, peekFigure, saveFigureId } from "./figures/index.ts"
 import type { HomeFigure } from "./home-figure.tsx"
 import { HomeMechanism } from "./home-mechanism.tsx"
 import { createMechanicalSound } from "./home-sound.ts"
-import { Card as CardIcon, Change, Next, Prev, Send, Sliders } from "./icons.tsx"
+import { Change, Import, Next, Prev, Send, Sliders } from "./icons.tsx"
 import { imeController } from "./ime.ts"
-import { open, startFreeChat } from "./pages.ts"
-import { openSettings } from "./settings-navigation.ts"
+import { open, showCard, startFreeChat } from "./pages.ts"
 import { cards, characterCards, homeDrafts, homeSending, setHomeDraft, tabs } from "./store.ts"
 import { theme } from "./theme.ts"
 import { t } from "./i18n.ts"
@@ -152,12 +152,24 @@ export const Home = () => {
             <p class="home-sub">{!characterCards(shelf()).length ? t("side.noCards") : t("home.subtitle")}</p>
           </header>
           {/* a new install has no character card: keep onboarding visible even after a first free chat;
-              once cards exist, surface workshop and card management directly on the home stage */}
+              once cards exist, surface card import and workshop directly on the home stage */}
           <div class="home-reveal home-reveal-3">
             <Show
               when={!characterCards(shelf()).length}
               fallback={
                 <div class="home-actions">
+                  <button
+                    type="button"
+                    class="home-card"
+                    onPointerEnter={onCardHover}
+                    onClick={runCard(() => openImportCard((c) => void showCard(c.id)))}
+                  >
+                    <span class="home-card-icon" aria-hidden="true">
+                      <Import />
+                    </span>
+                    <span class="home-card-label">{t("cards.importFile")}</span>
+                    <Change class="home-card-arrow" aria-hidden="true" />
+                  </button>
                   <button
                     type="button"
                     class="home-card"
@@ -170,18 +182,6 @@ export const Home = () => {
                     <span class="home-card-label">{t("side.workshop")}</span>
                     <Change class="home-card-arrow" aria-hidden="true" />
                   </button>
-                  <button
-                    type="button"
-                    class="home-card"
-                    onPointerEnter={onCardHover}
-                    onClick={runCard(() => openSettings("cards"))}
-                  >
-                    <span class="home-card-icon" aria-hidden="true">
-                      <CardIcon />
-                    </span>
-                    <span class="home-card-label">{t("side.manageCards")}</span>
-                    <Change class="home-card-arrow" aria-hidden="true" />
-                  </button>
                 </div>
               }
             >
@@ -190,12 +190,12 @@ export const Home = () => {
                   type="button"
                   class="home-card"
                   onPointerEnter={onCardHover}
-                  onClick={runCard(() => openSettings("cards"))}
+                  onClick={runCard(() => openImportCard((c) => void showCard(c.id)))}
                 >
                   <span class="home-card-icon" aria-hidden="true">
-                    <CardIcon />
+                    <Import />
                   </span>
-                  <span class="home-card-label">{t("side.addCards")}</span>
+                  <span class="home-card-label">{t("cards.importFile")}</span>
                   <Change class="home-card-arrow" aria-hidden="true" />
                 </button>
                 <button

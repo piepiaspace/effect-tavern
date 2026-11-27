@@ -22,7 +22,6 @@ import {
   ask,
   Avatar,
   blurField,
-  Confirm,
   dialogHandle,
   Menu,
   Modal,
@@ -215,7 +214,6 @@ export const Settings = () => {
       <Show when={at() === "cards"}>
         <Cards {...paneOf("cards")} />
       </Show>
-      <Confirm />
     </div>
   )
 }
@@ -1550,7 +1548,7 @@ const Personas = (props: Pane) => {
             )}
           </For>
         </div>
-        <div class="master-foot">
+        <div class="master-foot row">
           <button type="button" class="btn" onClick={() => void create()}>
             <Plus /> <span>{t("settings.newPersona")}</span>
           </button>

@@ -13,13 +13,16 @@
 // space; under 72rem the same component is the phone's drawer. A row only switches the story: the rename, star,
 // export and delete live in the manager (manager.tsx, dialogs.tsx).
 import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createMemo, createSignal, For, Match, onSettled, Show, Switch } from "solid-js"
+import { createMemo, createSignal, For, latest, Match, onSettled, Show, Switch } from "solid-js"
 import { read } from "./bridge.ts"
+import { askRemoveCard, openImportCard } from "./cards.tsx"
 import { openManager, openPicker, openTagManager } from "./dialogs.tsx"
 import {
   Archive,
   Clue,
   Close,
+  Export,
+  Import,
   Moon,
   Next,
   Prev,
@@ -30,6 +33,7 @@ import {
   Sun,
   Tag,
   Translate,
+  Trash,
   User,
   Write,
 } from "./icons.tsx"
@@ -77,7 +81,7 @@ import {
 } from "./store.ts"
 import { writingLine } from "./switches.ts"
 import { cycle, pick } from "./theme.ts"
-import { fetchStories, putLocal, searchStories } from "./wire.ts"
+import { cardFile, fetchStories, onDownload, putLocal, searchStories } from "./wire.ts"
 import { flip as flipLocale, t } from "./i18n.ts"
 
 /** What the theme key is called on each pick: its name says the state it is in, as the language key's does. */
@@ -86,7 +90,7 @@ const THEME_NAME = { system: "side.themeSystem", light: "side.themeLight", dark:
  *  the interface's language (a flip). `onLeave` is the drawer's, closed before settings opens. */
 export const InstallKeys = (props: { onLeave?: () => void }) => {
   const pg = read(page)
-  const inSettings = () => pg() === "settings"
+  const inSettings = () => latest(pg) === "settings"
   return (
     <>
       <button
@@ -313,10 +317,6 @@ export const Sidebar = (props: {
     props.onLeave?.()
     void showCard(id)
   }
-  const toCards = () => {
-    props.onLeave?.()
-    openSettings("cards")
-  }
   /** The card's head: the card open in the workshop. */
   const toEditor = () => {
     const id = at()
@@ -337,7 +337,30 @@ export const Sidebar = (props: {
           </button>
         </Show>
         <span class="side-top-end">
+          <Show when={which() === "shelf"}>
+            <button
+              type="button"
+              class="icon sm"
+              aria-label={t("cards.importFile")}
+              onClick={() => openSheet(() => openImportCard())}
+            >
+              <Import />
+            </button>
+          </Show>
           <Show when={which() === "workspace"}>
+            <Show when={!freeChat() && card()}>
+              {(c) => (
+                <a
+                  class="icon sm"
+                  href={cardFile(c().id)}
+                  download
+                  aria-label={t("cards.exportCard")}
+                  onClick={(e) => void onDownload(e)?.catch(() => {})}
+                >
+                  <Export />
+                </a>
+              )}
+            </Show>
             <button
               type="button"
               class="icon sm"
@@ -347,6 +370,18 @@ export const Sidebar = (props: {
             >
               <Archive />
             </button>
+            <Show when={!freeChat() && card()}>
+              {(c) => (
+                <button
+                  type="button"
+                  class="icon sm"
+                  aria-label={t("cards.removeCard")}
+                  onClick={() => openSheet(() => askRemoveCard(c(), { onDone: () => props.onLeave?.() }))}
+                >
+                  <Trash />
+                </button>
+              )}
+            </Show>
           </Show>
           <Show when={props.inDrawer}>
             <button type="button" class="icon sm" aria-label={t("common.close")} onClick={() => props.onLeave?.()}>
@@ -470,7 +505,7 @@ export const Sidebar = (props: {
                     <button
                       type="button"
                       class="shelf-item tile"
-                      aria-current={c().id === at() ? "true" : undefined}
+                      aria-current={c().id === latest(at) ? "true" : undefined}
                       onClick={() => pickCard(c().id)}
                     >
                       <span class="head">
@@ -497,8 +532,8 @@ export const Sidebar = (props: {
                   <span>{cq().trim() || picked().length ? t("side.noCardMatch") : t("side.noCards")}</span>
                   {/* an empty shelf (not an empty search): the way to the first card */}
                   <Show when={!characterCards(shelf()).length}>
-                    <button type="button" class="btn sm" onClick={toCards}>
-                      {t("side.addCards")}
+                    <button type="button" class="btn sm" onClick={() => openSheet(() => openImportCard())}>
+                      {t("cards.importFile")}
                     </button>
                   </Show>
                 </li>
@@ -650,7 +685,7 @@ export const Sidebar = (props: {
                 type="button"
                 class="tile row"
                 disabled={playStory() === undefined}
-                aria-current={pg() === "prompt-tree" ? "page" : undefined}
+                aria-current={latest(pg) === "prompt-tree" ? "page" : undefined}
                 onClick={() => leaveFor(() => openPromptTree({ cardId: at(), storyId: playStory(), play: true }))}
               >
                 <span class="lbl">
@@ -716,7 +751,7 @@ export const Sidebar = (props: {
             <button
               type="button"
               class="new-story"
-              aria-current={!freeChat() && pg() === "card" ? "page" : undefined}
+              aria-current={!freeChat() && latest(pg) === "card" ? "page" : undefined}
               disabled={at() === null}
               onClick={() => (freeChat() ? leaveFor(toShelf) : toCard())}
             >

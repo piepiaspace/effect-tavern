@@ -14,9 +14,11 @@
 // Inspector), and two keys, Timeline and 读数; home's strip names home in plain text.
 import { type JSX } from "@solidjs/web"
 import { wide } from "./viewport.ts"
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, latest, Show } from "solid-js"
 import { createDrawerController, Drawer, DrawerBackdrop, DrawerContent } from "@ui-sdk/solid/drawer"
 import { read } from "./bridge.ts"
+import { ImportCardDialog } from "./cards.tsx"
+import { Confirm } from "./controls.tsx"
 import { StoryDialogs } from "./dialogs.tsx"
 import { BrandGlyph } from "./home.tsx"
 import {
@@ -70,7 +72,7 @@ const store = (key: string, value: string) => {
 let phoneDrawer: { open: () => unknown } | undefined
 /** Opens the phone's drawer, for a way to it from outside the strip (a swipe, swipe.ts); nothing on the canvas. */
 export const openDrawer = (): void => void (wide() ? undefined : phoneDrawer?.open())
-export const Shell = (props: { children: JSX.Element }) => {
+export const Shell = (props: { loading?: boolean; children: JSX.Element }) => {
   const pg = read(page)
   const view = read(card)
   const shelf = read(cards)
@@ -243,7 +245,7 @@ export const Shell = (props: { children: JSX.Element }) => {
             <For each={strip().list} keyed={(x) => x.id}>
               {(x) => {
                 const row = () => lib()?.stories.find((s) => s.id === x().story)
-                const on = () => x().id === strip().active
+                const on = () => x().id === latest(strip).active
                 // the story is named only while the tab is on its card: another card browsed names that card alone
                 const named = () => (row()?.card === x().card ? row() : undefined)
                 const glyph = (): JSX.Element => {
@@ -322,6 +324,7 @@ export const Shell = (props: { children: JSX.Element }) => {
       </Show>
       <div
         class="canvas"
+        inert={pg() === "settings"}
         data-folded={folded() ? "true" : "false"}
         data-peek={folded() && peek() ? "true" : "false"}
         data-resizing={resizing() ? "true" : undefined}
@@ -340,7 +343,12 @@ export const Shell = (props: { children: JSX.Element }) => {
             <Sidebar onLeave={() => setPeek(false)} />
           </aside>
         </Show>
-        <div class="stage" data-stage={typeof pg() === "object" ? "inspect" : pg()}>
+        <div
+          class="stage"
+          data-stage={typeof pg() === "object" ? "inspect" : pg()}
+          data-loading={props.loading ? "true" : undefined}
+          aria-busy={props.loading ? "true" : undefined}
+        >
           <Show when={wide()}>
             <Edge
               class="resizer"
@@ -461,6 +469,8 @@ export const Shell = (props: { children: JSX.Element }) => {
           closePlaySheet()
         }}
       />
+      <ImportCardDialog />
+      <Confirm />
       <Lightbox />
     </>
   )
