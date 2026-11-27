@@ -692,7 +692,7 @@ button.record-pill:active {
   max-width: none;
   /* up to the screen less a strip of scrim above it: a list that nearly fits must not scroll its last few pixels */
   max-height: calc(100dvh - 3 * var(--space-6));
-  padding-bottom: max(env(safe-area-inset-bottom), var(--space-4));
+  padding-bottom: max(var(--safe-bottom), var(--space-4));
   border-radius: var(--radius-card) var(--radius-card) 0 0;
 }
 .popup-list[data-presentation="sheet"] .item {

@@ -187,6 +187,14 @@
     --text-field: var(--text-prose);
   }
 }
+/* Where the host window already margins the WebView clear of system bars and cutouts (Android), suppress CSS safe-area
+   insets so Chromium 128+'s env(safe-area-inset-*) does not double-pad headers and footers. */
+:root[data-host-insets="true"] {
+  --safe-top: 0px;
+  --safe-bottom: 0px;
+  --safe-left: 0px;
+  --safe-right: 0px;
+}
 @media (resolution >= 2x) {
   :root {
     --hairline: 0.5px;

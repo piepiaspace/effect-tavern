@@ -15,16 +15,38 @@ export interface Host {
   active: { now(): boolean; on(listener: (active: boolean) => void): () => void }
   /** This load replaced a page whose process the system ended: come back where the player was. */
   recovered: boolean
+  /** True when the native window already margins the web view clear of system bars and cutouts (Android). */
+  insetsHandled?: boolean
 }
 
 /** The app's host, when the page runs in one. */
 export const host = (): Host | undefined => (globalThis as { tavernHost?: Host }).tavernHost
 
+/** Marks `:root` when the host window already insets the web view, so CSS `--safe-*` tokens do not double-pad. */
+export const syncHostInsets = (): void => {
+  if (typeof document === "undefined") return
+  if (host()?.insetsHandled) document.documentElement.dataset["hostInsets"] = "true"
+  else delete document.documentElement.dataset["hostInsets"]
+}
+syncHostInsets()
+
+let saving = false
+/** Runs one native save dialog at a time so a quick second tap before the picker opens cannot queue two dialogs. */
+export const runHostSave = async (work: (h: Host) => Promise<boolean>): Promise<boolean> => {
+  const h = host()
+  if (!h || saving) return false
+  saving = true
+  try {
+    return await work(h)
+  } finally {
+    saving = false
+  }
+}
+
 /** A file the page made (a pack, the lexicon, an export fetched), saved: handed to the app's host, where the player
  *  picks the place and may cancel (false), or downloaded by the browser, which asks nothing the page hears of (true). */
 export const saveFile = async (file: Blob, name: string): Promise<boolean> => {
-  const h = host()
-  if (h) return h.save(file, name)
+  if (host()) return runHostSave((h) => h.save(file, name))
   const url = URL.createObjectURL(file)
   Object.assign(document.createElement("a"), { href: url, download: name }).click()
   URL.revokeObjectURL(url)

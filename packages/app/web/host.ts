@@ -79,11 +79,17 @@ const ask = <T>(method: string, ...args: unknown[]): Promise<T> =>
 
 // Go marks the load it makes after the system ended the page's process (recovery.go) in the address. The mark is
 // left there: every later load of this address is a reload, which comes back where the player was anyway.
-const recovered = (() => {
+const { recovered, insetsHandled } = (() => {
   try {
-    return new URL(location.href).searchParams.has("recovered")
+    const here = new URL(location.href)
+    return {
+      recovered: here.searchParams.has("recovered"),
+      // MyGo's Android WebWindow margins the WebView clear of system bars & cutouts and serves on https://mygo.localhost;
+      // Chromium 128+ still populates env(safe-area-inset-*) from root WindowInsets, which would otherwise double-pad.
+      insetsHandled: here.protocol === "https:" && here.hostname === "mygo.localhost",
+    }
   } catch {
-    return false
+    return { recovered: false, insetsHandled: false }
   }
 })()
 
@@ -116,5 +122,6 @@ const tavernHost: Host = {
     on: (listener) => mygo()?.on?.("mygo:window-active", listener) ?? (() => {}),
   },
   recovered,
+  insetsHandled,
 }
 g["tavernHost"] = tavernHost

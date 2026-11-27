@@ -39,6 +39,7 @@ type PageHost = {
   appearance: { get(): Promise<string>; set(a: string): Promise<void> }
   active: { now(): boolean; on(listener: (active: boolean) => void): () => void }
   recovered: boolean
+  insetsHandled?: boolean
 }
 /** An element of the stand-in document: what failure.ts builds its notice from. */
 type Shown = { id: string; role?: string; text: string }
@@ -275,8 +276,9 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   assert.equal((await api("/cards", { method: "POST", body: card })).status, 200) // Bun.YAML, sha1, relative /api
   assert.equal((await fullApi("/cards?replace=1", { method: "POST", body: card })).status, 200) // full origin /api
   const exported = await api("/cards/wuxia/export.yaml")
-  assert.match(exported.headers.get("content-disposition") ?? "", /wuxia\.yaml/)
+  assert.match(exported.headers.get("content-disposition") ?? "", new RegExp(encodeURIComponent("竹林.yaml")))
   assert.match(await exported.text(), /^id: wuxia$/m)
+  assert.equal(tavernHost.insetsHandled, schemeOrigin === "https://mygo.localhost")
   const whole = (await (await api("/cards/wuxia/whole")).json()) as { rev: string }
   assert.match(whole.rev, /^[0-9a-f]{40}$/)
   // a card of awkward text through the page's `yaml` (not Bun.YAML): exported and installed over itself, it reads
