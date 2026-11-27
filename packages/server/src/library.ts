@@ -168,8 +168,16 @@ export const library = ({
   const fetch = cardFetch ?? network({})
   const sessions = new Map<Id, { session: Session; turn: Turn; stale?: boolean }>()
   // The install's cards (shelf.ts). A card replaced or removed takes the open sessions on it along: an idle one is
-  // dropped and reopens on the new card, one with a turn in flight finishes on the card it began on.
+  // dropped and reopens on the new card, one with a turn in flight finishes on the card it began on unless the card
+  // itself is being removed, in which case its turn is aborted before its stories are deleted.
   const cards = shelf(data, {
+    removing: (card) => {
+      for (const [id, cached] of sessions) {
+        if (data.stories.get(id)?.card !== card) continue
+        cached.turn.abort()
+        sessions.delete(id)
+      }
+    },
     changed: (card) => {
       for (const [id, cached] of sessions) {
         if (data.stories.get(id)?.card !== card) continue

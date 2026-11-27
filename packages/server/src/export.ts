@@ -87,3 +87,17 @@ export const disposition = (story: StoryRow, ext: "md" | "json"): string => {
     .trimEnd()
   return attachment(`${base || `story-${story.id}`}.${ext}`)
 }
+/** A card file's download name from the card's title (or its id when unnamed), sanitized and bounded by grapheme. */
+export const cardDisposition = (card: { id: string; title?: string }): string => {
+  const clean = (card.title?.trim() || card.id)
+    .replace(/[\\/:*?"<>|\p{Cc}]+/gu, " ")
+    .replace(/\s+/gu, " ")
+    .trim()
+    .replace(/[. ]+$/u, "")
+  const base = Array.from(graphemes.segment(clean), (g) => g.segment)
+    .slice(0, 60)
+    .join("")
+    .trimEnd()
+    .replace(/[. ]+$/u, "")
+  return attachment(`${base || card.id}.yaml`)
+}

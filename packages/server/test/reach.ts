@@ -118,8 +118,8 @@ try {
     await h.depots.remove(d.id)
     assert.deepEqual(await h.depots.list(), [])
     // refusals: the server's own sentence and code, never a body
-    const inUse = await refusal(h.remove("cli"))
-    assert.deepEqual([inUse.status, inUse.code], [409, "card-in-use"])
+    const missingCard = await refusal(h.remove("none"))
+    assert.deepEqual([missingCard.status, missingCard.code], [404, "no-card"])
     const none = await refusal(h.create("none"))
     assert.equal(none.status, 400)
     const noStory = await refusal(h.export(999, "md"))
@@ -129,7 +129,7 @@ try {
     // The same calls over a listener through the node bridge: the same answers.
     const net = host(over(`${origin}/api`))
     for (const call of [
-      (x: CliHost) => x.remove("cli"),
+      (x: CliHost) => x.remove("none"),
       (x: CliHost) => x.create("none"),
       (x: CliHost) => x.export(999, "md"),
       (x: CliHost) => x.link("http://example.invalid/card.yaml"),
@@ -137,7 +137,9 @@ try {
       assert.deepEqual(await refusal(call(net)), await refusal(call(h)))
     await h.drop(story)
     assert.ok(!(await h.list()).some((s) => s.id === story))
+    const twoStory = await h.create("two")
     await h.remove("two")
+    assert.ok(!(await h.list()).some((s) => s.id === twoStory))
 
     // A local directory is not a card library over a listener; the trace carries its bodies there too.
     const remote = createServer(node(app(handle(lib)))).listen(0, "127.0.0.1")

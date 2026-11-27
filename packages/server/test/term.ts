@@ -121,7 +121,7 @@ for (const lang of ["zh", "en"] as Lang[])
 const code = (e: unknown, lang: Lang = "zh") => explain(e, lang).code
 assert.equal(code(new NoModel()), "no-model")
 assert.equal(code(new Busy()), "busy")
-assert.equal(code(new Refused("card-in-use", "card x has 2 stories")), "card-in-use")
+assert.equal(code(new Refused("card-exists", "card x is already installed")), "card-exists")
 assert.equal(code(new ConnectionError("provider-disabled", 'provider "Relay": disabled')), "provider-disabled")
 assert.equal(
   explain(new ConnectionError("provider-disabled", 'provider "Relay": disabled'), "en").facts,

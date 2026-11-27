@@ -91,11 +91,6 @@ export const en: Table = {
     what: "A card with this id is installed",
     next: "To overwrite it, choose Replace; otherwise change the card's id first.",
   }),
-  "card-in-use": () => ({
-    what: "This card still has stories",
-    why: "A card cannot be removed while stories use it.",
-    next: "Delete the stories on this card first, then the card.",
-  }),
   "card-invalid": (f) => {
     const lines = gateLines(f.message)
     const n = lines.length

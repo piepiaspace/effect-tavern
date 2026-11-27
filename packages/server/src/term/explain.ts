@@ -138,7 +138,6 @@ const factLine = (f: Facts, lang: Lang): string | undefined => {
     case "busy":
     case "no-card":
     case "card-exists":
-    case "card-in-use":
     case "card-changed":
     case "no-depot":
     case "depot-is-card":

@@ -78,11 +78,6 @@ export const zh: Table = {
     what: "同 id 的卡片已安装",
     next: "要覆盖就选择替换；不想覆盖，就先改卡片的 id。",
   }),
-  "card-in-use": () => ({
-    what: "这张卡还有故事",
-    why: "还有故事用着这张卡时，不能删除它。",
-    next: "先删除用这张卡的故事，再删除卡片。",
-  }),
   "card-invalid": (f) => {
     const lines = gateLines(f.message)
     const card = f.card ?? "卡片"

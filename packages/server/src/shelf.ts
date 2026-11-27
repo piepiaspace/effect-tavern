@@ -5,8 +5,7 @@
 // nothing is written), the id's collision with a card already here, the facets beside the json, the origin stamped.
 // A caller holding a card's text or value knows nothing else.
 //
-// `remove` refuses a card that has stories: a story is a log over its card and reads nothing without it. What goes with
-// the card is the player's on it alone, its local row. `text` is the card as a file again, and `install(text(id))` is
+// `remove` drops a card together with its stories and its local row. `text` is the card as a file again, and `install(text(id))` is
 // the same card. The workshop writes the shelf itself, with no copy of a card kept beside it: `create` is a blank card
 // of a fresh id (every section empty passes the gate, and a story of it begins on an empty line), `whole` the card as
 // it stands with its revision, `save` the card whole over the one of its id, through the same gate. A card is a card
@@ -29,7 +28,6 @@ export class Refused extends Error {
     readonly code:
       | "no-card"
       | "card-exists"
-      | "card-in-use"
       | "card-invalid"
       | "card-changed"
       | "no-depot"
@@ -57,7 +55,10 @@ const blank = (id: string, title?: string): Card => ({
   guard: [],
 })
 
-export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: string) => void } = {}) => {
+export const shelf = (
+  data: Data,
+  { changed = () => {}, removing = () => {} }: { changed?: (id: string) => void; removing?: (id: string) => void } = {},
+) => {
   const row = data.cards.row
   const get = (id: string): Card => {
     const raw = data.cards.get(id)
@@ -111,12 +112,10 @@ export const shelf = (data: Data, { changed = () => {} }: { changed?: (id: strin
       while (row(id)) id = `${FREE_CHAT_ID}-${n++}`
       return put(gate(blank(id, title?.trim() || "自由对话")), { via: "builtin" })
     },
-    /** Gone, with the player's row on it; `card-in-use` while a story of it exists. */
+    /** Gone, with its stories and the player's local row on it. */
     remove: (id: string) => {
       if (!row(id)) throw noCard(id)
-      const stories = data.stories.list(id).length
-      if (stories)
-        throw new Refused("card-in-use", `card ${id} has ${stories} ${stories === 1 ? "story" : "stories"}`, 409)
+      removing(id)
       data.cards.del(id)
       changed(id)
     },

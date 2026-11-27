@@ -1,6 +1,6 @@
 // The shelf through its interface (src/shelf.ts) and the routes over it: an install comes with no card, a card arrives
-// as text or as a value through one gate, an id is never taken over without being asked, a card with stories stays, and
-// what a card was is what it exports as.
+// as text or as a value through one gate, an id is never taken over without being asked, removing a card takes its
+// stories and local row with it, and what a card was is what it exports as.
 import type { Card } from "@effect-tavern/runtime/src/card.ts"
 import { FREE_CHAT_ID } from "@effect-tavern/runtime/src/library.ts"
 import { facets } from "@effect-tavern/runtime/src/session.ts"
@@ -90,16 +90,15 @@ const file = { via: "file" } as const
   cards.remove(verbatim.id)
   assert.throws(() => cards.text("none"), refused("no-card"))
 
-  // remove: refused while a story of the card exists; with the card goes the player's row on it
+  // remove: takes the card's stories and the player's local row on it along in one step
   const story = data.stories.create("ri", null, false)
   data.locals.put({ id: "local", name: "ri", card: "ri", tags: ["x"] })
-  assert.throws(() => cards.remove("ri"), refused("card-in-use"))
-  assert.throws(() => cards.remove("ri"), /card ri has 1 story$/)
-  assert.ok(cards.has("ri"))
-  data.stories.del(story)
   changes.length = 0
   cards.remove("ri")
-  assert.deepEqual([cards.has("ri"), data.locals.get("ri"), changes], [false, undefined, ["ri"]])
+  assert.deepEqual(
+    [cards.has("ri"), data.stories.get(story), data.stories.list("ri"), data.locals.get("ri"), changes],
+    [false, undefined, [], undefined, ["ri"]],
+  )
   assert.throws(() => cards.remove("ri"), refused("no-card"))
 }
 
@@ -206,18 +205,19 @@ const file = { via: "file" } as const
     const exported = await fetch(`${base}/cards/yandao/export.yaml`)
     assert.deepEqual(
       [exported.status, exported.headers.get("content-type"), exported.headers.get("content-disposition")],
-      [200, "application/yaml; charset=utf-8", `attachment; filename="yandao.yaml"; filename*=UTF-8''yandao.yaml`],
+      [
+        200,
+        "application/yaml; charset=utf-8",
+        `attachment; filename="__.yaml"; filename*=UTF-8''${encodeURIComponent("盐道.yaml")}`,
+      ],
     )
     assert.equal(await exported.text(), t.lib.cards.text("yandao"))
     assert.equal((await fetch(`${base}/cards/none/export.yaml`)).status, 404)
 
     const story = t.lib.stories.create("yandao")
-    assert.deepEqual(
-      (await call("DELETE", "/cards/yandao")).map((x) => (typeof x === "number" ? x : x["code"])),
-      [409, "card-in-use"],
-    )
-    t.lib.stories.del(story)
+    t.lib.session(story) // open in memory: removing the card drops the session and its story cleanly
     assert.deepEqual(await call("DELETE", "/cards/yandao"), [200, [] as never])
+    assert.equal(t.lib.exists(story), false)
     assert.deepEqual(
       (await call("DELETE", "/cards/yandao")).map((x) => (typeof x === "number" ? x : x["code"])),
       [404, "no-card"],
@@ -230,8 +230,19 @@ const file = { via: "file" } as const
       [fresh["card"], (fresh["cards"] as unknown[]).length],
       [{ id, title: "未命名卡片", facets: t.lib.cards.list()[0].facets, origin: { via: "workshop" } }, 1],
     )
-    assert.equal((await call("POST", "/cards/new"))[0], 200) // no body: a card named by its id
-    t.lib.cards.remove(t.lib.cards.list().find((c) => c.id !== id)!.id)
+    const exportedNamed = await fetch(`${base}/cards/${id}/export.yaml`)
+    assert.equal(
+      exportedNamed.headers.get("content-disposition"),
+      `attachment; filename="_____.yaml"; filename*=UTF-8''${encodeURIComponent("未命名卡片.yaml")}`,
+    )
+    const [, bare] = await call("POST", "/cards/new") // no body: a card named by its id
+    const bareId = (bare["card"] as { id: string }).id
+    const exportedBare = await fetch(`${base}/cards/${bareId}/export.yaml`)
+    assert.equal(
+      exportedBare.headers.get("content-disposition"),
+      `attachment; filename="${bareId}.yaml"; filename*=UTF-8''${bareId}.yaml`,
+    )
+    t.lib.cards.remove(bareId)
     const whole = `/cards/${id}/whole`
     const [, read] = await call("GET", whole)
     assert.deepEqual(read, { ...t.lib.cards.whole(id) })

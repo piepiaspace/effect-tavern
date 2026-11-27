@@ -563,10 +563,10 @@ export const openSqlite = (file: string, onClose?: () => void) => {
         ),
       /** One card's json column, parsed (decoded by the caller); none when the table has no such id. */
       get: (id: string): unknown => parse<unknown>(q("select json from card where id = ?").get(id) as Row | null),
-      /** The card with what is the player's on it alone, its local row. Its stories are the caller's to have refused
-       *  first (shelf.ts `remove`). */
+      /** The card, its stories (with their nodes and calls via cascade), and the player's local row on it. */
       del: (id: string) =>
         tx(() => {
+          q("delete from story where card = ?").run(id)
           q("delete from card where id = ?").run(id)
           q("delete from local where card = ?").run(id)
         }),

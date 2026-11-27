@@ -92,9 +92,8 @@
 //                 the link once (502 {code: "link-unreadable"} when it cannot) and keeps it as the card's origin.
 //                 POST /cards/new {title?} puts a blank card of a fresh id on the shelf (the workshop's New) and
 //                 answers {card, cards}: every section empty, playable as it stands, named `title` when given.
-//                 DELETE /cards/<id> removes it with the player's row on
-//                 it and answers the shelf; 409 {code: "card-in-use"} while it has stories.
-//                 GET /cards/<id>/export.yaml is the card as a file (an attachment): what POST /cards reads back.
+//                 DELETE /cards/<id> removes it with its stories and the player's row on it and answers the shelf.
+//                 GET /cards/<id>/export.yaml is the card as a file (an attachment named by its title): what POST /cards reads back.
 //                 GET /cards/<id> is what a client draws that card by (404 when there is none), before any
 //                 story of it exists: id, title, summary and the author's creator, version and source, `origin`, the
 //                 default channel, the rules as data (field bounds,
@@ -145,7 +144,7 @@ import { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { Effect, Fiber, Schema, Stream, Struct } from "effect"
 import { extname, join, resolve, sep } from "node:path"
 import { version } from "./cli/config.ts"
-import { attachment, backup, disposition, markdown } from "./export.ts"
+import { backup, cardDisposition, disposition, markdown } from "./export.ts"
 import { PreviewError, Routing, type Library, type PublicEvent } from "./library.ts"
 import { CARD_BYTES } from "@effect-tavern/runtime/src/library.ts"
 import { Refused } from "./shelf.ts"
@@ -448,8 +447,10 @@ export const handle = (
     const cardFile = method === "GET" && /^\/cards\/([^/]+)\/export\.yaml$/.exec(url)
     if (cardFile) {
       const id = decodeURIComponent(cardFile[1])
+      let card
       let text
       try {
+        card = lib.cards.get(id)
         text = lib.cards.text(id)
       } catch (e) {
         return bad(e, 404)
@@ -459,7 +460,7 @@ export const handle = (
         headers: {
           "content-length": String(body.byteLength),
           "content-type": "application/yaml; charset=utf-8",
-          "content-disposition": attachment(`${id}.yaml`),
+          "content-disposition": cardDisposition(card),
         },
       })
     }

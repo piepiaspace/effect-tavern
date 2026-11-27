@@ -191,6 +191,14 @@ export const makeTurn = (s: Session, observe: (action: Action, events: Events) =
       end(r)
       return "withdrawn"
     },
+    /** Interrupts any turn in flight at once without saving a node, when the story or its card is being removed. */
+    abort: () => {
+      failed = undefined
+      const r = run
+      if (!r) return
+      if (r.fiber) Effect.runFork(Fiber.interrupt(r.fiber))
+      end(r)
+    },
     /** The snapshot and the live events while a turn runs; a failure nobody heard, once; none when idle. */
     attach: (): { phase: Phase | null; draft: Draft | null; events: Stream.Stream<Out> } | undefined => {
       if (run) return { phase: run.phase, draft: run.draft, events: subscribe(run) }

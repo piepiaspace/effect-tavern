@@ -37,7 +37,6 @@ const SERVER: Record<ServerCode, true> = {
   "host-not-scripted": true,
   "no-card": true,
   "card-exists": true,
-  "card-in-use": true,
   "card-invalid": true,
   "card-changed": true,
   "no-depot": true,
