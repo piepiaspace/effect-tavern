@@ -35,7 +35,11 @@ import type {
 export type { StoredStory as StoryRow, Hit, Persona } from "@effect-tavern/runtime/src/library.ts"
 import type { Names } from "@effect-tavern/provider/src/names.ts"
 import type { Provider, Secret } from "@effect-tavern/provider/src/providers.ts"
-import { checkpointStore, migrateCheckpoints, unreachable } from "./sqlite-checkpoints.ts"
+import { STORY_ROW, unreachable } from "./sqlite-queries.ts"
+export { STORY_ROW } from "./sqlite-queries.ts"
+import type { Card } from "@effect-tavern/runtime/src/card.ts"
+import { checkpointObject, checkpointValue } from "./checkpoint.ts"
+import { checkpointStore, migrateCheckpoints, upgradeCheckpointDates, anchorSteps } from "./sqlite-checkpoints.ts"
 import { batch, run, type Step } from "./sqlite-batch.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { locked, type Layer, type Local } from "@effect-tavern/runtime/src/layer.ts"
@@ -68,11 +72,6 @@ create index if not exists call_node on call (story, node);
  *  request (the wire strips it for a player client, serve.ts `shown`), so an unbounded trace would grow the library by a fold budget per turn. */
 export const traced = 200
 /** Columns added to a table after libraries were made with it, applied once to an unversioned library when the table lacks it. */
-/** One story's own columns and its card's title (`stories.get`); `tavern doctor` reads the same row from a library it
- *  opens read-only (cli/doctor.ts `storyName`), so a schema change here reaches both. */
-export const STORY_ROW =
-  "select s.id, s.card, s.persona, s.yields, s.title, c.title as cardTitle from story s left join card c on c.id = s.card where s.id = ?"
-
 const migrations: readonly { table: string; column: string; add: string }[] = [
   { table: "story", column: "starred", add: "alter table story add column starred integer not null default 0" },
   // the card's pick (the old player row's `persona[card]`) as it stood copied in, so a running story keeps its persona on
@@ -88,6 +87,18 @@ const migrations: readonly { table: string; column: string; add: string }[] = [
   { table: "card", column: "facets", add: "alter table card add column facets text" },
 ]
 type Row = Record<string, unknown>
+function cardWrite({ id, ...card }: Card, projected: Facets, origin: Origin) {
+  return run(
+    "insert or replace into card (id,title,json,updated,summary,facets,origin) values (?,?,?,?,?,?,?)",
+    id,
+    card.title ?? id,
+    JSON.stringify(card),
+    Date.now(),
+    card.summary ?? null,
+    JSON.stringify(projected),
+    JSON.stringify(origin),
+  )
+}
 const cardColumns = "id, title, summary, facets, origin"
 const cardRow = (r: Row): CardRow => ({
   id: r["id"] as string,
@@ -289,6 +300,7 @@ const steps: readonly (string | ((db: Database) => void))[] = [
   "create table if not exists network (id integer primary key check (id = 1), json text not null)",
   defaultPack,
   migrateCheckpoints,
+  upgradeCheckpointDates,
 ]
 const latest = baseline + steps.length
 const upgrade = (db: Database, version: number) => {
@@ -474,9 +486,19 @@ export const openSqlite = (file: string, onClose?: () => void) => {
     ])
     gc()
   }
+  const putNamed = (kind: "hat" | "pack" | "persona", id: string, name: string, json: string, value: unknown) => {
+    if (q(`update ${kind} set name=?,json=? where id=?`).run(name, json, id).changes) return
+    batch(db, [
+      run(`insert into ${kind}(id,name,json) values(?,?,?)`, id, name, json),
+      ...anchorSteps(kind, id, checkpointObject(checkpointValue(kind, value))),
+    ])
+  }
   const editable = <T extends Hat | Layer>(kind: "hat" | "pack") => ({
     list: named<T>(kind).list,
-    put: ({ id, name, ...body }: T) => checkpoints.putNamed(kind, id, name, JSON.stringify(body)),
+    put: (value: T) => {
+      const { id, name, ...body } = value
+      putNamed(kind, id, name, JSON.stringify(body), value)
+    },
     del: (id: string) => removeAsset(kind, id),
   })
   return {
@@ -486,6 +508,7 @@ export const openSqlite = (file: string, onClose?: () => void) => {
     file,
     /** The player on each card, a row a card, decoded at the wire (serve.ts). */
     locals: {
+      del: (card: string) => void q("delete from local where card=?").run(card),
       get: (card: string): Local | undefined =>
         parse<Local>(q("select json from local where card = ?").get(card) as Row | null),
       list: (): Local[] => (q("select json from local").all() as Row[]).map((r) => parse<Local>(r)!),
@@ -499,7 +522,7 @@ export const openSqlite = (file: string, onClose?: () => void) => {
           name: r["name"] as string,
           text: parse<string>(r)!,
         })),
-      put: (p: Persona) => checkpoints.putNamed("persona", p.id, p.name, JSON.stringify(p.text)),
+      put: (p: Persona) => putNamed("persona", p.id, p.name, JSON.stringify(p.text), p),
       del: (id: string) => removeAsset("persona", id, [run("delete from persona_default where persona=?", id)]),
       /** The persona marked the install's default, or none. */
       fallback: (): string | null =>
@@ -561,7 +584,19 @@ export const openSqlite = (file: string, onClose?: () => void) => {
       },
       /** A card written whole, with its facets (session.ts `facets`, the caller's reading) and its origin as projections
        *  beside the json, so the shelf's rows never decode a card. */
-      put: checkpoints.putCard,
+      put: (card: Card, projected: Facets, origin: Origin, anchor = true) => {
+        const write = cardWrite(card, projected, origin)
+        if (!anchor) {
+          q(write.sql).run(...write.params!)
+          return
+        }
+        const steps = [write]
+        if (origin.via !== "builtin")
+          steps.push(...anchorSteps("card", card.id, checkpointObject(card), !!origin.edited))
+        if (!q("select 1 from card where id=?").get(card.id))
+          steps.push(...anchorSteps("local", card.id, checkpointObject({})))
+        batch(db, steps)
+      },
       /** One card's json column, parsed (decoded by the caller); none when the table has no such id. */
       get: (id: string): unknown => parse<unknown>(q("select json from card where id = ?").get(id) as Row | null),
       /** The card, its stories (with their nodes and calls via cascade), and the player's local row on it. */

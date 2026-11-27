@@ -26,11 +26,9 @@ func TestDBBatch(t *testing.T) {
 	if err := json.Unmarshal([]byte(body), &reply); err != nil || len(reply.Results) != 4 || !strings.Contains(string(reply.Results[2]), `[[12,"integer"]]`) {
 		t.Fatal(body)
 	}
-	for _, step := range []string{`{"mode":"run","sql":"insert into probe values(12)"}`, `{"mode":"rows","sql":"select 1 where 0","requireRow":true}`} {
-		call(`{"mode":"batch","steps":[{"mode":"run","sql":"delete from probe where n=13"},`+step+`]}`, 422)
-		if body := call(`{"mode":"rows","sql":"select n from probe order by n"}`, 200); !strings.Contains(body, `[[12],[13]]`) {
-			t.Fatal(body)
-		}
+	call(`{"mode":"batch","steps":[{"mode":"run","sql":"delete from probe where n=13"},{"mode":"run","sql":"insert into probe values(12)"}]}`, 422)
+	if body := call(`{"mode":"rows","sql":"select n from probe order by n"}`, 200); !strings.Contains(body, `[[12],[13]]`) {
+		t.Fatal(body)
 	}
 }
 

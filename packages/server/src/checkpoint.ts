@@ -1,11 +1,16 @@
-// Decide a checkpoint mutation from the state and conflicts observed by its transaction.
+// Decide a checkpoint mutation from the state the current request observes.
 import {
+  canonicalJson,
+  hashBytes,
+  type CheckpointKind,
   deriveStanding,
   type CheckpointConflict,
   type CheckpointMutation,
   type ObjectId,
 } from "@effect-tavern/runtime/src/storage.ts"
-import { decodeLocal, locked, type Local } from "@effect-tavern/runtime/src/layer.ts"
+import { Hat, normalizeHatDelivery } from "@effect-tavern/runtime/src/fragment.ts"
+import { Schema } from "effect"
+import { decodeLayer, decodeLocal, locked, type Local } from "@effect-tavern/runtime/src/layer.ts"
 
 interface Version {
   hash: ObjectId
@@ -63,4 +68,29 @@ export function layerDelta(row: Local | undefined): Record<string, unknown> {
 export function restoreLayerDelta(delta: ReturnType<typeof layerDelta>, owner: { kind: "local"; card: string }) {
   if (!Object.keys(delta).length) return undefined
   return decodeLocal({ ...delta, id: "local", name: owner.card, card: owner.card })
+}
+
+const decodeHat = Schema.decodeUnknownSync(Hat)
+export const checkpointPersona = Schema.decodeUnknownSync(
+  Schema.Struct({ id: Schema.String, name: Schema.String, text: Schema.String }),
+)
+// The same JSON projection seeds old libraries, anchors new assets, and measures edits.
+export function checkpointValue(kind: CheckpointKind, value: unknown) {
+  switch (kind) {
+    case "card":
+      return value
+    case "hat":
+      return normalizeHatDelivery(decodeHat(value))
+    case "pack":
+      return decodeLayer(value)
+    case "persona":
+      return checkpointPersona(value)
+    case "local":
+      return layerDelta(value as Local | undefined)
+  }
+}
+export function checkpointObject(value: unknown) {
+  const body = canonicalJson(value)
+  const bytes = new TextEncoder().encode(body)
+  return { body, hash: hashBytes(bytes), size: bytes.length }
 }

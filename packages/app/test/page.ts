@@ -137,9 +137,8 @@ const makeMyGo = (
 const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${schemeOrigin}/`).origin) => {
   /** db.go over bun:sqlite: one JSON call per synchronous request, integers as integers. */
   const db = new Database(":memory:")
-  let beforeBatch: (() => void) | undefined
   const answer = (body: string): [number, string] => {
-    type Step = { sql: string; mode: string; params?: never[]; requireRow?: boolean }
+    type Step = { sql: string; mode: string; params?: never[] }
     const c = JSON.parse(body) as Step & { steps: Step[] }
     const execute = (step: Step) => {
       if (step.mode === "exec") {
@@ -150,18 +149,12 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
       const params = step.params ?? []
       if (step.mode === "rows") {
         const rows = q.values(...params)
-        if (step.requireRow && !rows.length) throw new Error("batch precondition failed")
         return { columns: q.columnNames, rows }
       }
       const r = q.run(...params)
       return { changes: r.changes, lastInsertRowid: Number(r.lastInsertRowid) }
     }
     try {
-      if (c.mode === "batch" && beforeBatch) {
-        const edit = beforeBatch
-        beforeBatch = undefined
-        edit()
-      }
       const result =
         c.mode === "batch" ? { results: db.transaction(() => c.steps.map(execute)).immediate() } : execute(c)
       return [200, JSON.stringify(result)]
@@ -300,7 +293,7 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
   assert.equal(tavernHost.insetsHandled, schemeOrigin === "https://mygo.localhost")
   const whole = (await (await api("/cards/wuxia/whole")).json()) as { rev: string }
   assert.match(whole.rev, /^[0-9a-f]{40}$/)
-  // A second editor saves between the page's read and the host's BEGIN IMMEDIATE.
+  // A second editor saves after the first editor fetched its standing.
   const path = "/checkpoints/persona/race"
   const putPersona = (name: string) =>
     api("/personas/race", { method: "PUT", body: JSON.stringify({ name, text: "" }) })
@@ -317,18 +310,16 @@ const verifyOrigin = async (schemeOrigin: string, locationOrigin = new URL(`${sc
       }),
     })
   const old = await status()
-  beforeBatch = () => {
-    db.query("update persona set name=? where id='race'").run("newer")
-  }
+  assert.equal((await putPersona("newer")).status, 200)
   const stale = await revert(old)
   assert.equal(stale.status, 409)
   const refusal = await stale.json()
   assert.equal(refusal.code, "checkpoint-changed")
   assert.deepEqual(refusal.standing, await status())
   assert.equal(refusal.standing.anchorHash, old.anchorHash)
-  assert.equal(db.query("select name from persona where id='race'").values()[0][0], "newer")
+  assert.equal((await (await api("/personas")).json()).find((p: { id: string }) => p.id === "race").name, "newer")
   assert.equal((await (await revert(refusal.standing)).json()).standing.status, "clean")
-  assert.equal(db.query("select name from persona where id='race'").values()[0][0], "first")
+  assert.equal((await (await api("/personas")).json()).find((p: { id: string }) => p.id === "race").name, "first")
   await api("/personas/race", { method: "DELETE" })
   // a card of awkward text through the page's `yaml` (not Bun.YAML): exported and installed over itself, it reads
   // back whole as the same card, as on the shelf (server test/shelf.ts)

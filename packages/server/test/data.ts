@@ -11,9 +11,10 @@ import { Database } from "bun:sqlite"
 import { DatabaseSync } from "node:sqlite"
 import { createStarterPack } from "@effect-tavern/runtime/src/starter-pack.ts"
 import { canonicalJson, hashUtf8, type CheckpointKind } from "@effect-tavern/runtime/src/storage.ts"
-import { normalizeHatDelivery } from "@effect-tavern/runtime/src/fragment.ts"
+import { library } from "../src/library.ts"
 import { open, traced } from "../src/data.ts"
 
+const v9Schema = readFileSync(new URL("fixtures/v9.sql", import.meta.url), "utf8")
 type Row = Record<string, unknown>
 
 // A populated pre-checkpoint file with auto_vacuum=NONE. Its on-disk addresses agree with the editor's projections.
@@ -21,57 +22,80 @@ type Row = Record<string, unknown>
   const dir = mkdtempSync(join(tmpdir(), "tavern-v9-checkpoints-"))
   const file = join(dir, "tavern.db")
   try {
-    open(file).close()
     const old = new Database(file)
-    old.exec(`drop table checkpoint; drop table call_ref; drop table blob;
-      pragma user_version=9; pragma auto_vacuum=none; vacuum;
+    old.exec(v9Schema)
+    old.exec(`insert into pack values('plain','Plain','{}');
+      insert into pack_default values(1,'plain');
+      insert into persona_default values(1,'p');
       insert into hat values('tool','Tool','{"deliver":"tool"}');
       insert into persona values('p','Me','"我"');
-      insert into card(id,title,json,updated,origin) values ('old','Old','{"title":"Old"}',0,'{"via":"file","edited":true}'),
-        ('free','Free','{}',0,'{"via":"builtin"}'),('blank','Blank','{}',0,null);
       insert into local values('free','{"id":"local","name":"free","card":"free","tags":["mine"]}');
     `)
+    const blank = { frame: [], fiction: [], greetings: [], rules: { fields: [], actions: [] }, lore: [], guard: [] }
+    const insertCard = old.query("insert into card(id,title,json,updated,origin) values(?,?,?,0,?)")
+    insertCard.run(
+      "old",
+      "Old",
+      JSON.stringify({ ...blank, title: "Old" }),
+      JSON.stringify({ via: "file", edited: true }),
+    )
+    insertCard.run("free", "Free", JSON.stringify(blank), JSON.stringify({ via: "builtin" }))
+    insertCard.run("blank", "Blank", JSON.stringify(blank), null)
     assert.equal(old.query("pragma auto_vacuum").values()[0][0], 0)
     old.close()
     const d = open(file)
-    const db = new Database(file)
-    db.exec("pragma foreign_keys=on")
+    const lib = library({ data: d })
+    const { default: personaDefault, ...persona } = lib.personas.list()[0]
+    const { default: packDefault, ...pack } = lib.packs.list()[0]
+    assert.ok(personaDefault && packDefault)
     const targets: [CheckpointKind, string, unknown][] = [
-      ["card", "old", { id: "old", title: "Old" }],
+      ["card", "old", lib.cards.get("old")],
       ["local", "old", {}],
       ["local", "blank", {}],
       ["local", "free", { tags: ["mine"] }],
-      ["hat", "tool", normalizeHatDelivery(d.hats.list()[0])],
-      ["persona", "p", d.personas.list()[0]],
-      ["pack", "starter", createStarterPack()],
+      ["hat", "tool", lib.hats.list()[0]],
+      ["persona", "p", persona],
+      ["pack", "plain", pack],
     ]
     for (const [kind, id, value] of targets) {
-      const standing = d.checkpoints.get(kind, id).standing
+      const standing = lib.checkpoints.get(kind, id).standing
+      assert.equal(standing.updatedAt, null)
       assert.equal(standing.status, "clean")
       assert.equal(standing.hash, hashUtf8(canonicalJson(value)))
     }
-    assert.equal(db.query("pragma user_version").values()[0][0], 10)
+    assert.throws(() => lib.checkpoints.get("card", "free"))
+    const story = d.stories.create("blank")
+    const hash = hashUtf8(canonicalJson(lib.cards.get("old")))
+    d.close()
+    // Phase 2 has no call_ref writer yet. Exercise the physical foreign keys on the closed library.
+    const db = new Database(file)
+    db.exec("pragma foreign_keys=on")
+    assert.equal(db.query("pragma user_version").values()[0][0], 11)
     assert.equal(db.query("pragma auto_vacuum").values()[0][0], 2)
     assert.equal(
       db.query("select origin_edited from checkpoint where kind='card' and entity_id='old'").values()[0][0],
       1,
     )
-    assert.throws(() => d.checkpoints.get("card", "free"))
-    const hash = hashUtf8(canonicalJson({ id: "old", title: "Old" }))
-    const remove = db.query("delete from blob where hash=?")
-    assert.throws(() => remove.run(hash), /foreign key/i)
-    const story = d.stories.create("blank")
+    assert.throws(() => db.query("delete from blob where hash=?").run(hash), /foreign key/i)
     db.query("insert into node(story,id,json) values(?,0,'{}')").run(story)
     const seq = db.query("insert into call(story,node,json) values(?,0,'{}')").run(story).lastInsertRowid
     db.query("insert into call_ref values(?,?)").run(seq, hash)
-    d.cards.del("old")
-    assert.throws(() => remove.run(hash), /foreign key/i)
-    d.stories.delMany("blank", [story])
-    assert.deepEqual(db.query("select * from call_ref").all(), [])
-    assert.equal(db.query("select 1 from blob where hash=?").get(hash), null)
-    assert.equal(d.checkpoints.get("local", "blank").standing.status, "clean")
     db.close()
-    d.close()
+    const edited = open(file)
+    edited.cards.del("old")
+    edited.close()
+    const referenced = new Database(file)
+    referenced.exec("pragma foreign_keys=on")
+    assert.throws(() => referenced.query("delete from blob where hash=?").run(hash), /foreign key/i)
+    referenced.close()
+    const cleanup = open(file)
+    cleanup.stories.delMany("blank", [story])
+    assert.equal(library({ data: cleanup }).checkpoints.get("local", "blank").standing.status, "clean")
+    cleanup.close()
+    const final = new Database(file, { readonly: true })
+    assert.equal(final.query("select 1 from blob where hash=?").get(hash), null)
+    assert.deepEqual(final.query("select * from call_ref").all(), [])
+    final.close()
   } finally {
     rmSync(dir, { recursive: true, force: true })
   }
@@ -718,7 +742,7 @@ data.close()
   assert.equal(retried.packs.list()[0].fragments!.find((f) => f.id === "style")!.text, "Keep me")
   retried.close()
   const upgraded = new DatabaseSync(file)
-  assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 10)
+  assert.equal((upgraded.prepare("pragma user_version").get() as Row)["user_version"], 11)
   assert.equal(upgraded.prepare("select name from sqlite_master where name = 'player'").get(), undefined)
   assert.equal(
     upgraded.prepare("select json_extract(json, '$.settlementStatus') as s from node where id = 0").get()!.s,
@@ -759,28 +783,32 @@ data.close()
   open(freshFile).close()
   const fresh = new DatabaseSync(freshFile)
   const prior = new DatabaseSync(file)
-  assert.equal((fresh.prepare("pragma user_version").get() as Row)["user_version"], 10)
+  assert.equal((fresh.prepare("pragma user_version").get() as Row)["user_version"], 11)
   assert.deepEqual(fresh.prepare("pragma table_info(story)").all(), prior.prepare("pragma table_info(story)").all())
   prior.close()
   // a library from before the workshop wrote the shelf itself: its draft table goes on open, its cards stay
-  fresh.exec(`create table draft (id text primary key, json text not null);
+  fresh.close()
+  const legacyFile = join(dir, "v6.db")
+  const legacy = new DatabaseSync(legacyFile)
+  legacy.exec(v9Schema)
+  legacy.exec(`create table draft (id text primary key, json text not null);
     insert into draft (id, json) values ('x', '{}');
     insert into card (id, title, json, updated) values ('kept', '留下', '{}', 0);
-    drop table checkpoint; drop table call_ref; drop table blob; pragma user_version = 6`)
-  fresh.close()
-  open(freshFile).close()
-  const stepped = new DatabaseSync(freshFile)
+    drop table pack_default; drop table network; pragma user_version = 6`)
+  legacy.close()
+  open(legacyFile).close()
+  const stepped = new DatabaseSync(legacyFile)
   assert.deepEqual(
     [
       (stepped.prepare("pragma user_version").get() as Row)["user_version"],
       stepped.prepare("select name from sqlite_master where name = 'draft'").get(),
       stepped.prepare("select title from card where id = 'kept'").get()!["title"],
     ],
-    [10, undefined, "留下"],
+    [11, undefined, "留下"],
   )
-  stepped.exec("pragma user_version = 11")
+  stepped.exec("pragma user_version = 12")
   stepped.close()
-  assert.throws(() => open(freshFile), /newer than supported/)
+  assert.throws(() => open(legacyFile), /newer than supported/)
   rmSync(dir, { recursive: true, force: true })
 }
 
@@ -805,11 +833,9 @@ data.close()
   /** A library one step before: `pack_default` not there yet, the rows as given. */
   const before = (name: string, packs: Record<string, unknown>, locals: Record<string, unknown> = {}) => {
     const file = join(dir, name)
-    open(file).close()
     const old = new DatabaseSync(file)
-    old.exec(
-      "delete from pack; drop table pack_default; drop table checkpoint; drop table call_ref; drop table blob; pragma user_version = 8",
-    )
+    old.exec(v9Schema)
+    old.exec("drop table pack_default; pragma user_version=8")
     for (const [id, json] of Object.entries(packs))
       old
         .prepare("insert into pack (id, name, json) values (?, ?, ?)")

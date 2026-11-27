@@ -36,6 +36,7 @@
 //                 `Hit`; the title is the client's to match). GET /stories/<id>/export.md is the head's line as a
 //                 reading copy, GET /stories/<id>/export.json the tree whole as a backup (export.ts), both as
 //                 attachments named by the title.
+//   GET  /checkpoints/<kind>/<id> returns the standing and card revision. POST pins or reverts the observed pair of hashes.
 //   GET  /personas  the player's personas, the install's default marked `default: true`; PUT /personas/<id>
 //                 {name, text, default?} writes one (in force from the next request where it is picked; `default` true
 //                 marks it, false unmarks it; the install's first persona is marked unless told not to), DELETE
@@ -504,7 +505,7 @@ export const handle = (
     if (cardAt) return reply(() => lib.view(decodeURIComponent(cardAt[1])), 404)
     // a card or library route none of the above took (a method it has no use for, a route that is gone): said here,
     // before the story's routes answer it with "no story"
-    if (/^\/(cards|depots|preview)(?:[/?]|$)/.test(url)) return json(404, { error: "not found" })
+    if (/^\/(cards|depots|preview|checkpoints)(?:[/?]|$)/.test(url)) return json(404, { error: "not found" })
     // Everything below is one story's: the one the request names.
     if (asked === undefined || !lib.exists(asked)) return json(404, { error: `no story ${asked ?? ""}`.trim() })
     const story = asked

@@ -84,8 +84,17 @@ import type { Exported } from "./export.ts"
 import { names } from "./names.ts"
 import { outbound } from "./proxy-host.ts"
 import { readHttps } from "./remote.ts"
-import { shelf } from "./shelf.ts"
-import type { CheckpointKind, CheckpointMutation } from "@effect-tavern/runtime/src/storage.ts"
+import { Refused, shelf } from "./shelf.ts"
+import {
+  checkpointObject,
+  checkpointValue,
+  checkpointPersona,
+  CheckpointRefused,
+  decideCheckpoint,
+  restoreLayerDelta,
+} from "./checkpoint.ts"
+import { deriveStanding, type CheckpointKind, type CheckpointMutation } from "@effect-tavern/runtime/src/storage.ts"
+import type { Origin } from "@effect-tavern/runtime/src/library.ts"
 import { Busy, makeTurn, type Call, type Out, type Turn } from "./turn.ts"
 
 export type PublicError = Failure & { kind: "error"; code: Code; phase: Phase }
@@ -354,6 +363,69 @@ export const library = ({
     }
   }
   const localOf = (card: string): Local => data.locals.get(card) ?? { id: "local", name: card, card }
+  const checkedHat = (value: unknown) => {
+    const h = normalizeHatDelivery(decodeHat(value))
+    const problem = hatToolProblem(h)
+    if (problem) throw new Error(`hat "${h.name}": ${problem}`)
+    return h
+  }
+  const readCheckpoint = (kind: CheckpointKind, id: string) => {
+    const saved = data.checkpoints.read(kind, id)
+    if (!saved) {
+      if (kind === "card" || kind === "local") throw new Refused("no-card", `no editable ${kind} for card ${id}`, 404)
+      throw new CheckpointRefused({ code: "no-checkpoint" })
+    }
+    const object = checkpointObject(checkpointValue(kind, saved.value))
+    const rev = kind === "card" ? cards.revision(id) : undefined
+    const state = { working: { hash: object.hash, originEdited: !!saved.origin?.edited }, anchor: saved.anchor, rev }
+    const status = { standing: deriveStanding(object.hash, saved.anchor), ...(rev !== undefined && { rev }) }
+    return { object, state, status, origin: saved.origin }
+  }
+  const revert = (kind: CheckpointKind, id: string, value: unknown, origin: Origin | undefined, edited: boolean) => {
+    switch (kind) {
+      case "card": {
+        const { edited: _edited, ...source } = origin ?? { via: "file" as const }
+        cards.restore(value, { ...source, ...(edited && { edited: true }) })
+        break
+      }
+      case "hat": {
+        const h = checkedHat(value)
+        const name = h.name.trim()
+        const taken = name && data.hats.list().find((other) => other.id !== id && other.name.trim() === name)
+        if (taken)
+          throw new CheckpointRefused({
+            code: "checkpoint-conflict",
+            conflict: { reason: "hat-name-taken", name: h.name, takenByHatId: taken.id },
+          })
+        data.hats.put(h)
+        break
+      }
+      case "pack":
+        data.packs.put(decodeLayer(value))
+        break
+      case "persona":
+        data.personas.put(checkpointPersona(value))
+        break
+      case "local": {
+        const local = restoreLayerDelta(value as Record<string, unknown>, { kind: "local", card: id })
+        if (!local) {
+          data.locals.del(id)
+          break
+        }
+        const packs = new Set(data.packs.list().map((p) => p.id))
+        const missingPacks = [...new Set(local.mounts)].filter((pack) => !packs.has(pack))
+        const missingPersona =
+          local.persona != null && !data.personas.list().some((p) => p.id === local.persona) ? local.persona : null
+        if (missingPacks.length || missingPersona !== null)
+          throw new CheckpointRefused({
+            code: "checkpoint-conflict",
+            conflict: { reason: "missing-references", missingPacks, missingPersona },
+          })
+        data.locals.put(local)
+        break
+      }
+    }
+  }
   /** Every card's local row through `edit`; written only where it changed. */
   const pruneLocals = (edit: (l: Local) => Local) => {
     for (const l of data.locals.list()) {
@@ -436,9 +508,16 @@ export const library = ({
     },
     author: author(() => model("author")),
     checkpoints: {
-      get: data.checkpoints.get,
-      mutate: (kind: CheckpointKind, id: string, request: CheckpointMutation) =>
-        data.checkpoints.mutate(kind, id, request, changed),
+      get: (kind: CheckpointKind, id: string) => readCheckpoint(kind, id).status,
+      mutate: (kind: CheckpointKind, id: string, request: CheckpointMutation) => {
+        const { object, state, status, origin } = readCheckpoint(kind, id)
+        const decision = decideCheckpoint(state, request, Date.now())
+        if (decision.code) throw new CheckpointRefused(decision)
+        if (decision.action === "unchanged") return status
+        if (decision.action === "pin") data.checkpoints.pin(kind, id, object, !!origin?.edited, decision.updatedAt)
+        else revert(kind, id, data.checkpoints.body(decision.hash), origin, !!decision.originEdited)
+        return readCheckpoint(kind, id).status
+      },
     },
     policy,
     session,
@@ -575,9 +654,7 @@ export const library = ({
       /** Written under a name no other hat holds (fragment.ts `uniqueHatName`): a colliding one is numbered, the same
        *  hat rewritten keeps its own. A delivery tool name not every model accepts is refused in plain words. */
       put: (h: Hat) => {
-        const hat = normalizeHatDelivery(h)
-        const problem = hatToolProblem(hat)
-        if (problem) throw new Error(`hat "${h.name}": ${problem}`)
+        const hat = checkedHat(h)
         data.hats.put({ ...hat, name: uniqueHatName(data.hats.list(), h.name, h.id) })
       },
       del: (id: string) => {

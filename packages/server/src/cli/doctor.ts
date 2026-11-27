@@ -9,8 +9,7 @@ import { Database } from "bun:sqlite"
 import { accessSync, constants, existsSync, readdirSync, realpathSync, statSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { announced, holder } from "../announce.ts"
-import { STORY_ROW } from "../data.ts"
-import { unreachable } from "../sqlite-checkpoints.ts"
+import { STORY_ROW, unreachable } from "../sqlite-queries.ts"
 import { titled } from "../logbook/lines.ts"
 import { cells, troubleOf, wrap, width, type Facts, type Lang } from "../term/index.ts"
 import { mb } from "../term/codes.ts"
@@ -163,14 +162,16 @@ function storageStats(file: string) {
       const blobs = tables.has("blob")
         ? db
             .query<{ blob_count: number; blob_bytes: number; orphan_blobs: number; orphan_bytes: number }, []>(
-              `select count(*) as blob_count, coalesce(sum(octet_length(body)),0) as blob_bytes,
+              `select count(*) as blob_count, coalesce(sum(byte_len),0) as blob_bytes,
          count(*) filter(where ${unreachable}) as orphan_blobs,
-         coalesce(sum(octet_length(body)) filter(where ${unreachable}),0) as orphan_bytes from blob`,
+         coalesce(sum(byte_len) filter(where ${unreachable}),0) as orphan_bytes from blob`,
             )
             .get()!
         : undefined
       const call_bytes = tables.has("call")
-        ? db.query<{ bytes: number }, []>("select coalesce(sum(octet_length(json)),0) as bytes from call").get()!.bytes
+        ? db
+            .query<{ bytes: number }, []>("select coalesce(sum(length(cast(json as blob))),0) as bytes from call")
+            .get()!.bytes
         : 0
       const stats = { ...pages, call_bytes, ...blobs }
       return {
@@ -253,7 +254,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
       check: "data",
       mark: !ok || dbError ? "fail" : storage?.reclaimable ? "warn" : "ok",
       what: dbError ? w.dataBroken(show(file)) : ok ? w.data(show(c.data), mb(size ?? 0)) : w.dataBroken(show(c.data)),
-      ...(storage?.reclaimable && { next: w.dataReclaimable }),
+      ...(storage?.reclaimable && { what: w.dataReclaimable }),
       ...(dbError && { raw: dbError }),
       ...(!ok && { next: w.dataBrokenNext(show(c.data)) }),
       facts: [`data=${c.data} bytes=${size ?? "?"}`, storage?.facts].filter(Boolean).join(" "),

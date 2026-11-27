@@ -19,10 +19,9 @@ import (
 )
 
 type dbStep struct {
-	SQL        string `json:"sql"`
-	Params     []any  `json:"params"`
-	Mode       string `json:"mode"` // exec | run | rows
-	RequireRow bool   `json:"requireRow,omitempty"`
+	SQL    string `json:"sql"`
+	Params []any  `json:"params"`
+	Mode   string `json:"mode"` // exec | run | rows
 }
 
 type dbCall struct {
@@ -187,9 +186,6 @@ func dbSingle(ctx context.Context, c dbStep) (any, error) {
 		}
 		if err := rows.Err(); err != nil {
 			return nil, err
-		}
-		if c.RequireRow && len(out) == 0 {
-			return nil, errors.New("batch precondition failed")
 		}
 		return map[string]any{"columns": cols, "rows": out}, nil
 	default:

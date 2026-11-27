@@ -19,6 +19,7 @@ import { createServer, type Server } from "node:net"
 import { join } from "node:path"
 import { gzipSync } from "node:zlib"
 import { Database } from "bun:sqlite"
+import { library } from "../src/library.ts"
 import { open } from "../src/data.ts"
 import { run } from "../bin/tavern.ts"
 import type { Self, World } from "../src/cli/config.ts"
@@ -543,25 +544,54 @@ try {
     assert.ok(earlier.file.endsWith("/turns.1.jsonl"))
     assert.ok(!JSON.stringify(after).includes("private request"))
     const file = join(data, "tavern.db")
-    open(file).close()
     const inspect = async () => {
       const result = await tavern(["doctor", "--verbose", "--json"], offline)
       return JSON.parse(result.out).checks.find((c: { check: string }) => c.check === "data")
     }
-    const db = new Database(file)
-    db.query("insert into blob values(?, 'utf8', ?, 3, 0)").run("a".repeat(64), "我")
-    const diagnosis = await inspect()
-    assert.equal(diagnosis.mark, "warn")
-    assert.match(diagnosis.facts, /orphan_blobs=1 orphan_bytes=3/)
-    assert.match(diagnosis.facts, /auto_vacuum=2/)
-    assert.match(diagnosis.facts, /call_bytes=0/)
-    assert.equal(db.query("select 1 from blob where body='我'").values().length, 1)
-    db.exec("drop table checkpoint; drop table call_ref; drop table blob; pragma user_version=9")
+    const old = new Database(file)
+    old.exec(readFileSync(new URL("fixtures/v9.sql", import.meta.url), "utf8"))
+    old.close()
     const legacy = await inspect()
     assert.equal(legacy.mark, "ok")
     assert.match(legacy.facts, /page_count=/)
-    assert.equal(db.query("pragma user_version").values()[0][0], 9)
-    db.close()
+    const stamp = new Database(file, { readonly: true })
+    assert.equal(stamp.query("pragma user_version").values()[0][0], 9)
+    stamp.close()
+    const store = open(file)
+    const lib = library({ data: store })
+    lib.personas.put({ id: "p", name: "我", text: "Initial" })
+    lib.hats.put({ id: "h", name: "H" })
+    const card = lib.cards.create("A")
+    const before = await inspect()
+    for (const title of ["one", "two", "three"]) {
+      lib.hats.put({ id: "h", name: title })
+      const { card: current, rev } = lib.cards.whole(card.id)
+      lib.cards.save(card.id, { ...current, title }, rev)
+    }
+    const afterEdits = await inspect()
+    assert.equal(afterEdits.facts.match(/blob_count=\d+/)[0], before.facts.match(/blob_count=\d+/)[0])
+    assert.match(afterEdits.facts, /orphan_blobs=0/)
+    lib.personas.put({ id: "p", name: "我", text: "Pinned" })
+    const { standing } = lib.checkpoints.get("persona", "p")
+    assert.equal(standing.status, "drifted")
+    lib.checkpoints.mutate("persona", "p", {
+      action: "pin",
+      expectedAnchorHash: standing.anchorHash,
+      expectedWorkingHash: standing.workingHash,
+    })
+    store.close()
+    const diagnosis = await inspect()
+    assert.equal(diagnosis.mark, "warn")
+    assert.equal(diagnosis.next, undefined)
+    assert.match(diagnosis.facts, /orphan_blobs=1 orphan_bytes=[1-9]/)
+    assert.match(diagnosis.facts, /auto_vacuum=2/)
+    assert.match(diagnosis.facts, /call_bytes=0/)
+    const reopen = open(file)
+    reopen.gc()
+    reopen.close()
+    const collected = await inspect()
+    assert.equal(collected.mark, "ok")
+    assert.match(collected.facts, /orphan_blobs=0 orphan_bytes=0/)
   }
 
   // ---- failures in plain words, through explain: both languages, and one JSON line each -------------------------

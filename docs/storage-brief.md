@@ -125,7 +125,7 @@ stateDiagram-v2
      - **`card`**：校验非 `builtin` 且通过 `validateCard`，写回卡片正文并重算 `summary` 与 `facets(card)`，按 `checkpoint.origin_edited` 恢复锚点当时的 `origin.edited` 位（改卡后 `Pin` 会记下 `origin_edited = 1`，故再改再回退仍保持相对上游 `edited: true`；而未 `Pin` 直接回退到干净安装基线则恢复 `origin_edited = 0`），事务提交后调用 `changed(card.id)` 刷新空闲缓存 `Session` 并返回最新 `rev`。
      - **`persona`**：快照仅含纯文本载荷 `{ id, name, text }`，回退时只恢复该三元组，绝不触碰全局默认标记表 `persona_default`。
 3. **双侧乐观并发校验 `(expectedWorkingHash, expectedAnchorHash)`**：
-   - `pin` 与 `revert` 均在同一数据库事务内校验客户端看到的当前 `workingHash` 与 `anchorHash`（卡片的状态响应同时返回当前 `rev`，所有卡片变更请求须回传该值）：任一侧已被其他标签页改动（例如另一页刚自动保存了新内容，或刚点了一次 `Pin` 改变了回退目的地），立即拒绝并返回 `409 checkpoint-changed` 及最新状态，防止盲盖。
+   - `pin` 与 `revert` 均在同步请求入口校验客户端看到的当前 `workingHash` 与 `anchorHash`（卡片的状态响应同时返回当前 `rev`，所有卡片变更请求须回传该值）：任一侧已被其他标签页改动（例如另一页刚自动保存了新内容，或刚点了一次 `Pin` 改变了回退目的地），立即拒绝并返回 `409 checkpoint-changed` 及最新状态，防止盲盖。
 
 ---
 
@@ -174,7 +174,7 @@ erDiagram
     text entity_id PK "资产主键 (local 为 card_id, pack 为 pack_id)"
     text hash FK "REFERENCES blob(hash) ON DELETE RESTRICT"
     integer origin_edited "仅 card 使用: 锚点建立时 origin.edited 是否为真 (0|1)"
-    integer updated_at "unix ms"
+    integer updated_at "新建、安装、迁移基线为 NULL；手动 Pin 为 unix ms"
   }
 
   CALL {
@@ -199,12 +199,14 @@ erDiagram
 > 1. `checkpoint.hash -> blob.hash` 与 `call_ref.hash -> blob.hash` 均声明 **`ON DELETE RESTRICT`**，并建立索引 `CREATE INDEX call_ref_hash ON call_ref(hash)` 与 `CREATE INDEX checkpoint_hash ON checkpoint(hash)`——不仅 SQLite 内核直接阻止误删任何仍被引用的 `blob`，且 GC 的 `NOT EXISTS` 反连接走纯索引扫描，无需全表扫 `call_ref`。
 > 2. `call_ref.seq -> call.seq` 声明 **`ON DELETE CASCADE`**——删除故事、回滚分支节点或执行 `traced = 200` 滚动窗口裁剪时，引用边由 SQLite 自动级联释放。
 
+从早期 v10 库升级到 v11 时，迁移保留原有锚点及时间戳。v10 给每个锚点都写了时间，无法从库中判别哪些来自手动 Pin。后续自动建立的基线使用 `NULL`。推进锚点释放的对象由显式 `gc()` 统一回收。
+
 ### 4.2 `/__db` 宿主桥接最小通用扩展（`packages/app/db.go` & `web/sqlite.ts`）
 
 不在 Go 层引入任何 `blob` / `call` / `checkpoint` 业务概念，仅在现有 `exec | run | rows` 之上增加一个原子批模式 `batch`：
-- 请求为 `{ mode: "batch", steps: Array<{ sql: string, params?: Param[], mode: "exec" | "run" | "rows", requireRow?: boolean }> }`。`rows` 步骤使用 `requireRow: true` 时，空结果会使整批回滚。
+- 请求为 `{ mode: "batch", steps: Array<{ sql: string, params?: Param[], mode: "exec" | "run" | "rows" }> }`。
 - Go 执行语义：在 `dbMu` 锁定的单连接 `dbConn` 上显式开启 `BEGIN IMMEDIATE`，按序执行 `steps`，任一步报错立即 `ROLLBACK` 并返回错误状态码，全部成功则 `COMMIT` 并一次性返回结果数组；
-- 适用范围：预先确定的 SQL 步骤可一次跨桥原子执行。若后续写入依赖 TypeScript 对查询结果的判断，需在批内用 SQL 前置条件验证此前读到的状态，校验失败则回滚。两条批量读取 SQL 同样需要共享一致的读快照。 `bun:sqlite` 与 WebView 共享 100% 同一份 `packages/server/src/sqlite.ts` 源码。
+- 适用范围：预先确定的 SQL 步骤可一次跨桥原子执行。快照请求在单写者宿主上同步完成读取、领域判断和提交。两条批量读取 SQL 同样需要共享一致的读快照。 `bun:sqlite` 与 WebView 共享 100% 同一份 `packages/server/src/sqlite.ts` 源码。
 
 ---
 
@@ -254,7 +256,7 @@ CLI 默认使用 `~/.tavern/tavern.db`，可用 `--data` 指定数据目录。De
 ### 7.1 四项最终设计决议
 
 1. **业务操作决定快照转移（采纳方案 A）**：新建、安装与同 ID 覆盖安装（`cards.install` / `importLink` / `depots.pull` 含 `replace: true`）同时设定工作态与锚点（`Clean`）；日常编辑、自动保存及未来编辑器内「用文件内容覆盖当前项」只改工作态；手动 `Pin` 推进锚点，`Revert` 恢复锚点。
-2. **`Revert` 精确性承诺与双侧并发锁**：`Revert` 成功即保证落盘后 `workingHash === anchorHash`（`Clean`）；遇到 Hat 重名占用或 Local 缺失写作包/人设引用时拒绝静默改写，返回 `409 checkpoint-conflict` 保留现场。`Pin` 与 `Revert` 在单事务内同时校验 `expectedWorkingHash` 与 `expectedAnchorHash`。
+2. **`Revert` 精确性承诺与双侧并发锁**：`Revert` 成功即保证落盘后 `workingHash === anchorHash`（`Clean`）；遇到 Hat 重名占用或 Local 缺失写作包/人设引用时拒绝静默改写，返回 `409 checkpoint-conflict` 保留现场。`Pin` 与 `Revert` 在同步请求入口同时校验 `expectedWorkingHash` 与 `expectedAnchorHash`。
 3. **存量库一次性打底初始化（消除 `Unanchored`）**：`sqlite.ts` 升级步骤将库内现存 `hat`、普通 `pack`、`card`、`persona` 及已存在的 `local` 覆盖行一次性写入 `blob` + `checkpoint`（卡片同步记录当时的 `origin.edited` 位）；无覆盖的现存卡 `local` 天然锚定 `EMPTY_OVERLAY_HASH`。
    - 迁移与运行时按同一 `kind` 规范化后取哈希。卡片从行主键补回 `id`，Hat 统一执行 `normalizeHatDelivery`，Persona 仅取 `{ id, name, text }`。普通 Pack 使用解码后的可写层，Local 使用 `layerDelta`。验收时用同一资产的存量行与业务读取值分别建锚，断言地址相等。
 4. **分期节奏与延迟启用压缩**：

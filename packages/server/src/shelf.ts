@@ -56,14 +56,14 @@ const blank = (id: string, title?: string): Card => ({
 })
 
 /** Through the gate or not at all: the card, or `card-invalid` carrying every error line. */
-export const checkedCard = (value: unknown): Card => {
+const checkedCard = (value: unknown): Card => {
   const { card, diagnostics } = validateCard(value)
   const errors = diagnostics.filter((d) => d.level === "error")
   if (!card || errors.length)
     throw new Refused("card-invalid", errors.map((d) => `${d.level} ${d.rule} ${d.path}: ${d.message}`).join("\n"))
   return card
 }
-export const cardRevision = (stored: unknown): string => bytesToHex(sha1(utf8ToBytes(JSON.stringify(stored))))
+const cardRevision = (stored: unknown): string => bytesToHex(sha1(utf8ToBytes(JSON.stringify(stored))))
 
 export const shelf = (
   data: Data,
@@ -86,6 +86,8 @@ export const shelf = (
     list: (): CardRow[] => data.cards.list(),
     /** One card whole; `no-card` when it is not here. */
     get,
+    revision: rev,
+    restore: (value: unknown, origin: Origin) => put(checkedCard(value), origin, false),
     has: (id: string) => row(id) !== undefined,
     /** A card's text (YAML or JSON) or its value, onto the shelf as `origin` says it came. An id already here is
      *  `card-exists` unless `replace`: two authors may pick one id, and only the caller knows this is the same card again. */

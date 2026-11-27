@@ -13,7 +13,7 @@ const base64 = (bytes: Uint8Array): string => {
   return btoa(s)
 }
 
-type Step = { sql: string; params?: Param[]; mode: "exec" | "run" | "rows"; requireRow?: boolean }
+type Step = { sql: string; params?: Param[]; mode: "exec" | "run" | "rows" }
 const call = (body: Step | { mode: "batch"; steps: Step[] }): any => {
   const x = new XMLHttpRequest()
   x.open("POST", "/__db", false)
