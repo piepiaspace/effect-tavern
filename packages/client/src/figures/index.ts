@@ -1,8 +1,8 @@
-// Registry of all 8 interactive Home mechanical figures, alternating Projector Rosettes and Cinema Astrolabes.
-// The default figure (projector-rosette-04) is loaded synchronously for instant first paint; the remaining 7 are
+// Curated registry of 6 interactive Home figures: 4 Cosmic Noir kinetic scenes + 2 refined projector rosettes.
+// The default figure (noir-vinyl-cosmos) is loaded synchronously for instant first paint; the remaining 5 are
 // dynamically imported on demand so they stay out of the main entry chunk.
 import type { HomeFigure } from "../home-figure.tsx"
-import { projectorRosette04 } from "./projector-rosette-04.tsx"
+import { noirVinylCosmos } from "./noir-vinyl-cosmos.tsx"
 
 interface FigureEntry {
   readonly id: string
@@ -10,21 +10,19 @@ interface FigureEntry {
 }
 
 export const FIGURE_ENTRIES: readonly FigureEntry[] = [
-  { id: projectorRosette04.id, load: () => Promise.resolve(projectorRosette04) },
-  { id: "cinema-astrolabe-01", load: () => import("./cinema-astrolabe-01.tsx").then((m) => m.cinemaAstrolabe01) },
-  { id: "projector-rosette-01", load: () => import("./projector-rosette-01.tsx").then((m) => m.projectorRosette01) },
-  { id: "cinema-astrolabe-02", load: () => import("./cinema-astrolabe-02.tsx").then((m) => m.cinemaAstrolabe02) },
-  { id: "projector-rosette-02", load: () => import("./projector-rosette-02.tsx").then((m) => m.projectorRosette02) },
-  { id: "cinema-astrolabe-03", load: () => import("./cinema-astrolabe-03.tsx").then((m) => m.cinemaAstrolabe03) },
+  { id: noirVinylCosmos.id, load: () => Promise.resolve(noirVinylCosmos) },
+  { id: "noir-celestial-mobile", load: () => import("./noir-celestial-mobile.tsx").then((m) => m.noirCelestialMobile) },
+  { id: "noir-arch-eclipse", load: () => import("./noir-arch-eclipse.tsx").then((m) => m.noirArchEclipse) },
+  { id: "noir-projector-cosmos", load: () => import("./noir-projector-cosmos.tsx").then((m) => m.noirProjectorCosmos) },
+  { id: "projector-rosette-04", load: () => import("./projector-rosette-04.tsx").then((m) => m.projectorRosette04) },
   { id: "projector-rosette-03", load: () => import("./projector-rosette-03.tsx").then((m) => m.projectorRosette03) },
-  { id: "cinema-astrolabe-04", load: () => import("./cinema-astrolabe-04.tsx").then((m) => m.cinemaAstrolabe04) },
 ]
 
 export const FIGURE_COUNT = FIGURE_ENTRIES.length
 
-export const DEFAULT_FIGURE: HomeFigure = projectorRosette04
+export const DEFAULT_FIGURE: HomeFigure = noirVinylCosmos
 
-const cache = new Map<string, HomeFigure>([[projectorRosette04.id, projectorRosette04]])
+const cache = new Map<string, HomeFigure>([[noirVinylCosmos.id, noirVinylCosmos]])
 
 /** Synchronously returns a figure if already cached (always defined for the default figure). */
 export const peekFigure = (index: number): HomeFigure | undefined => {

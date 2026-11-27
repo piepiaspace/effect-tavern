@@ -311,6 +311,24 @@
   mix-blend-mode: screen;
   opacity: 0.9;
 }
+/* Semantic-color Cosmic Noir figures use currentColor / var(--surface-1) / var(--brand) directly: no invert filter */
+.home-emblem[data-themed="true"],
+.home-page[data-dark="true"] .home-emblem[data-themed="true"],
+.home-emblem-wrap[data-dark="true"] .home-emblem[data-themed="true"] {
+  color: var(--ink);
+  filter: none;
+  mix-blend-mode: normal;
+  opacity: 0.94;
+}
+/* Engraved monochrome sub-layer inside hybrid themed figures (projector-rosette-04) so --brand jewels stay true vermilion */
+.home-emblem[data-themed="true"] .pr4-mono {
+  mix-blend-mode: multiply;
+}
+.home-page[data-dark="true"] .home-emblem[data-themed="true"] .pr4-mono,
+.home-emblem-wrap[data-dark="true"] .home-emblem[data-themed="true"] .pr4-mono {
+  filter: invert(1);
+  mix-blend-mode: screen;
+}
 .home-mech[data-paused="true"] .home-hairline-svg,
 .home-mech[data-paused="true"] .home-emblem-wrap {
   will-change: auto;

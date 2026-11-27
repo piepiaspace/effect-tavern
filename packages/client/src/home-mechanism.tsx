@@ -12,7 +12,6 @@ const reducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
 
 const DEFAULT_IDLE_SPEED = 5.4 // deg/s calm meditative cadence
-const DEFAULT_DETENT_DEG = 7.5 // ~1.38s per music-box step at idle speed
 const IDLE_INTERVAL_MS = 1000 / 24 // 24fps cinema cadence while idling (~60% less work than 60fps)
 const TOUCH_INTERVAL_MS = 1000 / 30 // 30fps cap on coarse-pointer mobile devices
 
@@ -72,8 +71,9 @@ export const HomeMechanism = (props: {
     targetPx: number
     targetPy: number
     lastMove: number
+    rawEnergy: number
+    dampedEnergy: number
     paused: boolean
-    lastDetent: number
     watched: boolean
   } = {
     theta: 0,
@@ -89,8 +89,9 @@ export const HomeMechanism = (props: {
     targetPx: 0,
     targetPy: 0,
     lastMove: -Infinity,
+    rawEnergy: 0,
+    dampedEnergy: 0,
     paused: reducedMotion(),
-    lastDetent: 0,
     watched: untrack(() => watched()), // as of now; the effect on `watched` below follows it
   }
 
@@ -99,13 +100,25 @@ export const HomeMechanism = (props: {
    *  the page's sheen. Touch pointers leave the mechanism passive so swipes never collide with navigation. */
   let pageEl: HTMLElement | null = null
   const page = () => (pageEl ??= rootEl?.closest<HTMLElement>(".home-page") ?? null)
+  let lastClientX: number | null = null
+  let lastClientY: number | null = null
   const aim = (e: PointerEvent, box: HTMLElement | null | undefined, cy: number) => {
     const r = box?.getBoundingClientRect()
     if (!r?.width || !r.height) return
+    const now = performance.now()
+    if (lastClientX !== null && lastClientY !== null) {
+      const dx = e.clientX - lastClientX
+      const dy = e.clientY - lastClientY
+      const dt = Math.max(8, now - phys.lastMove)
+      const speed = Math.hypot(dx, dy) / dt // px/ms
+      phys.rawEnergy = Math.min(1, phys.rawEnergy * 0.4 + Math.min(1, speed * 0.55) * 0.6)
+    }
+    lastClientX = e.clientX
+    lastClientY = e.clientY
     phys.targetPx = clamp1(((e.clientX - r.left) / r.width - 0.5) * 2)
     phys.targetPy = clamp1(((e.clientY - r.top) / r.height - cy) * 2)
     phys.hasPointer = true
-    phys.lastMove = performance.now()
+    phys.lastMove = now
     props.sound.setWarmth(phys.targetPx)
     const p = page()
     const pr = box === p ? r : p?.getBoundingClientRect()
@@ -115,6 +128,8 @@ export const HomeMechanism = (props: {
     p.style.setProperty("--home-spot", "1")
   }
   const unaim = () => {
+    lastClientX = null
+    lastClientY = null
     phys.targetPx = 0
     phys.targetPy = 0
     phys.hasPointer = false
@@ -275,16 +290,17 @@ export const HomeMechanism = (props: {
       lastDraw = now
 
       const idleSpeed = activeFigure?.idleSpeed ?? DEFAULT_IDLE_SPEED
-      const detentDeg = activeFigure?.detentDeg ?? DEFAULT_DETENT_DEG
 
       phys.vel *= Math.exp(-4.5 * dt)
       const hoverBoost = phys.hovered ? 3.2 : 0
       phys.theta = (phys.theta + (idleSpeed + hoverBoost + phys.vel) * dt) % 36000
 
-      const detentIndex = Math.floor(phys.theta / detentDeg)
-      if (detentIndex !== phys.lastDetent) {
-        phys.lastDetent = detentIndex
-        props.sound.step(phys.vel / 45)
+      // Slew-limited energy modulation for the steady-state soundscape (never interrupts rhythm)
+      phys.rawEnergy *= Math.pow(0.04, dt)
+      const targetEnergy = Math.min(1, Math.max(phys.rawEnergy, phys.vel / 55, phys.hovered ? 0.22 : 0))
+      phys.dampedEnergy += (targetEnergy - phys.dampedEnergy) * (1 - Math.exp(-3.6 * dt))
+      if (dirty("soundEnergy", phys.dampedEnergy, 0.015)) {
+        props.sound.setEnergy(phys.dampedEnergy)
       }
 
       const k = 1 - Math.exp(-6.5 * dt)

@@ -1,116 +1,118 @@
-// Tactile classical/Renaissance mechanical horology & optical-projector Web Audio engine for Home
-// (home-mechanism.tsx & home.tsx). Synthesizes escapement ticks, machined aperture blade glides, vernier/pawl detents,
-// and subtle bronze-brass engagement resonance from a shared pre-generated white-noise buffer, short filtered bursts,
-// and high-Q metallic rings. Zero external assets; 0% CPU when muted, paused, or hidden.
+// Steady-state Web Audio soundscape engine for Home (home-mechanism.tsx & home.tsx).
+// Three-layer architecture designed to feel like calm, tactile tabletop objects sharing one warm room:
+// 1. Continuous ambient bed (~70%): oiled bearing hum, lens whisper, motor hum, singing-bowl drone, breeze, vinyl hiss.
+// 2. Lookahead-scheduled micro-events (~30%): steady escapement, 15fps shutter, polyphony-capped wind chimes, 74 BPM Rhodes.
+// 3. Unified warm room master bus: Dry/Wet procedural 1.65s room ConvolverNode → gentle Lowpass → analog WaveShaper →
+//    safety DynamicsCompressor. Mouse/typing input only applies slew-limited modulation (`setEnergy`, `setWarmth`),
+//    never interrupting rhythm or causing harsh transients. Zero external assets; 0% CPU when muted, paused, or hidden.
+
+export type SoundEngine = "gears" | "aperture" | "projector" | "eclipse" | "chime" | "vinyl"
 
 export interface SoundProfile {
-  /** Swiss-lever escapement / Geneva-drive mechanical beat contact properties. */
-  readonly escapement: {
-    /** Primary contact transient bandpass center frequency (Hz, typically 1600–3800). */
-    readonly freq: number
-    /** Bandpass Q for contact crispness (typically 1.8–5.5; lower = drier iron/felt, higher = sharper brass/jewel). */
-    readonly q: number
-    /** Contact burst decay duration (seconds, typically 0.005–0.014). */
-    readonly decay: number
-    /** Delay between stage-1 unlock transient and stage-2 impulse/drop (seconds, typically 0.004–0.011). */
-    readonly gap: number
-    /** Alternating tick/tock pallet-fork pitch multiplier (typically 0.92–0.96 or 1.04–1.08). */
-    readonly asymmetry: number
-    /** Escapement contact gain (typically 0.26–0.42). */
-    readonly level: number
-  }
-  /** Subtle high-Q brass hairspring / gear-tooth resonance ring on mechanical beats. */
-  readonly spring: {
-    /** High-Q metallic ring center frequency (Hz, typically 1800–4200). */
-    readonly freq: number
-    /** Resonance sharpness Q (typically 10–18). */
-    readonly q: number
-    /** Metallic ring decay duration (seconds, typically 0.025–0.048). */
-    readonly decay: number
-    /** Subtle ring gain (typically 0.06–0.16). */
-    readonly level: number
-  }
-  /** Machined aperture / iris blade glide timbre for `iris(opening)`. */
-  readonly shutter: {
-    /** Number of staggered micro-blade glides (2 or 3). */
-    readonly blades: number
-    /** Stagger interval between blade contacts (seconds, typically 0.016–0.025). */
-    readonly spread: number
-    /** Center frequency when opening (Hz, typically 2000–3600). */
-    readonly openHz: number
-    /** Center frequency when closing (Hz, typically 1400–2700; slightly heavier/settling). */
-    readonly closeHz: number
-    /** Blade bandpass Q (typically 2.0–4.5). */
-    readonly q: number
-    /** Individual blade glide decay duration (seconds, typically 0.016–0.032). */
-    readonly decay: number
-    /** Shutter glide gain (typically 0.18–0.30). */
-    readonly level: number
-  }
-  /** Mechanical crown-detent lock-in + understated Renaissance brass/tuning-fork resonance on `engage`. */
-  readonly engage: {
-    /** Delay between initial pawl catch and firm crown lock-in (seconds, typically 0.038–0.068). */
-    readonly latchGap: number
-    /** Primary brass/tuning-fork partial frequency (Hz, typically 440–880). */
-    readonly bellHz: number
-    /** Consonant second brass partial ratio (e.g. 1.5 fifth, 2.0 octave, 2.5 tenth, 2.756 bronze bell, 3.0 twelfth). */
-    readonly overtoneRatio: number
-    /** High-Q metallic latch ring frequency (Hz, typically 2000–3800). */
-    readonly ringHz: number
-    /** Natural brass resonance decay duration (seconds, typically 0.24–0.42). */
-    readonly decay: number
-    /** Brass resonance gain (typically 0.12–0.22). */
-    readonly level: number
-  }
+  /** Scene acoustic engine family. */
+  readonly engine: SoundEngine
   /** Master warmth low-pass filter base frequency and pointer modulation sweep (±Hz). */
   readonly filter: {
     readonly baseHz: number
     readonly rangeHz: number
   }
-  /** Short acoustic cabinet / housing early reflection (never a long music-box delay). */
+  /** Shared room reverb wet mix for this object in the room (0..0.6). */
   readonly room: {
-    /** Short housing reflection delay (seconds, typically 0.022–0.055; clamped to 0.22s max). */
-    readonly delaySec: number
-    /** Reflection damping feedback (typically 0.08–0.20; clamped to 0.45 max). */
-    readonly feedback: number
-    /** Reflection wet mix level (typically 0.08–0.18; clamped to 0.35 max). */
     readonly wet: number
   }
 }
 
-// Default mechanical profile tuned for projector-rosette-04: grounded cast-steel & brass 35mm optical projector
-// with crisp Geneva-drive escapement, oiled 8-blade iris, and understated D5 bronze-brass engage resonance.
 export const DEFAULT_SOUND_PROFILE: SoundProfile = {
-  escapement: { freq: 2350, q: 2.8, decay: 0.009, gap: 0.0065, asymmetry: 0.94, level: 0.34 },
-  spring: { freq: 2680, q: 13, decay: 0.034, level: 0.09 },
-  shutter: { blades: 3, spread: 0.02, openHz: 2550, closeHz: 1850, q: 2.6, decay: 0.022, level: 0.24 },
-  engage: { latchGap: 0.052, bellHz: 587.33, overtoneRatio: 1.5, ringHz: 2720, decay: 0.32, level: 0.16 },
-  filter: { baseHz: 3400, rangeHz: 850 },
-  room: { delaySec: 0.034, feedback: 0.14, wet: 0.13 },
+  engine: "gears",
+  filter: { baseHz: 4600, rangeHz: 750 },
+  room: { wet: 0.38 },
 }
 
 const MIN_GAIN = 0.0001
-const NOISE_SEC = 0.5
-const MASTER_GAIN = { desktop: 0.68, small: 0.85 } as const
+const NOISE_SEC = 4
+const ROOM_IR_SEC = 1.65
+const MASTER_GAIN = { desktop: 0.68, small: 0.84 } as const
 
-// Contact transients naturally sit in 1.5–4.2 kHz (where phone speakers speak cleanly); coarse-pointer devices get
-// a modest gain & 2.6 kHz presence lift within the same unified acoustic pipeline.
 const smallSpeaker = () =>
   typeof window !== "undefined" && !!window.matchMedia?.("(hover: none) and (pointer: coarse)").matches
 
-const vary = (amount: number) => 1 + (Math.random() * 2 - 1) * amount
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Number.isFinite(v) ? v : lo))
 const clampFreq = (c: AudioContext, hz: number) => clamp(hz, 20, (c.sampleRate || 44100) * 0.45)
-const safeGain = (g: number) => Math.max(MIN_GAIN, Number.isFinite(g) ? g : MIN_GAIN)
 const safeTime = (t: number) => Math.max(0, Number.isFinite(t) ? t : 0)
 
-const createNoiseBuffer = (c: AudioContext): AudioBuffer => {
-  const rate = c.sampleRate || 44100
-  const length = Math.max(1, Math.floor(rate * NOISE_SEC))
-  const buffer = c.createBuffer(1, length, rate)
-  const data = buffer.getChannelData(0)
-  for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1
-  return buffer
+const createNoiseBuffers = (c: AudioContext) => {
+  const sr = c.sampleRate || 44100
+  const len = Math.max(1, Math.floor(sr * NOISE_SEC))
+
+  // Warm brown noise (integrated white noise) for oiled bearings, shutter pulses & vinyl rumble
+  const brown = c.createBuffer(2, len, sr)
+  for (let ch = 0; ch < 2; ch++) {
+    const data = brown.getChannelData(ch)
+    let last = 0
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1
+      last = (last + 0.025 * w) / 1.025
+      data[i] = clamp(last * 3.2, -1, 1)
+    }
+  }
+
+  // Smooth pink noise (Paul Kellet filter) for air hiss, breeze, vinyl surface & lens friction
+  const pink = c.createBuffer(2, len, sr)
+  for (let ch = 0; ch < 2; ch++) {
+    const data = pink.getChannelData(ch)
+    let b0 = 0
+    let b1 = 0
+    let b2 = 0
+    let b3 = 0
+    let b4 = 0
+    let b5 = 0
+    let b6 = 0
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1
+      b0 = 0.99886 * b0 + w * 0.0555179
+      b1 = 0.99332 * b1 + w * 0.0750759
+      b2 = 0.969 * b2 + w * 0.153852
+      b3 = 0.8665 * b3 + w * 0.3104856
+      b4 = 0.55 * b4 + w * 0.5329522
+      b5 = -0.7616 * b5 - w * 0.016898
+      data[i] = clamp((b0 + b1 + b2 + b3 + b4 + b5 + b6 + w * 0.5362) * 0.055, -1, 1)
+      b6 = w * 0.115926
+    }
+  }
+
+  return { brown, pink }
+}
+
+// Procedural warm wooden-room Impulse Response (exponentially decaying lowpass-damped stereo noise)
+const createWarmRoomIR = (c: AudioContext, duration = ROOM_IR_SEC): AudioBuffer => {
+  const sr = c.sampleRate || 44100
+  const len = Math.max(1, Math.floor(sr * duration))
+  const ir = c.createBuffer(2, len, sr)
+  for (let ch = 0; ch < 2; ch++) {
+    const data = ir.getChannelData(ch)
+    let lp = 0
+    for (let i = 0; i < len; i++) {
+      const t = i / len
+      const env = Math.pow(1 - t, 2.7)
+      const raw = (Math.random() * 2 - 1) * env
+      const coeff = 0.18 + 0.55 * t
+      lp = lp * coeff + raw * (1 - coeff)
+      data[i] = lp * 0.65
+    }
+  }
+  return ir
+}
+
+// Gentle analog tape warmth saturation curve
+const makeWarmSaturationCurve = () => {
+  const n = 512
+  const curve = new Float32Array(n)
+  const norm = Math.tanh(1.35)
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1
+    curve[i] = Math.tanh(x * 1.35) / norm
+  }
+  return curve
 }
 
 /** iOS (WebKit's `navigator.audioSession`): `playback` sounds through the ring/silent switch, as media the player
@@ -120,8 +122,18 @@ const session = (type: "playback" | "ambient") => {
   const { audioSession } = navigator as Navigator & { audioSession?: { type: string } }
   try {
     if (audioSession && audioSession.type !== type) audioSession.type = type
-  } catch {} // a WebKit that refuses the type leaves the session as it was
+  } catch {}
 }
+
+// Musical palettes
+const CHIME_NOTES = [523.25, 587.33, 659.25, 783.99, 880.0, 987.77, 1174.66] as const
+const PENDANT_NOTES = [293.66, 440.0, 587.33, 659.25, 739.99, 880.0] as const
+const JAZZ_CHORDS = [
+  { name: "Dm9", bass: 73.42, notes: [261.63, 329.63, 349.23, 440.0] },
+  { name: "G13", bass: 98.0, notes: [246.94, 329.63, 349.23, 440.0] },
+  { name: "Cmaj9", bass: 65.41, notes: [246.94, 293.66, 329.63, 392.0] },
+  { name: "A7b13", bass: 110.0, notes: [220.0, 277.18, 311.13, 392.0] },
+] as const
 
 export interface MechanicalSound {
   /** Whether sound is currently enabled. */
@@ -130,15 +142,17 @@ export interface MechanicalSound {
   state(): AudioContextState | "uninitialized"
   /** Enable or disable sound (called from a user gesture to unlock AudioContext). */
   setEnabled(on: boolean): void
-  /** Switch mechanical material/timbre profile smoothly for the active HomeFigure. */
+  /** Switch scene soundscape profile smoothly for the active HomeFigure. */
   setProfile(profile: SoundProfile): void
-  /** Advance one escapement / Geneva-drive mechanical beat (strictly rate-limited). */
-  step(energy?: number): void
-  /** Smoothly modulate acoustic warmth from pointer position [-1, 1] without generating noise. */
+  /** Smoothly update slew-limited pointer/typing energy in [0, 1] to modulate filters and drift. */
+  setEnergy(energy: number): void
+  /** Smoothly modulate acoustic warmth from pointer position [-1, 1] without spawning voices. */
   setWarmth(x: number): void
-  /** Staggered machined aperture blade glide when iris opens or closes. */
+  /** Optional subtle pulse accent (kept for compatibility; rhythm is governed by steady lookahead). */
+  step(energy?: number): void
+  /** Soft modulation breath when hover/focus opens or closes. */
   iris(opening: boolean): void
-  /** Tactile mechanical detent accent on hover, click, or mechanism engagement. */
+  /** Subtle tactile accent on hover, click, or scene engagement. */
   detent(kind: "hover" | "click" | "engage"): void
   /** Suspend audio when page is hidden, paused or covered; a gesture does not bring it back until `resume`. */
   suspend(): void
@@ -150,21 +164,28 @@ export interface MechanicalSound {
 
 export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROFILE): MechanicalSound => {
   let ctx: AudioContext | null = null
-  let bus: GainNode | null = null
-  let toneFilter: BiquadFilterNode | null = null
-  let presence: BiquadFilterNode | null = null
-  let compressor: DynamicsCompressorNode | null = null
-  let delayNode: DelayNode | null = null
-  let feedbackNode: GainNode | null = null
-  let wetNode: GainNode | null = null
-  let noiseBuffer: AudioBuffer | null = null
-  // on: the player turned the sound on. held: something of ours holds it (paused, covered, hidden; `suspend` until
-  // `resume`), so a sound turned on meanwhile waits, quiet and without the audio session, until it is let go.
+  let sceneBus: GainNode | null = null
+  let dryGain: GainNode | null = null
+  let wetGain: GainNode | null = null
+  let masterLPF: BiquadFilterNode | null = null
+  let masterGain: GainNode | null = null
+  let brownNoiseBuf: AudioBuffer | null = null
+  let pinkNoiseBuf: AudioBuffer | null = null
+
+  // Active scene bed & lookahead scheduler
+  let activeBedNodes: AudioNode[] = []
+  let activeBedGain: GainNode | null = null
+  let activeBedFilter: BiquadFilterNode | null = null
+  let activeBedFilter2: BiquadFilterNode | null = null
+  let bedEngine: SoundEngine | null = null
+  let schedulerTimer: ReturnType<typeof setInterval> | null = null
+  let stopTimeout: ReturnType<typeof setTimeout> | null = null
+  let nextStepTime = 0
+  let stepCounter = 0
+  let activeBellVoices = 0
+
   let on = false
   let held = false
-  // The sound is wanted now: on and not held. The system can still stop the context on its own (iOS: the lock screen,
-  // a call, another app taking the audio session), leaving it `suspended` or WebKit's `interrupted`; a resume outside
-  // a gesture is refused there, so the next touch or key anywhere on the page asks again, until it runs.
   const wanted = () => on && !held
   const claim = () => {
     if (wanted() || ctx) session(wanted() ? "playback" : "ambient")
@@ -186,32 +207,40 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
   const small = smallSpeaker()
   let profile: SoundProfile = initial
   let warmthX = 0
-  let tickFlip = false
-  let hoverFlip = false
-  let lastStep = 0
-  let lastHover = 0
-  let lastIris = 0
-  let lastClick = 0
+  let dampedEnergy = 0
+  let lastClick = -Infinity
 
-  const warmthCutoff = (c: AudioContext) =>
-    clampFreq(c, Math.max(900, profile.filter.baseHz + warmthX * profile.filter.rangeHz))
+  const targetMasterGain = () => (small ? MASTER_GAIN.small : MASTER_GAIN.desktop)
 
-  const applyProfileNodes = (c: AudioContext, smooth: boolean) => {
+  const masterCutoff = (c: AudioContext) =>
+    clampFreq(c, Math.max(1200, profile.filter.baseHz + warmthX * profile.filter.rangeHz + dampedEnergy * 600))
+
+  const applyMasterMod = (c: AudioContext, smooth: boolean) => {
     const now = safeTime(c.currentTime)
-    const cutoff = warmthCutoff(c)
-    const delaySec = clamp(profile.room.delaySec, 0.005, 0.22)
-    const feedback = clamp(profile.room.feedback, 0, 0.45)
-    const wet = clamp(profile.room.wet, 0, 0.35)
+    const cutoff = masterCutoff(c)
+    const wet = clamp(profile.room.wet, 0, 0.6)
     if (smooth) {
-      toneFilter?.frequency.setTargetAtTime(cutoff, now, 0.16)
-      delayNode?.delayTime.setTargetAtTime(delaySec, now, 0.16)
-      feedbackNode?.gain.setTargetAtTime(feedback, now, 0.16)
-      wetNode?.gain.setTargetAtTime(wet, now, 0.16)
+      masterLPF?.frequency.setTargetAtTime(cutoff, now, 0.22)
+      wetGain?.gain.setTargetAtTime(wet, now, 0.22)
     } else {
-      toneFilter?.frequency.setValueAtTime(cutoff, now)
-      delayNode?.delayTime.setValueAtTime(delaySec, now)
-      feedbackNode?.gain.setValueAtTime(feedback, now)
-      wetNode?.gain.setValueAtTime(wet, now)
+      masterLPF?.frequency.setValueAtTime(cutoff, now)
+      wetGain?.gain.setValueAtTime(wet, now)
+    }
+    // Smoothly modulate the active scene's continuous bed filter (slew-limited, never clicks)
+    if (activeBedFilter) {
+      const e = dampedEnergy
+      let bedHz = 220
+      if (profile.engine === "gears") bedHz = 185 + e * 210 + warmthX * 35
+      else if (profile.engine === "aperture") bedHz = 360 + e * 380 + warmthX * 80
+      else if (profile.engine === "projector") bedHz = 780 + e * 520 + warmthX * 120
+      else if (profile.engine === "eclipse") bedHz = 340 + e * 880 + warmthX * 160
+      else if (profile.engine === "chime") bedHz = 440 + e * 460 + warmthX * 90
+      else if (profile.engine === "vinyl") bedHz = 1550 + e * 850 + warmthX * 220
+      activeBedFilter.frequency.setTargetAtTime(clampFreq(c, bedHz), now, 0.25)
+    }
+    if (activeBedFilter2 && profile.engine === "aperture") {
+      const bedHz2 = 1150 + dampedEnergy * 620 + warmthX * 140
+      activeBedFilter2.frequency.setTargetAtTime(clampFreq(c, bedHz2), now, 0.25)
     }
   }
 
@@ -222,191 +251,623 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
     if (!Ctor) return null
     if (!ctx) {
       ctx = new Ctor()
-      noiseBuffer = createNoiseBuffer(ctx)
+      const bufs = createNoiseBuffers(ctx)
+      brownNoiseBuf = bufs.brown
+      pinkNoiseBuf = bufs.pink
 
-      bus = ctx.createGain()
-      bus.gain.value = small ? MASTER_GAIN.small : MASTER_GAIN.desktop
+      sceneBus = ctx.createGain()
+      sceneBus.gain.value = 1.0
 
-      toneFilter = ctx.createBiquadFilter()
-      toneFilter.type = "lowpass"
-      toneFilter.Q.value = 0.65
+      dryGain = ctx.createGain()
+      dryGain.gain.value = 0.78
 
-      let out: AudioNode = ctx.destination
+      wetGain = ctx.createGain()
+      wetGain.gain.value = clamp(profile.room.wet, 0, 0.6)
+
+      masterLPF = ctx.createBiquadFilter()
+      masterLPF.type = "lowpass"
+      masterLPF.Q.value = 0.65
+
+      masterGain = ctx.createGain()
+      masterGain.gain.value = MIN_GAIN
+
+      sceneBus.connect(dryGain)
+      dryGain.connect(masterLPF)
+
+      // Shared warm room reverb (feature-detected for test stand-in AudioContext)
+      if (typeof ctx.createConvolver === "function") {
+        const convolver = ctx.createConvolver()
+        convolver.buffer = createWarmRoomIR(ctx, ROOM_IR_SEC)
+        sceneBus.connect(convolver)
+        convolver.connect(wetGain)
+        wetGain.connect(masterLPF)
+      }
+
+      let chain: AudioNode = masterLPF
+      if (typeof ctx.createWaveShaper === "function") {
+        const shaper = ctx.createWaveShaper()
+        shaper.curve = makeWarmSaturationCurve()
+        shaper.oversample = "2x"
+        chain.connect(shaper)
+        chain = shaper
+      }
+
       if (typeof ctx.createDynamicsCompressor === "function") {
-        compressor = ctx.createDynamicsCompressor()
-        compressor.threshold.value = -10
-        compressor.knee.value = 12
-        compressor.ratio.value = 4
-        compressor.attack.value = 0.002
-        compressor.release.value = 0.08
-        compressor.connect(ctx.destination)
-        out = compressor
+        const comp = ctx.createDynamicsCompressor()
+        comp.threshold.value = -16
+        comp.knee.value = 18
+        comp.ratio.value = 6
+        comp.attack.value = 0.008
+        comp.release.value = 0.18
+        chain.connect(comp)
+        chain = comp
       }
 
-      bus.connect(toneFilter)
-      if (small) {
-        presence = ctx.createBiquadFilter()
-        presence.type = "peaking"
-        presence.frequency.value = 2600
-        presence.Q.value = 0.9
-        presence.gain.value = 3.5
-        toneFilter.connect(presence)
-        presence.connect(out)
-      } else {
-        toneFilter.connect(out)
-      }
-
-      delayNode = ctx.createDelay(0.25)
-
-      const roomFilter = ctx.createBiquadFilter()
-      roomFilter.type = "lowpass"
-      roomFilter.frequency.value = 2400
-
-      feedbackNode = ctx.createGain()
-      wetNode = ctx.createGain()
-
-      toneFilter.connect(delayNode)
-      delayNode.connect(roomFilter)
-      roomFilter.connect(feedbackNode)
-      feedbackNode.connect(delayNode)
-      roomFilter.connect(wetNode)
-      wetNode.connect(out)
-
-      applyProfileNodes(ctx, false)
+      chain.connect(masterGain)
+      masterGain.connect(ctx.destination)
+      applyMasterMod(ctx, false)
     }
     return ctx
   }
 
   const ready = (): AudioContext | null => {
-    if (!wanted() || document.hidden || !ctx || !bus) return null
+    if (!wanted() || document.hidden || !ctx || !sceneBus) return null
     if (ctx.state !== "running") return null
     return ctx
   }
 
-  // Short filtered white-noise burst from a random slice of the shared noise buffer
-  const burst = (
-    c: AudioContext,
-    t0: number,
-    spec: {
-      freq: number
-      q: number
-      gain: number
-      decay: number
-      type?: "bandpass" | "highpass"
-      attack?: number
-    },
-  ) => {
-    if (!bus || !noiseBuffer) return
-    const start = safeTime(t0)
-    const decay = Math.max(0.003, spec.decay)
-    const attack = Math.min(spec.attack ?? 0.001, decay * 0.35)
-    const peak = safeGain(spec.gain)
+  // ---- Individual Scene Voices ----
 
-    const src = c.createBufferSource()
-    src.buffer = noiseBuffer
-
-    const filter = c.createBiquadFilter()
-    filter.type = spec.type ?? "bandpass"
-    filter.frequency.setValueAtTime(clampFreq(c, spec.freq), start)
-    filter.Q.value = clamp(spec.q, 0.5, 24)
-
-    const env = c.createGain()
-    env.gain.setValueAtTime(MIN_GAIN, start)
-    env.gain.linearRampToValueAtTime(peak, start + attack)
-    env.gain.exponentialRampToValueAtTime(MIN_GAIN, start + decay)
-
-    src.connect(filter)
-    filter.connect(env)
-    env.connect(bus)
-
-    const bufDur = noiseBuffer.duration || NOISE_SEC
-    const playDur = Math.min(decay + 0.015, bufDur * 0.9)
-    const maxOffset = Math.max(0, bufDur - playDur - 0.005)
-    src.start(start, maxOffset > 0 ? Math.random() * maxOffset : 0)
-    src.stop(start + playDur)
-  }
-
-  // Short pitch-dropping body thump or resonant brass partial
-  const tone = (
-    c: AudioContext,
-    t0: number,
-    spec: {
-      startHz: number
-      endHz?: number
-      gain: number
-      decay: number
-      wave?: OscillatorType
-      attack?: number
-    },
-  ) => {
-    if (!bus) return
-    const start = safeTime(t0)
-    const decay = Math.max(0.005, spec.decay)
-    const attack = Math.min(spec.attack ?? 0.0015, decay * 0.3)
-    const f0 = clampFreq(c, spec.startHz)
-    const f1 = clampFreq(c, spec.endHz ?? spec.startHz)
-    const peak = safeGain(spec.gain)
+  const triggerWarmGearTick = (c: AudioContext, t: number, isPrimary: boolean) => {
+    if (!sceneBus || !pinkNoiseBuf) return
+    const startFreq = isPrimary ? 192 : 162
+    const endFreq = isPrimary ? 78 : 68
+    const jitter = 0.92 + Math.random() * 0.16
 
     const osc = c.createOscillator()
-    osc.type = spec.wave ?? "sine"
-    osc.frequency.setValueAtTime(f0, start)
-    if (Math.abs(f1 - f0) > 0.5) osc.frequency.exponentialRampToValueAtTime(f1, start + decay * 0.85)
+    osc.type = "triangle"
+    osc.frequency.setValueAtTime(startFreq * jitter, t)
+    osc.frequency.exponentialRampToValueAtTime(endFreq, t + 0.026)
 
-    const env = c.createGain()
-    env.gain.setValueAtTime(MIN_GAIN, start)
-    env.gain.linearRampToValueAtTime(peak, start + attack)
-    env.gain.exponentialRampToValueAtTime(MIN_GAIN, start + decay)
+    const bodyLPF = c.createBiquadFilter()
+    bodyLPF.type = "lowpass"
+    bodyLPF.frequency.value = 480 + dampedEnergy * 340
 
-    osc.connect(env)
-    env.connect(bus)
-    osc.start(start)
-    osc.stop(start + decay + 0.02)
+    const g = c.createGain()
+    g.gain.setValueAtTime(MIN_GAIN, t)
+    g.gain.linearRampToValueAtTime(0.15 * jitter, t + 0.004)
+    g.gain.exponentialRampToValueAtTime(MIN_GAIN, t + 0.065)
+
+    osc.connect(bodyLPF)
+    bodyLPF.connect(g)
+    g.connect(sceneBus)
+    osc.start(t)
+    osc.stop(t + 0.08)
+
+    const click = c.createBufferSource()
+    click.buffer = pinkNoiseBuf
+    const cBP = c.createBiquadFilter()
+    cBP.type = "bandpass"
+    cBP.frequency.value = clampFreq(c, (isPrimary ? 1350 : 1120) + dampedEnergy * 450)
+    cBP.Q.value = 2.4
+    const cG = c.createGain()
+    cG.gain.setValueAtTime(MIN_GAIN, t)
+    cG.gain.linearRampToValueAtTime(0.06 * jitter, t + 0.002)
+    cG.gain.exponentialRampToValueAtTime(MIN_GAIN, t + 0.014)
+
+    click.connect(cBP)
+    cBP.connect(cG)
+    cG.connect(sceneBus)
+    click.start(t, Math.random() * 2, 0.02)
   }
 
-  // Two-stage crown-detent mechanical lock-in + subtle Renaissance brass/tuning-fork resonance
-  const playEngage = (c: AudioContext) => {
-    const t0 = safeTime(c.currentTime)
-    const { escapement: esc, spring, engage: eng } = profile
-    const latchAt = t0 + clamp(eng.latchGap, 0.02, 0.12)
+  const triggerApertureBreath = (c: AudioContext, t: number) => {
+    if (!sceneBus || !pinkNoiseBuf) return
+    const jitter = 0.9 + Math.random() * 0.2
+    const src = c.createBufferSource()
+    src.buffer = pinkNoiseBuf
+    const bp = c.createBiquadFilter()
+    bp.type = "bandpass"
+    bp.frequency.value = clampFreq(c, 920 + dampedEnergy * 480)
+    bp.Q.value = 2.8
+    const g = c.createGain()
+    g.gain.setValueAtTime(MIN_GAIN, t)
+    g.gain.linearRampToValueAtTime(0.075 * jitter, t + 0.012)
+    g.gain.exponentialRampToValueAtTime(MIN_GAIN, t + 0.055)
+    src.connect(bp)
+    bp.connect(g)
+    g.connect(sceneBus)
+    src.start(t, Math.random() * 2.5, 0.07)
+  }
 
-    // Stage 1: initial pawl catch
-    burst(c, t0, {
-      freq: esc.freq * 0.92 * vary(0.04),
-      q: esc.q,
-      gain: esc.level * 0.82 * vary(0.1),
-      decay: esc.decay * 1.05,
+  const triggerShutterPulse = (c: AudioContext, t: number) => {
+    if (!sceneBus || !brownNoiseBuf) return
+    const src = c.createBufferSource()
+    src.buffer = brownNoiseBuf
+    const bp = c.createBiquadFilter()
+    bp.type = "bandpass"
+    bp.frequency.value = clampFreq(c, 520 + dampedEnergy * 420)
+    bp.Q.value = 1.6
+
+    const g = c.createGain()
+    const peak = 0.11 * (0.9 + Math.random() * 0.2)
+    g.gain.setValueAtTime(MIN_GAIN, t)
+    g.gain.linearRampToValueAtTime(peak, t + 0.006)
+    g.gain.exponentialRampToValueAtTime(MIN_GAIN, t + 0.032)
+
+    src.connect(bp)
+    bp.connect(g)
+    g.connect(sceneBus)
+    src.start(t, Math.random() * 2.5, 0.04)
+  }
+
+  const triggerPendantBell = (c: AudioContext, t: number) => {
+    if (!sceneBus || activeBellVoices >= 3) return
+    const freq = PENDANT_NOTES[Math.floor(Math.random() * PENDANT_NOTES.length)]
+    activeBellVoices++
+
+    const partials = [
+      { ratio: 0.5, amp: 0.032, decay: 3.1 },
+      { ratio: 1.0, amp: 0.068, decay: 2.8 },
+      { ratio: 2.0, amp: 0.018, decay: 1.3 },
+      { ratio: 2.756, amp: 0.008, decay: 0.65 },
+    ]
+    const noteLPF = c.createBiquadFilter()
+    noteLPF.type = "lowpass"
+    noteLPF.frequency.value = clampFreq(c, 2200 + dampedEnergy * 1100)
+    noteLPF.connect(sceneBus)
+
+    for (const p of partials) {
+      const osc = c.createOscillator()
+      osc.type = "sine"
+      osc.frequency.setValueAtTime(clampFreq(c, freq * p.ratio), t)
+      const g = c.createGain()
+      g.gain.setValueAtTime(MIN_GAIN, t)
+      g.gain.linearRampToValueAtTime(p.amp, t + 0.024)
+      g.gain.exponentialRampToValueAtTime(MIN_GAIN, t + p.decay)
+      osc.connect(g)
+      g.connect(noteLPF)
+      osc.start(t)
+      osc.stop(t + p.decay + 0.05)
+    }
+    setTimeout(() => {
+      activeBellVoices = Math.max(0, activeBellVoices - 1)
+    }, 1500)
+  }
+
+  const triggerCelestialChime = (c: AudioContext, t: number) => {
+    if (!sceneBus || activeBellVoices >= 4) return
+    const freq = CHIME_NOTES[Math.floor(Math.random() * CHIME_NOTES.length)]
+    activeBellVoices++
+
+    // Authentic cylindrical wind-chime modal ratios with 18ms soft breeze attack
+    const partials = [
+      { ratio: 1.0, amp: 0.09, decay: 2.7 },
+      { ratio: 2.756, amp: 0.02, decay: 0.92 },
+      { ratio: 5.404, amp: 0.005, decay: 0.34 },
+    ]
+    const noteLPF = c.createBiquadFilter()
+    noteLPF.type = "lowpass"
+    noteLPF.frequency.value = clampFreq(c, 2900 + dampedEnergy * 1100)
+    noteLPF.connect(sceneBus)
+
+    for (const p of partials) {
+      const osc = c.createOscillator()
+      osc.type = "sine"
+      osc.frequency.setValueAtTime(clampFreq(c, freq * p.ratio), t)
+      const g = c.createGain()
+      g.gain.setValueAtTime(MIN_GAIN, t)
+      g.gain.linearRampToValueAtTime(p.amp, t + 0.018)
+      g.gain.exponentialRampToValueAtTime(MIN_GAIN, t + p.decay)
+      osc.connect(g)
+      g.connect(noteLPF)
+      osc.start(t)
+      osc.stop(t + p.decay + 0.05)
+    }
+    setTimeout(() => {
+      activeBellVoices = Math.max(0, activeBellVoices - 1)
+    }, 1200)
+  }
+
+  const triggerJazzChord = (c: AudioContext, t: number, chord: (typeof JAZZ_CHORDS)[number], withBass: boolean) => {
+    if (!sceneBus) return
+    const wowRatio = 1 + Math.sin(t * 2.1) * 0.0018 * (1 + dampedEnergy * 1.4)
+
+    const rhodesLPF = c.createBiquadFilter()
+    rhodesLPF.type = "lowpass"
+    rhodesLPF.frequency.setValueAtTime(clampFreq(c, 1150 + dampedEnergy * 1400), t)
+    rhodesLPF.Q.value = 0.7
+    rhodesLPF.connect(sceneBus)
+
+    const volScale = withBass ? 1.0 : 0.55
+    const decay = withBass ? 2.35 : 1.35
+
+    chord.notes.forEach((freq, idx) => {
+      const strumT = t + idx * 0.022
+      const osc1 = c.createOscillator()
+      osc1.type = "sine"
+      osc1.frequency.setValueAtTime(clampFreq(c, freq * wowRatio), strumT)
+
+      const osc2 = c.createOscillator()
+      osc2.type = "sine"
+      osc2.frequency.setValueAtTime(clampFreq(c, freq * 2 * wowRatio), strumT)
+
+      const g1 = c.createGain()
+      g1.gain.setValueAtTime(MIN_GAIN, strumT)
+      g1.gain.linearRampToValueAtTime(0.055 * volScale, strumT + 0.016)
+      g1.gain.exponentialRampToValueAtTime(MIN_GAIN, strumT + decay)
+
+      const g2 = c.createGain()
+      g2.gain.setValueAtTime(MIN_GAIN, strumT)
+      g2.gain.linearRampToValueAtTime(0.012 * volScale, strumT + 0.008)
+      g2.gain.exponentialRampToValueAtTime(MIN_GAIN, strumT + 0.25)
+
+      osc1.connect(g1)
+      osc2.connect(g2)
+      g1.connect(rhodesLPF)
+      g2.connect(rhodesLPF)
+
+      osc1.start(strumT)
+      osc2.start(strumT)
+      osc1.stop(strumT + decay + 0.05)
+      osc2.stop(strumT + 0.3)
     })
 
-    // Stage 2: firm crown-detent lock-in + brass ring
-    burst(c, latchAt, {
-      freq: esc.freq * 1.14 * vary(0.04),
-      q: esc.q * 1.1,
-      gain: esc.level * 1.02 * vary(0.1),
-      decay: esc.decay * 1.2,
-    })
-    burst(c, latchAt, {
-      freq: eng.ringHz * vary(0.03),
-      q: Math.max(12, spring.q),
-      gain: Math.max(0.09, spring.level * 1.25) * vary(0.1),
-      decay: 0.055,
-      attack: 0.002,
-    })
+    if (withBass) {
+      const bOsc = c.createOscillator()
+      bOsc.type = "triangle"
+      bOsc.frequency.setValueAtTime(clampFreq(c, chord.bass * wowRatio), t)
+      const bLPF = c.createBiquadFilter()
+      bLPF.type = "lowpass"
+      bLPF.frequency.value = 210
+      const bG = c.createGain()
+      bG.gain.setValueAtTime(MIN_GAIN, t)
+      bG.gain.linearRampToValueAtTime(0.14, t + 0.02)
+      bG.gain.exponentialRampToValueAtTime(MIN_GAIN, t + 1.45)
 
-    // Understated Renaissance brass / tuning-fork shimmer decaying naturally
-    const bellDecay = clamp(eng.decay, 0.16, 0.5)
-    const bellFreq = eng.bellHz * vary(0.008)
-    tone(c, latchAt + 0.002, {
-      startHz: bellFreq,
-      gain: eng.level,
-      decay: bellDecay,
-      attack: 0.004,
-    })
-    tone(c, latchAt + 0.002, {
-      startHz: bellFreq * clamp(eng.overtoneRatio, 1.1, 4),
-      gain: eng.level * 0.36,
-      decay: bellDecay * 0.52,
-      attack: 0.003,
-    })
+      bOsc.connect(bLPF)
+      bLPF.connect(bG)
+      bG.connect(sceneBus)
+      bOsc.start(t)
+      bOsc.stop(t + 1.5)
+    }
+  }
+
+  const triggerVinylCrackle = (c: AudioContext, t: number) => {
+    if (!sceneBus || !pinkNoiseBuf) return
+    const src = c.createBufferSource()
+    src.buffer = pinkNoiseBuf
+    const hp = c.createBiquadFilter()
+    hp.type = "bandpass"
+    hp.frequency.value = clampFreq(c, 2600 + Math.random() * 1600)
+    hp.Q.value = 2.0
+
+    const g = c.createGain()
+    g.gain.setValueAtTime(MIN_GAIN, t)
+    g.gain.linearRampToValueAtTime(0.028 + Math.random() * 0.032, t + 0.001)
+    g.gain.exponentialRampToValueAtTime(MIN_GAIN, t + 0.007)
+
+    src.connect(hp)
+    hp.connect(g)
+    g.connect(sceneBus)
+    src.start(t, Math.random() * 3, 0.01)
+  }
+
+  // ---- Bed & Lookahead Scheduler Lifecycle ----
+
+  const stopBed = (immediate = false) => {
+    if (schedulerTimer) {
+      clearInterval(schedulerTimer)
+      schedulerTimer = null
+    }
+    if (stopTimeout) {
+      clearTimeout(stopTimeout)
+      stopTimeout = null
+    }
+    const prevGain = activeBedGain
+    const nodes = activeBedNodes
+    activeBedNodes = []
+    activeBedGain = null
+    activeBedFilter = null
+    activeBedFilter2 = null
+    bedEngine = null
+
+    if (prevGain && ctx) {
+      const now = safeTime(ctx.currentTime)
+      try {
+        prevGain.gain.cancelScheduledValues?.(now)
+        prevGain.gain.setTargetAtTime(MIN_GAIN, now, immediate ? 0.01 : 0.06)
+      } catch {}
+    }
+
+    const cleanup = () => {
+      for (const n of nodes) {
+        try {
+          if ("stop" in n && typeof (n as AudioScheduledSourceNode).stop === "function") {
+            ;(n as AudioScheduledSourceNode).stop()
+          }
+        } catch {}
+        try {
+          n.disconnect?.()
+        } catch {}
+      }
+    }
+
+    if (immediate) cleanup()
+    else if (nodes.length > 0) stopTimeout = setTimeout(cleanup, 220)
+  }
+
+  const startBed = (c: AudioContext) => {
+    if (!sceneBus || !brownNoiseBuf || !pinkNoiseBuf) return
+    if (bedEngine === profile.engine && activeBedGain) return
+    stopBed(false)
+
+    const now = safeTime(c.currentTime)
+    const engine = profile.engine
+    bedEngine = engine
+    activeBedGain = c.createGain()
+    activeBedGain.gain.setValueAtTime(MIN_GAIN, now)
+    activeBedGain.connect(sceneBus)
+
+    if (engine === "gears") {
+      const src = c.createBufferSource()
+      src.buffer = brownNoiseBuf
+      src.loop = true
+      const bp = c.createBiquadFilter()
+      bp.type = "bandpass"
+      bp.frequency.value = 200
+      bp.Q.value = 1.25
+      activeBedFilter = bp
+      const g = c.createGain()
+      g.gain.value = 0.22
+      src.connect(bp)
+      bp.connect(g)
+      g.connect(activeBedGain)
+      src.start(now)
+      activeBedNodes.push(src, bp, g, activeBedGain)
+      activeBedGain.gain.setTargetAtTime(1.0, now, 0.14)
+
+      nextStepTime = now + 0.06
+      stepCounter = 0
+      schedulerTimer = setInterval(() => {
+        const ac = ready()
+        if (!ac || profile.engine !== "gears") return
+        while (nextStepTime < ac.currentTime + 0.12) {
+          triggerWarmGearTick(ac, nextStepTime, stepCounter % 2 === 0)
+          const speedMult = 1 + dampedEnergy * 0.42
+          nextStepTime += 0.41 / speedMult
+          stepCounter++
+        }
+      }, 30)
+    } else if (engine === "aperture") {
+      // Dual-band oiled lens-barrel friction whisper
+      const src = c.createBufferSource()
+      src.buffer = pinkNoiseBuf
+      src.loop = true
+
+      const bp1 = c.createBiquadFilter()
+      bp1.type = "bandpass"
+      bp1.frequency.value = 360
+      bp1.Q.value = 2.4
+      activeBedFilter = bp1
+      const g1 = c.createGain()
+      g1.gain.value = 0.12
+
+      const bp2 = c.createBiquadFilter()
+      bp2.type = "bandpass"
+      bp2.frequency.value = 1150
+      bp2.Q.value = 3.2
+      activeBedFilter2 = bp2
+      const g2 = c.createGain()
+      g2.gain.value = 0.06
+
+      src.connect(bp1)
+      bp1.connect(g1)
+      g1.connect(activeBedGain)
+      src.connect(bp2)
+      bp2.connect(g2)
+      g2.connect(activeBedGain)
+      src.start(now)
+      activeBedNodes.push(src, bp1, g1, bp2, g2, activeBedGain)
+      activeBedGain.gain.setTargetAtTime(1.0, now, 0.16)
+
+      nextStepTime = now + 0.12
+      schedulerTimer = setInterval(() => {
+        const ac = ready()
+        if (!ac || profile.engine !== "aperture") return
+        while (nextStepTime < ac.currentTime + 0.12) {
+          triggerApertureBreath(ac, nextStepTime)
+          nextStepTime += 0.68 / (1 + dampedEnergy * 0.35)
+        }
+      }, 40)
+    } else if (engine === "projector") {
+      const osc = c.createOscillator()
+      osc.type = "triangle"
+      osc.frequency.value = 58
+      const humLPF = c.createBiquadFilter()
+      humLPF.type = "lowpass"
+      humLPF.frequency.value = 160
+      const humG = c.createGain()
+      humG.gain.value = 0.085
+      osc.connect(humLPF)
+      humLPF.connect(humG)
+      humG.connect(activeBedGain)
+      osc.start(now)
+
+      const air = c.createBufferSource()
+      air.buffer = pinkNoiseBuf
+      air.loop = true
+      const airBP = c.createBiquadFilter()
+      airBP.type = "bandpass"
+      airBP.frequency.value = 820
+      airBP.Q.value = 0.85
+      activeBedFilter = airBP
+      const airG = c.createGain()
+      airG.gain.value = 0.09
+      air.connect(airBP)
+      airBP.connect(airG)
+      airG.connect(activeBedGain)
+      air.start(now)
+
+      activeBedNodes.push(osc, humLPF, humG, air, airBP, airG, activeBedGain)
+      activeBedGain.gain.setTargetAtTime(1.0, now, 0.14)
+
+      nextStepTime = now + 0.05
+      schedulerTimer = setInterval(() => {
+        const ac = ready()
+        if (!ac || profile.engine !== "projector") return
+        while (nextStepTime < ac.currentTime + 0.1) {
+          triggerShutterPulse(ac, nextStepTime)
+          const rate = 14.2 + dampedEnergy * 3.8
+          nextStepTime += 1 / rate
+        }
+      }, 25)
+    } else if (engine === "eclipse") {
+      // Singing-bowl / harmonic observatory drone + whisper air
+      const droneLPF = c.createBiquadFilter()
+      droneLPF.type = "lowpass"
+      droneLPF.frequency.value = 420
+      droneLPF.Q.value = 1.1
+      activeBedFilter = droneLPF
+      droneLPF.connect(activeBedGain)
+
+      const freqs = [146.83, 220.0, 293.66]
+      const amps = [0.042, 0.028, 0.016]
+      freqs.forEach((f, idx) => {
+        const o = c.createOscillator()
+        o.type = "sine"
+        o.frequency.value = f
+        const og = c.createGain()
+        og.gain.value = amps[idx]
+        o.connect(og)
+        og.connect(droneLPF)
+        o.start(now)
+        activeBedNodes.push(o, og)
+      })
+
+      const air = c.createBufferSource()
+      air.buffer = pinkNoiseBuf
+      air.loop = true
+      const airG = c.createGain()
+      airG.gain.value = 0.045
+      air.connect(droneLPF)
+      air.connect(airG)
+      airG.connect(activeBedGain)
+      air.start(now)
+
+      activeBedNodes.push(air, airG, droneLPF, activeBedGain)
+      activeBedGain.gain.setTargetAtTime(1.0, now, 0.22)
+
+      nextStepTime = now + 0.35
+      schedulerTimer = setInterval(() => {
+        const ac = ready()
+        if (!ac || profile.engine !== "eclipse") return
+        if (ac.currentTime >= nextStepTime) {
+          const prob = 0.42 + dampedEnergy * 0.35
+          if (Math.random() < prob) triggerPendantBell(ac, ac.currentTime + 0.02)
+          nextStepTime = ac.currentTime + Math.max(1.1, 1.9 - dampedEnergy * 0.6 + Math.random() * 0.9)
+        }
+      }, 80)
+    } else if (engine === "chime") {
+      const wind = c.createBufferSource()
+      wind.buffer = pinkNoiseBuf
+      wind.loop = true
+      const windBP = c.createBiquadFilter()
+      windBP.type = "bandpass"
+      windBP.frequency.value = 460
+      windBP.Q.value = 1.3
+      activeBedFilter = windBP
+      const windG = c.createGain()
+      windG.gain.value = 0.11
+      wind.connect(windBP)
+      windBP.connect(windG)
+      windG.connect(activeBedGain)
+      wind.start(now)
+
+      for (const freq of [130.81, 196.0]) {
+        const o = c.createOscillator()
+        o.type = "sine"
+        o.frequency.value = freq
+        const og = c.createGain()
+        og.gain.value = 0.022
+        o.connect(og)
+        og.connect(activeBedGain)
+        o.start(now)
+        activeBedNodes.push(o, og)
+      }
+
+      activeBedNodes.push(wind, windBP, windG, activeBedGain)
+      activeBedGain.gain.setTargetAtTime(1.0, now, 0.18)
+
+      nextStepTime = now + 0.15
+      schedulerTimer = setInterval(() => {
+        const ac = ready()
+        if (!ac || profile.engine !== "chime") return
+        if (ac.currentTime >= nextStepTime) {
+          const prob = 0.38 + dampedEnergy * 0.45
+          if (Math.random() < prob) triggerCelestialChime(ac, ac.currentTime + 0.02)
+          const baseGap = 0.85 - dampedEnergy * 0.38
+          nextStepTime = ac.currentTime + Math.max(0.38, baseGap + Math.random() * 0.55)
+        }
+      }, 60)
+    } else if (engine === "vinyl") {
+      const hiss = c.createBufferSource()
+      hiss.buffer = pinkNoiseBuf
+      hiss.loop = true
+      const hissBP = c.createBiquadFilter()
+      hissBP.type = "bandpass"
+      hissBP.frequency.value = 1650
+      hissBP.Q.value = 0.7
+      activeBedFilter = hissBP
+      const hissG = c.createGain()
+      hissG.gain.value = 0.08
+      hiss.connect(hissBP)
+      hissBP.connect(hissG)
+      hissG.connect(activeBedGain)
+      hiss.start(now)
+
+      const rumble = c.createBufferSource()
+      rumble.buffer = brownNoiseBuf
+      rumble.loop = true
+      const rLPF = c.createBiquadFilter()
+      rLPF.type = "lowpass"
+      rLPF.frequency.value = 120
+      const rG = c.createGain()
+      rG.gain.value = 0.12
+      rumble.connect(rLPF)
+      rLPF.connect(rG)
+      rG.connect(activeBedGain)
+      rumble.start(now)
+
+      activeBedNodes.push(hiss, hissBP, hissG, rumble, rLPF, rG, activeBedGain)
+      activeBedGain.gain.setTargetAtTime(1.0, now, 0.14)
+
+      nextStepTime = now + 0.08
+      stepCounter = 0
+      const beatDur = 60 / 74 // rock-solid 74 BPM late-night groove
+      schedulerTimer = setInterval(() => {
+        const ac = ready()
+        if (!ac || profile.engine !== "vinyl") return
+        if (Math.random() < 0.16) triggerVinylCrackle(ac, ac.currentTime + Math.random() * 0.05)
+        while (nextStepTime < ac.currentTime + 0.14) {
+          const barBeat = stepCounter % 4
+          const chordIdx = Math.floor(stepCounter / 4) % JAZZ_CHORDS.length
+          if (barBeat === 0) {
+            triggerJazzChord(ac, nextStepTime, JAZZ_CHORDS[chordIdx], true)
+          } else if (barBeat === 2 && Math.random() < 0.72) {
+            triggerJazzChord(ac, nextStepTime + beatDur * 0.5, JAZZ_CHORDS[chordIdx], false)
+          }
+          nextStepTime += beatDur
+          stepCounter++
+        }
+      }, 40)
+    }
+  }
+
+  const fadeMaster = (c: AudioContext, audible: boolean) => {
+    if (!masterGain) return
+    const now = safeTime(c.currentTime)
+    masterGain.gain.setTargetAtTime(audible ? targetMasterGain() : MIN_GAIN, now, audible ? 0.12 : 0.05)
   }
 
   const api: MechanicalSound = {
@@ -417,190 +878,113 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
       claim()
       listen(next)
       if (next) {
-        // made now even when held: outside a gesture a browser would refuse to start it later
         const c = ensureContext()
         if (!c) return
         if (held) {
-          // a context made in a gesture starts running: quiet it, and give the audio session back
           claim()
+          stopBed(true)
           if (c.state === "running") void c.suspend().catch(() => {})
           return
         }
-        if (c.state === "running") {
-          playEngage(c)
-        } else {
-          void c
-            .resume()
-            .then(() => {
-              if (wanted() && ctx === c) playEngage(c)
-            })
-            .catch(() => {})
+        const boot = () => {
+          if (!wanted() || ctx !== c) return
+          fadeMaster(c, true)
+          startBed(c)
         }
-      } else if (ctx && ctx.state === "running") {
-        void ctx.suspend().catch(() => {})
+        if (c.state === "running") boot()
+        else void c.resume().then(boot).catch(() => {})
+      } else {
+        stopBed(false)
+        if (ctx) {
+          fadeMaster(ctx, false)
+          if (ctx.state === "running") void ctx.suspend().catch(() => {})
+        }
       }
     },
     setProfile: (next: SoundProfile) => {
       if (next === profile) return
       profile = next
-      tickFlip = false
-      hoverFlip = false
-      if (ctx) applyProfileNodes(ctx, true)
+      if (ctx) {
+        applyMasterMod(ctx, true)
+        if (ready()) startBed(ctx)
+      }
     },
-    step: (energy = 0) => {
+    setEnergy: (energy: number) => {
+      dampedEnergy = clamp(energy, 0, 1)
       const c = ready()
-      if (!c) return
-      const now = performance.now()
-      const boost = clamp(energy, 0, 1)
-      const minGap = 220 - boost * 115
-      if (now - lastStep < minGap) return
-      lastStep = now
-
-      const tock = tickFlip
-      tickFlip = !tickFlip
-
-      const { escapement: esc, spring } = profile
-      const asym = tock ? clamp(esc.asymmetry, 0.85, 1.15) : 1
-      const freqBoost = 1 + boost * 0.14
-      const decayScale = 1 - boost * 0.18
-      const levelScale = 1 + boost * 0.25
-      const t0 = safeTime(c.currentTime)
-      const dropAt = t0 + clamp(esc.gap, 0.003, 0.016) * vary(0.08)
-
-      // Stage 1: pallet-stone / pawl unlock micro-transient
-      burst(c, t0, {
-        freq: esc.freq * asym * freqBoost * 1.26 * vary(0.05),
-        q: esc.q * 0.85,
-        gain: esc.level * 0.46 * levelScale * vary(0.12),
-        decay: esc.decay * 0.65 * decayScale,
-      })
-
-      // Stage 2: impulse / locking drop contact
-      burst(c, dropAt, {
-        freq: esc.freq * asym * freqBoost * vary(0.045),
-        q: esc.q,
-        gain: esc.level * levelScale * vary(0.11),
-        decay: esc.decay * decayScale,
-      })
-
-      // Subtle high-Q brass hairspring / tooth resonance ring
-      burst(c, t0 + (dropAt - t0) * 0.85, {
-        freq: spring.freq * asym * vary(0.04),
-        q: spring.q,
-        gain: spring.level * (0.9 + boost * 0.2) * vary(0.12),
-        decay: spring.decay,
-        attack: 0.0015,
-      })
+      if (c) applyMasterMod(c, true)
     },
     setWarmth: (x: number) => {
       warmthX = clamp(x, -1, 1)
       const c = ready()
-      if (!c || !toneFilter) return
-      toneFilter.frequency.setTargetAtTime(warmthCutoff(c), safeTime(c.currentTime), 0.16)
+      if (c) applyMasterMod(c, true)
+    },
+    step: (energy = 0) => {
+      // Smoothly fold any external step energy into the steady-state modulator (never interrupts rhythm)
+      dampedEnergy = clamp(Math.max(dampedEnergy * 0.85, energy), 0, 1)
+      const c = ready()
+      if (c) applyMasterMod(c, true)
     },
     iris: (opening: boolean) => {
       const c = ready()
       if (!c) return
-      const now = performance.now()
-      if (now - lastIris < 420) return
-      lastIris = now
-
-      const { shutter, spring } = profile
-      const blades = Math.max(2, Math.min(3, Math.round(shutter.blades)))
-      const spread = clamp(shutter.spread, 0.012, 0.032)
-      const baseHz = opening ? shutter.openHz : shutter.closeHz
-      const t0 = safeTime(c.currentTime)
-
-      for (let i = 0; i < blades; i++) {
-        const at = t0 + i * spread * vary(0.06)
-        const pitchStep = opening ? 1 + i * 0.12 : 1 - i * 0.1
-        const levelCurve = opening ? 0.82 + i * 0.14 : 1.0 - i * 0.1
-        burst(c, at, {
-          freq: baseHz * pitchStep * vary(0.045),
-          q: shutter.q,
-          gain: shutter.level * levelCurve * vary(0.1),
-          decay: shutter.decay * (opening ? 0.95 : 1.12),
-          attack: 0.0035,
-        })
-      }
-
-      if (opening) {
-        const endAt = t0 + (blades - 1) * spread + 0.006
-        burst(c, endAt, {
-          freq: spring.freq * 1.12 * vary(0.04),
-          q: spring.q * 0.9,
-          gain: spring.level * 0.65 * vary(0.1),
-          decay: spring.decay * 0.85,
-          attack: 0.002,
-        })
-      }
+      // Gentle modulation lift on hover/focus without jarring transient bursts
+      dampedEnergy = clamp(opening ? Math.max(dampedEnergy, 0.35) : dampedEnergy * 0.5, 0, 1)
+      applyMasterMod(c, true)
     },
     detent: (kind) => {
       const c = ready()
       if (!c) return
       const now = performance.now()
       const t0 = safeTime(c.currentTime)
-      const { escapement: esc, spring } = profile
-      if (kind === "hover") {
-        if (now - lastHover < 140) return
-        lastHover = now
-        const pitch = hoverFlip ? 1.06 : 1
-        hoverFlip = !hoverFlip
-        burst(c, t0, {
-          freq: esc.freq * 1.42 * pitch * vary(0.05),
-          q: 2.4,
-          gain: 0.11 * vary(0.12),
-          decay: 0.006,
-          type: "highpass",
-          attack: 0.0008,
-        })
-      } else if (kind === "click") {
-        if (now - lastClick < 70) return
+      if (kind === "click") {
+        if (now - lastClick < 90) return
         lastClick = now
-        burst(c, t0, {
-          freq: esc.freq * 1.12 * vary(0.04),
-          q: esc.q * 0.9,
-          gain: esc.level * 0.95 * vary(0.1),
-          decay: Math.max(0.007, esc.decay),
-        })
-        burst(c, t0 + 0.001, {
-          freq: spring.freq * 1.14 * vary(0.04),
-          q: spring.q * 0.85,
-          gain: spring.level * 0.72 * vary(0.12),
-          decay: Math.max(0.018, spring.decay * 0.7),
-          attack: 0.0015,
-        })
-      } else {
-        playEngage(c)
+        if (profile.engine === "chime") triggerCelestialChime(c, t0)
+        else if (profile.engine === "eclipse") triggerPendantBell(c, t0)
+        else if (profile.engine === "vinyl") triggerVinylCrackle(c, t0)
+        else triggerWarmGearTick(c, t0, true)
+      } else if (kind === "engage") {
+        startBed(c)
       }
     },
     suspend: () => {
       held = true
       claim()
-      if (ctx && ctx.state === "running") void ctx.suspend().catch(() => {})
+      stopBed(true)
+      if (ctx) {
+        fadeMaster(ctx, false)
+        if (ctx.state === "running") void ctx.suspend().catch(() => {})
+      }
     },
     resume: () => {
       held = false
       claim()
-      // WebKit can also interrupt the context while another app has the audio session.
-      if (on && ctx && ctx.state !== "running" && ctx.state !== "closed" && !document.hidden)
-        void ctx.resume().catch(() => {})
+      if (on && ctx && !document.hidden) {
+        const boot = () => {
+          if (!wanted() || !ctx) return
+          fadeMaster(ctx, true)
+          startBed(ctx)
+        }
+        if (ctx.state === "running") boot()
+        else if (ctx.state !== "closed") void ctx.resume().then(boot).catch(() => {})
+      }
     },
     dispose: () => {
       on = false
       claim()
       listen(false)
+      stopBed(true)
       if (ctx) {
         const c = ctx
         ctx = null
-        bus = null
-        toneFilter = null
-        presence = null
-        compressor = null
-        delayNode = null
-        feedbackNode = null
-        wetNode = null
-        noiseBuffer = null
+        sceneBus = null
+        dryGain = null
+        wetGain = null
+        masterLPF = null
+        masterGain = null
+        brownNoiseBuf = null
+        pinkNoiseBuf = null
         void c.close().catch(() => {})
       }
     },

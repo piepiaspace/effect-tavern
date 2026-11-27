@@ -3,14 +3,11 @@
 import type { HomeFigure } from "../home-figure.tsx"
 import type { SoundProfile } from "../home-sound.ts"
 
-// Eccentric kinetic flywheel: brisk asymmetric cam-pawl snap, dry machined-steel contact, nimble E5 catch
+// 02 Mechanical Aperture: dual-band oiled lens-barrel friction whisper + calm damped shutter settle
 const SOUND: SoundProfile = {
-  escapement: { freq: 2760, q: 3.4, decay: 0.0068, gap: 0.0052, asymmetry: 1.07, level: 0.35 },
-  spring: { freq: 3180, q: 14, decay: 0.028, level: 0.11 },
-  shutter: { blades: 2, spread: 0.017, openHz: 2950, closeHz: 2180, q: 3.1, decay: 0.018, level: 0.23 },
-  engage: { latchGap: 0.042, bellHz: 659.25, overtoneRatio: 2, ringHz: 3120, decay: 0.26, level: 0.15 },
-  filter: { baseHz: 4050, rangeHz: 900 },
-  room: { delaySec: 0.024, feedback: 0.1, wet: 0.09 },
+  engine: "aperture",
+  filter: { baseHz: 4400, rangeHz: 850 },
+  room: { wet: 0.34 },
 }
 
 const ExtraHairline = () => (
@@ -33,6 +30,7 @@ const Artwork = () => (
     xmlns="http://www.w3.org/2000/svg"
     class="home-emblem"
     data-brand="projector-rosette-03"
+    data-themed="true"
     viewBox="0 0 1021 1024"
     aria-hidden="true"
   >
@@ -145,7 +143,7 @@ const Artwork = () => (
       </mask>
     </defs>
 
-    <g id="swept-tire-tread" fill="#000">
+    <g id="swept-tire-tread" fill="currentColor">
       <path
         id="upper-swept-blade"
         d="M221 149C259 112 279 98 316 78C386 40 448 26 514 25C579 21 646 30 706 39C620 40 550 69 488 108C411 93 314 103 221 149Z"
@@ -172,7 +170,7 @@ const Artwork = () => (
       />
     </g>
 
-    <g id="wheel-and-hub" fill="#000">
+    <g id="wheel-and-hub" fill="currentColor">
       <path
         id="outer-wheel-body"
         d="M349 250C409 185 490 147 575 146C665 144 751 177 815 237C880 298 920 385 922 474C924 570 887 658 824 718C784 757 735 784 676 798C746 777 808 735 850 677C891 620 913 551 912 482C909 385 871 301 807 245C743 187 664 157 579 157C493 158 413 191 349 250Z"
@@ -182,6 +180,9 @@ const Artwork = () => (
         d="M916 481C916 659 767 804 579 804C394 804 249 661 249 484C249 307 397 151 579 151C765 151 916 299 916 481Z"
         mask="url(#pr3-wheel-engraving-mask)"
       />
+      {/* Surgical vermilion-amber brand jewels nested inside the primary & eccentric hubs */}
+      <circle cx="575" cy="487" r="19" fill="var(--brand)" />
+      <circle cx="746" cy="370" r="15" fill="var(--brand)" />
     </g>
   </svg>
 )

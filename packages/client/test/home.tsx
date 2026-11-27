@@ -130,15 +130,14 @@ void (async () => {
   try {
     await quiet()
 
-    // 1. Finalized rosette-04 interactive mechanism, figure switcher, no dev brand picker, empty-shelf onboarding visible, auto-focused on desktop.
+    // 1. Default noir-vinyl-cosmos interactive figure, figure switcher, no dev brand picker, empty-shelf onboarding visible, auto-focused on desktop.
     check(!document.querySelector(".home-Direction-picker"), "dev brand picker should be removed")
     const emblem = () => document.querySelector<SVGSVGElement>(".home-emblem")
     check(
-      emblem()?.getAttribute("data-brand") === "projector-rosette-04" &&
-        emblem()?.querySelector("#upper-five-spoke-wheel") !== null &&
-        emblem()?.querySelector("#four-spoke-center-reel") !== null &&
-        emblem()?.querySelector("#lower-five-spoke-wheel") !== null,
-      "interactive rosette-04 mechanism should render with coupled wheel assemblies",
+      emblem()?.getAttribute("data-brand") === "noir-vinyl-cosmos" &&
+        emblem()?.querySelector("#nvc-platter") !== null &&
+        emblem()?.querySelector("#nvc-tonearm") !== null,
+      "interactive noir-vinyl-cosmos figure should render with platter and tonearm assemblies",
     )
     const nextFig = document.querySelector<HTMLButtonElement>(".home-nav-next")
     const prevFig = document.querySelector<HTMLButtonElement>(".home-nav-prev")
@@ -146,13 +145,13 @@ void (async () => {
     if (nextFig && prevFig) {
       nextFig.click()
       check(
-        await until(() => emblem()?.getAttribute("data-brand") === "cinema-astrolabe-01"),
-        "clicking next figure lazily loads and switches to cinema-astrolabe-01",
+        await until(() => emblem()?.getAttribute("data-brand") === "noir-celestial-mobile"),
+        "clicking next figure lazily loads and switches to noir-celestial-mobile",
       )
       prevFig.click()
       check(
-        await until(() => emblem()?.getAttribute("data-brand") === "projector-rosette-04"),
-        "clicking prev figure switches back to projector-rosette-04",
+        await until(() => emblem()?.getAttribute("data-brand") === "noir-vinyl-cosmos"),
+        "clicking prev figure switches back to noir-vinyl-cosmos",
       )
     }
     // the stage leaves touch strokes alone so swipe navigation never collides with the mechanism; tapping the
@@ -167,13 +166,13 @@ void (async () => {
     if (indexBtn && prevFig) {
       indexBtn.click()
       check(
-        await until(() => emblem()?.getAttribute("data-brand") === "cinema-astrolabe-01"),
-        "tapping telemetry index steps to cinema-astrolabe-01",
+        await until(() => emblem()?.getAttribute("data-brand") === "noir-celestial-mobile"),
+        "tapping telemetry index steps to noir-celestial-mobile",
       )
       prevFig.click()
       check(
-        await until(() => emblem()?.getAttribute("data-brand") === "projector-rosette-04"),
-        "clicking prev figure switches back to projector-rosette-04",
+        await until(() => emblem()?.getAttribute("data-brand") === "noir-vinyl-cosmos"),
+        "clicking prev figure switches back to noir-vinyl-cosmos",
       )
     }
     const soundToggle = document.querySelector<HTMLButtonElement>(".home-mech-sound")

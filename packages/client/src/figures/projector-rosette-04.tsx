@@ -7,14 +7,11 @@ import type { SoundProfile } from "../home-sound.ts"
 const UPPER_RATIO = -151.5 / 115
 const LOWER_RATIO = -151.5 / 126
 
-// Three-reel 35mm optical projector: cast-steel & brass Geneva-drive escapement, oiled 8-blade iris, D5 brass lock
+// 01 Mechanical Gears: oiled brass bearing brown-noise bed + warm brass/wood escapement tick-tock
 const SOUND: SoundProfile = {
-  escapement: { freq: 2350, q: 2.8, decay: 0.009, gap: 0.0065, asymmetry: 0.94, level: 0.34 },
-  spring: { freq: 2680, q: 13, decay: 0.034, level: 0.09 },
-  shutter: { blades: 3, spread: 0.02, openHz: 2550, closeHz: 1850, q: 2.6, decay: 0.022, level: 0.24 },
-  engage: { latchGap: 0.052, bellHz: 587.33, overtoneRatio: 1.5, ringHz: 2720, decay: 0.32, level: 0.16 },
-  filter: { baseHz: 3400, rangeHz: 850 },
-  room: { delaySec: 0.034, feedback: 0.14, wet: 0.13 },
+  engine: "gears",
+  filter: { baseHz: 4600, rangeHz: 750 },
+  room: { wet: 0.36 },
 }
 
 const ExtraHairline = () => (
@@ -49,6 +46,7 @@ const Artwork = () => (
     xmlns="http://www.w3.org/2000/svg"
     class="home-emblem tall"
     data-brand="projector-rosette-04"
+    data-themed="true"
     viewBox="0 0 686 1024"
     aria-hidden="true"
   >
@@ -185,6 +183,7 @@ const Artwork = () => (
       </g>
     </defs>
 
+    <g class="pr4-mono">
     <g id="upper-mounting-bracket" stroke="#151612">
       <path
         d="M235 127C235 163 222 169 211 182C203 194 201 209 200 225L283 219L343 196L407 219L486 225C486 207 482 190 470 178C455 168 450 154 452 128Z"
@@ -410,6 +409,39 @@ const Artwork = () => (
         <use href="#pr-tiny-bolt" transform="translate(314 875)" class="pr-detail-micro" />
       </g>
     </g>
+    </g>
+
+    {/* Surgical vermilion-amber brand accents (uninverted across light & dark):
+        main aperture bezel ring, rotating 4-point cardinal index marks, clipped upper & lower reel rims, and synced hub jewels */}
+    <defs>
+      <mask id="pr4-upper-rim-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="686" height="1024">
+        <rect x="0" y="0" width="686" height="1024" fill="#fff" />
+        <circle cx="343" cy="482" r="301" fill="#000" />
+      </mask>
+    </defs>
+    <g id="pr4-brand-accents">
+      <circle
+        cx="343"
+        cy="122"
+        r="107.5"
+        fill="none"
+        stroke="var(--brand)"
+        stroke-width="3.2"
+        mask="url(#pr4-upper-rim-mask)"
+      />
+      <circle cx="343" cy="482" r="223.5" fill="none" stroke="var(--brand)" stroke-width="5.5" />
+      <g id="pr4-brand-dial" fill="none" stroke="var(--brand)" stroke-width="4.5" stroke-linecap="round">
+        <path d="M343 220V261 M343 703V742 M81 482H122 M564 482H604" />
+      </g>
+      <circle cx="343" cy="875" r="117.3" fill="none" stroke="var(--brand)" stroke-width="3.2" />
+      <g fill="var(--brand)">
+        <circle cx="342" cy="120.5" r="9.5" />
+        <g id="pr4-brand-center-hub">
+          <ellipse cx="342.5" cy="458.5" rx="9.5" ry="10" />
+        </g>
+        <circle cx="342.4" cy="873.5" r="9.5" />
+      </g>
+    </g>
   </svg>
 )
 
@@ -437,6 +469,8 @@ export const projectorRosette04: HomeFigure = {
     const centerReel = svg.querySelector<SVGGElement>("#four-spoke-center-reel")
     const lowerWheel = svg.querySelector<SVGGElement>("#lower-five-spoke-wheel")
     const dialMarks = svg.querySelector<SVGGElement>("#dial-division-marks")
+    const brandDial = svg.querySelector<SVGGElement>("#pr4-brand-dial")
+    const brandCenterHub = svg.querySelector<SVGGElement>("#pr4-brand-center-hub")
     const irisBlades = svg.querySelector<SVGGElement>("#engraved-iris-blades")
     const filmLeft = hairline.querySelector<SVGPathElement>(".hl-belt-left")
     const filmRight = hairline.querySelector<SVGPathElement>(".hl-belt-right")
@@ -445,10 +479,13 @@ export const projectorRosette04: HomeFigure = {
       apply: (s, dirty) => {
         if (upperWheel) upperWheel.setAttribute("transform", `rotate(${(s.theta * UPPER_RATIO).toFixed(2)} 343 122)`)
         if (centerReel) centerReel.setAttribute("transform", `rotate(${s.theta.toFixed(2)} 343 482)`)
+        if (brandCenterHub) brandCenterHub.setAttribute("transform", `rotate(${s.theta.toFixed(2)} 343 482)`)
         if (lowerWheel) lowerWheel.setAttribute("transform", `rotate(${(s.theta * LOWER_RATIO).toFixed(2)} 343 875)`)
 
-        if (dialMarks && dirty("dial", s.dial, 0.03)) {
-          dialMarks.setAttribute("transform", `rotate(${s.dial.toFixed(2)} 343 482)`)
+        if (dirty("dial", s.dial, 0.03)) {
+          const rot = `rotate(${s.dial.toFixed(2)} 343 482)`
+          if (dialMarks) dialMarks.setAttribute("transform", rot)
+          if (brandDial) brandDial.setAttribute("transform", rot)
         }
         if (irisBlades && dirty("iris", s.iris, 0.002)) {
           const sc = 1 + s.iris * 0.024

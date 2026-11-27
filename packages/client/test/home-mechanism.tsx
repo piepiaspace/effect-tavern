@@ -28,6 +28,7 @@ const sound: MechanicalSound = {
   state: () => "running",
   setEnabled: (on) => void calls.push(`enabled ${on}`),
   setProfile: () => {},
+  setEnergy: () => {},
   step: () => void calls.push("step"),
   setWarmth: (x) => void warmth.push(x),
   iris: () => {},

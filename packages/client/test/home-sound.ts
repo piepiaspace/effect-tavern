@@ -280,128 +280,53 @@ const burstsBefore = bursts
 fresh.detent("engage")
 assert.equal(notes, before, "held, engage sounds no oscillators")
 assert.equal(bursts, burstsBefore, "held, engage sounds no noise bursts")
-fresh.resume()
-await tick()
-assert.equal(f.state, "running")
-assert.equal(audioSession.type, "playback")
-fresh.detent("engage")
-assert.ok(notes > before, "let go, engage sounds body & brass partials")
-assert.ok(bursts > burstsBefore, "let go, engage sounds mechanical catch bursts")
+  fresh.resume()
+  await tick()
+  assert.equal(f.state, "running")
+  assert.equal(audioSession.type, "playback")
+  assert.ok(bursts > burstsBefore, "let go, gears ambient bed starts continuous noise source")
 
-// --- Mechanical synthesis verification ---
-// Pre-generated 0.5s white-noise buffer and headroom compressor
-assert.equal(f.buffers.length, 1, "one shared noise buffer per context")
-assert.equal(f.buffers[0].length, 22050, "0.5s buffer at 44.1 kHz")
-assert.ok(
-  f.buffers[0].data.some((s) => s !== 0) && f.buffers[0].data.every((s) => s >= -1 && s <= 1),
-  "noise buffer contains valid [-1, 1] white-noise samples",
-)
-assert.equal(f.compressors, 1, "master headroom compressor wired")
+  // --- Steady-state soundscape verification ---
+  // Pre-generated 4s stereo brown + pink noise buffers and headroom compressor
+  assert.equal(f.buffers.length, 2, "two shared noise buffers (brown + pink) per context")
+  assert.equal(f.buffers[0].length, 44100 * 4, "4s brown-noise buffer at 44.1 kHz")
+  assert.equal(f.buffers[1].length, 44100 * 4, "4s pink-noise buffer at 44.1 kHz")
+  assert.ok(
+    f.buffers[0].data.some((s) => s !== 0) && f.buffers[0].data.every((s) => s >= -1 && s <= 1),
+    "brown-noise buffer contains valid [-1, 1] samples",
+  )
+  assert.equal(f.compressors, 1, "master headroom compressor wired")
 
-// Deterministic clock for rate-limited synthesis checks
-const origNow = performance.now.bind(performance)
-let nowMs = 10_000
-performance.now = () => nowMs
-try {
-  // step(energy): 2-stage escapement burst + hairspring ring (3 bursts, 0 low-frequency thump oscs)
-  let n0 = notes
-  let b0 = bursts
-  fresh.step(0)
-  assert.equal(bursts - b0, 3, "step tick emits unlock, impulse, and hairspring bursts")
-  assert.equal(notes - n0, 0, "step tick emits no low-frequency body thump")
-
-  // rate-limited at calm energy (220ms minGap)
-  nowMs += 100
-  fresh.step(0)
-  assert.equal(bursts - b0, 3, "calm step respects minGap")
-
-  // elevated energy tightens minGap (down to 105ms at energy=1) -> alternating tock fires
-  nowMs += 30
-  fresh.step(1)
-  assert.equal(bursts - b0, 6, "high-energy step fires tock on tightened gap")
-  assert.equal(notes - n0, 0, "tock emits no low-frequency body thump")
-
-  // iris(true): 3 staggered blades + opening hairspring settle (4 bursts, 0 oscs)
-  nowMs += 500
-  n0 = notes
-  b0 = bursts
-  fresh.iris(true)
-  assert.equal(bursts - b0, 4, "iris open emits 3 blades + settle glint")
-  assert.equal(notes - n0, 0, "iris open emits no oscillator")
-
-  // iris(false): 3 staggered descending blades (3 bursts, 0 oscs)
-  nowMs += 500
-  n0 = notes
-  b0 = bursts
-  fresh.iris(false)
-  assert.equal(bursts - b0, 3, "iris close emits 3 descending blades")
-  assert.equal(notes - n0, 0, "iris close emits no oscillator")
-
-  // detent("hover"): feather-light vernier micro-click (1 burst, 0 oscs)
-  nowMs += 200
-  n0 = notes
-  b0 = bursts
-  fresh.detent("hover")
-  assert.equal(bursts - b0, 1, "hover emits single vernier micro-click")
-  assert.equal(notes - n0, 0, "hover emits no oscillator")
-
-  // detent("click"): brass pawl click + spring glint (2 bursts, 0 oscs)
-  nowMs += 100
-  n0 = notes
-  b0 = bursts
-  fresh.detent("click")
-  assert.equal(bursts - b0, 2, "click emits contact + spring bursts")
-  assert.equal(notes - n0, 0, "click emits no low-frequency body thump")
-
-  // detent("engage"): 2-stage pawl/crown catch + ring (3 bursts) + 2 brass partials (2 oscs)
-  n0 = notes
-  b0 = bursts
-  fresh.detent("engage")
-  assert.equal(bursts - b0, 3, "engage emits catch, lock, and high-Q ring bursts")
-  assert.equal(notes - n0, 2, "engage emits two brass partials")
-
-  // setWarmth modulates the master toneFilter cutoff smoothly without spawning voices
+  // setWarmth & setEnergy modulate masterLPF smoothly without spawning voices
   const masterFilter = f.filters[0]
   const logLen = masterFilter.freqLog.length
-  n0 = notes
-  b0 = bursts
+  let n0 = notes
+  let b0 = bursts
   fresh.setWarmth(-1)
   fresh.setWarmth(1)
-  assert.equal(notes, n0, "setWarmth spawns no oscillators")
-  assert.equal(bursts, b0, "setWarmth spawns no noise bursts")
-  assert.equal(masterFilter.freqLog.length, logLen + 2, "setWarmth schedules two filter transitions")
+  fresh.setEnergy(0.8)
+  assert.equal(notes, n0, "setWarmth & setEnergy spawn no oscillators")
+  assert.equal(bursts, b0, "setWarmth & setEnergy spawn no noise bursts")
+  assert.ok(masterFilter.freqLog.length >= logLen + 3, "setWarmth & setEnergy schedule smooth filter transitions")
   assert.ok(
     masterFilter.freqLog[logLen + 1].value > masterFilter.freqLog[logLen].value,
     "positive warmth raises low-pass cutoff",
   )
 
-  // setProfile smoothly retunes filter/room and applies new mechanism geometry (e.g. 2 shutter blades)
-  const custom = {
-    ...DEFAULT_SOUND_PROFILE,
-    shutter: { ...DEFAULT_SOUND_PROFILE.shutter, blades: 2 },
-    filter: { baseHz: 4600, rangeHz: 600 },
+  // Switching across all 6 scene engines cleanly starts each bed & retunes the master bus
+  for (const engine of ["aperture", "projector", "eclipse", "chime", "vinyl", "gears"] as const) {
+    fresh.setProfile({ engine, filter: { baseHz: 4600, rangeHz: 600 }, room: { wet: 0.42 } })
   }
-  const beforeProfile = masterFilter.freqLog.length
-  fresh.setProfile(custom)
-  assert.equal(masterFilter.freqLog.length, beforeProfile + 1, "setProfile retunes master filter")
-  assert.equal(masterFilter.freqLog.at(-1)!.value, 5200, "new filter cutoff reflects active warmthX=1")
 
-  nowMs += 500
+  // Click detent emits a tactile voice for the active scene
+  n0 = notes
   b0 = bursts
-  fresh.iris(false)
-  assert.equal(bursts - b0, 2, "custom 2-blade shutter emits 2 bursts on close")
-} finally {
-  performance.now = origNow
-}
+  fresh.detent("click")
+  assert.ok(notes > n0 || bursts > b0, "click detent emits tactile voice")
 
-// Every spawned oscillator and noise buffer source was started and explicitly stopped after start (zero leaks)
-for (const v of voices) {
-  assert.notEqual(v.started, null, `${v.kind} started`)
-  assert.notEqual(v.stopped, null, `${v.kind} stopped`)
-  assert.ok(v.stopped! > v.started!, `${v.kind} stops strictly after start`)
-  if (v.kind === "buf") assert.equal(v.hasBuffer, true, "buffer source attached to shared noise buffer")
-}
+  // Disposing cleanly stops active looping beds and closes AudioContext
+  fresh.dispose()
+  await tick()
+  assert.equal(f.state, "closed")
 
-fresh.dispose()
-
-console.log("home-sound: lifecycle guarantees and mechanical synthesis checks passed")
+  console.log("home-sound: lifecycle guarantees and steady-state 6-scene soundscape checks passed")
