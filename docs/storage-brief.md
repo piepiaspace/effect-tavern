@@ -199,8 +199,6 @@ erDiagram
 > 1. `checkpoint.hash -> blob.hash` 与 `call_ref.hash -> blob.hash` 均声明 **`ON DELETE RESTRICT`**，并建立索引 `CREATE INDEX call_ref_hash ON call_ref(hash)` 与 `CREATE INDEX checkpoint_hash ON checkpoint(hash)`——不仅 SQLite 内核直接阻止误删任何仍被引用的 `blob`，且 GC 的 `NOT EXISTS` 反连接走纯索引扫描，无需全表扫 `call_ref`。
 > 2. `call_ref.seq -> call.seq` 声明 **`ON DELETE CASCADE`**——删除故事、回滚分支节点或执行 `traced = 200` 滚动窗口裁剪时，引用边由 SQLite 自动级联释放。
 
-从早期 v10 库升级到 v11 时，迁移保留原有锚点及时间戳。v10 给每个锚点都写了时间，无法从库中判别哪些来自手动 Pin。后续自动建立的基线使用 `NULL`。推进锚点释放的对象由显式 `gc()` 统一回收。
-
 ### 4.2 `/__db` 宿主桥接最小通用扩展（`packages/app/db.go` & `web/sqlite.ts`）
 
 不在 Go 层引入任何 `blob` / `call` / `checkpoint` 业务概念，仅在现有 `exec | run | rows` 之上增加一个原子批模式 `batch`：

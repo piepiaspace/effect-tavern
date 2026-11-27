@@ -144,7 +144,7 @@ const when = (iso: string) => {
   return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`
 }
 
-function storageStats(file: string) {
+function storageFacts(file: string) {
   const db = new Database(file, { readonly: true })
   try {
     return db.transaction(() => {
@@ -174,13 +174,9 @@ function storageStats(file: string) {
             .get()!.bytes
         : 0
       const stats = { ...pages, call_bytes, ...blobs }
-      return {
-        facts: Object.entries(stats)
-          .map(([k, v]) => `${k}=${v}`)
-          .join(" "),
-        reclaimable:
-          !!blobs?.orphan_blobs || (pages.freelist_count >= 64 && pages.freelist_count >= pages.page_count / 4),
-      }
+      return Object.entries(stats)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" ")
     })()
   } finally {
     db.close()
@@ -235,7 +231,7 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
       ok = false
     }
     let size: number | undefined
-    let storage: ReturnType<typeof storageStats> | undefined
+    let storage: string | undefined
     let dbError: string | undefined
     try {
       size = sizeOf(c.data)
@@ -245,19 +241,18 @@ export const checks = async (c: Config, world: World): Promise<Finding[]> => {
     const file = join(c.data, "tavern.db")
     if (ok && existsSync(file)) {
       try {
-        storage = storageStats(file)
+        storage = storageFacts(file)
       } catch (e) {
         dbError = String(e)
       }
     }
     add({
       check: "data",
-      mark: !ok || dbError ? "fail" : storage?.reclaimable ? "warn" : "ok",
+      mark: !ok || dbError ? "fail" : "ok",
       what: dbError ? w.dataBroken(show(file)) : ok ? w.data(show(c.data), mb(size ?? 0)) : w.dataBroken(show(c.data)),
-      ...(storage?.reclaimable && { what: w.dataReclaimable }),
       ...(dbError && { raw: dbError }),
       ...(!ok && { next: w.dataBrokenNext(show(c.data)) }),
-      facts: [`data=${c.data} bytes=${size ?? "?"}`, storage?.facts].filter(Boolean).join(" "),
+      facts: [`data=${c.data} bytes=${size ?? "?"}`, storage].filter(Boolean).join(" "),
     })
   }
 
