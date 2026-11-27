@@ -409,11 +409,15 @@
   outline: none;
 }
 /* a screen no wider than the drawer: the drawer is the whole screen, so it has no corner for the scrim to show
-   through, and its left edge is the screen's too. On anything wider it stays the panel it is */
+   through, and its left edge is the screen's too: a page's surface (the colour Android paints behind its system bars,
+   packages/app main.go) and no floating layer's ring, or it reads as a card laid on the screen. On anything wider it
+   stays the panel it is */
 @media (width <= 29rem) {
   .side-drawer {
     padding-left: var(--safe-left);
     border-radius: 0;
+    background: var(--surface-1);
+    box-shadow: none;
   }
 }
 .drawer-head,

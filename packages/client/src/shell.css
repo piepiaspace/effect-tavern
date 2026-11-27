@@ -1036,7 +1036,8 @@
   height: 100%;
   background: var(--surface-1);
   color: var(--ink);
-  box-shadow: var(--shadow-pop);
+  /* the whole screen, edge to edge like a page: no floating layer's ring, which framed the screen's rounded corners */
+  box-shadow: none;
   outline: none;
 }
 .drawer .sidebar {
