@@ -15,7 +15,7 @@
     "keyAlias": "upload",
     "adaptiveIcon": {
       "foreground": "icon/foreground.png",
-      "background": "#fcfcfb"
+      "background": "#141413"
     }
   },
   "macos": {
