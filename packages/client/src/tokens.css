@@ -1,8 +1,8 @@
 /* The client's design constants, in one place. Structure after Claude Desktop 2.0's token layer (docs/open-claude-ui-reading.md):
    four surfaces on one gray ramp, alpha borders, near+far shadows, one radius ruler, spacing from the line, five durations.
-   Colors are neutral on purpose: the brand slot is empty until there is a brand. Every color is written once with
-   light-dark(); `color-scheme` on :root (or data-theme) picks the side. test/tokens.ts asserts every var() used in src
-   is defined here. */
+   UI chrome stays neutral ink-on-paper so prose leads; `--brand` holds the vermilion amber reserved for brand marks and
+   icon focal points only. Every color is written once with light-dark(); `color-scheme` on :root (or data-theme) picks
+   the side. test/tokens.ts asserts every var() used in src is defined here. */
 :root {
   color-scheme: light dark;
 
@@ -30,9 +30,10 @@
   --ghost-hover: var(--alpha-1); /* borderless button */
   --ghost-active: var(--alpha-2);
 
-  /* roles. primary is near-black until there is a brand; danger is the only hue */
+  /* roles. primary stays monochrome ink so controls never compete with prose; brand is reserved for marks & icon accents */
   --primary: var(--ink);
   --primary-ink: var(--surface-1);
+  --brand: light-dark(#b84d27, #e87a4f);
   --danger: light-dark(#dc2626, #f87171);
   --ok: light-dark(#1f7a3f, #4ade80); /* a state that went well: a hit, a success; pairs with danger, never a brand */
   --ok-soft: light-dark(rgb(31 122 63 / 0.22), rgb(74 222 128 / 0.25)); /* the hit zone on a check track */

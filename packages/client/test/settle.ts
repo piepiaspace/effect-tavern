@@ -29,7 +29,9 @@ export const tracked = (serve: (input: RequestInfo | URL, init?: RequestInit) =>
 export const quiet = async () => {
   let still = 0
   return until(() => {
-    const busy = flying > 0 || document.getAnimations().some((a) => a.playState === "running")
+    const busy =
+      flying > 0 ||
+      document.getAnimations().some((a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity)
     still = busy ? 0 : still + 1
     return still >= 3
   })

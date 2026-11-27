@@ -38,6 +38,7 @@
   z-index: 1;
   flex: 1;
   min-height: 0;
+  overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior: contain;
   display: grid;
@@ -397,21 +398,53 @@
   height: 11px;
 }
 
-/* Editorial title block */
+/* Editorial brand lockup (Arch Aperture V2-B + Effect Tavern wordmark, letterpress tactile finish) */
 .home-head {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   text-align: center;
 }
-.home-mark h1 {
+.home-mark .home-brand {
   margin: 0;
-  font-size: var(--text-hero);
-  font-weight: 600;
-  line-height: var(--leading-tight);
-  letter-spacing: -0.025em;
-  color: var(--ink);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.home-lockup {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  color: light-dark(#1a1917, #f0efe9);
+  opacity: 0.92;
+  filter: drop-shadow(0 1px 0 light-dark(rgb(255 255 255 / 0.88), rgb(0 0 0 / 0.65)));
+  user-select: none;
+}
+.home-lockup-mark {
+  height: 2.125rem;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+}
+.home-lockup-word {
+  height: 1.25rem;
+  width: auto;
+  display: block;
+  flex-shrink: 0;
+}
+/* High-DPI curl-noise ink smoke canvas: optically overflowed outside centered lockup, interactive pointer breeze */
+.home-lockup-smoke {
+  position: absolute;
+  left: 100%;
+  bottom: -2rem;
+  width: 10rem;
+  height: 5.25rem;
+  display: block;
+  margin-left: var(--space-1);
+  pointer-events: auto;
 }
 .home-mark .home-sub {
   margin: 0;

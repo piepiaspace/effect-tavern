@@ -5,6 +5,7 @@
 // opening "+" starts blank and switching back preserves unfinished words.
 import { createEffect, createSignal, onSettled, Show } from "solid-js"
 import { autosize } from "./autosize.ts"
+import { BrandLockup } from "./brand-lockup.tsx"
 import { read } from "./bridge.ts"
 import { openImportCard } from "./cards.tsx"
 import { FIGURE_COUNT, FIGURE_ENTRIES, loadFigure, loadFigureIndex, peekFigure, saveFigureId } from "./figures/index.ts"
@@ -147,9 +148,13 @@ export const Home = () => {
               sound={sound}
             />
           </div>
-          <header class="home-head home-reveal home-reveal-2">
-            <h1>{t("home.title")}</h1>
-            <p class="home-sub">{!characterCards(shelf()).length ? t("side.noCards") : t("home.subtitle")}</p>
+          <header class="home-head home-reveal home-reveal-2" aria-description={t("home.subtitle")}>
+            <h1 class="home-brand" aria-label={t("home.title")}>
+              <BrandLockup />
+            </h1>
+            <Show when={!characterCards(shelf()).length}>
+              <p class="home-sub">{t("side.noCards")}</p>
+            </Show>
           </header>
           {/* a new install has no character card: keep onboarding visible even after a first free chat;
               once cards exist, surface card import and workshop directly on the home stage */}
