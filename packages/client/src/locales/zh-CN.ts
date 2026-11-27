@@ -848,6 +848,9 @@ const zh = {
     settlementPending: "含待结算回合",
   },
   checkpoint: {
+    unsaved: "编辑器中有尚未保存的修改。",
+    reloadFailed: "已回退到快照，重新加载失败。",
+    retryReload: "重新加载",
     title: "快照",
     loading: "正在读取快照…",
     cleanBaseline: "与初始基线一致",

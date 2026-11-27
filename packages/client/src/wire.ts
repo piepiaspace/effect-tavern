@@ -221,37 +221,51 @@ export const searchStories = (q: string): Promise<Hit[]> =>
 /** Where a story's export is: a link the browser downloads (the server names the file by the title). */
 export const exportUrl = (id: number, ext: "md" | "json"): string => `${base}/stories/${id}/export.${ext}`
 const at = (id: string) => `${base}/personas/${encodeURIComponent(id)}`
-let personaWrite: Promise<void> = Promise.resolve()
-export const pendingPersonaWrite = () => personaWrite
-export const putPersona = ({ id, ...body }: Persona): Promise<void> =>
-  (personaWrite = personaWrite
-    .catch(() => {})
-    .then(async () => {
-      registry.set(personas, await got(call(at(id), { method: "PUT", body: JSON.stringify(body) })))
-    }))
+function serialWrites() {
+  let last = Promise.resolve()
+  let owner: string | undefined
+  const settle = () => last.catch(() => {})
+  return {
+    run(id: string, write: () => Promise<void>) {
+      owner = id
+      return (last = settle().then(write))
+    },
+    pending: (id?: string) => (id === undefined || owner === id ? last : settle()),
+    settle,
+    reloaded(id: string) {
+      if (owner === id) owner = undefined
+    },
+  }
+}
+const writes = { local: serialWrites(), pack: serialWrites(), persona: serialWrites() }
+type RowKind = keyof typeof writes
+export const pendingAssetWrite = (kind: RowKind, id?: string) => writes[kind].pending(id)
+export const settleAssetWrites = (kind: RowKind) => writes[kind].settle()
+export const putPersona = (id: string, edit: (p: Persona) => Persona): Promise<void> =>
+  writes.persona.run(id, async () => {
+    const { id: _, ...body } = edit(registry.get(personas).find((p) => p.id === id) ?? { id, name: "", text: "" })
+    registry.set(personas, await got(call(at(id), json("PUT", body))))
+  })
 export const deletePersona = async (id: string): Promise<void> => {
   registry.set(personas, await got(call(at(id), { method: "DELETE" })))
   await Promise.all([fetchLocals(), fetchStories()]) // the pick on any card or story it held is gone with it
 }
-let localWrite: Promise<void> = Promise.resolve()
-export const pendingLocalWrite = () => localWrite
+export const pendingLocalWrite = () => pendingAssetWrite("local")
 /** Apply each edit to the last acknowledged local row for `cardId`, including edits queued in the same blur/click sequence. */
 export const putLocal = (cardId: string, edit: (l: Local) => Local): Promise<void> =>
-  (localWrite = localWrite
-    .catch(() => {})
-    .then(async () => {
-      const cur = registry.get(locals)[cardId] ??
-        (registry.get(card)?.id === cardId ? registry.get(card)?.local : undefined) ?? {
-          id: "local",
-          name: cardId,
-          card: cardId,
-        }
-      const saved = await got<Local>(
-        call(`${base}/cards/${encodeURIComponent(cardId)}/local`, { method: "PUT", body: JSON.stringify(edit(cur)) }),
-      )
-      registry.update(locals, (m) => ({ ...m, [cardId]: saved }))
-      registry.update(card, (v) => (v?.id === cardId ? { ...v, local: saved } : v))
-    }))
+  writes.local.run(cardId, async () => {
+    const cur = registry.get(locals)[cardId] ??
+      (registry.get(card)?.id === cardId ? registry.get(card)?.local : undefined) ?? {
+        id: "local",
+        name: cardId,
+        card: cardId,
+      }
+    const saved = await got<Local>(
+      call(`${base}/cards/${encodeURIComponent(cardId)}/local`, { method: "PUT", body: JSON.stringify(edit(cur)) }),
+    )
+    registry.update(locals, (m) => ({ ...m, [cardId]: saved }))
+    registry.update(card, (v) => (v?.id === cardId ? { ...v, local: saved } : v))
+  })
 
 // The settings (/providers, /secrets, /routing, /hats): each write answers the list it changed, which replaces the
 // atom; nothing is optimistic. A key goes up once (POST /secrets) and comes back as a hint only;
@@ -417,20 +431,38 @@ export const deleteHat = async (id: string): Promise<void> => {
   await fetchRouting() // any routing slot naming it is cleared with it
 }
 export const fetchPacks = async (): Promise<void> => registry.set(packs, await got(call(`${base}/packs`)))
-let packWrite: Promise<void> = Promise.resolve()
-export const pendingPackWrite = () => packWrite
+export const pendingPackWrite = () => pendingAssetWrite("pack")
 /** Apply each edit to the last acknowledged row for `id` (the `packs` atom; a row it lacks starts bare), serially, as
  *  `putLocal` does: two edits in one blur/click sequence never overwrite each other. */
 export const putPack = (id: string, edit: (p: Layer) => Layer): Promise<void> =>
-  (packWrite = packWrite
-    .catch(() => {})
-    .then(async () => {
-      const { id: _, ...body } = edit(registry.get(packs).find((p) => p.id === id) ?? { id, name: id })
-      registry.set(packs, await got(call(`${base}/packs/${enc(id)}`, json("PUT", body))))
-    }))
+  writes.pack.run(id, async () => {
+    const { id: _, ...body } = edit(registry.get(packs).find((p) => p.id === id) ?? { id, name: id })
+    registry.set(packs, await got(call(`${base}/packs/${enc(id)}`, json("PUT", body))))
+  })
 export const deletePack = async (id: string): Promise<void> => {
   registry.set(packs, await got(call(`${base}/packs/${enc(id)}`, { method: "DELETE" })))
   await fetchLocals() // the mount on any card it held is gone with it
+}
+
+export async function reloadAsset(kind: CheckpointKind, id: string): Promise<void> {
+  switch (kind) {
+    case "hat":
+      return fetchHats()
+    case "card":
+      await fetchCards()
+      break
+    case "local":
+      await fetchLocal(id)
+      break
+    case "pack":
+      await fetchPacks()
+      break
+    case "persona":
+      await fetchPersonas()
+      break
+  }
+  await refreshActiveCard()
+  if (kind !== "card") writes[kind].reloaded(id)
 }
 
 export interface CheckpointStatus {

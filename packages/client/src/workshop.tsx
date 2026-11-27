@@ -17,7 +17,7 @@ import type { JSX } from "@solidjs/web"
 import { createEffect, createMemo, createSignal, For, onSettled, Show } from "solid-js"
 import { read } from "./bridge.ts"
 import { askRemoveCard, openImportCard } from "./cards.tsx"
-import { CheckpointControl } from "./checkpoint-control.tsx"
+import { CheckpointControl, type CheckpointSession } from "./checkpoint-control.tsx"
 import { ask, blurField, dialogHandle, Modal } from "./controls.tsx"
 import { host } from "./host.ts"
 import { Back, Export, Import, Plus, Stack, Trash } from "./icons.tsx"
@@ -26,7 +26,7 @@ import { added, cardOf, manuscriptOf, same, token, type Manuscript } from "./man
 import { close, editCard, guardClose, newCard, showCard } from "./pages.ts"
 import { openPromptTree } from "./prompt-tree-state.ts"
 import { activeOf, cards, characterCards, focus, registry, tabs } from "./store.ts"
-import { cardFile, fetchCards, onDownload, saveCard, saveUrl, wholeCard } from "./wire.ts"
+import { cardFile, reloadAsset, onDownload, saveCard, saveUrl, wholeCard } from "./wire.ts"
 
 /** How long after the last keystroke the card is written. */
 const DELAY = 800
@@ -119,6 +119,9 @@ const desk = (read: Card, at: string, say: (s: Standing) => void, busy: (on: boo
         if (!(await save())) return false
       } while (edited !== manuscript)
       return true
+    },
+    settle: async () => {
+      await queue
     },
     clean: () => timer === undefined && running === 0 && !failed && same(cardOf(read, manuscript), shelf),
     pause: () => {
@@ -269,7 +272,25 @@ export const ManuscriptPage = () => {
   const [manuscript, setManuscript] = createSignal<Manuscript>(EMPTY)
   const [standing, setStanding] = createSignal<Standing>({ is: "clean" })
   const [busy, setBusy] = createSignal(false) // a write waiting or under way: aria-busy on the standing
-  const [reads, setReads] = createSignal(0) // moved to read the card again (the notice's way out)
+  type PageDesk = { id: string; desk?: Desk }
+  let active: PageDesk | undefined
+  const install = (owner: PageDesk, { card, rev }: Awaited<ReturnType<typeof wholeCard>>) => {
+    if (active !== owner) return
+    owner.desk = desk(
+      card,
+      rev,
+      (state) => {
+        if (active === owner) setStanding(state)
+      },
+      (busy) => {
+        if (active === owner) setBusy(busy)
+      },
+    )
+    setManuscript(owner.desk.manuscript())
+    setStanding({ is: "clean" })
+    setBusy(false)
+    setOpened({ id: owner.id, desk: owner.desk })
+  }
   const [checkpointTick, setCheckpointTick] = createSignal(0)
   createEffect(
     () => [standing(), busy()] as const,
@@ -279,29 +300,20 @@ export const ManuscriptPage = () => {
   )
   // the page is on a card (the tab's): read it whole; leaving it, for another card or another page, saves what is left
   createEffect(
-    () => [at(), activeId(), reads()] as const,
+    () => [at(), activeId()] as const,
     ([id]) => {
       if (id === null) return
-      let left = false
-      let mine: Desk | undefined
+      const owner: PageDesk = { id }
+      active = owner
       void wholeCard(id).then(
-        ({ card, rev }) => {
-          if (left) return
-          mine = desk(
-            card,
-            rev,
-            (s) => left || setStanding(s),
-            (on) => left || setBusy(on),
-          )
-          setManuscript(mine.manuscript())
-          setStanding({ is: "clean" })
-          setOpened({ id, desk: mine })
+        (whole) => install(owner, whole),
+        () => {
+          if (active === owner) setOpened({ id, desk: null })
         },
-        () => left || setOpened({ id, desk: null }),
       )
       return () => {
-        left = true
-        void mine?.save()
+        active = undefined
+        void owner.desk?.save()
       }
     },
   )
@@ -376,15 +388,33 @@ export const ManuscriptPage = () => {
   }
   /** The notice's way out: the page's text let go, the card read again as the shelf holds it. */
   const reread = () => {
-    here()?.desk?.letGo()
-    setOpened(null)
-    setReads((n) => n + 1)
+    const owner = active
+    if (!owner) return
+    owner.desk?.letGo()
+    void wholeCard(owner.id).then(
+      (whole) => install(owner, whole),
+      (error) => {
+        if (active === owner) setStanding(standingOf(error))
+      },
+    )
   }
-  const flushCard = async () => (blurField(), (await here()?.desk?.flush()) ?? false)
-  const onRevertedCard = async () => {
-    reread()
-    await fetchCards()
-  }
+  const cardSession = (owner: PageDesk, d: Desk): CheckpointSession => ({
+    async flush() {
+      blurField()
+      if (standing().is === "changed") return { state: "stale" }
+      if (await d.flush()) return { state: "clean" }
+      return { state: standing().is === "changed" ? "stale" : "invalid" }
+    },
+    async quiesce() {
+      d.pause()
+      await d.settle()
+    },
+    disarm: d.letGo,
+    async reload() {
+      const [whole] = await Promise.all([wholeCard(owner.id), reloadAsset("card", owner.id)])
+      install(owner, whole)
+    },
+  })
   const notice = () => {
     const s = standing()
     return unsaved(s) ? s : null
@@ -407,8 +437,7 @@ export const ManuscriptPage = () => {
                   kind="card"
                   id={id()}
                   watch={checkpointTick()}
-                  flush={flushCard}
-                  onReverted={onRevertedCard}
+                  session={cardSession(active!, here()!.desk!)}
                 />
                 <a
                   class="icon sm"

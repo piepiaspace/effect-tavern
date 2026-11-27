@@ -37,7 +37,7 @@ import {
 import { cards, cardTitle, locals, packs, type Pack } from "./store.ts"
 import { KindPick, leaveArea, leaveInput, ProseTab, TriggerPick, type Save } from "./layer-tabs.tsx"
 import { type Key, t } from "./i18n.ts"
-import { deletePack, fetchPacks, pendingPackWrite, putPack, refreshActiveCard, saveFile } from "./wire.ts"
+import { deletePack, pendingPackWrite, putPack, refreshActiveCard, saveFile } from "./wire.ts"
 
 type PackTab = "prose" | "entries" | "lexicon" | "products" | "inputs"
 const PACK_TABS: [PackTab, Key][] = [
@@ -176,15 +176,6 @@ export const Packs = (props: Pane) => {
           {(p) => {
             const holes = () => packHoles(p())
             const save: Save = (edit) => savePack(p().id, edit)
-            const flushPack = async () => {
-              blurField()
-              await pendingPackWrite()
-              return true
-            }
-            const onRevertedPack = async () => {
-              await fetchPacks()
-              await refreshActiveCard()
-            }
             return (
               <>
                 <header class="detail-header pack-detail-header">
@@ -210,13 +201,7 @@ export const Packs = (props: Pane) => {
                       )}
                     </For>
                   </nav>
-                  <CheckpointControl
-                    kind="pack"
-                    id={p().id}
-                    watch={p()}
-                    flush={flushPack}
-                    onReverted={onRevertedPack}
-                  />
+                  <CheckpointControl kind="pack" id={p().id} watch={p()} />
                   <button
                     type="button"
                     class="icon sm"

@@ -858,6 +858,9 @@ const en: Dict = {
     settlementPending: "Pending settlement",
   },
   checkpoint: {
+    unsaved: "There are unsaved edits in this editor.",
+    reloadFailed: "Restored the checkpoint, but the editor could not reload.",
+    retryReload: "Reload",
     title: "Snapshot",
     loading: "Checking snapshot…",
     cleanBaseline: "Matches initial baseline",

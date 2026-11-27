@@ -71,8 +71,6 @@ let cpStanding:
   updatedAt: null,
 }
 let cpNextConflict: { reason: "hat-name-taken"; name: string; takenByHatId: string } | null = null
-let cpDelayNextGet: (() => void) | null = null
-let cpPendingGet: Promise<void> | null = null
 const cpCalls: string[] = []
 globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) => {
   if (typeof init?.body === "string") requests.push(init.body)
@@ -80,13 +78,7 @@ globalThis.fetch = tracked(async (input: RequestInfo | URL, init?: RequestInit) 
   if (url.includes("/checkpoints/hat/h-cp")) {
     if ((init?.method ?? "GET") === "GET") {
       cpCalls.push("GET")
-      const snapshot = cpStanding
-      if (cpPendingGet) {
-        const waitFor = cpPendingGet
-        cpPendingGet = null
-        await waitFor
-      }
-      return Response.json({ standing: snapshot, rev: "r1" })
+      return Response.json({ standing: cpStanding, rev: "r1" })
     }
     const body = JSON.parse(typeof init?.body === "string" ? init.body : "{}") as { action?: string }
     cpCalls.push(`POST:${body.action}`)
@@ -1252,7 +1244,6 @@ const run = async () => {
   const [cpWatch, setCpWatch] = createSignal(0)
   let cpReverted = 0
   let cpFlushMakesDrifted = false
-  let cpPopClosedBeforeReverted = false
   const cpEvents: string[] = []
   const cpFlush = async () => {
     cpEvents.push("flush")
@@ -1262,16 +1253,27 @@ const run = async () => {
       setCpWatch((n) => n + 1)
       flush()
     }
-    return true
+    return { state: "clean" as const }
   }
-  const cpOnReverted = () => {
-    cpReverted += 1
-    flush()
-    cpPopClosedBeforeReverted = !cpHost.querySelector(".checkpoint-trigger")?.hasAttribute("data-open")
-    cpEvents.push("onReverted")
+  const cpSession = {
+    flush: cpFlush,
+    async quiesce() {
+      cpEvents.push("quiesce")
+    },
+    disarm() {
+      cpEvents.push("disarm")
+    },
+    async reload() {
+      cpReverted += 1
+      cpEvents.push("reload")
+      check(
+        cpHost.querySelector(".checkpoint-trigger")?.hasAttribute("data-open"),
+        "the panel stays open through reload",
+      )
+    },
   }
   const disposeCp = render(
-    () => <CheckpointControl kind="hat" id="h-cp" watch={cpWatch()} flush={cpFlush} onReverted={cpOnReverted} />,
+    () => <CheckpointControl kind="hat" id="h-cp" watch={cpWatch()} session={cpSession} />,
     cpHost,
   )
   flush()
@@ -1331,9 +1333,9 @@ const run = async () => {
   await quiet()
   check(
     cpReverted === 1 &&
-      cpPopClosedBeforeReverted &&
+      cpEvents.slice(-3).join(",") === "quiesce,disarm,reload" &&
       cpHost.querySelector(".checkpoint-trigger")?.getAttribute("data-status") === "clean",
-    `CheckpointControl confirm revert closes pop before onReverted (${cpPopClosedBeforeReverted}, ${cpReverted}) and returns to clean`,
+    "Revert waits for writes, disarms the draft and reloads before closing",
   )
 
   // 3. 409 checkpoint-conflict (hat-name-taken): renders alert in-place and does not call onReverted
@@ -1354,24 +1356,15 @@ const run = async () => {
     `CheckpointControl 409 conflict shows alert in-place without calling onReverted: ${cpAlert?.textContent}`,
   )
 
-  // 4. Pin: runs flush before POST pin, returns to clean, and ignores a stale slow GET that resolves after pin
-  cpEvents.length = 0
   cpCalls.length = 0
-  cpPendingGet = new Promise<void>((r) => {
-    cpDelayNextGet = r
-  })
-  setCpWatch((n) => n + 1)
-  flush()
+  cpEvents.length = 0
   cpPopBtn("更新快照")?.click()
   await quiet()
-  cpDelayNextGet?.()
-  cpDelayNextGet = null
-  await quiet()
   check(
-    cpEvents[0] === "flush" &&
-      cpCalls.includes("POST:pin") &&
+    cpCalls.join(",") === "POST:pin" &&
+      !cpEvents.length &&
       cpHost.querySelector(".checkpoint-trigger")?.getAttribute("data-status") === "clean",
-    `CheckpointControl pin runs flush then POST pin and ignores stale GET (events=${cpEvents.join(",")}, calls=${cpCalls.join(",")})`,
+    "Pin submits the displayed version without flushing or fetching again",
   )
 
   disposeCp()

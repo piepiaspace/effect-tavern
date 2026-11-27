@@ -429,6 +429,15 @@ export const hosts: Partial<Record<string, FixtureSetup>> = {}
 
 const fixtures: FixtureEntry[] = [
   ["test/controls.tsx", (s) => `the controls and dialogs answer the agent bridge, ${s.length} still on the page`],
+  [
+    "test/checkpoint-editors.tsx",
+    () => "editor saves, conflicts and checkpoint recovery agree with SQLite",
+    [],
+    () => {
+      const data = openData(":memory:")
+      return { api: app(tavern({ data }).handler), close: () => data.close() }
+    },
+  ],
   ["test/proxy-page.tsx", () => "proxy validation, retry and clearing work through settings"],
   ["test/routing.tsx", (s) => `per-stage routing includes author, in ${s.length} writes`],
   ["test/cards.tsx", (s) => `the shelf and a card library work through the page, in ${s.length} requests`],

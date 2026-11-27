@@ -5,19 +5,43 @@ import { blurField } from "./controls.tsx"
 import { t } from "./i18n.ts"
 import { Anchor, Pin, Restore } from "./icons.tsx"
 import { packs, personas, registry } from "./store.ts"
-import { fetchCheckpoint, mutateCheckpoint, type CheckpointStatus } from "./wire.ts"
+import {
+  fetchCheckpoint,
+  mutateCheckpoint,
+  pendingAssetWrite,
+  reloadAsset,
+  settleAssetWrites,
+  type CheckpointStatus,
+} from "./wire.ts"
 
-export interface CheckpointControlProps {
-  kind: CheckpointKind
+export type FlushOutcome = { state: "clean" | "invalid" | "stale" }
+export interface CheckpointSession {
+  flush(): Promise<FlushOutcome>
+  quiesce(): Promise<void>
+  disarm(): void
+  reload(): Promise<void>
+}
+
+type RowKind = "local" | "pack" | "persona"
+type CheckpointControlProps = {
   id: string
-  /** Value that changes when the host finishes an auto-save or reload, driving GET /checkpoints/:kind/:id. */
   watch: unknown
-  /** Defaults to .icon.sm (24px); pass false in writing.tsx to match 32px .icon. */
   small?: boolean
-  /** Flush focused input and pending debounced/queued writes before reading or mutating; return false to abort. */
-  flush?: () => Promise<boolean> | boolean
-  /** Notify host after Revert succeeds to drop local drafts and reload the asset. */
-  onReverted: () => Promise<void> | void
+} & ({ kind: RowKind; session?: never } | { kind: "card" | "hat"; session: CheckpointSession })
+
+function rowSession(kind: RowKind, id: string): CheckpointSession {
+  return {
+    async flush() {
+      blurField()
+      return await pendingAssetWrite(kind, id).then(
+        () => ({ state: "clean" as const }),
+        () => ({ state: "invalid" as const }),
+      )
+    },
+    quiesce: () => settleAssetWrites(kind),
+    disarm() {},
+    reload: () => reloadAsset(kind, id),
+  }
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0")
@@ -53,76 +77,48 @@ const formatConflict = (conflict: CheckpointConflict): string => {
 
 export const CheckpointControl = (props: CheckpointControlProps) => {
   const pop = createPopoverController()
-  const [data, setData] = createSignal<CheckpointStatus | null>(null)
+  type Observed = CheckpointStatus & { kind: CheckpointKind; id: string }
+  const [badge, setBadge] = createSignal<CheckpointStatus | null>(null)
+  const [observed, setObserved] = createSignal<Observed | null>(null)
+  const [local, setLocal] = createSignal<FlushOutcome["state"]>("clean")
   const [confirming, setConfirming] = createSignal(false)
   const [alert, setAlert] = createSignal<string | null>(null)
   const [busy, setBusy] = createSignal(false)
-  let opSeq = 0
-  let fetchSeq = 0
-  let activeFetch: AbortController | null = null
-
-  const cancelFetch = () => {
-    activeFetch?.abort()
-    activeFetch = null
-  }
-
-  const loadCheckpoint = async (kind: CheckpointKind, id: string, token: number): Promise<CheckpointStatus | null> => {
-    cancelFetch()
-    const ac = new AbortController()
-    activeFetch = ac
-    try {
-      const status = await fetchCheckpoint(kind, id, ac.signal)
-      if (ac.signal.aborted || token !== fetchSeq || props.kind !== kind || props.id !== id) return null
-      setData(status)
-      return status
-    } finally {
-      if (activeFetch === ac) activeFetch = null
-    }
-  }
-
-  const syncWithFlush = async (kind: CheckpointKind, id: string): Promise<CheckpointStatus | null> => {
-    const op = ++opSeq
-    cancelFetch()
-    blurField()
-    if (props.flush) {
-      const ok = await props.flush()
-      if (!ok || op !== opSeq || props.kind !== kind || props.id !== id) return null
-    }
-    // Cancel any redundant GET triggered by props.watch during flush, then run one authoritative read.
-    return await loadCheckpoint(kind, id, ++fetchSeq)
-  }
+  const [reloadPending, setReloadPending] = createSignal(false)
+  let badgeRead: AbortController | undefined
+  let opening: AbortController | undefined
+  let panelOpen = false
+  const current = (asset: { kind: CheckpointKind; id: string }) => props.kind === asset.kind && props.id === asset.id
+  const session = () => props.session ?? rowSession(props.kind, props.id)
 
   createEffect(
     () => [props.kind, props.id, props.watch] as const,
     ([kind, id], prev) => {
-      if (!id) {
-        opSeq++
-        fetchSeq++
-        cancelFetch()
-        setData(null)
-        setConfirming(false)
+      if (prev && (kind !== prev[0] || id !== prev[1])) {
+        pop.close()
+        opening?.abort()
+        panelOpen = false
+        setObserved(null)
+        setReloadPending(false)
         setAlert(null)
-        return
+        setBusy(false)
+        setBadge(null)
       }
-      if (prev && (prev[0] !== kind || prev[1] !== id)) {
-        opSeq++
-        setData(null)
-        setConfirming(false)
-        setAlert(null)
-      }
-      const token = ++fetchSeq
-      void loadCheckpoint(kind, id, token).catch(() => {})
-      return () => {
-        if (token === fetchSeq) cancelFetch()
-      }
+      if (!id || panelOpen) return
+      const read = new AbortController()
+      badgeRead = read
+      void fetchCheckpoint(kind, id, read.signal)
+        .then((result) => {
+          if (!read.signal.aborted) setBadge(result)
+        })
+        .catch(() => {})
+      return () => read.abort()
     },
   )
 
-  const standing = () => data()?.standing
-  const status = () => standing()?.status ?? "clean"
-
-  const statusText = () => {
-    const s = standing()
+  const standing = () => observed()?.standing
+  const badgeStanding = () => badge()?.standing
+  const statusText = (s?: CheckpointStatus["standing"]) => {
     if (!s) return t("checkpoint.loading")
     if (s.status === "clean") {
       return s.updatedAt === null
@@ -134,99 +130,105 @@ export const CheckpointControl = (props: CheckpointControlProps) => {
       : t("checkpoint.driftedAt", { time: formatTime(s.updatedAt) })
   }
 
-  const onOpenChange = (open: boolean) => {
-    if (!open) {
+  const onOpenChange = async (open: boolean) => {
+    panelOpen = open
+    opening?.abort()
+    setConfirming(false)
+    if (!open || reloadPending()) return
+    const { kind, id } = props
+    const read = new AbortController()
+    opening = read
+    badgeRead?.abort()
+    setAlert(null)
+    setObserved(null)
+    setBusy(true)
+    try {
+      const result = await session().flush()
+      if (read.signal.aborted) return
+      setLocal(result.state)
+      if (result.state === "stale") {
+        setAlert(t("checkpoint.conflictChanged"))
+        return
+      }
+      const status = await fetchCheckpoint(kind, id, read.signal)
+      if (!read.signal.aborted) {
+        setObserved({ kind, id, ...status })
+        setBadge(status)
+      }
+    } catch (error) {
+      if (!read.signal.aborted) setAlert(error instanceof Error ? error.message : String(error))
+    } finally {
+      if (opening === read) setBusy(false)
+    }
+  }
+
+  const reload = async (editor: CheckpointSession, asset: Observed) => {
+    try {
+      await editor.reload()
+      if (current(asset)) {
+        setBadge(asset)
+        setReloadPending(false)
+        setLocal("clean")
+        setAlert(null)
+        pop.close()
+      }
+    } catch {
+      if (current(asset)) {
+        setReloadPending(true)
+        setAlert(t("checkpoint.reloadFailed"))
+      }
+    }
+  }
+
+  const retryReload = async () => {
+    const asset = observed()
+    if (busy() || !asset) return
+    setBusy(true)
+    await reload(session(), asset)
+    if (current(asset)) setBusy(false)
+  }
+
+  const mutate = async (action: "pin" | "revert") => {
+    const asset = observed()
+    if (busy() || !asset || !current(asset)) return
+    const editor = session()
+    setBusy(true)
+    setAlert(null)
+    try {
+      if (action === "revert") await editor.quiesce()
+      const { standing, kind, id, rev } = asset
+      const outcome = await mutateCheckpoint(kind, id, {
+        action,
+        expectedWorkingHash: standing.status === "clean" ? standing.hash : standing.workingHash,
+        expectedAnchorHash: standing.status === "clean" ? standing.hash : standing.anchorHash,
+        ...(rev !== undefined && { rev }),
+      })
+      if (!current(asset)) {
+        if (outcome.ok && action === "revert") await reloadAsset(kind, id)
+        return
+      }
       setConfirming(false)
-      setAlert(null)
-      return
-    }
-    const kind = props.kind
-    const id = props.id
-    if (!id || busy()) return
-    setBusy(true)
-    setAlert(null)
-    void syncWithFlush(kind, id)
-      .catch((e: unknown) => {
-        if (e instanceof Error && e.name === "AbortError") return
-        if (props.kind === kind && props.id === id) setAlert(e instanceof Error ? e.message : String(e))
-      })
-      .finally(() => setBusy(false))
-  }
-
-  const doPin = async () => {
-    const kind = props.kind
-    const id = props.id
-    if (busy() || !id) return
-    setBusy(true)
-    setAlert(null)
-    try {
-      const cur = await syncWithFlush(kind, id)
-      if (!cur || cur.standing.status !== "drifted" || props.kind !== kind || props.id !== id) return
-      const op = ++opSeq
-      fetchSeq++
-      cancelFetch()
-      const outcome = await mutateCheckpoint(kind, id, {
-        action: "pin",
-        expectedWorkingHash: cur.standing.workingHash,
-        expectedAnchorHash: cur.standing.anchorHash,
-        ...(cur.rev !== undefined && { rev: cur.rev }),
-      })
-      if (op !== opSeq || props.kind !== kind || props.id !== id) return
-      if (outcome.ok) {
-        setData({ standing: outcome.standing, ...(outcome.rev !== undefined && { rev: outcome.rev }) })
-        setConfirming(false)
-        pop.close()
-      } else if (outcome.code === "checkpoint-changed") {
-        setData({ standing: outcome.standing, ...(outcome.rev !== undefined && { rev: outcome.rev }) })
-        setConfirming(false)
-        setAlert(t("checkpoint.conflictChanged"))
-      } else {
-        setConfirming(false)
+      if (!outcome.ok && outcome.code === "checkpoint-conflict") {
         setAlert(formatConflict(outcome.conflict))
+        return
       }
-    } catch (e) {
-      if (!(e instanceof Error && e.name === "AbortError")) setAlert(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const doRevert = async () => {
-    const kind = props.kind
-    const id = props.id
-    if (busy() || !id) return
-    setBusy(true)
-    setAlert(null)
-    try {
-      const cur = await syncWithFlush(kind, id)
-      if (!cur || cur.standing.status !== "drifted" || props.kind !== kind || props.id !== id) return
-      const op = ++opSeq
-      fetchSeq++
-      cancelFetch()
-      const outcome = await mutateCheckpoint(kind, id, {
-        action: "revert",
-        expectedWorkingHash: cur.standing.workingHash,
-        expectedAnchorHash: cur.standing.anchorHash,
-        ...(cur.rev !== undefined && { rev: cur.rev }),
-      })
-      if (op !== opSeq || props.kind !== kind || props.id !== id) return
-      if (outcome.ok) {
-        setData({ standing: outcome.standing, ...(outcome.rev !== undefined && { rev: outcome.rev }) })
-        setConfirming(false)
-        pop.close()
-        await props.onReverted()
-      } else if (outcome.code === "checkpoint-changed") {
-        setData({ standing: outcome.standing, ...(outcome.rev !== undefined && { rev: outcome.rev }) })
-        setConfirming(false)
+      const next = { kind, id, standing: outcome.standing, rev: outcome.rev }
+      setObserved(next)
+      if (!outcome.ok) {
+        setBadge(next)
         setAlert(t("checkpoint.conflictChanged"))
+      } else if (action === "revert") {
+        editor.disarm()
+        setLocal("clean")
+        await reload(editor, next)
       } else {
-        setConfirming(false)
-        setAlert(formatConflict(outcome.conflict))
+        setBadge(next)
+        pop.close()
       }
-    } catch (e) {
-      if (!(e instanceof Error && e.name === "AbortError")) setAlert(e instanceof Error ? e.message : String(e))
+    } catch (error) {
+      if (current(asset)) setAlert(error instanceof Error ? error.message : String(error))
     } finally {
-      setBusy(false)
+      if (current(asset)) setBusy(false)
     }
   }
 
@@ -234,10 +236,10 @@ export const CheckpointControl = (props: CheckpointControlProps) => {
     <Popover controller={pop} onOpenChange={onOpenChange}>
       <PopoverTrigger
         class={{ icon: true, sm: props.small !== false, "checkpoint-trigger": true }}
-        data-status={status()}
+        data-status={badgeStanding()?.status ?? "clean"}
         disabled={!props.id}
         aria-label={t("checkpoint.title")}
-        title={standing() ? statusText() : t("checkpoint.title")}
+        title={badgeStanding() ? statusText(badgeStanding()) : t("checkpoint.title")}
       >
         <Anchor aria-hidden="true" />
         <span class="checkpoint-dot" aria-hidden="true" />
@@ -245,20 +247,38 @@ export const CheckpointControl = (props: CheckpointControlProps) => {
       <PopoverContent class="checkpoint-pop" align="end" sideOffset={6} collisionPadding={12}>
         <PopoverTitle class="sr-only">{t("checkpoint.title")}</PopoverTitle>
         <Show when={!confirming()} fallback={<div class="checkpoint-head">{t("checkpoint.confirmPrompt")}</div>}>
-          <div class="checkpoint-head" data-status={status()}>
+          <div class="checkpoint-head" data-status={standing()?.status}>
             <span class="checkpoint-pill-dot" aria-hidden="true" />
-            <span>{statusText()}</span>
+            <span>
+              {local() === "invalid"
+                ? t("checkpoint.unsaved")
+                : local() === "stale"
+                  ? t("checkpoint.title")
+                  : statusText(standing())}
+            </span>
           </div>
         </Show>
-        <Show when={standing()?.status === "clean"}>
+        <Show when={standing()?.status === "clean" && local() === "clean" && !reloadPending()}>
           <p class="checkpoint-hint">{t("checkpoint.cleanHint")}</p>
         </Show>
-        <Show when={standing()?.status === "drifted"}>
+        <Show when={reloadPending()}>
+          <div class="checkpoint-actions">
+            <button type="button" class="btn sm" disabled={busy()} onClick={() => void retryReload()}>
+              {t("checkpoint.retryReload")}
+            </button>
+          </div>
+        </Show>
+        <Show when={!reloadPending() && observed() && (standing()?.status === "drifted" || local() === "invalid")}>
           <Show
             when={confirming()}
             fallback={
               <div class="checkpoint-actions">
-                <button type="button" class="btn sm" disabled={busy()} onClick={() => void doPin()}>
+                <button
+                  type="button"
+                  class="btn sm"
+                  disabled={busy() || local() !== "clean"}
+                  onClick={() => void mutate("pin")}
+                >
                   <Pin aria-hidden="true" />
                   <span>{t("checkpoint.pin")}</span>
                 </button>
@@ -281,7 +301,12 @@ export const CheckpointControl = (props: CheckpointControlProps) => {
               <button type="button" class="btn sm" disabled={busy()} onClick={() => setConfirming(false)}>
                 {t("common.cancel")}
               </button>
-              <button type="button" class="btn sm checkpoint-danger" disabled={busy()} onClick={() => void doRevert()}>
+              <button
+                type="button"
+                class="btn sm checkpoint-danger"
+                disabled={busy()}
+                onClick={() => void mutate("revert")}
+              >
                 <Restore aria-hidden="true" />
                 <span>{t("checkpoint.confirmRevert")}</span>
               </button>

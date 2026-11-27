@@ -15,7 +15,18 @@ import {
 import { hatEntryActive, hatToolName, hatWraps, type Hat, type HatEntry } from "@effect-tavern/runtime/src/fragment.ts"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
 import { Dynamic, type JSX } from "@solidjs/web"
-import { createMemo, createSignal, flush, For, onSettled, Show, untrack } from "solid-js"
+import {
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  flush,
+  For,
+  onSettled,
+  Show,
+  untrack,
+  useContext,
+} from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
 import {
@@ -98,7 +109,7 @@ import {
   type HatStage,
 } from "./connections.ts"
 import { Cards } from "./cards.tsx"
-import { CheckpointControl } from "./checkpoint-control.tsx"
+import { CheckpointControl, type CheckpointSession } from "./checkpoint-control.tsx"
 import { leaveArea, leaveInput } from "./layer-tabs.tsx"
 import { Packs } from "./packs.tsx"
 import { DECISION, Providers } from "./providers.tsx"
@@ -123,9 +134,7 @@ import { type Key, t } from "./i18n.ts"
 import {
   deleteHat,
   deletePersona,
-  fetchHats,
-  fetchPersonas,
-  pendingPersonaWrite,
+  reloadAsset,
   putDecision,
   putHat,
   putPersona,
@@ -465,6 +474,23 @@ const withReasoning = (x: HatEntry, reasoning: string, trimBlank = false): HatEn
 const sameArray = <T,>(a: readonly T[], b: readonly T[]): boolean =>
   a.length === b.length && a.every((x, i) => x === b[i])
 
+const HatFields = createContext<{ invalid: Set<() => void>; resetSeq: () => number } | null>(null)
+function reportHatInput(clear: () => void) {
+  const fields = useContext(HatFields)
+  if (fields)
+    createEffect(fields.resetSeq, (seq, previous) => {
+      if (previous !== undefined && seq !== previous) clear()
+    })
+  return (valid: boolean) => {
+    if (fields && !valid) {
+      fields.invalid.add(clear)
+      return () => {
+        fields.invalid.delete(clear)
+      }
+    }
+  }
+}
+
 const Templates = (props: Pane) => {
   const list = read(hats)
   const providerList = read(providers)
@@ -628,17 +654,30 @@ const Templates = (props: Pane) => {
       setFailure({ id: h.id, message: e instanceof Error ? e.message : String(e) }),
     )
   }
-  const flushHat = async () => {
-    commitPending()
-    return await saving
-  }
-  const onRevertedHat = async () => {
-    setDraft(null)
-    setFailure(null)
-    await fetchHats()
-  }
+  const [resetSeq, setResetSeq] = createSignal(0)
+  const invalid = new Set<() => void>()
+  const hatSession = (id: string): CheckpointSession => ({
+    async flush() {
+      commitPending()
+      await saving
+      return { state: failure()?.id === id || invalid.size ? "invalid" : "clean" }
+    },
+    async quiesce() {
+      await saving
+    },
+    disarm() {
+      setDraft(null)
+      setFailure(null)
+      setResetSeq((n) => n + 1)
+      flush()
+    },
+    async reload() {
+      await reloadAsset("hat", id)
+      forgetPreviewHat(id)
+    },
+  })
   return (
-    <>
+    <HatFields value={{ invalid, resetSeq }}>
       <aside class="master-card" aria-label={t("settings.templates")}>
         <div class="master-list scroller top">
           <For each={list()} keyed={(h) => h.id}>
@@ -766,13 +805,7 @@ const Templates = (props: Pane) => {
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <CheckpointControl
-                    kind="hat"
-                    id={h().id}
-                    watch={savedHat()}
-                    flush={flushHat}
-                    onReverted={onRevertedHat}
-                  />
+                  <CheckpointControl kind="hat" id={h().id} watch={savedHat()} session={hatSession(h().id)} />
                   <button type="button" class="icon sm" aria-label={t("common.export")} onClick={exportHat}>
                     <Export />
                   </button>
@@ -1046,7 +1079,7 @@ const Templates = (props: Pane) => {
           </Show>
         </Modal>
       </section>
-    </>
+    </HatFields>
   )
 }
 
@@ -1071,6 +1104,10 @@ export const DeliveryTool = (props: { hat: Hat; onStage: (next: Hat) => void; on
   }
   const stored = (field: Field, raw: string) => withTool(props.hat, field, raw.trim() === fallback(field) ? "" : raw)
   const nameOk = () => toolNameOk(shown("name"))
+  createEffect(
+    nameOk,
+    reportHatInput(() => setTyped(null)),
+  )
   const custom = () => Boolean(props.hat.tool)
   const wraps = () => hatWraps(props.hat)
   const text = (field: "description" | "param", label: string) => (
@@ -1211,6 +1248,10 @@ const SlotCapsule = (props: {
     return bad && bad.entry === props.entry ? bad.raw : savedToolInput()
   }
   const toolInputOk = () => validToolInput(toolInput())
+  createEffect(
+    toolInputOk,
+    reportHatInput(() => setBadToolInput(null)),
+  )
 
   return (
     <div class={{ "msg-capsule": true, conflict: props.conflict }}>
@@ -1542,18 +1583,9 @@ const Personas = (props: Pane) => {
   const onCards = (id: string) => picks().get(id) ?? []
   const create = async () => {
     const id = newId("persona")
-    await putPersona({ id, name: t("settings.newPersona"), text: "" })
+    await putPersona(id, (p) => ({ ...p, name: t("settings.newPersona") }))
     void refreshActiveCard() // the install's first persona is its default: the card under this page may wear it now
     props.onPick(id)
-  }
-  const flushPersona = async () => {
-    blurField()
-    await pendingPersonaWrite()
-    return true
-  }
-  const onRevertedPersona = async () => {
-    await fetchPersonas()
-    await refreshActiveCard()
   }
   return (
     <>
@@ -1592,23 +1624,19 @@ const Personas = (props: Pane) => {
                 <Name
                   value={x().name}
                   label={t("settings.personaName")}
-                  onCommit={(name) => void putPersona({ ...x(), name }).then(refreshActiveCard)}
+                  onCommit={(name) => void putPersona(x().id, (p) => ({ ...p, name })).then(refreshActiveCard)}
                 />
                 <For each={onCards(x().id)}>{(t) => <span class="tag clip">{t}</span>}</For>
                 <span class="spacer" />
-                <CheckpointControl
-                  kind="persona"
-                  id={x().id}
-                  watch={x()}
-                  flush={flushPersona}
-                  onReverted={onRevertedPersona}
-                />
+                <CheckpointControl kind="persona" id={x().id} watch={x()} />
                 <button
                   type="button"
                   class="icon sm"
                   aria-label={t("settings.defaultPersona")}
                   aria-pressed={x().default ? "true" : "false"}
-                  onClick={() => void putPersona({ ...x(), default: !x().default }).then(refreshActiveCard)}
+                  onClick={() =>
+                    void putPersona(x().id, (p) => ({ ...p, default: !p.default })).then(refreshActiveCard)
+                  }
                 >
                   <Show when={x().default} fallback={<Star aria-hidden="true" />}>
                     <StarFill aria-hidden="true" />
@@ -1641,7 +1669,10 @@ const Personas = (props: Pane) => {
                     placeholder={t("settings.personaPlaceholder")}
                     aria-label={t("settings.personaText")}
                     value={x().text}
-                    onChange={(e) => void putPersona({ ...x(), text: e.currentTarget.value }).then(refreshActiveCard)}
+                    onChange={(e) => {
+                      const text = e.currentTarget.value
+                      void putPersona(x().id, (p) => ({ ...p, text })).then(refreshActiveCard)
+                    }}
                   />
                 </div>
               </div>
