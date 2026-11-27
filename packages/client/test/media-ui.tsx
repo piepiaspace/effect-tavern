@@ -270,6 +270,18 @@ const runPhaseOne = async (isDesktop: boolean) => {
   }
   check(await until(() => registry.get(page) === "home"), "closed Settings back to Home")
   await quiet()
+  const homeCards = [...document.querySelectorAll<HTMLElement>(".home-page .home-card")].map((el) =>
+    el.getBoundingClientRect(),
+  )
+  check(homeCards.length === 2, `Home renders two primary action cards (got ${homeCards.length})`)
+  if (homeCards.length === 2) {
+    check(
+      isDesktop
+        ? Math.abs(homeCards[1].top - homeCards[0].top) < 2 && homeCards[1].left >= homeCards[0].right
+        : homeCards[1].top >= homeCards[0].bottom && Math.abs(homeCards[1].left - homeCards[0].left) < 1,
+      `Home action cards stack vertically on portrait mobile and sit side-by-side on desktop`,
+    )
+  }
 
   await mediaControl({ clear: true })
   await pickShelfCard("渡口", isDesktop)
