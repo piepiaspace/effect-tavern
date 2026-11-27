@@ -366,8 +366,8 @@ const en: Dict = {
     hatToolDef: "Delivery tool",
     hatToolNameBad:
       "A tool name starts with a letter or an underscore, holds only letters, digits, _ and -, and is at most 64 characters",
-    hatToolDescription: "Tool description",
-    hatToolParam: "Parameter text",
+    hatToolDescription: "Tool purpose",
+    hatToolParam: "Reply instructions",
     hatWrap: "Tool wrap",
     hatWrapExplain: "Moves story context into the delivery tool description; prefix cache off.",
     hatWrapInside: "Written into the tool description",
