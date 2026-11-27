@@ -14,7 +14,7 @@ import { DEFAULT_FIGURE } from "../src/figures/index.ts"
 import { HomeMechanism } from "../src/home-mechanism.tsx"
 import type { MechanicalSound } from "../src/home-sound.ts"
 import { flip, locale } from "../src/i18n.ts"
-import { quiet, until } from "./settle.ts"
+import { quiet, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -131,7 +131,7 @@ const run = async () => {
   await quiet()
   check(steps.join() === "1", `tapping the telemetry index pill steps cleanly: ${steps.join()}`)
 
-  const diagnostics = bridge.end().diagnostics
+  const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 

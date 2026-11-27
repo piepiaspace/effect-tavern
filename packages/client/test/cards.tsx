@@ -10,7 +10,7 @@ import { Confirm } from "../src/controls.tsx"
 import { flip, locale } from "../src/i18n.ts"
 import { registry, stories, type DepotRow, type DepotView, type ShelfCard } from "../src/store.ts"
 import "../src/app.css"
-import { quiet, tracked } from "./settle.ts"
+import { quiet, tracked, defects } from "./settle.ts"
 
 const bridge = installDiagnosticsBridge()
 bridge.begin()
@@ -423,7 +423,7 @@ const run = async () => {
         b.getAttribute("aria-label") || b.innerText?.trim() || b.getAttribute("placeholder"),
         `a control with no name: ${b.outerHTML.slice(0, 120)}`,
       )
-  const diagnostics = bridge.end().diagnostics
+  const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 run()

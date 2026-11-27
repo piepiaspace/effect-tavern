@@ -45,7 +45,7 @@ import {
   type StoryRow,
 } from "../src/store.ts"
 import { timelineNode } from "./fixtures.ts"
-import { quiet, touch, tracked, until } from "./settle.ts"
+import { quiet, touch, tracked, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -504,7 +504,7 @@ const run = async () => {
   check(went.length === 0, `with no traversal of ours: ${JSON.stringify(went)}`)
 
   // The whole App is on the page: not one advisory of its own comes with it
-  const diagnostics = bridge.end().diagnostics
+  const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 

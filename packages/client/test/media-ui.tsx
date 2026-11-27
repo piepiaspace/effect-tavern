@@ -27,7 +27,7 @@ import { fetchPacks, pendingPackWrite, putPack, putLocal, refreshActiveCard } fr
 import { turn } from "../src/turn.ts"
 import { timelineNode } from "./fixtures.ts"
 import { installMediaTransport, mediaControl, postResult, waitForMedia } from "./media-transport.ts"
-import { quiet, touch, tracked, until } from "./settle.ts"
+import { quiet, touch, tracked, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const STATE_KEY = "media-ui-reload-state"
@@ -933,7 +933,7 @@ const runPhaseOne = async (isDesktop: boolean) => {
 
   // ── Pre-reload checks + arm controllable `404` broken image for (g) `location.reload()` ──
   visibleControlsHaveNames("pre-reload")
-  const preDiagnostics = bridge.end().diagnostics
+  const preDiagnostics = defects(bridge.end().diagnostics)
   check(preDiagnostics.length === 0, `unexpected Solid diagnostics before reload: ${JSON.stringify(preDiagnostics)}`)
 
   await mediaControl({
@@ -1165,7 +1165,7 @@ const runPhaseTwo = async (isDesktop: boolean) => {
 
   // ── (i) Final accessibility snapshot + Solid 2.0 diagnostics check ──
   visibleControlsHaveNames("final")
-  const postDiagnostics = bridge.end().diagnostics
+  const postDiagnostics = defects(bridge.end().diagnostics)
   check(postDiagnostics.length === 0, `unexpected Solid diagnostics after reload: ${JSON.stringify(postDiagnostics)}`)
 
   const finalSnapshot = agent.snapshot().filter((e) => !e.offPage)

@@ -34,7 +34,7 @@ import {
   type Tabs,
 } from "../src/store.ts"
 import { timelineNode } from "./fixtures.ts"
-import { quiet, touch, tracked, until } from "./settle.ts"
+import { quiet, touch, tracked, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -367,7 +367,7 @@ const run = async () => {
   }
   check(activeOf(registry.get(tabs)).page === "reader", "back in the reader")
 
-  const diagnostics = bridge.end().diagnostics
+  const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 

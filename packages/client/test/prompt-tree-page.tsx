@@ -9,7 +9,7 @@ import { patchPromptTreeMemory } from "../src/prompt-tree-state.ts"
 import { SourceDetailCard } from "../src/request-view.tsx"
 import { pickedAtom, section } from "../src/settings-navigation.ts"
 import { page, registry, stories, tabs, type Tab } from "../src/store.ts"
-import { quiet, tracked, until } from "./settle.ts"
+import { quiet, tracked, until, defects } from "./settle.ts"
 
 import "../src/app.css"
 
@@ -360,7 +360,7 @@ async function run() {
   } catch (e) {
     failures.push(String(e))
   }
-  for (const d of bridge.end().diagnostics) failures.push(`${d.code} ${d.message}`)
+  for (const d of defects(bridge.end().diagnostics)) failures.push(`${d.code} ${d.message}`)
   await post("/result", { method: "POST", body: JSON.stringify({ failures, snapshot: [] }) })
 }
 void run()

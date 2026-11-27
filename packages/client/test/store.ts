@@ -1,3 +1,4 @@
+import { CLOCKED } from "./settle.ts"
 import { emptyDraft } from "../src/composition.ts"
 import { timelineNode as node } from "./fixtures.ts"
 // The reducer on a scripted event sequence: path follows head, a draft grows by frames and starts over on the rewrite,
@@ -125,7 +126,7 @@ const { artifact } = await captureArtifact(
   },
   { scenario: "saved-prose-settlement-failure" },
 )
-expectNoDiagnostics(artifact)
+expectNoDiagnostics(artifact, { allow: [...CLOCKED] })
 
 // An ancestor correction replaces descendant presentation projections for every attached client.
 const updated = { ...node(100, 99, "child"), heading: "new heading" }

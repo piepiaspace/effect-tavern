@@ -40,3 +40,19 @@ export const touch = () => {
   Object.defineProperty(navigator, "userActivation", { configurable: true, value: { hasBeenActive: true } })
   document.body.dispatchEvent(new PointerEvent("pointerup", { bubbles: true }))
 }
+
+/** The Solid diagnostics whose trigger reads the clock: a CPU-time budget (WASTED_RECOMPUTE 2ms, HOT_SCOPE_TIME 8ms),
+ *  runs counted per one-second window (HOT_SCOPE_RERUNS, HOT_SCOPE_FANOUT: a faster machine packs more into it) or a
+ *  flight's duration (ASYNC_WATERFALL 50ms). They fire by the machine's load, not by the code (the same 12 wasted runs
+ *  of @ui-sdk's per-part ticks pass on a quiet machine and fail at 2.7-3.4ms on a busy one), so a gate on them is a
+ *  coin toss. Every other code, of every kind, is structural and stays a defect. */
+export const CLOCKED = [
+  "WASTED_RECOMPUTE",
+  "HOT_SCOPE_TIME",
+  "HOT_SCOPE_RERUNS",
+  "HOT_SCOPE_FANOUT",
+  "ASYNC_WATERFALL",
+] as const
+/** What a fixture's diagnostics gate fails on: all but the `CLOCKED` ones. */
+export const defects = <D extends { code: string }>(found: readonly D[]): D[] =>
+  found.filter((d) => !(CLOCKED as readonly string[]).includes(d.code))

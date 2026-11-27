@@ -30,7 +30,7 @@ import { close as closePage, open as openPage } from "../src/pages.ts"
 import { InstallKeys } from "../src/side.tsx"
 import { card, cards, log, page, providers, registry, routing, stories, tabs, type StoryRow } from "../src/store.ts"
 import { timelineNode } from "./fixtures.ts"
-import { quiet, tracked, until } from "./settle.ts"
+import { quiet, tracked, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -430,7 +430,7 @@ const run = async () => {
     await quiet()
   }
 
-  const diagnostics = bridge.end().diagnostics
+  const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 

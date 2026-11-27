@@ -8,7 +8,7 @@ import { t } from "../src/i18n.ts"
 import { Lightbox } from "../src/lightbox.tsx"
 import { fetchCardOf, importCard } from "../src/wire.ts"
 import { installMediaTransport, postResult } from "./media-transport.ts"
-import { until } from "./settle.ts"
+import { until, defects } from "./settle.ts"
 
 async function verifyGallery() {
   await installMediaTransport()
@@ -36,7 +36,7 @@ async function verifyGallery() {
     if (!opened.ok) throw new Error(opened.error?.message)
     if (!(await until(() => document.querySelector('.lightbox-img[data-state="ready"]'))))
       throw new Error("Lightbox did not load")
-    await postResult({ failures: diagnostics.end().diagnostics.map((d) => d.message) })
+    await postResult({ failures: defects(diagnostics.end().diagnostics).map((d) => d.message) })
   } finally {
     dispose()
   }

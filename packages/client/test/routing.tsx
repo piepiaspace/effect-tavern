@@ -10,7 +10,7 @@ import { openSettings, pickedAtom } from "../src/settings-navigation.ts"
 import { activeOf, hats, page, providers, registry, routing, tabs, type Routing } from "../src/store.ts"
 import type { Hat } from "@effect-tavern/runtime/src/fragment.ts"
 import { getPromptTreeMemory } from "../src/prompt-tree-state.ts"
-import { quiet, tracked, until } from "./settle.ts"
+import { quiet, tracked, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -832,7 +832,7 @@ const run = async () => {
     `picking another template commits the unblurred message: ${JSON.stringify(otherHatWrites.slice(writesBefore))}`,
   )
 
-  const diagnostics = bridge.end().diagnostics
+  const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 

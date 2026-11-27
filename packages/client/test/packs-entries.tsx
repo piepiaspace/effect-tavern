@@ -33,7 +33,7 @@ import {
 import type { ReferenceEntry } from "../src/pack.ts"
 import "../src/app.css"
 import { timelineNode } from "./fixtures.ts"
-import { quiet, tracked } from "./settle.ts"
+import { quiet, tracked, defects } from "./settle.ts"
 
 const bridge = installDiagnosticsBridge()
 bridge.begin()
@@ -405,7 +405,7 @@ Object.assign(globalThis, {
     setTheme: (theme: "light" | "dark") => {
       document.documentElement.dataset.theme = theme
     },
-    endDiagnostics: () => bridge.end().diagnostics,
+    endDiagnostics: () => defects(bridge.end().diagnostics),
   },
 })
 
@@ -472,7 +472,7 @@ if (!new URLSearchParams(location.search).has("manual")) {
     await quiet()
     check(document.querySelector("#snippets"), "invocation popover opened")
 
-    const diagnostics = bridge.end().diagnostics
+    const diagnostics = defects(bridge.end().diagnostics)
     check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)
   }
   run()

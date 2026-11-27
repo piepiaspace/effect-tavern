@@ -14,7 +14,7 @@ import { flip, locale } from "../src/i18n.ts"
 import { close, editCard, onKey, open } from "../src/pages.ts"
 import { page, type ShelfCard } from "../src/store.ts"
 import { ManuscriptPage, Workshop } from "../src/workshop.tsx"
-import { quiet, tracked, until } from "./settle.ts"
+import { quiet, tracked, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -512,7 +512,7 @@ const run = async () => {
     `importing directly in Workshop adds the card to the list: ${words()}`,
   )
 
-  const diagnostics = bridge.end().diagnostics
+  const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 run()

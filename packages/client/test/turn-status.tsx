@@ -1,3 +1,4 @@
+import { defects } from "./settle.ts"
 import { installDiagnosticsBridge } from "@solidjs/diagnostics/browser"
 import { render } from "@solidjs/web"
 import { createSignal, flush, Show } from "solid-js"
@@ -169,9 +170,8 @@ void (async () => {
     check(alert() === null, "cleared: no connection-lost line")
     disposeDraft()
 
-    const report = bridge.end()
-    if (report.diagnostics.length)
-      failures.push(`solid diagnostics: ${report.diagnostics.map((d) => `${d.code}: ${d.message}`).join("; ")}`)
+    const found = defects(bridge.end().diagnostics)
+    if (found.length) failures.push(`solid diagnostics: ${found.map((d) => `${d.code}: ${d.message}`).join("; ")}`)
   } catch (e) {
     failures.push(String(e))
   }

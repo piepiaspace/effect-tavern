@@ -28,7 +28,7 @@ import {
 import { add, select } from "../src/tabs.ts"
 import { Workshop } from "../src/workshop.tsx"
 import { WritingPage } from "../src/writing.tsx"
-import { quiet, tracked, until } from "./settle.ts"
+import { quiet, tracked, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -350,7 +350,7 @@ void (async () => {
     check(registry.get(card)?.id === FREE_CHAT_ID, "active card view is free-chat")
     disposeRest()
 
-    const diagnostics = bridge.end().diagnostics
+    const diagnostics = defects(bridge.end().diagnostics)
     check(diagnostics.length === 0, `unexpected Solid diagnostics: ${JSON.stringify(diagnostics)}`)
   } catch (e) {
     failures.push(e instanceof Error ? (e.stack ?? e.message) : String(e))

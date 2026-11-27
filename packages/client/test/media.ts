@@ -2,6 +2,7 @@
 // HTTPS URL resolution/encoding/errors, fixed SHA-256 variant vectors, 1-indexed paragraph bucketing,
 // custom-ID theater attribution & `countEffectiveIllustrations`, portrait resolution + `activePortraits()`,
 // and gallery reveal/mask/branch/ebb/headContext/other-card rules against `samples/ferry/ferry.yaml`.
+import { CLOCKED } from "./settle.ts"
 import assert from "node:assert/strict"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
@@ -273,7 +274,7 @@ if (process.env.MEDIA_REACTIVE_SUBTEST === "1") {
   }
 
   const { artifact } = await captureArtifact(runScenario, { scenario: "active-portraits-stability" })
-  expectNoDiagnostics(artifact)
+  expectNoDiagnostics(artifact, { allow: [...CLOCKED] })
   process.exit(0)
 }
 

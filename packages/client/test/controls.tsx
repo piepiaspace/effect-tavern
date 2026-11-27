@@ -42,7 +42,7 @@ import type { CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import { card, page, registry, type CardView, type StoryRow } from "../src/store.ts"
 import { flip, locale } from "../src/i18n.ts"
 import { timelineNode } from "./fixtures.ts"
-import { quiet, touch, tracked, until } from "./settle.ts"
+import { quiet, touch, tracked, until, defects } from "./settle.ts"
 import "../src/app.css"
 
 const bridge = installDiagnosticsBridge()
@@ -1204,7 +1204,7 @@ const run = async () => {
   disposePops()
   host.remove()
 
-  const diagnostics = bridge.end().diagnostics
+  const diagnostics = defects(bridge.end().diagnostics)
   check(diagnostics.length === 0, `Solid diagnostics: ${JSON.stringify(diagnostics)}`)
 }
 run()

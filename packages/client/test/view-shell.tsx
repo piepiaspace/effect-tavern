@@ -14,7 +14,7 @@ import { apply, card, clear, composition, demanded, error, log, openStreams, reg
 import { importCard, fetchCardOf } from "../src/wire.ts"
 import type { CompiledView } from "@effect-tavern/runtime/src/view-shell.ts"
 import type { TimelineNode } from "@effect-tavern/runtime/src/projection.ts"
-import { until, quiet, touch, tracked } from "./settle.ts"
+import { until, quiet, touch, tracked, defects } from "./settle.ts"
 import { timelineNode } from "./fixtures.ts"
 import { postResult } from "./media-transport.ts"
 import "../src/app.css"
@@ -514,7 +514,7 @@ async function run() {
       (el) => el.textContent === "理的心声",
     ), "Inspector labels node products")
 
-    await postResult({ failures: diagnostics.end().diagnostics.map((d) => d.message) })
+    await postResult({ failures: defects(diagnostics.end().diagnostics).map((d) => d.message) })
   } finally {
     disposeApp()
   }

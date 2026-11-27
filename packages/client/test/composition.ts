@@ -1,3 +1,4 @@
+import { CLOCKED } from "./settle.ts"
 import { imeController } from "../src/ime.ts"
 import assert from "node:assert/strict"
 import { captureArtifact, expectNoDiagnostics } from "@solidjs/diagnostics"
@@ -88,7 +89,7 @@ const { artifact } = await captureArtifact(
   },
   { scenario: "unified-draft-lifecycle" },
 )
-expectNoDiagnostics(artifact)
+expectNoDiagnostics(artifact, { allow: [...CLOCKED] })
 
 const cache = readCache<string>(2)
 let count = 0
