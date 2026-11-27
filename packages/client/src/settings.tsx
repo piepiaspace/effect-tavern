@@ -49,8 +49,8 @@ import {
   Plugs,
   Restore,
   Send,
-  Sliders,
-  Snippets as Plus,
+  Model,
+  Plus,
   Stack,
   Star,
   StarFill,
@@ -132,7 +132,7 @@ import {
 
 const SECTIONS: [Section, Key, (p: JSX.SvgSVGAttributes<SVGSVGElement>) => JSX.Element][] = [
   ["providers", "settings.providers", Plugs],
-  ["routing", "settings.routing", Sliders],
+  ["routing", "settings.routing", Model],
   ["templates", "settings.templates", Template],
   ["personas", "settings.personas", User],
   ["packs", "settings.packs", Package],

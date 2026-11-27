@@ -27,13 +27,12 @@ import {
   Card as CardGlyph,
   Chat,
   Close,
-  Edit,
   List,
   Probe,
   Settings,
   Sidebar as SidebarGlyph,
-  Sliders,
-  Snippets as Plus,
+  Workshop,
+  Plus,
   Stack,
   Status,
   Tree,
@@ -257,9 +256,9 @@ export const Shell = (props: { loading?: boolean; children: JSX.Element }) => {
                     case "card":
                       return <CardGlyph />
                     case "workshop":
-                      return <Sliders />
+                      return <Workshop />
                     case "manuscript":
-                      return <Edit />
+                      return <Workshop />
                     case "reader":
                       return <Chat />
                     case "timeline":

@@ -11,7 +11,7 @@ import { FIGURE_COUNT, FIGURE_ENTRIES, loadFigure, loadFigureIndex, peekFigure, 
 import type { HomeFigure } from "./home-figure.tsx"
 import { HomeMechanism } from "./home-mechanism.tsx"
 import { createMechanicalSound } from "./home-sound.ts"
-import { Change, Import, Next, Prev, Send, Sliders } from "./icons.tsx"
+import { Change, Import, Next, Prev, Send, Workshop } from "./icons.tsx"
 import { imeController } from "./ime.ts"
 import { open, showCard, startFreeChat } from "./pages.ts"
 import { cards, characterCards, homeDrafts, homeSending, setHomeDraft, tabs } from "./store.ts"
@@ -177,7 +177,7 @@ export const Home = () => {
                     onClick={runCard(() => open("workshop"))}
                   >
                     <span class="home-card-icon" aria-hidden="true">
-                      <Sliders />
+                      <Workshop />
                     </span>
                     <span class="home-card-label">{t("side.workshop")}</span>
                     <Change class="home-card-arrow" aria-hidden="true" />
@@ -205,7 +205,7 @@ export const Home = () => {
                   onClick={runCard(() => open("workshop"))}
                 >
                   <span class="home-card-icon" aria-hidden="true">
-                    <Sliders />
+                    <Workshop />
                   </span>
                   <span class="home-card-label">{t("side.workshop")}</span>
                   <Change class="home-card-arrow" aria-hidden="true" />

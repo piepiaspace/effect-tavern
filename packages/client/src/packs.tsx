@@ -12,7 +12,7 @@ import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
 import { ask, blurField, Menu, Modal, Name, newId, Switch, ToList, Well, type Pane, dialogHandle } from "./controls.tsx"
-import { Clue, Close, Export, Import, Next, Package, Snippets as Plus, Star, StarFill, Trash } from "./icons.tsx"
+import { Clue, Close, Export, Import, Next, Package, Plus, Star, StarFill, Trash } from "./icons.tsx"
 import { caretOf, draftOfFormat, draftOfSnippet, emptyDraft, formatOf, snippetOf, type InsertDraft } from "./inserts.ts"
 import { cleanLex, FILE, mergeLexicon, parseLexicon, serializeLexicon } from "./lexicon.ts"
 import {

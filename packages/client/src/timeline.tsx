@@ -12,7 +12,7 @@ import type { TimelineNode as Node } from "@effect-tavern/runtime/src/projection
 import { createMemo, createSignal, For, Match, onSettled, Show, Switch } from "solid-js"
 import { read } from "./bridge.ts"
 import { dialogHandle, Prompt } from "./controls.tsx"
-import { Back, Checkout, Clue, Notes, Stack, Trash } from "./icons.tsx"
+import { Back, Chat, Checkout, Probe, Stack, Trash } from "./icons.tsx"
 import { type Cell, DRAFT, layout } from "./lanes.ts"
 import { plain, Prose } from "./prose.tsx"
 import { SiblingKind } from "./readings.tsx"
@@ -339,7 +339,7 @@ export const Timeline = () => {
                         disabled={busy() && !onLine().has(n().id)}
                         onClick={() => openInReader(n().id)}
                       >
-                        <Notes />
+                        <Chat />
                       </button>
                       <button
                         type="button"
@@ -347,7 +347,7 @@ export const Timeline = () => {
                         aria-label={t("side.inspector")}
                         onClick={() => inspect(n().id)}
                       >
-                        <Clue />
+                        <Probe />
                       </button>
                       <button
                         type="button"

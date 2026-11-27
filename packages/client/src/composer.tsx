@@ -11,7 +11,7 @@ import { createPopoverController, Popover, PopoverContent, PopoverTrigger } from
 import { createSignal, flush, onSettled, For, Show } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
-import { Check, Close, Edit, Insert, Send, Snippets, Stop } from "./icons.tsx"
+import { Check, Close, Edit, Insert, Plus, Send, Stop } from "./icons.tsx"
 import { imeController } from "./ime.ts"
 import { caretOf } from "./inserts.ts"
 import { fillKnown } from "./pack.ts"
@@ -265,7 +265,7 @@ export const Composer = () => {
                 if (e.key === "Enter" || e.key === " ") setMenuKeyboard(true)
               }}
             >
-              <Snippets />
+              <Plus />
             </PopoverTrigger>
             <PopoverContent
               id="snippets"

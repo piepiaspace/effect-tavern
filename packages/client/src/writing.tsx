@@ -12,7 +12,7 @@ import { createSignal, For, Show } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { read } from "./bridge.ts"
 import { blurField, Modal, newId, Switch, dialogHandle } from "./controls.tsx"
-import { Back, Next, Stack, Snippets as Plus, StarFill, User } from "./icons.tsx"
+import { Back, Next, Stack, Plus, StarFill, User } from "./icons.tsx"
 import {
   cardNameKeys,
   orderedPacks,

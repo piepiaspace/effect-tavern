@@ -41,7 +41,7 @@ import {
   Minus,
   Next,
   Settings as Gear,
-  Snippets as Plus,
+  Plus,
   Sync,
   Trash,
 } from "./icons.tsx"
