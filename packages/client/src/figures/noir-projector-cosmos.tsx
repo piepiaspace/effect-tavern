@@ -129,10 +129,7 @@ const Artwork = () => (
         fill="currentColor"
       />
       <rect x="266.5" y="648.9" width="10.79" height="31.03" fill="currentColor" />
-      <path
-        d="m132.4 807.2-27.01 36.48h164.6l-27.65-36.61c-35.84-1.024-74.24-1.024-110 0.128z"
-        fill="currentColor"
-      />
+      <path d="m132.4 807.2-27.01 36.48h164.6l-27.65-36.61c-35.84-1.024-74.24-1.024-110 0.128z" fill="currentColor" />
       <circle cx="214.1" cy="715.3" r="8.638" fill="var(--surface-1)" />
       <g fill="var(--surface-1)" opacity="0.45">
         <rect x="127.5" y="747" width="56.1" height="4.201" />

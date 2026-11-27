@@ -184,231 +184,236 @@ const Artwork = () => (
     </defs>
 
     <g class="pr4-mono">
-    <g id="upper-mounting-bracket" stroke="#151612">
-      <path
-        d="M235 127C235 163 222 169 211 182C203 194 201 209 200 225L283 219L343 196L407 219L486 225C486 207 482 190 470 178C455 168 450 154 452 128Z"
-        fill="#f7f7f2"
-        stroke-width="3.1"
-      />
-      <path
-        d="M235 145C235 166 227 175 215 186L208 214L272 199L343 183L417 199L478 214C475 195 473 187 461 179L451 148Z"
-        fill="#12130f"
-        stroke-width="1.4"
-      />
-      <path
-        class="pr-detail-fine"
-        d="M234 161L263 198L212 207L218 187Z M451 160L423 198L475 208L468 187Z"
-        fill="url(#pr-fine-hatch)"
-        stroke="#d5d7ce"
-        stroke-width="1"
-      />
-      <use href="#pr-fastener" transform="translate(225 193)" />
-      <use href="#pr-fastener" transform="translate(461 193)" />
-    </g>
-
-    <g id="upper-five-spoke-wheel">
-      <circle cx="343" cy="122" r="115" fill="#11120f" stroke="#090a08" stroke-width="3" />
-      <circle cx="343" cy="122" r="111" fill="#f9f9f5" stroke="#c0c1b9" stroke-width="1.1" />
-      <circle cx="343" cy="122" r="107.5" fill="#10120e" />
-      <circle cx="343" cy="122" r="103" fill="#efefeb" stroke="#93958b" stroke-width="1.3" />
-      <circle cx="343" cy="122" r="98.4" fill="#fdfdfa" stroke="#131510" stroke-width="2.5" />
-      <use href="#pr-upper-hole" />
-      <use href="#pr-upper-hole" transform="rotate(72 343 122)" />
-      <use href="#pr-upper-hole" transform="rotate(144 343 122)" />
-      <use href="#pr-upper-hole" transform="rotate(216 343 122)" />
-      <use href="#pr-upper-hole" transform="rotate(288 343 122)" />
-      <g id="upper-hub">
-        <circle cx="343" cy="122" r="20.5" fill="#777a70" stroke="#d2d4c9" stroke-width="1" />
-        <circle cx="343" cy="121" r="17.6" fill="#fafaf6" stroke="#10120e" stroke-width="2" />
-        <circle cx="343" cy="121" r="11.2" fill="#12140f" />
-        <circle cx="342" cy="120" r="7.1" fill="#363930" />
-        <use href="#pr-tiny-bolt" transform="translate(343 95)" class="pr-detail-micro" />
-        <use href="#pr-tiny-bolt" transform="translate(370 122)" class="pr-detail-micro" />
-        <use href="#pr-tiny-bolt" transform="translate(343 148)" class="pr-detail-micro" />
-        <use href="#pr-tiny-bolt" transform="translate(316 122)" class="pr-detail-micro" />
+      <g id="upper-mounting-bracket" stroke="#151612">
+        <path
+          d="M235 127C235 163 222 169 211 182C203 194 201 209 200 225L283 219L343 196L407 219L486 225C486 207 482 190 470 178C455 168 450 154 452 128Z"
+          fill="#f7f7f2"
+          stroke-width="3.1"
+        />
+        <path
+          d="M235 145C235 166 227 175 215 186L208 214L272 199L343 183L417 199L478 214C475 195 473 187 461 179L451 148Z"
+          fill="#12130f"
+          stroke-width="1.4"
+        />
+        <path
+          class="pr-detail-fine"
+          d="M234 161L263 198L212 207L218 187Z M451 160L423 198L475 208L468 187Z"
+          fill="url(#pr-fine-hatch)"
+          stroke="#d5d7ce"
+          stroke-width="1"
+        />
+        <use href="#pr-fastener" transform="translate(225 193)" />
+        <use href="#pr-fastener" transform="translate(461 193)" />
       </g>
-    </g>
 
-    <g id="lower-mounting-bracket">
-      <path
-        d="M200 735C200 758 204 778 219 791C233 804 225 827 220 846L267 868L420 867L463 846C457 824 448 807 465 792C481 777 485 758 486 736L408 731L341 756L273 733Z"
-        fill="#f6f6f0"
-        stroke="#141611"
-        stroke-width="3.1"
-      />
-      <path
-        d="M206 742C206 763 213 778 227 789Q244 808 231 832L266 853L417 852L454 831Q442 805 458 789C474 775 479 761 479 742L409 744L343 765L274 744Z"
-        fill="#171914"
-        stroke="#777a6f"
-        stroke-width="1"
-      />
-      <path
-        class="pr-detail-fine"
-        d="M211 750L269 761L240 808L225 788Z M475 750L418 761L447 810L460 788Z"
-        fill="url(#pr-fine-hatch)"
-        stroke="#e7e8df"
-        stroke-width="1.3"
-      />
-      <use href="#pr-fastener" transform="translate(225 771)" />
-      <use href="#pr-fastener" transform="translate(461 771)" />
-    </g>
-
-    <g id="main-circular-housing">
-      <circle cx="343" cy="482" r="300" fill="#10110e" stroke="#0b0c0a" stroke-width="3.2" />
-      <circle cx="343" cy="482" r="295.5" fill="none" stroke="#f7f7f2" stroke-width="2.4" />
-      <circle cx="343" cy="482" r="285.5" fill="#fdfdf9" stroke="#f4f4ee" stroke-width="2" />
-      <circle cx="343" cy="482" r="278.5" fill="none" stroke="#141611" stroke-width="3" />
-      <circle cx="343" cy="482" r="270.7" fill="#fffffc" stroke="#a5a79d" stroke-width="1" />
-      <g id="dial-division-marks">
-        <use href="#pr-quadrant-ticks" />
-        <use href="#pr-quadrant-ticks" transform="rotate(90 343 482)" />
-        <use href="#pr-quadrant-ticks" transform="rotate(180 343 482)" />
-        <use href="#pr-quadrant-ticks" transform="rotate(270 343 482)" />
-        <path d="M343 220V261 M343 703V742 M81 482H122 M564 482H604" fill="none" stroke="#11130e" stroke-width="4.2" />
-      </g>
-      <circle cx="343" cy="482" r="223.5" fill="#0b0c09" stroke="#11130e" stroke-width="1.7" />
-      <circle cx="343" cy="482" r="209.8" fill="#f9f9f4" stroke="#9c9f92" stroke-width="1.2" />
-      <circle cx="343" cy="482" r="204.5" fill="#11130e" stroke="#fff" stroke-width="1.6" />
-      <circle cx="343" cy="482" r="199.6" fill="url(#pr-blade-grain)" stroke="#7a7d70" stroke-width="1.3" />
-    </g>
-
-    <g clip-path="url(#pr-iris-clip)">
-      <g id="engraved-iris-blades" stroke-linejoin="round">
-        <path
-          d="M206 337C251 294 312 279 372 285L319 335L260 369L208 432Z"
-          fill="url(#pr-blade-grain)"
-          stroke="#161813"
-          stroke-width="2.3"
-        />
-        <path
-          d="M206 337L209 433L198 478L147 466C151 415 172 369 206 337Z"
-          fill="url(#pr-blade-grain)"
-          stroke="#171a13"
-          stroke-width="2.3"
-        />
-        <path
-          d="M147 466L210 534L256 593L179 596C153 556 141 512 147 466Z"
-          fill="url(#pr-blade-grain)"
-          stroke="#13150f"
-          stroke-width="2.4"
-        />
-        <path
-          d="M179 596L268 604L367 625L311 675C256 667 209 641 179 596Z"
-          fill="url(#pr-horizontal-grain)"
-          stroke="#151711"
-          stroke-width="2.4"
-        />
-        <path
-          d="M311 675L378 614L481 554L482 621C435 664 372 686 311 675Z"
-          fill="url(#pr-blade-grain)"
-          stroke="#0f110c"
-          stroke-width="2.5"
-        />
-        <path
-          d="M482 621L483 515L485 435L541 487C539 539 518 586 482 621Z"
-          fill="url(#pr-blade-grain)"
-          stroke="#141610"
-          stroke-width="2.5"
-        />
-        <path
-          d="M541 487L476 421L429 349L487 347C521 387 539 433 541 487Z"
-          fill="url(#pr-blade-grain)"
-          stroke="#11140d"
-          stroke-width="2.5"
-        />
-        <path
-          d="M487 347L398 346L319 335L372 285C418 292 460 313 487 347Z"
-          fill="url(#pr-horizontal-grain)"
-          stroke="#10130c"
-          stroke-width="2.5"
-        />
-        <g fill="none" stroke="#f6f7ef" stroke-width="1.6">
-          <path d="M204 343L204 436 M150 471L212 540 M183 598L263 608 M315 674L379 618 M485 615L486 520 M537 480L476 416 M481 344L401 343 M365 288L318 332" />
+      <g id="upper-five-spoke-wheel">
+        <circle cx="343" cy="122" r="115" fill="#11120f" stroke="#090a08" stroke-width="3" />
+        <circle cx="343" cy="122" r="111" fill="#f9f9f5" stroke="#c0c1b9" stroke-width="1.1" />
+        <circle cx="343" cy="122" r="107.5" fill="#10120e" />
+        <circle cx="343" cy="122" r="103" fill="#efefeb" stroke="#93958b" stroke-width="1.3" />
+        <circle cx="343" cy="122" r="98.4" fill="#fdfdfa" stroke="#131510" stroke-width="2.5" />
+        <use href="#pr-upper-hole" />
+        <use href="#pr-upper-hole" transform="rotate(72 343 122)" />
+        <use href="#pr-upper-hole" transform="rotate(144 343 122)" />
+        <use href="#pr-upper-hole" transform="rotate(216 343 122)" />
+        <use href="#pr-upper-hole" transform="rotate(288 343 122)" />
+        <g id="upper-hub">
+          <circle cx="343" cy="122" r="20.5" fill="#777a70" stroke="#d2d4c9" stroke-width="1" />
+          <circle cx="343" cy="121" r="17.6" fill="#fafaf6" stroke="#10120e" stroke-width="2" />
+          <circle cx="343" cy="121" r="11.2" fill="#12140f" />
+          <circle cx="342" cy="120" r="7.1" fill="#363930" />
+          <use href="#pr-tiny-bolt" transform="translate(343 95)" class="pr-detail-micro" />
+          <use href="#pr-tiny-bolt" transform="translate(370 122)" class="pr-detail-micro" />
+          <use href="#pr-tiny-bolt" transform="translate(343 148)" class="pr-detail-micro" />
+          <use href="#pr-tiny-bolt" transform="translate(316 122)" class="pr-detail-micro" />
         </g>
-        <circle cx="343" cy="482" r="197.2" fill="none" stroke="#f0f1e8" stroke-width="1.3" />
       </g>
-    </g>
 
-    <g id="four-spoke-center-reel">
-      <circle cx="343" cy="482" r="151.5" fill="#12150e" stroke="#090c06" stroke-width="2.2" />
-      <circle cx="343" cy="482" r="147.5" fill="#fff" stroke="#b7baad" stroke-width="1.2" />
-      <circle cx="343" cy="482" r="141.8" fill="url(#pr-steel)" stroke="#30362a" stroke-width="1.6" />
-      <g id="machined-face-contours" clip-path="url(#pr-center-disc-clip)">
-        <use href="#pr-face-groove" />
-        <use
-          href="#pr-face-groove"
-          class="pr-detail-micro"
-          transform="translate(343 482) scale(.91) translate(-343 -482)"
-        />
-        <use href="#pr-face-groove" transform="translate(343 482) scale(.82) translate(-343 -482)" />
-        <use
-          href="#pr-face-groove"
-          class="pr-detail-micro"
-          transform="translate(343 482) scale(.73) translate(-343 -482)"
-        />
-        <use href="#pr-face-groove" transform="translate(343 482) scale(.64) translate(-343 -482)" />
-        <use
-          href="#pr-face-groove"
-          class="pr-detail-micro"
-          transform="translate(343 482) scale(.55) translate(-343 -482)"
-        />
-        <use href="#pr-face-groove" transform="translate(343 482) scale(.46) translate(-343 -482)" />
-      </g>
-      <use href="#pr-reel-opening" />
-      <use href="#pr-reel-opening" transform="translate(686 0) scale(-1 1)" />
-      <use href="#pr-reel-opening" transform="translate(0 964) scale(1 -1)" />
-      <use href="#pr-reel-opening" transform="translate(686 964) scale(-1 -1)" />
-      <use href="#pr-small-screw" transform="translate(343 350)" />
-      <use href="#pr-small-screw" transform="translate(206 481) rotate(-15)" />
-      <use href="#pr-small-screw" transform="translate(479 481) rotate(15)" />
-      <use href="#pr-small-screw" transform="translate(343 614)" />
-      <g id="central-raised-spindle">
-        <ellipse cx="342" cy="475" rx="29" ry="29" fill="#74796b" opacity=".35" />
-        <ellipse cx="342" cy="472" rx="27" ry="27.5" fill="#161a12" stroke="#c4c8b8" stroke-width="1.4" />
+      <g id="lower-mounting-bracket">
         <path
-          d="M317 459L317 475C319 499 361 503 367 476L368 460Z"
-          fill="#171a13"
-          stroke="#080c05"
+          d="M200 735C200 758 204 778 219 791C233 804 225 827 220 846L267 868L420 867L463 846C457 824 448 807 465 792C481 777 485 758 486 736L408 731L341 756L273 733Z"
+          fill="#f6f6f0"
+          stroke="#141611"
+          stroke-width="3.1"
+        />
+        <path
+          d="M206 742C206 763 213 778 227 789Q244 808 231 832L266 853L417 852L454 831Q442 805 458 789C474 775 479 761 479 742L409 744L343 765L274 744Z"
+          fill="#171914"
+          stroke="#777a6f"
+          stroke-width="1"
+        />
+        <path
+          class="pr-detail-fine"
+          d="M211 750L269 761L240 808L225 788Z M475 750L418 761L447 810L460 788Z"
+          fill="url(#pr-fine-hatch)"
+          stroke="#e7e8df"
           stroke-width="1.3"
         />
-        <ellipse cx="341.5" cy="458.5" rx="26.2" ry="25.3" fill="#fff" stroke="#0b0e07" stroke-width="2.5" />
-        <ellipse
-          cx="342"
-          cy="458.5"
-          rx="22.5"
-          ry="21.5"
-          fill="url(#pr-hub-metal)"
-          stroke="#7b8071"
-          stroke-width="1.1"
-        />
-        <ellipse cx="342" cy="458" rx="9.4" ry="10" fill="#d0d4c6" stroke="#f6f8ed" stroke-width="1" />
-        <ellipse cx="342.5" cy="458.5" rx="6.7" ry="7.6" fill="#464d3d" stroke="#141b0c" stroke-width=".75" />
-        <path d="M327 443Q337 435 350 443" fill="none" stroke="#fff" stroke-width="1.4" />
+        <use href="#pr-fastener" transform="translate(225 771)" />
+        <use href="#pr-fastener" transform="translate(461 771)" />
       </g>
-    </g>
 
-    <g id="lower-five-spoke-wheel">
-      <circle cx="343" cy="875" r="126" fill="#0b0d09" stroke="#151812" stroke-width="2.8" />
-      <circle cx="343" cy="875" r="121.4" fill="#fafaf5" stroke="#a9ad9f" stroke-width="1.2" />
-      <circle cx="343" cy="875" r="117.3" fill="#11150e" stroke="#32382b" stroke-width="1.1" />
-      <circle cx="343" cy="875" r="110.8" fill="#fbfbf7" stroke="#d2d5ca" stroke-width="1.5" />
-      <circle cx="343" cy="875" r="105.5" fill="#fffffc" stroke="#171b12" stroke-width="2.4" />
-      <use href="#pr-lower-hole" />
-      <use href="#pr-lower-hole" transform="rotate(72 343 875)" />
-      <use href="#pr-lower-hole" transform="rotate(144 343 875)" />
-      <use href="#pr-lower-hole" transform="rotate(216 343 875)" />
-      <use href="#pr-lower-hole" transform="rotate(288 343 875)" />
-      <g id="lower-wheel-hub">
-        <circle cx="343" cy="875" r="21.5" fill="#dadfd0" stroke="#8d9583" stroke-width="1" />
-        <circle cx="343" cy="874.5" r="18.5" fill="#fff" stroke="#10160a" stroke-width="2.3" />
-        <circle cx="343" cy="874" r="11.2" fill="#10160b" />
-        <circle cx="342.4" cy="873.2" r="7.2" fill="#353d2c" />
-        <use href="#pr-tiny-bolt" transform="translate(343 846)" class="pr-detail-micro" />
-        <use href="#pr-tiny-bolt" transform="translate(371 875)" class="pr-detail-micro" />
-        <use href="#pr-tiny-bolt" transform="translate(343 903)" class="pr-detail-micro" />
-        <use href="#pr-tiny-bolt" transform="translate(314 875)" class="pr-detail-micro" />
+      <g id="main-circular-housing">
+        <circle cx="343" cy="482" r="300" fill="#10110e" stroke="#0b0c0a" stroke-width="3.2" />
+        <circle cx="343" cy="482" r="295.5" fill="none" stroke="#f7f7f2" stroke-width="2.4" />
+        <circle cx="343" cy="482" r="285.5" fill="#fdfdf9" stroke="#f4f4ee" stroke-width="2" />
+        <circle cx="343" cy="482" r="278.5" fill="none" stroke="#141611" stroke-width="3" />
+        <circle cx="343" cy="482" r="270.7" fill="#fffffc" stroke="#a5a79d" stroke-width="1" />
+        <g id="dial-division-marks">
+          <use href="#pr-quadrant-ticks" />
+          <use href="#pr-quadrant-ticks" transform="rotate(90 343 482)" />
+          <use href="#pr-quadrant-ticks" transform="rotate(180 343 482)" />
+          <use href="#pr-quadrant-ticks" transform="rotate(270 343 482)" />
+          <path
+            d="M343 220V261 M343 703V742 M81 482H122 M564 482H604"
+            fill="none"
+            stroke="#11130e"
+            stroke-width="4.2"
+          />
+        </g>
+        <circle cx="343" cy="482" r="223.5" fill="#0b0c09" stroke="#11130e" stroke-width="1.7" />
+        <circle cx="343" cy="482" r="209.8" fill="#f9f9f4" stroke="#9c9f92" stroke-width="1.2" />
+        <circle cx="343" cy="482" r="204.5" fill="#11130e" stroke="#fff" stroke-width="1.6" />
+        <circle cx="343" cy="482" r="199.6" fill="url(#pr-blade-grain)" stroke="#7a7d70" stroke-width="1.3" />
       </g>
-    </g>
+
+      <g clip-path="url(#pr-iris-clip)">
+        <g id="engraved-iris-blades" stroke-linejoin="round">
+          <path
+            d="M206 337C251 294 312 279 372 285L319 335L260 369L208 432Z"
+            fill="url(#pr-blade-grain)"
+            stroke="#161813"
+            stroke-width="2.3"
+          />
+          <path
+            d="M206 337L209 433L198 478L147 466C151 415 172 369 206 337Z"
+            fill="url(#pr-blade-grain)"
+            stroke="#171a13"
+            stroke-width="2.3"
+          />
+          <path
+            d="M147 466L210 534L256 593L179 596C153 556 141 512 147 466Z"
+            fill="url(#pr-blade-grain)"
+            stroke="#13150f"
+            stroke-width="2.4"
+          />
+          <path
+            d="M179 596L268 604L367 625L311 675C256 667 209 641 179 596Z"
+            fill="url(#pr-horizontal-grain)"
+            stroke="#151711"
+            stroke-width="2.4"
+          />
+          <path
+            d="M311 675L378 614L481 554L482 621C435 664 372 686 311 675Z"
+            fill="url(#pr-blade-grain)"
+            stroke="#0f110c"
+            stroke-width="2.5"
+          />
+          <path
+            d="M482 621L483 515L485 435L541 487C539 539 518 586 482 621Z"
+            fill="url(#pr-blade-grain)"
+            stroke="#141610"
+            stroke-width="2.5"
+          />
+          <path
+            d="M541 487L476 421L429 349L487 347C521 387 539 433 541 487Z"
+            fill="url(#pr-blade-grain)"
+            stroke="#11140d"
+            stroke-width="2.5"
+          />
+          <path
+            d="M487 347L398 346L319 335L372 285C418 292 460 313 487 347Z"
+            fill="url(#pr-horizontal-grain)"
+            stroke="#10130c"
+            stroke-width="2.5"
+          />
+          <g fill="none" stroke="#f6f7ef" stroke-width="1.6">
+            <path d="M204 343L204 436 M150 471L212 540 M183 598L263 608 M315 674L379 618 M485 615L486 520 M537 480L476 416 M481 344L401 343 M365 288L318 332" />
+          </g>
+          <circle cx="343" cy="482" r="197.2" fill="none" stroke="#f0f1e8" stroke-width="1.3" />
+        </g>
+      </g>
+
+      <g id="four-spoke-center-reel">
+        <circle cx="343" cy="482" r="151.5" fill="#12150e" stroke="#090c06" stroke-width="2.2" />
+        <circle cx="343" cy="482" r="147.5" fill="#fff" stroke="#b7baad" stroke-width="1.2" />
+        <circle cx="343" cy="482" r="141.8" fill="url(#pr-steel)" stroke="#30362a" stroke-width="1.6" />
+        <g id="machined-face-contours" clip-path="url(#pr-center-disc-clip)">
+          <use href="#pr-face-groove" />
+          <use
+            href="#pr-face-groove"
+            class="pr-detail-micro"
+            transform="translate(343 482) scale(.91) translate(-343 -482)"
+          />
+          <use href="#pr-face-groove" transform="translate(343 482) scale(.82) translate(-343 -482)" />
+          <use
+            href="#pr-face-groove"
+            class="pr-detail-micro"
+            transform="translate(343 482) scale(.73) translate(-343 -482)"
+          />
+          <use href="#pr-face-groove" transform="translate(343 482) scale(.64) translate(-343 -482)" />
+          <use
+            href="#pr-face-groove"
+            class="pr-detail-micro"
+            transform="translate(343 482) scale(.55) translate(-343 -482)"
+          />
+          <use href="#pr-face-groove" transform="translate(343 482) scale(.46) translate(-343 -482)" />
+        </g>
+        <use href="#pr-reel-opening" />
+        <use href="#pr-reel-opening" transform="translate(686 0) scale(-1 1)" />
+        <use href="#pr-reel-opening" transform="translate(0 964) scale(1 -1)" />
+        <use href="#pr-reel-opening" transform="translate(686 964) scale(-1 -1)" />
+        <use href="#pr-small-screw" transform="translate(343 350)" />
+        <use href="#pr-small-screw" transform="translate(206 481) rotate(-15)" />
+        <use href="#pr-small-screw" transform="translate(479 481) rotate(15)" />
+        <use href="#pr-small-screw" transform="translate(343 614)" />
+        <g id="central-raised-spindle">
+          <ellipse cx="342" cy="475" rx="29" ry="29" fill="#74796b" opacity=".35" />
+          <ellipse cx="342" cy="472" rx="27" ry="27.5" fill="#161a12" stroke="#c4c8b8" stroke-width="1.4" />
+          <path
+            d="M317 459L317 475C319 499 361 503 367 476L368 460Z"
+            fill="#171a13"
+            stroke="#080c05"
+            stroke-width="1.3"
+          />
+          <ellipse cx="341.5" cy="458.5" rx="26.2" ry="25.3" fill="#fff" stroke="#0b0e07" stroke-width="2.5" />
+          <ellipse
+            cx="342"
+            cy="458.5"
+            rx="22.5"
+            ry="21.5"
+            fill="url(#pr-hub-metal)"
+            stroke="#7b8071"
+            stroke-width="1.1"
+          />
+          <ellipse cx="342" cy="458" rx="9.4" ry="10" fill="#d0d4c6" stroke="#f6f8ed" stroke-width="1" />
+          <ellipse cx="342.5" cy="458.5" rx="6.7" ry="7.6" fill="#464d3d" stroke="#141b0c" stroke-width=".75" />
+          <path d="M327 443Q337 435 350 443" fill="none" stroke="#fff" stroke-width="1.4" />
+        </g>
+      </g>
+
+      <g id="lower-five-spoke-wheel">
+        <circle cx="343" cy="875" r="126" fill="#0b0d09" stroke="#151812" stroke-width="2.8" />
+        <circle cx="343" cy="875" r="121.4" fill="#fafaf5" stroke="#a9ad9f" stroke-width="1.2" />
+        <circle cx="343" cy="875" r="117.3" fill="#11150e" stroke="#32382b" stroke-width="1.1" />
+        <circle cx="343" cy="875" r="110.8" fill="#fbfbf7" stroke="#d2d5ca" stroke-width="1.5" />
+        <circle cx="343" cy="875" r="105.5" fill="#fffffc" stroke="#171b12" stroke-width="2.4" />
+        <use href="#pr-lower-hole" />
+        <use href="#pr-lower-hole" transform="rotate(72 343 875)" />
+        <use href="#pr-lower-hole" transform="rotate(144 343 875)" />
+        <use href="#pr-lower-hole" transform="rotate(216 343 875)" />
+        <use href="#pr-lower-hole" transform="rotate(288 343 875)" />
+        <g id="lower-wheel-hub">
+          <circle cx="343" cy="875" r="21.5" fill="#dadfd0" stroke="#8d9583" stroke-width="1" />
+          <circle cx="343" cy="874.5" r="18.5" fill="#fff" stroke="#10160a" stroke-width="2.3" />
+          <circle cx="343" cy="874" r="11.2" fill="#10160b" />
+          <circle cx="342.4" cy="873.2" r="7.2" fill="#353d2c" />
+          <use href="#pr-tiny-bolt" transform="translate(343 846)" class="pr-detail-micro" />
+          <use href="#pr-tiny-bolt" transform="translate(371 875)" class="pr-detail-micro" />
+          <use href="#pr-tiny-bolt" transform="translate(343 903)" class="pr-detail-micro" />
+          <use href="#pr-tiny-bolt" transform="translate(314 875)" class="pr-detail-micro" />
+        </g>
+      </g>
     </g>
 
     {/* Surgical vermilion-amber brand accents (uninverted across light & dark):

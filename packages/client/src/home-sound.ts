@@ -892,7 +892,11 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
           startBed(c)
         }
         if (c.state === "running") boot()
-        else void c.resume().then(boot).catch(() => {})
+        else
+          void c
+            .resume()
+            .then(boot)
+            .catch(() => {})
       } else {
         stopBed(false)
         if (ctx) {
@@ -967,7 +971,11 @@ export const createMechanicalSound = (initial: SoundProfile = DEFAULT_SOUND_PROF
           startBed(ctx)
         }
         if (ctx.state === "running") boot()
-        else if (ctx.state !== "closed") void ctx.resume().then(boot).catch(() => {})
+        else if (ctx.state !== "closed")
+          void ctx
+            .resume()
+            .then(boot)
+            .catch(() => {})
       }
     },
     dispose: () => {

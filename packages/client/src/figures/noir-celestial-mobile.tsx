@@ -112,11 +112,7 @@ const Artwork = () => (
         <circle cx="776.3" cy="484.2" r="10.75" fill="currentColor" />
 
         <g id="ncm-right-sub">
-          <path
-            d="m783.7 489.2c47.23 6.016 77.31 24.96 77.31 55.3v22.14"
-            stroke="currentColor"
-            stroke-width="4.667"
-          />
+          <path d="m783.7 489.2c47.23 6.016 77.31 24.96 77.31 55.3v22.14" stroke="currentColor" stroke-width="4.667" />
           <circle cx="861.2" cy="572.9" r="8.716" fill="currentColor" />
           <path
             d="m845.8 582.5c21.76 9.344 37.5 27.26 37.5 49.15 0 30.98-27.26 55.68-56.32 57.47 7.424 2.432 16.13 3.968 25.09 3.968 35.07 0 62.46-25.98 62.46-57.86 0-31.1-27.52-52.74-59.52-52.74h-9.216z"
@@ -212,7 +208,7 @@ export const noirCelestialMobile: HomeFigure = {
         }
       },
       readout: (s) => {
-        const tilt = (Math.sin((s.theta * Math.PI) / 180 * 0.7) * 3.0 + s.px * 5.2).toFixed(1)
+        const tilt = (Math.sin(((s.theta * Math.PI) / 180) * 0.7) * 3.0 + s.px * 5.2).toFixed(1)
         const sign = Number(tilt) >= 0 ? "+" : ""
         return `TILT ${sign}${tilt}° · ${(1 + s.iris * 0.3).toFixed(2)}×`
       },

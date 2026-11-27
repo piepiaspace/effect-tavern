@@ -280,53 +280,53 @@ const burstsBefore = bursts
 fresh.detent("engage")
 assert.equal(notes, before, "held, engage sounds no oscillators")
 assert.equal(bursts, burstsBefore, "held, engage sounds no noise bursts")
-  fresh.resume()
-  await tick()
-  assert.equal(f.state, "running")
-  assert.equal(audioSession.type, "playback")
-  assert.ok(bursts > burstsBefore, "let go, gears ambient bed starts continuous noise source")
+fresh.resume()
+await tick()
+assert.equal(f.state, "running")
+assert.equal(audioSession.type, "playback")
+assert.ok(bursts > burstsBefore, "let go, gears ambient bed starts continuous noise source")
 
-  // --- Steady-state soundscape verification ---
-  // Pre-generated 4s stereo brown + pink noise buffers and headroom compressor
-  assert.equal(f.buffers.length, 2, "two shared noise buffers (brown + pink) per context")
-  assert.equal(f.buffers[0].length, 44100 * 4, "4s brown-noise buffer at 44.1 kHz")
-  assert.equal(f.buffers[1].length, 44100 * 4, "4s pink-noise buffer at 44.1 kHz")
-  assert.ok(
-    f.buffers[0].data.some((s) => s !== 0) && f.buffers[0].data.every((s) => s >= -1 && s <= 1),
-    "brown-noise buffer contains valid [-1, 1] samples",
-  )
-  assert.equal(f.compressors, 1, "master headroom compressor wired")
+// --- Steady-state soundscape verification ---
+// Pre-generated 4s stereo brown + pink noise buffers and headroom compressor
+assert.equal(f.buffers.length, 2, "two shared noise buffers (brown + pink) per context")
+assert.equal(f.buffers[0].length, 44100 * 4, "4s brown-noise buffer at 44.1 kHz")
+assert.equal(f.buffers[1].length, 44100 * 4, "4s pink-noise buffer at 44.1 kHz")
+assert.ok(
+  f.buffers[0].data.some((s) => s !== 0) && f.buffers[0].data.every((s) => s >= -1 && s <= 1),
+  "brown-noise buffer contains valid [-1, 1] samples",
+)
+assert.equal(f.compressors, 1, "master headroom compressor wired")
 
-  // setWarmth & setEnergy modulate masterLPF smoothly without spawning voices
-  const masterFilter = f.filters[0]
-  const logLen = masterFilter.freqLog.length
-  let n0 = notes
-  let b0 = bursts
-  fresh.setWarmth(-1)
-  fresh.setWarmth(1)
-  fresh.setEnergy(0.8)
-  assert.equal(notes, n0, "setWarmth & setEnergy spawn no oscillators")
-  assert.equal(bursts, b0, "setWarmth & setEnergy spawn no noise bursts")
-  assert.ok(masterFilter.freqLog.length >= logLen + 3, "setWarmth & setEnergy schedule smooth filter transitions")
-  assert.ok(
-    masterFilter.freqLog[logLen + 1].value > masterFilter.freqLog[logLen].value,
-    "positive warmth raises low-pass cutoff",
-  )
+// setWarmth & setEnergy modulate masterLPF smoothly without spawning voices
+const masterFilter = f.filters[0]
+const logLen = masterFilter.freqLog.length
+let n0 = notes
+let b0 = bursts
+fresh.setWarmth(-1)
+fresh.setWarmth(1)
+fresh.setEnergy(0.8)
+assert.equal(notes, n0, "setWarmth & setEnergy spawn no oscillators")
+assert.equal(bursts, b0, "setWarmth & setEnergy spawn no noise bursts")
+assert.ok(masterFilter.freqLog.length >= logLen + 3, "setWarmth & setEnergy schedule smooth filter transitions")
+assert.ok(
+  masterFilter.freqLog[logLen + 1].value > masterFilter.freqLog[logLen].value,
+  "positive warmth raises low-pass cutoff",
+)
 
-  // Switching across all 6 scene engines cleanly starts each bed & retunes the master bus
-  for (const engine of ["aperture", "projector", "eclipse", "chime", "vinyl", "gears"] as const) {
-    fresh.setProfile({ engine, filter: { baseHz: 4600, rangeHz: 600 }, room: { wet: 0.42 } })
-  }
+// Switching across all 6 scene engines cleanly starts each bed & retunes the master bus
+for (const engine of ["aperture", "projector", "eclipse", "chime", "vinyl", "gears"] as const) {
+  fresh.setProfile({ engine, filter: { baseHz: 4600, rangeHz: 600 }, room: { wet: 0.42 } })
+}
 
-  // Click detent emits a tactile voice for the active scene
-  n0 = notes
-  b0 = bursts
-  fresh.detent("click")
-  assert.ok(notes > n0 || bursts > b0, "click detent emits tactile voice")
+// Click detent emits a tactile voice for the active scene
+n0 = notes
+b0 = bursts
+fresh.detent("click")
+assert.ok(notes > n0 || bursts > b0, "click detent emits tactile voice")
 
-  // Disposing cleanly stops active looping beds and closes AudioContext
-  fresh.dispose()
-  await tick()
-  assert.equal(f.state, "closed")
+// Disposing cleanly stops active looping beds and closes AudioContext
+fresh.dispose()
+await tick()
+assert.equal(f.state, "closed")
 
-  console.log("home-sound: lifecycle guarantees and steady-state 6-scene soundscape checks passed")
+console.log("home-sound: lifecycle guarantees and steady-state 6-scene soundscape checks passed")
