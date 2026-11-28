@@ -553,21 +553,21 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
     products: [],
   })
   const byId = new Map(res.map((x) => [x.resourceId, x]))
-  // Explicit title vs short-id fallback (never sentence-hooked from prose); section explicit title vs section id fallback
+  // Explicit title vs short-id fallback; on-demand pack entries without summary fall back to first-sentence hook
   assert.equal(byId.get("pack:craft/cinema")!.title, "电影化场景调度")
   assert.equal(byId.get("pack:craft/cinema")!.summary, "当对白存在潜台词博弈、视线交锋或留白张力时读取")
   assert.equal(byId.get("pack:craft/bare")!.title, "bare")
-  assert.equal(byId.get("pack:craft/bare")!.summary, undefined)
+  assert.equal(byId.get("pack:craft/bare")!.summary, "一段没有显式标题和摘要的正文。")
   assert.equal(byId.get("pack:craft/cinema#subtext")!.title, "潜台词与停顿")
   assert.equal(byId.get("pack:craft/cinema#blocking")!.title, "blocking")
 
-  // Player `/` catalog: explicit summary preserved; bare pack entry gets clean "" instead of slicing prose; sections excluded
+  // Player `/` catalog: explicit summary preserved; bare on-demand pack entry falls back to first sentence; sections excluded
   const playerItems = res.filter((x) => x.access.player).map(catalogEntry)
   assert.deepEqual(
     playerItems.map((x) => [x.resourceId, x.title, x.summary]),
     [
       ["pack:craft/cinema", "电影化场景调度", "当对白存在潜台词博弈、视线交锋或留白张力时读取"],
-      ["pack:craft/bare", "bare", ""],
+      ["pack:craft/bare", "bare", "一段没有显式标题和摘要的正文。"],
 
       ["pack:craft/manual", "黑色幽默小剧场", "仅玩家主动点名触发的荒诞旁白模板"],
     ],
@@ -582,7 +582,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   )
   const block = catalogBlock(l.catalog(""))
   assert.ok(block.includes("pack:craft/cinema 电影化场景调度 — 当对白存在潜台词博弈、视线交锋或留白张力时读取"))
-  assert.ok(block.includes("pack:craft/bare bare\n"))
+  assert.ok(block.includes("pack:craft/bare bare — 一段没有显式标题和摘要的正文。\n"))
   assert.ok(
     block.includes(
       "pack:craft/outline 叙事节奏总纲 — 全篇节奏控制核心原则 (resident: sections only)\n  pack:craft/outline#climax 叙事节奏总纲 › 高潮收束技法\n  pack:craft/outline#transition 叙事节奏总纲 › 转场切镜",
@@ -622,7 +622,56 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   assert.ok(
     (q.questions.u0.instructions as string).includes("电影化场景调度 — 当对白存在潜台词博弈、视线交锋或留白张力时读取"),
   )
+  assert.ok((q.questions.u1.instructions as string).includes("bare — 一段没有显式标题和摘要的正文。"))
   assert.ok((q.questions.u2.instructions as string).includes("高潮收束技法"))
+
+  // Empty-body section containers: `always` and `auto` expose unread sections immediately without delivering an empty face;
+  // `manual` stays invisible until `/` invoked, then unlocks its sections.
+  const containers = resourcesAt({
+    lore: makeLore([]),
+    state: { fields: {}, world: {}, lore: {} },
+    seen: [],
+    packs: [
+      {
+        id: "dir/always-dir",
+        title: "常驻目录",
+        text: "",
+        activation: "always" as const,
+        sections: [{ id: "s1", title: "分节甲", text: "常驻分节正文。" }],
+      },
+      {
+        id: "dir/auto-dir",
+        title: "按需目录",
+        text: "   ",
+        sections: [{ id: "s2", title: "分节乙", text: "按需分节正文。" }],
+      },
+      {
+        id: "dir/manual-dir",
+        title: "手动目录",
+        text: "",
+        access: { model: false, player: true },
+        sections: [{ id: "s3", title: "分节丙", text: "手动分节正文。" }],
+      },
+    ],
+    products: [],
+  })
+  const dirLookup = contextLookup(containers, [])
+  assert.deepEqual(
+    dirLookup.units().map((u) => [u.resourceId, u.resident, u.sections?.map((s) => s.resourceId)]),
+    [
+      ["pack:dir/always-dir", true, ["pack:dir/always-dir#s1"]],
+      ["pack:dir/auto-dir", true, ["pack:dir/auto-dir#s2"]],
+    ],
+  )
+  const autoSecRead = dirLookup.read(["pack:dir/auto-dir#s2"])
+  assert.equal(autoSecRead.ok, true)
+  assert.deepEqual(
+    dirLookup.delivered.map((d) => d.resourceId),
+    ["pack:dir/auto-dir#s2"],
+  )
+  const manualDir = containers.find((r) => r.resourceId === "pack:dir/manual-dir")!
+  const manualInvoked = contextLookup(containers, [freeze(manualDir)])
+  assert.ok(manualInvoked.units().some((u) => u.resourceId === "pack:dir/manual-dir" && u.resident))
 
   // End-to-end session: always-on outline injects body every turn while lookup drills down into `outline#climax` on turn 1
   const calls: Extract<Event, { kind: "call" }>[] = []

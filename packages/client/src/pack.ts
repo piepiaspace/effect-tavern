@@ -14,38 +14,8 @@ export const MAX_ENTRY_SECTIONS = 8
 export type { PackSection }
 export type ReferenceEntry = PackEntry
 
-/** High-level reading & trigger mode for a reference entry (eliminating dead combinations of access/activation). */
-export type EntryMode = "auto" | "manual" | "always"
-
-export const entryModeOf = (e: Pick<ReferenceEntry, "access" | "activation">): EntryMode =>
+export const entryModeOf = (e: Pick<ReferenceEntry, "access" | "activation">): PromptMode =>
   e.activation === "always" ? "always" : e.access?.model === false ? "manual" : "auto"
-
-export const withEntryMode = (e: ReferenceEntry, mode: EntryMode): ReferenceEntry => {
-  const prev = entryModeOf(e)
-  if (mode === prev) return e
-  if (mode === "manual") {
-    return {
-      ...e,
-      access: { model: false, player: true },
-      activation: "on_demand",
-      residency: "turn",
-    }
-  }
-  if (mode === "always") {
-    return {
-      ...e,
-      access: { model: true, player: false },
-      activation: "always",
-      residency: e.residency === "turn" ? "window" : (e.residency ?? "window"),
-    }
-  }
-  return {
-    ...e,
-    access: { model: true, player: prev === "manual" ? true : (e.access?.player ?? true) },
-    activation: "on_demand",
-    residency: prev === "manual" ? "window" : (e.residency ?? "window"),
-  }
-}
 
 /** Sanitize an entry or section slug so it never contains `/` (pack separator) or `#` (section separator). */
 export const cleanEntrySlug = (raw: string): string =>
@@ -53,10 +23,6 @@ export const cleanEntrySlug = (raw: string): string =>
     .trim()
     .replace(/[/#\s]+/g, "-")
     .replace(/^-+|-+$/g, "")
-
-/** Total character count across main body and all sections. */
-export const entryChars = (e: Pick<ReferenceEntry, "text" | "sections">): number =>
-  e.text.length + (e.sections ?? []).reduce((n, s) => n + s.text.length, 0)
 
 /** Normalize a reference entry for persistence: strips blank optional front-matter fields and empty sections,
  *  guarantees unique `#`-free section slugs, and caps sections at `MAX_ENTRY_SECTIONS`. */

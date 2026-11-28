@@ -82,6 +82,6 @@ SillyTavern 的 `chara_card_v2` / `ccv3` 默认每张卡都是单个 NPC（`desc
 
 Effect Tavern 严格规定提示词只有 **`head`** 与 **`tail`** 两个装配区：
 
-- **`head`（头区）与后台阶段 `<world>` 隔离**：`narrate` 将 `<world>`（非写作框架槽位：`<persona>`、`<setting>` 等）、当前生效的 `<fiction>` 分段与 `<writing_guidelines>`（行文指令）组装在 `transcript` 之前作为稳定缓存前缀。所有非叙事后台阶段（`lookup`、`decide`、`direct`、`check`、`polish`、`record`）仅读取底座阶段说明与 **`<world>`**（`worldOf`——仅含卡片声明的框架槽位与 `persona`，彻底剥离 `pov`、`verbosity`、`voice`、`style`、`language` 等行文风格指令与玩家附加片段，防止分析阶段误入小说续写），并将待处理文本装入 `<input>`、`<draft>` 或 `<scene>` 标签后，再紧跟该阶段的任务提问。
+- **`head`（头区）与幕后 `<standing_context>` 共享前缀**：`narrate` 将 `<standing_context>`（生效的系统头区片段与常驻写作包词条）、`<writing_switches>`（编译后的叙事开关）与当前生效的 `<fiction>` 分段组装在 `transcript` 之前作为稳定缓存前缀。所有非叙事幕后阶段（`lookup`、`decide`、`direct`、`check`、`polish`、`record`）通过底座只读角色围栏共享 `<standing_context>` 系统条目作为背景参考（`lookup`/`decide`/`direct` 共享 `frame` 缓存前缀，`check`/`polish`/`record` 共享含 `review.head` 帽子的 `reviewed` 前缀），并将待处理文本装入 `<input>`、`<draft>` 或 `<scene>` 标签后紧跟阶段任务；独立的 `DecisionModel` 核查器则读取紧凑的 `<world>`（`checkBackground`：仅含 `persona`、`setting` 与卡片声明的背景槽位）。
 - **`tail`（尾区）**：在 `narrate` 中紧接在历史转录稿与本轮输入*之后*，承载 `<recalled_context>`（送达背景）、`<turn_state>`（掷骰结果、`Current:`）、`<stage_directions>`（`MUST`/`MAY reveal`、`Brief` 基调、`note`）、`<correction>`与 `<writing_tail>`（玩家尾部片段）——在不改动任何历史楼层的前提下获得最强的末尾近因权重（等价于 `@D0` 的注意力位置，且 100% 保住前缀缓存）。
 - **固定区间 `Fold` vs. 滚动摘要插件**：不同于每隔几轮改写一段深度插入摘要的滚动总结插件，前缀压缩由代码按固定节点区间折叠旧轮 `notes` 与已揭示 lore 为 `<story_summary>`；每个折叠块只依赖区间内已定稿节点，因此缓存断点（头区末尾、折叠前缀末尾、上一轮历史末尾）在跨轮推进与分支切换时始终字节级一致。

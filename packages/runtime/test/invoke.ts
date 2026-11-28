@@ -94,8 +94,8 @@ await Effect.runPromise(
       [
         ["card:guide", "GUIDE ONE", "GUIDE TWO"],
         ["pack:p/manual", "手动小剧场", "仅玩家通过菜单调用"],
-        ["pack:p/auto", "auto", ""],
-        ["pack:p/permanent", "permanent", ""],
+        ["pack:p/auto", "auto", "AUTO BODY"],
+        ["pack:p/permanent", "permanent", "PERMANENT BODY"],
       ],
     )
     for (const id of ["card:secret", "card:locked", "pack:p/always", "missing"]) {

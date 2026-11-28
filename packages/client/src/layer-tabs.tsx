@@ -42,6 +42,7 @@ interface FragmentDraft {
   id: string
   at: At
   mode?: Exclude<Fragment["mode"], "mute">
+  label: string
   text: string
 }
 
@@ -65,21 +66,24 @@ export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly
     { value: "both" as const, label: t("packs.modeBoth") },
     ...(SLOTS.includes(id) ? [{ value: "mute" as const, label: t("packs.muteSlot") }] : []),
   ]
+  let draftLabel: HTMLInputElement | undefined
   let draftArea: HTMLTextAreaElement | undefined
   const commitDraft = () => {
     const d = shownDraft()
     if (d === null) return
+    const label = draftLabel?.isConnected ? draftLabel.value : d.label
     const text = draftArea?.isConnected ? draftArea.value : d.text
+    draftLabel = undefined
     draftArea = undefined
     setDraft(null)
     const effective = d.mode ?? (props.pack.default ? ("yield" as const) : undefined)
     const mode = !props.pack.default && effective === "override" ? undefined : effective
-    if (text.trim()) void props.onSave((p) => addFragment(p, d.id, text, d.at, mode))
+    if (text.trim()) void props.onSave((p) => addFragment(p, d.id, text, d.at, mode, label))
   }
   const startDraft = () => {
     blurField()
     if (shownDraft()?.text.trim()) commitDraft()
-    setDraft({ packId: props.pack.id, id: newId("req"), at: "tail", text: "" })
+    setDraft({ packId: props.pack.id, id: newId("req"), at: "tail", label: "", text: "" })
   }
   const updateFrag = (idx: number, patch: Partial<Fragment>) =>
     void props.onSave((p) => {
@@ -191,6 +195,22 @@ export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly
                     <Close />
                   </button>
                 </div>
+                <input
+                  type="text"
+                  class="frag-label-input"
+                  enterkeyhint="done"
+                  placeholder={t("prompts.titlePlaceholder")}
+                  aria-label={t("prompts.titleLabel")}
+                  value={d().label}
+                  ref={(el) => {
+                    draftLabel = el
+                  }}
+                  onInput={(e) => {
+                    const label = e.currentTarget.value
+                    setDraft((cur) => (cur ? { ...cur, label } : cur))
+                  }}
+                  onKeyDown={leaveInput}
+                />
                 <Well label={t("writing.requirement")}>
                   <textarea
                     aria-label={t("writing.requirement")}

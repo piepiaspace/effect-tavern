@@ -1015,13 +1015,20 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           kind: "turn",
           source: { kind: "runtime", label: "input.note", rawText: c.input.note },
         })
-      const recalled = a.told.map((d): Piece => ({
-        text: d.text,
-        element: "entry",
-        title: d.title,
-        kind: "context",
-        source: d.sourceRef ?? { kind: "card", ...(c.cardId && { cardId: c.cardId }), label: d.title, rawText: d.text },
-      }))
+      const recalled = a.told
+        .filter((d) => d.text.trim())
+        .map((d): Piece => ({
+          text: d.text,
+          element: "entry",
+          title: d.title,
+          kind: "context",
+          source: d.sourceRef ?? {
+            kind: "card",
+            ...(c.cardId && { cardId: c.cardId }),
+            label: d.title,
+            rawText: d.text,
+          },
+        }))
       if (recalled.length || state.length || directions.length) {
         const nw = writer()
         nw.raw(NOTE.turn)

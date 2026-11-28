@@ -65,12 +65,15 @@ export const loreResource = (
   const source = entry.source ?? "card"
   const text = entry.layers.slice(0, depth).join("\n\n")
   const explicitTitle = entry.title?.trim()
-  const summary = entry.summary?.trim()
+  const title = explicitTitle || (source === "pack" ? shortEntryId(entry.id) : hook(entry.layers[0]))
+  const fallbackSummary =
+    source === "pack" && (entry.activation ?? "on_demand") !== "always" && text.trim() ? hook(text.trim()).trim() : ""
+  const summary = entry.summary?.trim() || (fallbackSummary && fallbackSummary !== title ? fallbackSummary : "")
   return {
     resourceId: `${source}:${entry.id}`,
     revision:
       source === "pack" && explicitTitle ? revision({ title: explicitTitle, text, depth }) : revision({ text, depth }),
-    title: explicitTitle || (source === "pack" ? shortEntryId(entry.id) : hook(entry.layers[0])),
+    title,
     ...(summary ? { summary } : {}),
     text,
     source,
@@ -220,7 +223,9 @@ export const catalogBlock = (c: Catalog) =>
 export const contextLookup = (resources: readonly Resource[], injected: readonly DeliverySnapshot[]) => {
   const byId = new Map(resources.map((r) => [r.resourceId, r]))
   const standing = resources.filter(inStandingHead)
-  const held = new Map([...injected, ...standing].map((s) => [s.resourceId, s]))
+  const emptyModelFace = (r: Resource) => r.source === "pack" && !r.of && r.access.model && !r.text.trim()
+  const preheld = resources.filter((r) => inStandingHead(r) || emptyModelFace(r))
+  const held = new Map([...injected, ...preheld].map((s) => [s.resourceId, s]))
   const standingIds = new Set(standing.map((r) => r.resourceId))
   const withoutStanding = (snapshots: readonly DeliverySnapshot[]) =>
     snapshots.filter((s) => !standingIds.has(s.resourceId))

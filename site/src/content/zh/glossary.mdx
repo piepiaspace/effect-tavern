@@ -34,7 +34,7 @@ Effect Tavern 以英文代码标识符作为**命名原语（Naming Primitives�
 | `Derived` | 沿根到节点路径实时折叠算出的纯函数结果（`derived.ts`），从不落库存储。 |
 | `WorldState` & `DomainChange` | 统一求值状态 `{ fields, world, lore }` 及两阶段稀疏世界事务（`insert_entity`、`patch_entity`、`remove_entity`、`patch_record`、`replace`）。 |
 | `Fold` | 产物沿路径累积规则（`latest`、`append`、`{ key }`），以及对旧轮 `notes` 与已揭示 lore 的字节稳定前缀压缩。 |
-| `Head` / `Tail` & `<world>` | 提示词仅有的头尾两区（`request.ts`，取代破坏缓存的楼层深度插入）；仅 `narrate` 读取完整 `frame` 与 `<writing_guidelines>`，幕后阶段只读底座阶段说明加紧凑的 XML 标签化 `<world>` 摘要（`worldOf`）。 |
+| `Head` / `Tail` & `<standing_context>` | 提示词仅有的头尾两区（`request.ts`，取代破坏缓存的楼层深度插入）；`narrate` 读取 `<standing_context>`、`<writing_switches>`、`<fiction>` 与叙事帽，六个幕后阶段通过只读围栏共享 `<standing_context>` 前缀（`lookup`/`decide`/`direct` 共享 `frame`，`check`/`polish`/`record` 共享 `reviewed`），独立 Decision 核查器读取紧凑 `<world>`（`checkBackground`）。 |
 | `Channel` (`act` / `note`) | 输入通道：`act` 进入转录稿，`note` 仅在本轮指导叙事者与导演。 |
 | `Fragment` / `Slot` / `Band` | 装配单元、框架具名槽位（`SLOTS`）与带 `when` 条件的 `fiction` 状态分段。 |
 | `Layer` / `Local` / `Pack` | 五级定制行（`defaultPack → card → packs → local → persona`）。 |

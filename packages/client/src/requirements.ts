@@ -24,13 +24,28 @@ const withFragments = <R extends Layer>(r: R, list: readonly Fragment[]): R => {
   const { fragments: _, ...base } = r
   return (list.length ? { ...base, fragments: list } : base) as R
 }
-export const addFragment = <R extends Layer>(r: R, id: string, text: string, at: At, mode?: Fragment["mode"]): R =>
-  text.trim()
+export const addFragment = <R extends Layer>(
+  r: R,
+  id: string,
+  text: string,
+  at: At,
+  mode?: Fragment["mode"],
+  label?: string,
+): R => {
+  const trimmedLabel = label?.trim()
+  return text.trim()
     ? withFragments(r, [
-        { id, ...(at === "tail" ? { at: "tail" as const } : {}), ...(mode ? { mode } : {}), text: text.trim() },
+        {
+          id,
+          ...(trimmedLabel ? { label: trimmedLabel } : {}),
+          ...(at === "tail" ? { at: "tail" as const } : {}),
+          ...(mode ? { mode } : {}),
+          text: text.trim(),
+        },
         ...(r.fragments ?? []),
       ])
     : r
+}
 export const removeFragment = <R extends Layer>(r: R, i: number): R =>
   withFragments(
     r,

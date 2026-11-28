@@ -34,7 +34,7 @@ Canonical naming primitives for developers, card authors, and coding agents. The
 | `Derived` | Pure path fold (`derived.ts`) computing state, floors/counters, transcripts, compression, and UI projections without storing snapshots. |
 | `WorldState` & `DomainChange` | Unified `{ fields, world, lore }` state and sparse two-phase mutations (`insert_entity`, `patch_entity`, `remove_entity`, `patch_record`, `replace`). |
 | `Fold` | Path accumulation (`latest`, `append`, `{ key }`) on products, and byte-stable prefix compression over `notes` and disclosed lore. |
-| `Head` / `Tail` & `<world>` | The two prompt assembly zones (`request.ts`, replacing numeric chat-depth insertion); only `narrate` reads the full `frame` and `<writing_guidelines>`, whereas off-stage passes read harness stage framing + a compact XML-tagged `<world>` projection (`worldOf`). |
+| `Head` / `Tail` & `<standing_context>` | The two prompt assembly zones (`request.ts`, replacing numeric chat-depth insertion); `narrate` reads `<standing_context>`, `<writing_switches>`, `<fiction>`, and prose hats, while the six off-stage passes share `<standing_context>` behind a read-only stage fence (`frame` for `lookup`/`decide`/`direct`, `reviewed` for `check`/`polish`/`record`), and the independent Decision checker reads a compact `<world>` (`checkBackground`). |
 | `Channel` (`act` / `note`) | Input route: `act` enters the `transcript`; `note` directs this turn only. |
 | `Fragment` / `Slot` / `Band` | Prompt unit (`fragment.ts`), named `frame` slot (`SLOTS`), and `when`-gated `fiction` state variant. |
 | `Layer` / `Local` / `Pack` | Rank-ordered customization rows (`defaultPack → card → packs → local → persona`). |

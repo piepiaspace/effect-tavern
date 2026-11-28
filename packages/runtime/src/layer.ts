@@ -183,7 +183,7 @@ export const checkBackground = <F extends Fragment>(card: Card, frame: readonly 
 /** The pack faces rendered in the standing head. Untitled faces keep their resource ID only in the trace. */
 export const packHead = (entries: Resolved["entries"], sources?: Readonly<Record<string, SourceRef>>): Slotted[] =>
   entries
-    .filter((e) => e.activation === "always" && e.access?.model !== false)
+    .filter((e) => e.activation === "always" && e.access?.model !== false && e.text.trim())
     .map((e) => ({
       role: "system",
       text: e.text,
@@ -632,6 +632,7 @@ export const resolveWithTrace = (
     if (e.id.includes("/")) return "an entry id has no /"
     if (e.id.includes("#")) return "an entry id has no #"
     const secs = e.sections ?? []
+    if (!e.text.trim() && !secs.length) return "entry text is empty"
     if (secs.length > 8) return `${secs.length} sections (ceiling 8)`
     const seen = new Set<string>()
     for (const s of secs) {

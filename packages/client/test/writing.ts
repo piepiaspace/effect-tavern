@@ -9,7 +9,6 @@ import {
   cardNameKeys,
   cleanEntrySlug,
   cleanReferenceEntry,
-  entryChars,
   entryModeOf,
   fillKnown,
   editedProduct,
@@ -24,7 +23,6 @@ import {
   toggleMount,
   type PromptItem,
   type ReferenceEntry,
-  withEntryMode,
   withoutProductPatch,
   withoutProductText,
   withPackName,
@@ -380,21 +378,6 @@ const baseRef: ReferenceEntry = {
   summary: "  对手戏潜台词  ",
   text: "总纲正文",
 }
-const asManual = withEntryMode(baseRef, "manual")
-assert.deepEqual(
-  { mode: entryModeOf(asManual), access: asManual.access, residency: asManual.residency },
-  { mode: "manual", access: { model: false, player: true }, residency: "turn" },
-)
-const backToAuto = withEntryMode(asManual, "auto")
-assert.deepEqual(
-  { mode: entryModeOf(backToAuto), access: backToAuto.access, residency: backToAuto.residency },
-  { mode: "auto", access: { model: true, player: true }, residency: "window" },
-)
-const asStanding = withEntryMode(asManual, "always")
-assert.deepEqual(
-  { mode: entryModeOf(asStanding), activation: asStanding.activation, residency: asStanding.residency },
-  { mode: "always", activation: "always", residency: "window" },
-)
 assert.equal(cleanEntrySlug("  noir/voice#shot  "), "noir-voice-shot")
 const cleanedRef = cleanReferenceEntry(
   {
@@ -414,7 +397,11 @@ assert.deepEqual(cleanedRef.sections, [
   { id: "subtext-1", title: "潜台词", text: "停顿与动作" },
   { id: "subtext-1-2", title: "重复标识", text: "器物支点" },
 ])
-assert.equal(entryChars(cleanedRef), 4 + 5 + 4)
+const labeledPack: Layer = { id: "p", name: "P" }
+assert.equal(
+  addFragment(labeledPack, "req-labeled", "  正文  ", "head", "both", "  我的标题  ").fragments?.[0]?.label,
+  "我的标题",
+)
 assert.deepEqual(
   packHoles({
     entries: [
