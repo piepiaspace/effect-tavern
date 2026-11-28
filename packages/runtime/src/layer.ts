@@ -21,7 +21,7 @@
 import { ContextPolicy, checkContextPolicies } from "./lore.ts"
 import { Schema } from "effect"
 import type { Card } from "./card.ts"
-import { Format, Fragment, Snippet, Writing } from "./fragment.ts"
+import { Format, Fragment, Snippet, Writing, type Slotted } from "./fragment.ts"
 import { expand, nameOk, Names, unfilled } from "./names.ts"
 import { Entry as LexiconEntry } from "./polish.ts"
 import { ProductPatch, validate, type Catalog, type Product } from "./product.ts"
@@ -38,6 +38,7 @@ export const PackEntry = Schema.Struct({
   title: Schema.optionalKey(Schema.String),
   summary: Schema.optionalKey(Schema.String),
   text: Schema.String,
+  enabled: Schema.optionalKey(Schema.Boolean),
   sections: Schema.optionalKey(Schema.Array(PackSection)),
   ...ContextPolicy.fields,
 }) // one layer + optional on-demand sections; explicit front matter (`title`, `summary`)
@@ -143,6 +144,7 @@ export interface Resolved {
   switches: {
     value: Writing
     sentences: Readonly<Record<string, string>> // by id, `switch.<key>.<value>`
+    effectivePovLine?: string
     taken: { pov: From | null; verbosity: From | null } // who holds the slot; the frame item says whether it is compiled
   }
   // what the locks refused, nothing throws: a client words it by `kind` (one per lock), `why` is the CLI's and the tests'
@@ -151,9 +153,10 @@ export interface Resolved {
 
 /** The switches as slot fragments: `pov` (pov, echo, agency; the last two drop when there is no player in the fiction)
  *  and `verbosity`. */
+const line = (k: string, v: string | boolean) => SWITCH_SENTENCES[`switch.${k}.${String(v)}`]
+const povLineOf = (w: Writing) => (w.pov === "custom" ? w.povText?.trim() : w.pov && line("pov", w.pov))
 const compile = (w: Writing): Fragment[] => {
-  const line = (k: string, v: string | boolean) => SWITCH_SENTENCES[`switch.${k}.${String(v)}`]
-  const povLine = w.pov === "custom" ? w.povText?.trim() || undefined : w.pov ? line("pov", w.pov) : undefined
+  const povLine = povLineOf(w)
   const pov = [
     povLine,
     w.pov !== "none" && w.echo !== undefined && line("echo", w.echo),
@@ -165,18 +168,33 @@ const compile = (w: Writing): Fragment[] => {
   ]
 }
 
-/** The slots that say how to write, whoever holds them: the two the switches compile to, and a card's `voice`,
- *  `style` and `language`. */
-const WRITING = new Set(["pov", "verbosity", "voice", "style", "language"])
-/** The part of a frame that says who and where, not how to write: the slots the card declares (a player's text in one
- *  is still that slot) and the persona, less the writing slots. It is all a stage other than narrate reads of the
- *  frame: a model that reads "write the player as 你, take your time" at the top of its document writes, whatever the
- *  stage then asks (a record stage continued the story for 2,800 tokens and recorded its own continuation). A
- *  player's own fragments (a pack's, the local row's) are writing by what the player layer is, so they stay narrate's. */
-export const worldOf = <F extends { id: string }>(card: Card, frame: readonly F[]): F[] => {
+/** The independent Decision checker reads the persona, setting and other card-declared background slots. */
+const writingSlots = new Set(["language", "voice", "style", "pov", "verbosity"])
+export const checkBackground = <F extends Fragment>(card: Card, frame: readonly F[]): F[] => {
   const declared = new Set(card.frame.map((f) => f.id))
-  return frame.filter((f) => (declared.has(f.id) || f.id === "persona") && !WRITING.has(f.id))
+  return frame.filter(
+    (f) =>
+      (f.role ?? "system") === "system" &&
+      !writingSlots.has(f.id) &&
+      (f.id === "persona" || f.id === "setting" || declared.has(f.id)),
+  )
 }
+
+/** The pack faces rendered in the standing head. Untitled faces keep their resource ID only in the trace. */
+export const packHead = (entries: Resolved["entries"], sources?: Readonly<Record<string, SourceRef>>): Slotted[] =>
+  entries
+    .filter((e) => e.activation === "always" && e.access?.model !== false)
+    .map((e) => ({
+      role: "system",
+      text: e.text,
+      ...(e.title?.trim() && { label: e.title.trim() }),
+      source: sources?.[e.id] ?? {
+        kind: sourceKindFrom(e.from),
+        from: e.from,
+        entryId: e.id,
+        resourceId: `pack:${e.id}`,
+      },
+    }))
 
 export interface ResolvedTrace {
   resolved: Resolved
@@ -627,9 +645,25 @@ export const resolveWithTrace = (
   }
   const written = up.flatMap(({ from, row }) =>
     (row.entries ?? []).flatMap((e) => {
+      const label = e.title?.trim()
+      if (e.enabled === false) {
+        omitted.push({
+          category: "entry",
+          id: e.id,
+          ...(label && { label }),
+          reason: "disabled",
+          preview: e.text,
+          source: sourceOf(from, `entries.${e.id}`, {
+            label,
+            entryId: `${from}/${e.id}`,
+            resourceId: `pack:${from}/${e.id}`,
+            rawText: e.text,
+          }),
+        })
+        return []
+      }
       const why = entryProblem(e)
       if (!why) return [{ ...e, id: `${from}/${e.id}`, from }]
-      const label = e.title?.trim()
       dropped.push({ from, kind: "entry", id: e.id, why })
       omitted.push({
         category: "entry",
@@ -751,6 +785,9 @@ export const resolveWithTrace = (
     ...allSnippets.flatMap((s) => [s.text, s.after ?? ""]),
   ]
   const frameEntries = filledTracked.filter((x) => x.item.at !== "tail")
+  const compiledPov = frameEntries.find(({ item }) => item.id === "pov" && item.compiled)
+  const povLine = povLineOf(value)
+  const effectivePovLine = compiledPov && povLine ? expand(povLine, names, compiledPov.item.from) : undefined
   const tailEntries = filledTracked.filter((x) => x.item.at === "tail")
   return {
     resolved: {
@@ -772,6 +809,7 @@ export const resolveWithTrace = (
       switches: {
         value,
         sentences: SWITCH_SENTENCES,
+        ...(effectivePovLine && { effectivePovLine }),
         taken: { pov: holder("pov"), verbosity: holder("verbosity") },
       },
       dropped,

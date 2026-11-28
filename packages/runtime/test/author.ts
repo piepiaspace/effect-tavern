@@ -202,7 +202,15 @@ try {
   }
   const preview = view(collision, rows, { pin: "pack:p/secret" })
   // narrate reads both bodies, no ids; lookup, which reads by id, keeps them apart
-  assert.match(JSON.stringify(preview.doc), /<recalled_context>\\nCARD BODY\\n\\nPACK BODY\\n<\/recalled_context>/)
+  assert.ok(
+    preview.doc.some(
+      (m) =>
+        typeof m.content === "string" &&
+        m.content.includes(
+          '<recalled_context>\n<entry>\nCARD BODY\n</entry>\n\n<entry title="secret">\nPACK BODY\n</entry>\n</recalled_context>',
+        ),
+    ),
+  )
   const document = JSON.stringify(view(collision, rows, { pin: "pack:p/secret", stage: "lookup" }).doc)
   assert.match(document, /\[card:p\/secret revision=.*CARD BODY/)
   assert.match(document, /\[pack:p\/secret revision=.*PACK BODY/)

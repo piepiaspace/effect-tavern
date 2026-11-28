@@ -19,7 +19,7 @@ lookup → decide → settle → gate → direct → narrate → check → polis
 ```
 
 - **结构化阶段按需开启与决策模型预检：** 纯聊天卡每轮只跑 `narrate` 与 `record`；`lookup`、`decide`、`direct`、`check`、`polish` 均根据卡片声明自动启停。可选的全局**决策模型**（Decision Model）支持以概率打分直接完成完整目录 `lookup` 检索与边界清晰的 `check` 预检，仅在需要时回退至语言模型调用。
-- **正文非权威与后台阶段隔离：** 只有 `narrate` 读取 `fiction`、行文风格指令与对话转录稿（`transcript`），且绝不直接看到数值——状态仅通过带 `when` 条件的散文分段（`band`）送达叙事者；其余后台阶段仅读取 `<world>` 背景与 XML 标签包裹的待处理文本。
+- **叙事与后台取证。** `narrate` 读取常驻上下文、编译后的写作开关、故事设定和对话历史。机制状态通过带条件的散文分段传达。后台阶段共用只读的常驻上下文，`check` 检查草稿，结算提取场景中已发生的变化。行动选项和小剧场按各自产物的提示词生成。
 - **确定性结算、两阶段世界状态与过场（`passages`）：** 标量字段（`fields`）由带种子的动作检定（`actions`）与写后选择题读数（`readouts`）由代码结算；可变世界表与记录（`world`）通过 `record` 阶段的稀疏 `DomainChange` 事务更新，与追加式编年记忆（`chronicle`，如 `notes`）及纯面向玩家的小剧场（`theater`，如 `inner`、`options`、`<<aside>>`）严格分责；写后 `passages` 支持周目/幕间重置（`digest` 纪元边界）与终局收束（`over`）。
 
 ### 2. 不可变日志树与纯函数派生视图

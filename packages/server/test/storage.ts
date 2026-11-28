@@ -131,7 +131,6 @@ assert.throws(() => hydrateCall({ $v: 1, call: { $text: hashUtf8(body) } }, obje
 
 const common: Common = {
   frame: [],
-  world: [],
   input: { text: body },
 }
 const ask: Ask = {

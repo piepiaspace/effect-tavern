@@ -231,20 +231,13 @@ const program = Effect.gen(function* () {
   assert.ok(!v3.includes("NOTE#2") && !v3.includes(t2.brief.tone!))
   assert.ok(v3.includes(full.fiction[1].text!)) // bond was 4 when this head was built; the answer lands after the prose
   assert.equal(S.node(t3.id).state.bond, 8)
-  assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 3), prompts("narrate").at(-2)!.slice(0, 3))
-  const [frameTag, fictionTag] = ["persona", "setting"].map((id) => full.frame.find((f) => f.id === id)!.text!)
-  assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 3).map(msgText), [
-    [
-      `<world>\n${NOTE.world}`,
-      `<persona role="player_character">\n${NOTE.persona}\n${frameTag}\n</persona>\n`,
-      `<setting>\n${fictionTag}\n</setting>\n</world>`,
-    ].join("\n"),
-    `<fiction>\n${NOTE.fiction}\n${full.fiction[0].text!}\n\n${full.fiction[1].text!}\n</fiction>`,
-    [
-      `<writing_guidelines>\n${NOTE.guidelines}\n${player.defaultPack!.fragments![0].text!}`,
-      `${full.frame.find((f) => f.id === "style")!.text!}\n</writing_guidelines>`,
-    ].join("\n\n"),
-  ]) // <world> (persona, setting tagged) → <fiction> → <writing_guidelines> (the player's fragment, then style)
+  assert.deepEqual(prompts("narrate").at(-1)!.slice(0, 2), prompts("narrate").at(-2)!.slice(0, 2))
+  const [standing, fiction] = prompts("narrate").at(-1)!.map(msgText)
+  assert.ok(standing.startsWith("<standing_context>"))
+  for (const slot of ["persona", "setting", "style"])
+    assert.ok(standing.includes(full.frame.find((f) => f.id === slot)!.text!))
+  assert.ok(standing.includes(player.defaultPack!.fragments![0].text!))
+  assert.equal(fiction, `<fiction>\n${NOTE.fiction}\n${full.fiction[0].text!}\n\n${full.fiction[1].text!}\n</fiction>`)
   assert.deepEqual(since(i), ["lookup", "decide", "narrate", "check", "record", "record"])
   assert.deepEqual(t3.brief, { must: [], may: [] }) // no beat event this turn, t2's readout emitted none: no window
   // Cache breakpoints: the head's last message and the last history message (t2's reply, what next turn resends
@@ -257,7 +250,7 @@ const program = Effect.gen(function* () {
     [
       marks.at(-1),
       marks.filter(Boolean).length,
-      at(marks.indexOf(true)).startsWith("<writing_guidelines>"), // the head's last message
+      at(marks.indexOf(true)).startsWith("<fiction>"), // the head's last message
       at(marks.lastIndexOf(true)),
     ],
     [false, 2, true, prose(t2)],
@@ -542,7 +535,7 @@ const program = Effect.gen(function* () {
   })
   yield* go(H.act(null, { text: "about li" }))
   assert.deepEqual(lastNarr().slice(-2).map(msgText), [
-    `<writing_tail>\n${NOTE.tail}\nTASTE-TAIL\n</writing_tail>`,
+    `<writing_tail>\n${NOTE.tail}\n<item>\nTASTE-TAIL\n</item>\n</writing_tail>`,
     "HAT-TAIL",
   ])
   assert.ok(!str(prompts("record").at(-1)!).includes("TAIL"))

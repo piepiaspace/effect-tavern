@@ -937,7 +937,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     assert.equal(pv.traces[0]?.subzone, "hat-lead")
     assert.equal(pv.traces[0]?.source?.hatSlot, "lead")
     assert.equal(pv.messages[0]?.content, "Protocol lead for Astra.")
-    assert.equal(pv.traces[1]?.subzone, "world")
+    assert.equal(pv.traces[1]?.subzone, "standing_context")
 
     // `hat-turn` sits immediately before player `input`, and `wire()` rewrites `system` after `tool` on anthropic/gemini
     const hatTurnIdx = pv.traces.findIndex((t) => t.subzone === "hat-turn")
@@ -1176,7 +1176,7 @@ console.log("preview: ok")
   assert.equal(pv.connection.tool!.sources.description.path, "tool.description")
   assert.deepEqual(
     pv.wrap?.traces.map((t) => t.subzone),
-    ["lead", "world", "hat-head", "history", "input"],
+    ["lead", "standing_context", "hat-head", "history", "input"],
   )
   const wrapped = pv.wrap
   for (const s of wrapped.sections) {
@@ -1280,7 +1280,7 @@ console.log("preview: ok")
   const outlineView = res.resources.find((r) => r.resourceId === "pack:craft/outline")!
   assert.equal(outlineView.title, "叙事总纲 (Marin)")
   assert.equal(outlineView.summary, "围绕 Marin 的核心节奏规范")
-  assert.equal(outlineView.residencyStatus, "delivered_this_turn")
+  assert.equal(outlineView.residencyStatus, "resident_permanent")
   assert.equal(outlineView.inCatalog, false)
   assert.equal(outlineView.simulatedRead, true)
   assert.deepEqual(

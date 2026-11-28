@@ -7,15 +7,15 @@ import { fieldMeta } from "./field-meta.ts"
 import { unlocks, unlockPath, whenPaths, conditionChildren } from "./paths.ts"
 import type { Message } from "@effect-tavern/provider"
 import { drawn, makeCard, type Card, type State } from "./card.ts"
-import { holds, lookup, reads, type Cond } from "./cond.ts"
+import { expandState, holds, lookup, reads, type Cond } from "./cond.ts"
 import { head, type Fragment, type Hat } from "./fragment.ts"
-import { catalogsOf, resolve, worldOf, type Rows } from "./layer.ts"
+import { catalogsOf, resolve, packHead, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore } from "./lore.ts"
 import { lines, fill } from "./names.ts"
 import { prepareHat } from "./preview.ts"
 import { requestDetailed, type Ask } from "./request.ts"
 import { cond, effect, labels } from "./phrase.ts"
-import { catalogBlock, contextLookup, deliveryText, freeze, latest, resourcesAt, fedResources } from "./context.ts"
+import { catalogBlock, contextLookup, turnDeliveries, freeze, latest, resourcesAt, fedResources } from "./context.ts"
 import { floorAt, currentAt } from "./derived.ts"
 
 import { evalDerived, initialWorld, worldEffects } from "./world.ts"
@@ -101,8 +101,15 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
     const t = tokens(on[0].text)
     return { tokens: t, text: `${name}  ~${t}\n${indent(on[0].text)}` }
   }
+  const standing = packHead(R.entries)
   const frags = [
-    ...(stage === "narrate" ? layers : worldOf(card, R.frame)).map((f) => frag(f.at === "tail" ? "tail" : "frame", f)),
+    ...(stage === "narrate" ? layers : R.frame.filter((f) => !f.compiled && (f.role ?? "system") === "system")).map(
+      (f) => frag(f.at === "tail" ? "tail" : "frame", f),
+    ),
+    ...standing.map((m) => ({
+      tokens: tokens(m.text),
+      text: `[frame] ${m.label ?? m.source?.resourceId}  ~${tokens(m.text)}\n${indent(m.text)}`,
+    })),
     ...(stage === "narrate" ? fiction.map((f) => frag("fiction", f)) : []),
   ]
 
@@ -130,10 +137,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   const pin = o.pin?.includes(":") ? o.pin : o.pin ? `card:${o.pin}` : undefined
   const pinned = resources.find((r) => r.resourceId === pin)
   if (pin && !pinned?.access.player) throw new Error(`pin ${o.pin}: entry is not available to the player`)
-  const frozen = latest([
-    ...resources.filter((r) => r.activation === "always" && r.access.model).map((r) => freeze(r)),
-    ...(pinned ? [freeze(pinned)] : []),
-  ])
+  const frozen = latest(turnDeliveries(resources, pinned ? [pinned] : []).map((r) => freeze(r)))
   const held = [...frozen, ...fedResources(resources, R.products).map((r) => freeze(r))]
   const lookupContext = contextLookup(resources, held)
   const readable = new Set(lookupContext.readable().map((r) => r.resourceId))
@@ -228,7 +232,6 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
               stage,
               known: R.products.some(feedsChronicle) ? "Known: " : "",
               current: currentAt(R.products, world, {}, true),
-              invoked: pinned ? [deliveryText(freeze(pinned))] : [],
               asks,
               tools: true,
               questions,
@@ -250,8 +253,8 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   const worn = o.hat && prepareHat(o.hat, R.names)
   const detailed = requestDetailed(
     {
-      frame: head(R.frame, { state: context }),
-      world: head(worldOf(card, R.frame), { state: context }),
+      frame: [...head(R.frame, { state: context }), ...standing],
+      effectivePovLine: R.switches.effectivePovLine && expandState(R.switches.effectivePovLine, context),
       tail: head(R.tail, { state: context }),
       input: { text: "" },
     },

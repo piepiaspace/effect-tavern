@@ -10,6 +10,7 @@
 // #180); client test/imports.ts holds the line.
 import type { Question } from "@effect-tavern/provider"
 import type { Unit } from "./context.ts"
+import { sectionTitle } from "./lore.ts"
 import { tag } from "./request.ts"
 
 // ponytail: a first calibration from decision-probe readings (clean 0.02–0.08, violated 0.95+); re-read against the
@@ -23,7 +24,7 @@ export const TOP = 8 // read_context's per-call cap
 
 // The questions, each followed by the unit's title, the rule or the entry's text. Measured in Chinese by server
 // bin/decision-lookup.ts (#168), decision-replay.ts and decision-probe.ts; kept as measured.
-const LOOKUP_ASK = "<input> 里玩家这一轮说的话或做的事，是否提到、询问或直接牵涉下面这条设定里的人物、物件或事情？\n"
+const LOOKUP_ASK = "<input> 本轮的言行或要求，是否点名、询问或正面牵涉下面这项（明确说不用或无关的选否）？\n"
 const RULE_ASK = "只评判 <draft> 里的正文；<world> 只是背景，不算正文。<draft> 是否违反了下面这条规则？\n规则："
 const OPEN_ASK =
   "只看 <draft> 里的正文，<world> 只是背景。正文是否向读者传达了下面这条设定的实质内容？转述或清楚的暗示都算，只是气氛相近不算。\n设定："
@@ -66,7 +67,7 @@ const unitLabel = (u: { title: string; summary?: string }) => (u.summary ? `${u.
 const askedOf = (units: readonly Unit[]): { resourceId: string; title: string; summary?: string }[] =>
   units.flatMap((u) =>
     u.resident
-      ? (u.sections ?? []).map((s) => ({ resourceId: s.resourceId, title: s.title }))
+      ? (u.sections ?? []).map((s) => ({ resourceId: s.resourceId, title: sectionTitle(u.title, s.title) }))
       : [{ resourceId: u.resourceId, title: u.title, ...(u.summary ? { summary: u.summary } : {}) }],
   )
 /** The answers read back per unit (`asked` order) and what to read: over `LOOKUP`, highest first, at most `TOP` ids;

@@ -4,7 +4,7 @@
 // would be asked and sends nothing.
 //
 // Per node with prose, one request as the turn's check fast pass sends it (runtime decision.ts `checkQuestions`): the
-// card's world (its frame less the writing slots, layer.ts `worldOf`) above the prose, each of the card's guard lines as
+// Decision background (persona, setting and card-declared background slots) above the prose, each of the card's guard lines as
 // a yes/no "does the draft break it", or one generic question when the card has none, so the block rate and latency
 // are measured on every prose. A node's stored
 // `violated` is the label. CONTROLS append a hand-written violation to a real prose: the same question must then say yes.
@@ -14,7 +14,7 @@ import { Database } from "bun:sqlite"
 import { join } from "node:path"
 import { blocked, compileDecision, decide, type Question, type Trace } from "@effect-tavern/provider"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
-import { resolve, worldOf, type Layer, type Local, type Resolved } from "@effect-tavern/runtime/src/layer.ts"
+import { resolve, checkBackground, type Layer, type Local, type Resolved } from "@effect-tavern/runtime/src/layer.ts"
 import { worldBlock } from "@effect-tavern/runtime/src/request.ts"
 import { HI, LO, checkQuestions, checkVerdict } from "@effect-tavern/runtime/src/decision.ts"
 import { lines } from "@effect-tavern/runtime/src/names.ts"
@@ -85,10 +85,12 @@ const layerOf = (card: Card, persona: string | null, yields: boolean): Resolved 
     local: json<Local>(db.query("select json from local where card = ?").get(card.id) as Row | null),
     persona: persona === null || !personas.has(persona) ? undefined : { ...personas.get(persona)!, yields },
   })
-/** The card's `<world>` block as the off-stage stages read it (request.ts `worldBlock`), or "" when it has none. */
+/** The compact <world> used by the independent Decision check. */
 const worldText = (card: Card, layer: Resolved): string =>
   worldBlock(
-    worldOf(card, layer.frame).flatMap((f) => (f.text ? [{ id: f.id, role: "system" as const, text: f.text }] : [])),
+    checkBackground(card, layer.frame).flatMap((f) =>
+      f.text ? [{ id: f.id, role: "system" as const, text: f.text }] : [],
+    ),
   )
 /** What the turn's check fast pass sends (runtime decision.ts `checkQuestions`):
  *  <world> + <draft>, one yes/no "does the draft break it" per guard line (`g0`, `g1`, …), filled as a turn fills

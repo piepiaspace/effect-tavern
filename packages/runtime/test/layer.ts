@@ -19,6 +19,7 @@ import {
 } from "../src/fragment.ts"
 import { prose as proseOf } from "../src/journal.ts"
 import {
+  checkBackground,
   decodeLayer,
   decodeLocal,
   locked,
@@ -370,6 +371,7 @@ const packs = [packB, packA]
     ],
   )
   assert.equal(R.frame[0].text, line("switch.pov.second") + line("switch.echo.false") + line("switch.agency.strict"))
+  assert.equal(R.switches.effectivePovLine, line("switch.pov.second"))
   assert.deepEqual(R.switches.taken, { pov: "base", verbosity: "base" })
   assert.deepEqual(R.switches.value, sw)
   assert.equal(R.switches.sentences["switch.pov.none"], line("switch.pov.none"))
@@ -429,10 +431,16 @@ const packs = [packB, packA]
       ["pov", true],
     ],
   )
+  assert.equal(customHole.resolved.switches.effectivePovLine, undefined)
+  assert.equal(carded.switches.effectivePovLine, undefined)
   assert.equal(carded.switches.taken.pov, "card")
   // free text takes the group, at its own row or below; a switch above it yields; the same row's yielding text still stands
   const free = (r: Rows) => {
     const x = resolve(chat, r)
+    assert.equal(
+      x.switches.effectivePovLine,
+      x.frame.some((f) => f.id === "pov" && f.compiled) ? line("switch.pov.second") : undefined,
+    )
     const pov = x.frame.find((f) => f.id === "pov")!
     return [pov.text, pov.compiled, x.switches.taken.pov]
   }
@@ -1195,6 +1203,56 @@ for (const povText of ["", "{{missing}}"]) {
   assert.ok(!messages.includes("{{missing}}"))
 }
 
+// Only system background slots declared by the card join persona and setting in the Decision check.
+{
+  const card = {
+    ...chat,
+    frame: [
+      { id: "history", text: "Card fact" },
+      { id: "style", text: "Style" },
+      { id: "example", role: "user" as const, text: "Example" },
+    ],
+  }
+  const rows = resolve(card, {
+    defaultPack: row("pack", {
+      fragments: [
+        { id: "guide", text: "Pack guidance" },
+        { id: "setting", text: "Place" },
+      ],
+    }),
+  })
+  assert.deepEqual(
+    checkBackground(card, rows.frame)
+      .map((f) => f.id)
+      .sort(),
+    ["history", "setting"],
+  )
+}
+// A disabled entry and all its sections leave the layer before name resolution.
+{
+  const trace = resolveWithTrace(chat, {
+    defaultPack: row("p", {
+      entries: [
+        {
+          id: "unused",
+          title: "  Unused  ",
+          text: "{{missing_name}}",
+          enabled: false,
+          sections: [{ id: "child", text: "{{missing_child}}" }],
+        },
+      ],
+    }),
+  })
+  assert.deepEqual(trace.resolved.entries, [])
+  assert.deepEqual(trace.resolved.holes, [])
+  assert.deepEqual(
+    trace.omitted
+      .filter((x) => x.category === "entry")
+      .map((x) => [x.reason, x.label, x.source.entryId, x.source.resourceId, x.source.path]),
+    [["disabled", "Unused", "p/unused", "pack:p/unused", "entries.unused"]],
+  )
+}
+
 // The lookup index, and replay once the pack is gone.
 {
   const packA = row("packA", {
@@ -1229,7 +1287,7 @@ for (const povText of ["", "{{missing}}"]) {
   // the frame: the row's slot in the head, its tail fragment last in narrate alone
   const narrate = texts(asked(first, "narrate"))
   assert.ok(narrate.some((t) => t.includes("PACK-STYLE")))
-  assert.match(narrate.at(-1)!, /^<writing_tail>\n.*\nPACK-TAIL\n<\/writing_tail>$/)
+  assert.match(narrate.at(-1)!, /^<writing_tail>\n.*\n<item>\nPACK-TAIL\n<\/item>\n<\/writing_tail>$/)
   assert.ok(!texts(asked(first, "record")).some((t) => t.includes("PACK-TAIL")))
   const second = await collect(S.act(n1.id, { text: "two" }))
   const n2 = nodeOf(second)

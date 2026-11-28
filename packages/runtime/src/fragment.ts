@@ -279,4 +279,4 @@ export const evaluateHead = (
 export const head = (
   layers: readonly Fragment[],
   { state = {}, options = {} }: { state?: State; options?: Record<string, boolean> } = {},
-): Slotted[] => evaluateHead(layers, { state, options }).kept.map(({ id, role, text }) => ({ id, role, text }))
+): Slotted[] => evaluateHead(layers, { state, options }).kept

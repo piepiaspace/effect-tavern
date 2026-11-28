@@ -35,6 +35,9 @@ export interface Entry<S, C> extends ContextPolicy {
   unlock?: (s: S) => number
   offer?: (s: S, ctx: C) => boolean
 }
+/** Display name of a pack entry whose ID is scoped to a row. */
+export const shortEntryId = (id: string) => id.slice(id.indexOf("/") + 1)
+export const sectionTitle = (parent: string, section: string) => `${parent} › ${section}`
 export const key = (d: Disclosure) => `${d.id}#${d.layer}`
 /** An entry's line in the lookup index: the first sentence of its first layer. A CJK end or `!?` ends one where it
  *  stands; an ASCII period only before whitespace or the end, so "D.E.E.P" and "E.H.的档案" stay whole.

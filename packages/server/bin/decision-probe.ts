@@ -10,7 +10,7 @@ import { Database } from "bun:sqlite"
 import { join } from "node:path"
 import { blocked, compileDecision, decide, type Question } from "@effect-tavern/provider"
 import { checkQuestions, checkVerdict } from "@effect-tavern/runtime/src/decision.ts"
-import { worldOf } from "@effect-tavern/runtime/src/layer.ts"
+import { checkBackground } from "@effect-tavern/runtime/src/layer.ts"
 import { worldBlock } from "@effect-tavern/runtime/src/request.ts"
 import { expand } from "@effect-tavern/runtime/src/names.ts"
 import { readCard } from "@effect-tavern/runtime/support/author.ts"
@@ -27,7 +27,7 @@ const model = compileDecision(config, secret, { fetch })
 const card = await readCard(join(import.meta.dir, "../../../samples/life-of-pi/life-of-pi.yaml"))
 const named = (text: string) => expand(text, { user: "你", ...card.names }, "card")!
 const world = worldBlock(
-  worldOf(card, card.frame).flatMap((f) =>
+  checkBackground(card, card.frame).flatMap((f) =>
     f.text ? [{ id: f.id, role: "system" as const, text: named(f.text) }] : [],
   ),
 )

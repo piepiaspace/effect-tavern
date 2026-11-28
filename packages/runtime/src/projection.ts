@@ -1,4 +1,5 @@
 // Public read contracts. The journal and complete path state never travel with a timeline.
+import { shortEntryId } from "./lore.ts"
 import type { Id } from "./log.ts"
 import type { Input } from "./journal.ts"
 import type { Phase } from "./session.ts"
@@ -82,13 +83,24 @@ export const timelineNode = (
   rules: Rules,
   products: readonly Product[],
   media?: NodeMedia,
+  packTitle?: (id: string) => string | undefined,
 ): TimelineNode => ({
   id: n.id,
   parent: n.parent,
   input: n.turn.input,
   invocations: (n.turn.input.invoke ?? []).flatMap((resourceId) => {
     const d = n.turn.deliveries.findLast((d) => d.resourceId === resourceId)
-    return d ? [{ resourceId, title: d.title, source: d.source }] : []
+    if (d) return [{ resourceId, title: d.title, source: d.source }]
+    // An explicitly invoked standing pack face lives in the head and has no frozen delivery.
+    if (!resourceId.startsWith("pack:")) return []
+    const entryId = resourceId.slice("pack:".length)
+    return [
+      {
+        resourceId,
+        title: packTitle?.(entryId) || shortEntryId(entryId),
+        source: "pack" as const,
+      },
+    ]
   }),
   prose: n.turn.reply
     .filter((p) => p.type === "text")
