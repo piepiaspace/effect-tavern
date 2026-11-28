@@ -27,7 +27,7 @@ const model = compileDecision(config, secret, { fetch })
 const card = await readCard(join(import.meta.dir, "../../../samples/life-of-pi/life-of-pi.yaml"))
 const named = (text: string) => expand(text, { user: "你", ...card.names }, "card")!
 const world = worldBlock(
-  checkBackground(card.frame).flatMap((f) =>
+  checkBackground(card, card.frame).flatMap((f) =>
     f.text ? [{ id: f.id, role: "system" as const, text: named(f.text) }] : [],
   ),
 )

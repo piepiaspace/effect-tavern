@@ -937,7 +937,7 @@ for (const format of ["anthropic", "gemini", "openai-compatible"] as const) {
     assert.equal(pv.traces[0]?.subzone, "hat-lead")
     assert.equal(pv.traces[0]?.source?.hatSlot, "lead")
     assert.equal(pv.messages[0]?.content, "Protocol lead for Astra.")
-    assert.equal(pv.traces[1]?.subzone, "world")
+    assert.equal(pv.traces[1]?.subzone, "standing_context")
 
     // `hat-turn` sits immediately before player `input`, and `wire()` rewrites `system` after `tool` on anthropic/gemini
     const hatTurnIdx = pv.traces.findIndex((t) => t.subzone === "hat-turn")
@@ -1176,7 +1176,7 @@ console.log("preview: ok")
   assert.equal(pv.connection.tool!.sources.description.path, "tool.description")
   assert.deepEqual(
     pv.wrap?.traces.map((t) => t.subzone),
-    ["lead", "world", "hat-head", "history", "input"],
+    ["lead", "standing_context", "hat-head", "history", "input"],
   )
   const wrapped = pv.wrap
   for (const s of wrapped.sections) {

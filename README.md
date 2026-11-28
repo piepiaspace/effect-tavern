@@ -19,7 +19,7 @@ lookup → decide → settle → gate → direct → narrate → check → polis
 ```
 
 - **Opt-in structured stages & fast decision passes:** Pure chat cards run only `narrate` and `record`; `lookup`, `decide`, `direct`, `check`, and `polish` activate automatically from what the card declares. An optional install-wide **Decision Model** (`/decision`) settles complete-catalog `lookup` and clear-cut `check` passes via probability scoring before falling back to language-model calls.
-- **Non-authoritative prose & off-stage isolation:** Only `narrate` reads `fiction`, writing directives, and the dialogue `transcript`, and it never sees raw numbers—state reaches narration strictly as `when`-gated prose bands, while off-stage passes read only `<world>` context and XML-tagged material.
+- **Narration and off-stage evidence.** `narrate` reads standing context, compiled writing switches, fiction and dialogue history. Conditional prose bands convey mechanical state. Off-stage passes share the standing context as read-only reference. `check` judges the draft and settlement records what the scene establishes. Creative products such as next actions and theater follow their own prompts.
 - **Deterministic state, two-phase world settlement & epoch `passages`:** Scalar `fields` settle via seeded RNG (`actions`) and post-prose multiple-choice `readouts`; mutable `world` tables/records update via sparse `DomainChange` transactions (`record`), separate from append-only `chronicle` memory (`notes`) and player-facing `theater` blocks (`inner`, `options`, `<<aside>>`). Post-record `passages` support chapter/time-loop transitions (`digest` epoch boundaries) and terminal endings (`over`).
 
 ### 2. Immutable Log Tree & Derived Views

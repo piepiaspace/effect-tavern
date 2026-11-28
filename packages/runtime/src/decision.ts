@@ -10,6 +10,7 @@
 // #180); client test/imports.ts holds the line.
 import type { Question } from "@effect-tavern/provider"
 import type { Unit } from "./context.ts"
+import { sectionTitle } from "./lore.ts"
 import { tag } from "./request.ts"
 
 // ponytail: a first calibration from decision-probe readings (clean 0.02–0.08, violated 0.95+); re-read against the
@@ -66,7 +67,7 @@ const unitLabel = (u: { title: string; summary?: string }) => (u.summary ? `${u.
 const askedOf = (units: readonly Unit[]): { resourceId: string; title: string; summary?: string }[] =>
   units.flatMap((u) =>
     u.resident
-      ? (u.sections ?? []).map((s) => ({ resourceId: s.resourceId, title: `${u.title} › ${s.title}` }))
+      ? (u.sections ?? []).map((s) => ({ resourceId: s.resourceId, title: sectionTitle(u.title, s.title) }))
       : [{ resourceId: u.resourceId, title: u.title, ...(u.summary ? { summary: u.summary } : {}) }],
   )
 /** The answers read back per unit (`asked` order) and what to read: over `LOOKUP`, highest first, at most `TOP` ids;

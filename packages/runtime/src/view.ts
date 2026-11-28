@@ -7,7 +7,7 @@ import { fieldMeta } from "./field-meta.ts"
 import { unlocks, unlockPath, whenPaths, conditionChildren } from "./paths.ts"
 import type { Message } from "@effect-tavern/provider"
 import { drawn, makeCard, type Card, type State } from "./card.ts"
-import { holds, lookup, reads, type Cond } from "./cond.ts"
+import { expandState, holds, lookup, reads, type Cond } from "./cond.ts"
 import { head, type Fragment, type Hat } from "./fragment.ts"
 import { catalogsOf, resolve, packHead, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore } from "./lore.ts"
@@ -103,8 +103,8 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   }
   const standing = packHead(R.entries)
   const frags = [
-    ...(stage === "narrate" ? layers : R.frame.filter((f) => !f.compiled)).map((f) =>
-      frag(f.at === "tail" ? "tail" : "frame", f),
+    ...(stage === "narrate" ? layers : R.frame.filter((f) => !f.compiled && (f.role ?? "system") === "system")).map(
+      (f) => frag(f.at === "tail" ? "tail" : "frame", f),
     ),
     ...standing.map((m) => ({
       tokens: tokens(m.text),
@@ -254,6 +254,7 @@ export const view = (card: Card, rows: Rows, o: Options = {}): View => {
   const detailed = requestDetailed(
     {
       frame: [...head(R.frame, { state: context }), ...standing],
+      effectivePovLine: R.switches.effectivePovLine && expandState(R.switches.effectivePovLine, context),
       tail: head(R.tail, { state: context }),
       input: { text: "" },
     },

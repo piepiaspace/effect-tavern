@@ -3,7 +3,6 @@
 import type { State as Paths } from "./cond.ts"
 import { holds } from "./cond.ts"
 import type { Lore } from "./lore.ts"
-import { entryOpening } from "./request.ts"
 import type { PackEntry } from "./layer.ts"
 import { feedsChronicle, itemText, type Product } from "./product.ts"
 import { worldValue, type WorldState } from "./world.ts"
@@ -12,7 +11,7 @@ import { sha256 } from "@noble/hashes/sha2.js"
 import { bytesToHex } from "@noble/hashes/utils.js"
 import { Schema } from "effect"
 import { stageTool } from "@effect-tavern/provider/src/stage.ts"
-import { hook, type Disclosure, type ContextPolicy } from "./lore.ts"
+import { shortEntryId, sectionTitle, hook, type Disclosure, type ContextPolicy } from "./lore.ts"
 
 export type Source = "card" | "pack" | "memory"
 export interface DeliverySnapshot {
@@ -53,10 +52,6 @@ export const policy = (source: Source, p: ContextPolicy = {}) => ({
   activation: p.activation ?? "on_demand",
   residency: p.residency ?? "window",
 })
-const shortEntryId = (id: string) => {
-  const slash = id.indexOf("/")
-  return slash >= 0 ? id.slice(slash + 1) : id
-}
 export const loreResource = (
   entry: ContextPolicy & {
     id: string
@@ -156,8 +151,6 @@ export const catalogEntry = (r: Resource): PlayerCatalogItem => {
 export const latest = (snapshots: readonly DeliverySnapshot[]) => [
   ...new Map(snapshots.map((s) => [s.resourceId, s])).values(),
 ]
-export const deliveryText = (s: DeliverySnapshot) =>
-  `[${s.resourceId} revision=${s.revision}${s.superseded ? ` supersedes=${s.superseded}` : ""}]\n${entryOpening(s)}\n${s.text}\n</entry>`
 /** Both narrator and lookup inject this same set. Permanent survives the window, turn never does. */
 export const residentOn = (
   path: readonly { deliveries: readonly DeliverySnapshot[] }[],
@@ -211,7 +204,7 @@ const headOf = (u: { title: string; summary?: string }) => (u.summary ? `${u.tit
 const lineOf = (u: Unit) =>
   [
     `${u.resourceId} ${headOf(u)}${u.resident ? " (resident: sections only)" : ""}`,
-    ...(u.sections ?? []).map((x) => `  ${x.resourceId} ${u.title} › ${x.title}`),
+    ...(u.sections ?? []).map((x) => `  ${x.resourceId} ${sectionTitle(u.title, x.title)}`),
   ].join("\n")
 /** The catalog as the LLM loop's first request reads it (and `card view --stage lookup`). */
 export const catalogBlock = (c: Catalog) =>
@@ -228,11 +221,9 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
   const byId = new Map(resources.map((r) => [r.resourceId, r]))
   const standing = resources.filter(inStandingHead)
   const held = new Map([...injected, ...standing].map((s) => [s.resourceId, s]))
-  const recalled = (snapshots: readonly DeliverySnapshot[]) =>
-    snapshots.filter((s) => {
-      const r = byId.get(s.resourceId)
-      return !(r && inStandingHead(r) && r.revision === s.revision)
-    })
+  const standingIds = new Set(standing.map((r) => r.resourceId))
+  const withoutStanding = (snapshots: readonly DeliverySnapshot[]) =>
+    snapshots.filter((s) => !standingIds.has(s.resourceId))
   const delivered: DeliverySnapshot[] = []
   const disclosures: Disclosure[] = []
   const unheld = (r: Resource) => held.get(r.resourceId)?.revision !== r.revision
@@ -304,15 +295,8 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
         }
       })
   }
-  /** A told snapshot as lookup reads it: narrate's line, then the entry's unread sections, if any. */
-  const told = (s: DeliverySnapshot) => {
-    const xs = sectionsOf(s.resourceId)
-    return xs.length
-      ? `${deliveryText(s)}\nSections (read_context): ${directory(xs)
-          .map((x) => `${x.resourceId} ${x.title}`)
-          .join(" | ")}`
-      : deliveryText(s)
-  }
+  /** Lookup gets the frozen face plus its current unread directory. */
+  const told = (s: DeliverySnapshot) => ({ ...s, sections: directory(sectionsOf(s.resourceId)) })
   /** Deliver up to 8 resources: read_context's handler, and the host's on the decision path (session.ts lookup). */
   const read = (refs: readonly string[]) => {
     const ids = [...new Set(refs)]
@@ -392,7 +376,7 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
       async ({ refs }) => read(refs),
     ),
   }
-  return { tools, readable, units, search, catalog, read, told, recalled, delivered, disclosures }
+  return { tools, readable, units, search, catalog, read, told, withoutStanding, delivered, disclosures }
 }
 
 /** Materialize unlocked lore, pack entries and recalled rows before applying reader permissions. */

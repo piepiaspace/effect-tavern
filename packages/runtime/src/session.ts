@@ -867,7 +867,7 @@ export const makeSession = ({
                 stage: "lookup",
                 ledger: here.ledger(),
                 // lookup's own reading: an entry's unread sections listed under it; narrate's `told` stays bare
-                context: lookup.recalled(latest([...resident, ...deliveries])).map(lookup.told),
+                context: lookup.withoutStanding(latest([...resident, ...deliveries])).map(lookup.told),
                 current: here.known(false, tx.world).current,
                 catalog: catalogBlock(view),
               }),
@@ -1064,7 +1064,7 @@ export const makeSession = ({
             state: pre,
             history: transition?.boundary ? [] : transcript.history(),
             summarized: sum !== undefined,
-            told: lookup.recalled(latest([...resident, ...deliveries])),
+            told: latest([...lookup.withoutStanding(resident), ...deliveries]),
             known: transition?.boundary ? fed.known : undefined,
             outcome: events,
             current: fed.current,
@@ -1100,7 +1100,7 @@ export const makeSession = ({
         // stands whole; the prose is written by now, so the fast pass never fails the turn. Its call is on the trace.
         const fast = (text: string) => {
           const { state, questions } = checkQuestions({
-            world: worldBlock(headOf(checkBackground(layer().frame), { state: pre })),
+            world: worldBlock(headOf(checkBackground(card, layer().frame), { state: pre })),
             draft: text,
             rules: guard,
             open,

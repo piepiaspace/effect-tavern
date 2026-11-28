@@ -19,6 +19,7 @@ import {
 } from "../src/fragment.ts"
 import { prose as proseOf } from "../src/journal.ts"
 import {
+  checkBackground,
   decodeLayer,
   decodeLocal,
   locked,
@@ -1202,6 +1203,31 @@ for (const povText of ["", "{{missing}}"]) {
   assert.ok(!messages.includes("{{missing}}"))
 }
 
+// Only system background slots declared by the card join persona and setting in the Decision check.
+{
+  const card = {
+    ...chat,
+    frame: [
+      { id: "history", text: "Card fact" },
+      { id: "style", text: "Style" },
+      { id: "example", role: "user" as const, text: "Example" },
+    ],
+  }
+  const rows = resolve(card, {
+    defaultPack: row("pack", {
+      fragments: [
+        { id: "guide", text: "Pack guidance" },
+        { id: "setting", text: "Place" },
+      ],
+    }),
+  })
+  assert.deepEqual(
+    checkBackground(card, rows.frame)
+      .map((f) => f.id)
+      .sort(),
+    ["history", "setting"],
+  )
+}
 // A disabled entry and all its sections leave the layer before name resolution.
 {
   const trace = resolveWithTrace(chat, {
@@ -1209,6 +1235,7 @@ for (const povText of ["", "{{missing}}"]) {
       entries: [
         {
           id: "unused",
+          title: "  Unused  ",
           text: "{{missing_name}}",
           enabled: false,
           sections: [{ id: "child", text: "{{missing_child}}" }],
@@ -1219,8 +1246,10 @@ for (const povText of ["", "{{missing}}"]) {
   assert.deepEqual(trace.resolved.entries, [])
   assert.deepEqual(trace.resolved.holes, [])
   assert.deepEqual(
-    trace.omitted.filter((x) => x.category === "entry").map((x) => [x.reason, x.source.path]),
-    [["disabled", "entries.unused"]],
+    trace.omitted
+      .filter((x) => x.category === "entry")
+      .map((x) => [x.reason, x.label, x.source.entryId, x.source.resourceId, x.source.path]),
+    [["disabled", "Unused", "p/unused", "pack:p/unused", "entries.unused"]],
   )
 }
 

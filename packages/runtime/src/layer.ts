@@ -168,9 +168,17 @@ const compile = (w: Writing): Fragment[] => {
   ]
 }
 
-/** Only Decision check uses this minimal character and setting background. */
-export const checkBackground = <F extends { id: string }>(frame: readonly F[]) =>
-  frame.filter((f) => f.id === "persona" || f.id === "setting")
+/** The independent Decision checker reads the persona, setting and other card-declared background slots. */
+const writingSlots = new Set(["language", "voice", "style", "pov", "verbosity"])
+export const checkBackground = <F extends Fragment>(card: Card, frame: readonly F[]): F[] => {
+  const declared = new Set(card.frame.map((f) => f.id))
+  return frame.filter(
+    (f) =>
+      (f.role ?? "system") === "system" &&
+      !writingSlots.has(f.id) &&
+      (f.id === "persona" || f.id === "setting" || declared.has(f.id)),
+  )
+}
 
 /** The pack faces rendered in the standing head. Untitled faces keep their resource ID only in the trace. */
 export const packHead = (entries: Resolved["entries"], sources?: Readonly<Record<string, SourceRef>>): Slotted[] =>
@@ -637,20 +645,25 @@ export const resolveWithTrace = (
   }
   const written = up.flatMap(({ from, row }) =>
     (row.entries ?? []).flatMap((e) => {
+      const label = e.title?.trim()
       if (e.enabled === false) {
         omitted.push({
           category: "entry",
           id: e.id,
-          ...(e.title && { label: e.title }),
+          ...(label && { label }),
           reason: "disabled",
           preview: e.text,
-          source: sourceOf(from, `entries.${e.id}`, { entryId: e.id, rawText: e.text }),
+          source: sourceOf(from, `entries.${e.id}`, {
+            label,
+            entryId: `${from}/${e.id}`,
+            resourceId: `pack:${from}/${e.id}`,
+            rawText: e.text,
+          }),
         })
         return []
       }
       const why = entryProblem(e)
       if (!why) return [{ ...e, id: `${from}/${e.id}`, from }]
-      const label = e.title?.trim()
       dropped.push({ from, kind: "entry", id: e.id, why })
       omitted.push({
         category: "entry",

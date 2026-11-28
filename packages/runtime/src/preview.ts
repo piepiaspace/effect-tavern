@@ -35,7 +35,7 @@ import {
 import { narratorHistory, policyFor, type Policy } from "./history.ts"
 import { type Input, type Turn as TurnOf } from "./journal.ts"
 import { resolveWithTrace, packHead, type ResolvedTrace, type Rows } from "./layer.ts"
-import { hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
+import { shortEntryId, hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
 import { expand, fill, keepHoles, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
 import { cond, labels } from "./phrase.ts"
@@ -752,12 +752,29 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
     const raw = lore.get(d.id)?.layers[d.layer - 1]
     return { ...d, source: sourceForDisclosure(cardId, d, raw !== d.text ? raw : undefined) }
   }
+  const standing = packHead(R.entries, RT.sources.entries)
+  const standingById = new Map(standing.map((m) => [m.source?.resourceId, m]))
+  const recalled: DeliverySnapshot[] = []
+  for (const d of o.told) {
+    const face = standingById.get(d.resourceId)
+    if (!face) {
+      recalled.push(d)
+      continue
+    }
+    // Legacy rewords own their frozen pack face. Render it once in its usual head position.
+    standingById.set(d.resourceId, {
+      role: "system",
+      text: d.text,
+      label: d.title === shortEntryId(d.resourceId) && face.label !== d.title ? undefined : d.title,
+      source: sourceForDelivery(cardId, d, o.packNames, rawDelivery(d)),
+    })
+  }
   const ask: Ask = {
     stage: "narrate",
     fiction: keptFiction,
     history: o.history,
     summarized: o.summarized,
-    told: o.told.map((d) => ({
+    told: recalled.map((d) => ({
       title: d.title,
       text: d.text,
       source: d.source,
@@ -773,7 +790,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   }
   const common: Common = {
     cardId,
-    frame: [...keptFrame, ...packHead(R.entries, RT.sources.entries)],
+    frame: [...keptFrame, ...standingById.values()],
     tail: keptTail,
     input: o.input,
   }
@@ -1142,7 +1159,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     state: s1Context,
     history: opts.mode === "story" ? here.history() : narratorHistory(basePath),
     summarized: sum !== undefined,
-    told: lookupCtx.recalled(latest([...resident, ...deliveries])),
+    told: lookupCtx.withoutStanding(latest([...resident, ...deliveries])),
     outcome: actionEvents,
     current: fed.current,
     must: open.filter((d) => mustIds.includes(d.id)),

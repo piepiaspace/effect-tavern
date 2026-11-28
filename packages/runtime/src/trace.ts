@@ -74,9 +74,10 @@ export type MessageZone = "head" | "history" | "input" | "turn" | "tail"
 export type MessageSubzone =
   | "hat-lead"
   | "lead"
-  | "world" // `<standing_context>`: resolved head fragments and standing pack entries
+  | "frame" // a raw card role message in the narrator head
+  | "standing_context" // `<standing_context>`: resolved head fragments and standing pack entries
   | "fiction"
-  | "guidelines" // `<writing_switches>`: narrator-only compiled writing switches
+  | "writing_switches" // `<writing_switches>`: narrator-only compiled writing switches
   | "hat-head"
   | "summary"
   | "history"

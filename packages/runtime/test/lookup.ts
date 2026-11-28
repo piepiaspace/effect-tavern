@@ -7,7 +7,6 @@ import {
   catalogBlock,
   catalogEntry,
   contextLookup,
-  deliveryText,
   freeze,
   loreResource,
   resourcesAt,
@@ -327,14 +326,17 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
       hits[1].sections!.map((x) => x.resourceId),
       ["card:mira#past", "card:mira#kin"],
     )
-    assert.match(l.told(l.delivered[0]), /\nSections \(read_context\): card:mira#kin .* \| card:mira#past /)
+    assert.deepEqual(
+      l.told(l.delivered[0]).sections.map((s) => s.resourceId),
+      ["card:mira#kin", "card:mira#past"],
+    )
     await l.tools.read_context.execute({ refs: ["card:mira#kin", "card:mira#past"] }, tc)
     assert.deepEqual(
       l.delivered.map((d) => d.resourceId),
       ["card:mira", "card:mira#kin", "card:mira#past"],
     )
     // every section resident: the entry leaves search, readable() holds only the other entry, the told line is bare
-    assert.equal(l.told(l.delivered[0]), deliveryText(l.delivered[0]))
+    assert.deepEqual(l.told(l.delivered[0]), { ...l.delivered[0], sections: [] })
     assert.deepEqual(
       l.readable().map((r) => r.resourceId),
       ["card:harbor"],
@@ -597,10 +599,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
     [child.resourceId],
   )
   const legacy = freeze(byId.get("pack:craft/outline")!)
-  assert.deepEqual(
-    l.recalled([legacy, { ...legacy, revision: "earlier" }]).map((r) => r.revision),
-    ["earlier"],
-  )
+  assert.deepEqual(l.withoutStanding([legacy, { ...legacy, revision: "earlier" }]), [])
 
   // `summary` participates in anchor search ranking; section `title` participates in section hit ordering
   const sumHit = l.search("视线交锋")
@@ -671,6 +670,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   calls.length = 0
   step = 0
   const lookupModel2 = fake(() => (step++ === 0 ? call("read_context", { refs: ["pack:craft/cinema#subtext"] }) : done))
+  const oldFace = { ...legacy, text: "旧版总纲。", revision: revision("旧版总纲。") }
   const S2 = makeSession({
     card: { ...chat, lore: [], products: [] },
     rows: () => ({
@@ -681,7 +681,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
     store: {
       read: () => ({
         nodes: [...S.log.nodes.values()].map((n) =>
-          n.id === t1.id ? { ...n, deliveries: [legacy, ...n.deliveries] } : n,
+          n.id === t1.id ? { ...n, deliveries: [oldFace, ...n.deliveries] } : n,
         ),
         head: t1.id,
       }),
@@ -702,6 +702,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   for (const stage of ["lookup", "narrate"]) {
     const message = JSON.stringify(calls.find((c) => c.phase === stage)!.msgs)
     assert.equal(message.split(legacy.text).length - 1, 1)
+    assert.ok(!message.includes(oldFace.text))
   }
   const lookupPrompt2 = JSON.stringify(calls.find((c) => c.phase === "lookup")!.msgs)
   assert.ok(lookupPrompt2.includes("pack:craft/cinema 电影化场景调度 — 当对白存在潜台词博弈"))
@@ -711,5 +712,21 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
     t2.deliveries.map((d) => d.resourceId),
     ["pack:craft/cinema#subtext"],
   )
+  calls.length = 0
+  const replayed = await Effect.runPromise(
+    outcome(
+      S2.reword(t1.id).pipe(
+        Stream.tap((e) =>
+          Effect.sync(() => {
+            if (e.kind === "call") calls.push(e)
+          }),
+        ),
+      ),
+    ),
+  )
+  assert.deepEqual(replayed.deliveries, [oldFace, ...t1.deliveries])
+  const replayDoc = JSON.stringify(calls.find((c) => c.phase === "narrate")!.msgs)
+  assert.equal(replayDoc.split(oldFace.text).length - 1, 1)
+  assert.ok(!replayDoc.includes(legacy.text))
 }
 console.log("lookup ok")

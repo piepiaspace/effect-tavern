@@ -88,7 +88,16 @@ const asks: Record<Ask["stage"], Ask> = {
   lookup: {
     stage: "lookup",
     ledger: [],
-    context: ["Resident: Li's friend."],
+    context: [
+      {
+        resourceId: "card:friend",
+        revision: "v1",
+        title: "Friend",
+        text: "Li's friend.",
+        source: "card",
+        residency: "window",
+      },
+    ],
     catalog: "Available (1, complete):\ncard:li Li.",
   },
   decide: {
@@ -176,7 +185,7 @@ const unworlded = request({ ...c({ text: "x" }), frame: [frame[3]] }, asks.narra
 assert.deepEqual(unworlded.slice(0, 2).map(text), narrateHead.slice(1))
 const unwritten = request({ ...c({ text: "x" }), frame: world }, asks.narrate)
 assert.deepEqual(unwritten.slice(0, 3).map(text), [narrateHead[0], narrateHead[2], "hello"])
-// a user/assistant fiction fragment stays its own message in place; only adjacent system fragments share a <fiction>
+// Fiction keeps its authored runs. System runs form the prefix before the raw role messages.
 const mixed = request(c({ text: "x" }), {
   ...asks.narrate,
   fiction: [
@@ -191,8 +200,8 @@ assert.deepEqual(
   [
     ["system", narrateHead[1]],
     ["system", fictionBlock("F1", "F2")],
-    ["user", "U"],
     ["system", fictionBlock("F3")],
+    ["user", "U"],
   ],
 )
 for (const s of stages) {
@@ -277,7 +286,7 @@ for (const s of stages.filter((s) => s !== "narrate")) {
 // each pass's reference is one system message of tagged blocks; the catalog and the note stay lines, the catalog after
 // what is already resident (#168)
 assert.deepEqual(line.lookup.slice(offHead.length).map(text), [
-  "<recalled_context>\nResident: Li's friend.\n</recalled_context>\n\nAvailable (1, complete):\ncard:li Li.\n\nPlayer note: 虚晃一招",
+  '<recalled_context>\n[card:friend revision=v1]\n<entry title="Friend">\nLi\'s friend.\n</entry>\n</recalled_context>\n\nAvailable (1, complete):\ncard:li Li.\n\nPlayer note: 虚晃一招',
   `<input>\n我拔剑。\n</input>\n\n${LOOKUP}`,
 ])
 assert.deepEqual(line.decide.slice(offHead.length).map(text), [
@@ -333,6 +342,16 @@ assert.deepEqual(line.record.slice(offHead.length).map(text), [
 ])
 
 assert.ok(!doc(line.record).includes("<invoked_context>"))
+for (const history of [undefined, [{ role: "assistant", text: "Earlier scene" }] as const]) {
+  const creative = request(c({ text: "go" }), {
+    stage: "record",
+    known: "",
+    history,
+    asks: ["options: Imagine what the player could do next."],
+    prose: "Scene",
+  })
+  assert.equal(text(creative.at(-1)!).split("</scene>\n\n").at(-1), "options: Imagine what the player could do next.")
+}
 
 // ───────── The input as one unit, with an audience per stage ─────────
 // A note beside a line reaches lookup, the director and the narrator only (README: note feeds narrator and director).
@@ -436,6 +455,43 @@ for (const s of stages) assert.equal(/HAT-SYS|HS-|TAIL-/.test(doc(worn(s))), s =
 // lookup, decide, direct wear nothing, and no stage but narrate reads a tail fragment
 for (const s of ["lookup", "decide", "direct"] as const) assert.deepEqual(worn(s), line[s], s)
 for (const s of ["check", "polish", "record"] as const) assert.ok(!doc(worn(s)).includes("PLAYER-TAIL"), s)
+// Card role examples stay literal. System context, fiction and the hat's system role stay in the wire prefix.
+{
+  const common = {
+    ...c(drawn),
+    frame: [...frame, { role: "user", text: "FRAME-U" }, { role: "assistant", text: "FRAME-A" }],
+    tail: [{ role: "assistant", text: "TAIL EXAMPLE" }],
+  } satisfies Common
+  const wireHat: Hat = {
+    id: "h",
+    name: "H",
+    narrate: {
+      head: [
+        { role: "user", text: "HANDSHAKE" },
+        { role: "system", text: "HAT CONTEXT" },
+      ],
+    },
+  }
+  const built = request(common, asks.narrate, { hat: wireHat })
+  for (const format of ["anthropic", "gemini"] as const) {
+    const ms = wire(format, built, true)
+    assert.deepEqual(
+      ms.slice(0, 7).map((m) => [m.role, text(m)]),
+      [
+        ...[...narrateHead, "HAT CONTEXT"].map((body) => ["system", body]),
+        ["user", "FRAME-U"],
+        ["assistant", "FRAME-A"],
+        ["user", "HANDSHAKE"],
+      ],
+    )
+    assert.equal(marks(ms)[0], 6)
+    assert.equal(text(ms.at(-1)!), "TAIL EXAMPLE")
+    assert.equal(ms.at(-1)!.role, "assistant")
+  }
+  for (const stage of stages.filter((s) => s !== "narrate")) {
+    assert.doesNotMatch(doc(request(common, asks[stage])), /FRAME-U|FRAME-A|TAIL EXAMPLE/)
+  }
+}
 // a hat's empty message (a row left blank in the settings editor) never reaches the document, in any slot or stage
 const blank = { role: "system", text: "  " } as const
 const padded: Hat = {
@@ -570,7 +626,7 @@ for (const s of stages)
   })
   assert.deepEqual(
     detailed.traces.slice(4, 7).map((t) => t.subzone),
-    ["world", "guidelines", "fiction"],
+    ["standing_context", "writing_switches", "fiction"],
   )
 
   // 2. `narrate.head` places system first, then non-system + tool handshake; last head message carries `head` breakpoint
@@ -703,14 +759,14 @@ for (const s of stages)
     return tr.spans.map((sp) => text(rich.messages[tr.index]).slice(sp.start, sp.end))
   }
   assert.deepEqual(slice("summary"), ["Summary: N1"])
-  assert.deepEqual(slice("world"), ["Write in Chinese.", "你是新来到小镇的牧师。", "边境小镇。"])
-  assert.deepEqual(slice("guidelines"), ["用第二人称写玩家。"])
+  assert.deepEqual(slice("standing_context"), ["Write in Chinese.", "你是新来到小镇的牧师。", "边境小镇。"])
+  assert.deepEqual(slice("writing_switches"), ["用第二人称写玩家。"])
   assert.deepEqual(slice("correction"), [CORRECTION, "rule"])
   assert.deepEqual(
     rich.traces.filter((t) => t.subzone === "tail").map((t) => [t.role, text(rich.messages[t.index])]),
     [
       ["system", `<writing_tail>\n${NOTE.tail}\n<item>\nTAIL-1\n</item>\n\n<item>\nTAIL-2\n</item>\n</writing_tail>`],
-      ["user", tailBlock("TAIL-U")],
+      ["user", "TAIL-U"],
     ],
   )
   // the turn message right after the player's line (Anthropic takes a mid-conversation system message only there)

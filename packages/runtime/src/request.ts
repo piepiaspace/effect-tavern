@@ -17,8 +17,8 @@
 // `<perspective>`; lookup's Available block and the Player note as lines), then one user message holding the
 // tagged material (`<input>`, `<draft>`, `<scene>`) followed after its closing tag by the stage's task: the same
 // message boundary on Anthropic, Gemini and OpenAI-compatible, never an assistant prefill or a bare story line that
-// invites a roleplay continuation. The input is one unit with an audience per stage: the line wherever it is read, the
-// note only where the README sends it, narrator and director.
+// invites a roleplay continuation. A note accompanies the line in lookup, direct and narrate. A note alone also serves as
+// the input for stages that classify the player's line.
 // Spans: each slot, entry and line of wording is pushed where it lands, so a span slices back to its source's text;
 // tags and comments are written raw.
 // Under a hat's delivery tool (#221) and its wrap (#220): the narrate document is built exactly as above, then
@@ -42,7 +42,7 @@ import {
   type Msg,
   type Slotted,
 } from "./fragment.ts"
-import type { Source } from "./context.ts"
+import type { DeliverySnapshot, Source, Unit } from "./context.ts"
 import type { Input } from "./journal.ts"
 import { fillHoles } from "./names.ts"
 import type {
@@ -132,7 +132,7 @@ export type Ask =
   | {
       stage: "lookup"
       ledger: readonly Msg[]
-      context: readonly string[]
+      context: readonly (DeliverySnapshot & Pick<Unit, "sections">)[]
       current?: string
       catalog: string // context.ts `catalogBlock`: what can be read, whole or counted with the input's matches
     }
@@ -154,7 +154,7 @@ export type Ask =
       fiction: readonly Slotted[]
       history: readonly Msg[]
       summarized: boolean // history[0] is the fold
-      told: readonly { title: string; text: string; source?: Source; sourceRef?: SourceRef }[] // what lookup delivered: body for lore/pack, titled row for memory
+      told: readonly { title: string; text: string; source?: Source; sourceRef?: SourceRef }[] // recalled snapshots, each rendered as <entry> with its title when distinct from the body
       known?: string // digest at the opening of a new passage
       outcome: readonly string[]
       current?: string
@@ -259,8 +259,17 @@ export const worldBlock = (world: readonly Slotted[]) => {
 }
 const attribute = (s: string) =>
   s.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-export const entryOpening = (d: { title: string; text: string }) =>
+const entryOpening = (d: { title: string; text: string }) =>
   d.title && !d.text.startsWith(d.title) ? `<entry title="${attribute(d.title)}">` : "<entry>"
+/** Lookup addresses snapshots by ID and may continue into their unread sections. */
+const lookupEntry = (s: Extract<Ask, { stage: "lookup" }>["context"][number]) =>
+  [
+    `[${s.resourceId} revision=${s.revision}${s.superseded ? ` supersedes=${s.superseded}` : ""}]`,
+    `${entryOpening(s)}\n${s.text}\n</entry>`,
+    ...(s.sections?.length
+      ? [`Sections (read_context): ${s.sections.map((x) => `${x.resourceId} ${x.title}`).join(" | ")}`]
+      : []),
+  ].join("\n")
 const itemTitle = (m: Slotted) => m.label?.trim() || (m.id && SLOTS.includes(m.id) ? m.id : undefined)
 const standingBlock = (items: readonly Slotted[], c: Common, note: string) => {
   const w = writer()
@@ -715,7 +724,7 @@ const wrapNarrate = (
 
 export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedRequest => {
   const omitted: OmittedItem[] = []
-  const standing = c.frame.filter((m) => !m.compiled)
+  const standing = c.frame.filter((m) => m.role === "system" && !m.compiled)
   const offstage = (review: boolean): Message[] => {
     const messages: Message[] = [sys(STAGE_ROLE)]
     if (standing.length) messages.push(sys(standingBlock(standing, c, NOTE.reference).text()))
@@ -734,7 +743,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           ...offstage(false),
           ...reference(
             ...ledgerBlocks(a.ledger),
-            ...lines("recalled_context", a.context, "\n\n"),
+            ...lines("recalled_context", a.context.map(lookupEntry), "\n\n"),
             ...lines("state", a.current ? [a.current] : []),
             a.catalog,
             ...noteLine(c.input),
@@ -828,6 +837,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
         source?: SourceRef
         wholeMessage?: boolean
       }[] = []
+      const roleMessages: typeof headDrafts = []
       const pushHead = (
         subzone: MessageSubzone,
         role: "system" | "user" | "assistant",
@@ -835,12 +845,15 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
         spans: Span[],
         source?: SourceRef,
       ) => {
-        headDrafts.push({ subzone, msg: { role, content: text }, spans, source })
+        const queue = role === "system" ? headDrafts : roleMessages
+        queue.push({ subzone, msg: { role, content: text }, spans, source })
       }
       const pushHeadHat = (subzone: MessageSubzone, item: CompiledHatMessage) => {
         const isText = typeof item.msg.content === "string"
         const text = isText ? (item.msg.content as string) : ""
-        headDrafts.push({
+        // The author controls the explicit protocol lead, including any role or tool pairs.
+        const queue = subzone === "hat-lead" || item.msg.role === "system" ? headDrafts : roleMessages
+        queue.push({
           subzone,
           msg: item.msg,
           spans: isText && text.length ? [{ start: 0, end: text.length, kind: "hat", source: item.source }] : [],
@@ -859,16 +872,15 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
         const source = builtIn("narrate.deliver")
         pushHead("lead", "system", lead, [{ start: 0, end: lead.length, kind: "lead", source }], source)
       }
-      const systemItems = standing.filter((m) => m.role === "system")
-      if (systemItems.length) {
-        const fw = standingBlock(systemItems, c, NOTE.standing)
-        pushHead("world", "system", fw.text(), fw.spans)
+      if (standing.length) {
+        const fw = standingBlock(standing, c, NOTE.standing)
+        pushHead("standing_context", "system", fw.text(), fw.spans)
       }
-      for (const m of standing.filter((m) => m.role !== "system")) {
-        const fw = standingBlock([m], c, NOTE.standing)
-        pushHead("world", m.role, fw.text(), fw.spans, slottedSource(m, c))
+      for (const m of c.frame.filter((m) => m.role !== "system")) {
+        const source = slottedSource(m, c)
+        pushHead("frame", m.role, m.text, [{ start: 0, end: m.text.length, kind: frameSpanKind(m), source }], source)
       }
-      const switches = c.frame.filter((m) => m.compiled)
+      const switches = c.frame.filter((m) => m.role === "system" && m.compiled)
       if (switches.length) {
         const sw = writer()
         block(
@@ -876,7 +888,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           "writing_switches",
           switches.map((m) => ({ text: m.text, kind: "switch", source: slottedSource(m, c) })),
         )
-        pushHead("guidelines", "system", sw.text(), sw.spans)
+        pushHead("writing_switches", "system", sw.text(), sw.spans)
       }
       let run: Slotted[] = []
       const flushFiction = () => {
@@ -907,14 +919,12 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       }
       flushFiction()
       const hatHead = compileHatSlot(w.hat?.narrate?.head, w.hatSources?.head, w, "narrate", "head", omitted)
-      for (const item of [
-        ...hatHead.filter((x) => x.entry.role === "system"),
-        ...hatHead.filter((x) => x.entry.role !== "system"),
-      ]) {
+      for (const item of hatHead) {
         for (const hm of item.messages) pushHeadHat("hat-head", hm)
       }
-      headDrafts.forEach((d, i) => {
-        const isLast = i === headDrafts.length - 1 && !wraps
+      const ordered = [...headDrafts, ...roleMessages]
+      ordered.forEach((d, i) => {
+        const isLast = i === ordered.length - 1 && !wraps
         const msg = isLast ? breakpoint(d.msg, w.ttl) : d.msg
         pushMsg("head", d.subzone, msg, d.spans, {
           source: d.source,
@@ -1050,7 +1060,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
       // 6. Tail: a system run as one `<writing_tail>`, a user/assistant fragment its own message, in place; the hat's tail
       let tailRun: Slotted[] = []
       const tailSource = (m: Msg): SourceRef => m.source ?? { kind: "local", label: "tail", rawText: m.text }
-      const flushTail = (role: Slotted["role"] = "system") => {
+      const flushTail = () => {
         if (!tailRun.length) return
         const tw = writer()
         block(
@@ -1065,7 +1075,7 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           })),
           { note: NOTE.tail },
         )
-        pushMsg("tail", "tail", { role, content: tw.text() }, tw.spans)
+        pushMsg("tail", "tail", sys(tw.text()), tw.spans)
         tailRun = []
       }
       for (const m of c.tail ?? []) {
@@ -1074,8 +1084,8 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           continue
         }
         flushTail()
-        tailRun.push(m)
-        flushTail(m.role)
+        const source = tailSource(m)
+        pushMsg("tail", "tail", toP(w)(m), [{ start: 0, end: m.text.length, kind: "tail", source }], { source })
       }
       flushTail()
       for (const item of compileHatSlot(w.hat?.narrate?.tail, w.hatSources?.tail, w, "narrate", "tail", omitted)) {
@@ -1122,15 +1132,10 @@ export const requestDetailed = (c: Common, a: Ask, w: Wire = {}): DetailedReques
           ...(a.history ?? []).map(toP(w)),
           tagged(
             "scene",
-            a.history ? "Extract from the preceding story transcript for this interval." : sceneBody(c.input, a.prose),
-            [
-              ...a.asks,
-              a.tools
-                ? RECORD_TOOLS
-                : a.history
-                  ? "Use only what the preceding story transcript establishes for this interval."
-                  : "Use only what is established in <scene> for the requested fields.",
-            ].join("\n"),
+            a.history
+              ? "Use the preceding story transcript as context for this interval."
+              : sceneBody(c.input, a.prose),
+            [...a.asks, ...(a.tools ? [RECORD_TOOLS] : [])].join("\n"),
             a.questions ? `${RECORD_READOUT}\nQuestions: ${a.questions.join("\n")}` : "",
           ),
         ],
