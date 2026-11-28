@@ -416,34 +416,52 @@ if (!new URLSearchParams(location.search).has("manual")) {
   const run = async () => {
     await quiet()
     const tabBtn = [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) =>
-      b.textContent?.includes("参考词条"),
+      b.textContent?.includes("提示词"),
     )
-    check(tabBtn, "参考词条 tab exists")
+    check(tabBtn, "提示词 tab exists")
     tabBtn?.click()
     await quiet()
 
-    const rows = document.querySelectorAll(".ref-row")
-    check(rows.length === 5, `expected 5 collapsed reference rows, got ${rows.length}`)
+    // cinemaPack has 1 tail fragment + 5 PackEntry = 6 unified prompt rows
+    const rows = document.querySelectorAll<HTMLButtonElement>(".prompt-row")
+    check(rows.length === 6, `expected 6 prompt rows, got ${rows.length}`)
 
-    // Expand first entry (4 sections)
-    rows[0]?.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    // Open the first PackEntry (index 1, after camera-eye tail fragment): 4 sections + 总纲 = 5 tabs
+    rows[1]?.click()
     await quiet()
-    check(document.querySelector(".ref-item.open"), "clicking row opens .ref-item.open")
-    check(document.querySelectorAll(".ref-sec-box").length === 4, "all 4 sections render inside expanded Skill item")
-
-    // Exercise createEntry & addSection so auto-focus effects run under @solidjs/diagnostics (guards against STRICT_READ_UNTRACKED)
-    const addEntryBtn = [...document.querySelectorAll<HTMLButtonElement>(".prose-head button")].find((b) =>
-      b.textContent?.includes("添加词条"),
+    check(document.querySelector(".prompt-modal"), "clicking row opens .prompt-modal")
+    check(
+      document.querySelectorAll(".prompt-sec-tab").length === 5,
+      `expected 5 section tabs (overview + 4 sections), got ${document.querySelectorAll(".prompt-sec-tab").length}`,
     )
-    check(addEntryBtn, "添加词条 button exists")
-    addEntryBtn?.click()
+
+    // Close modal before creating a new prompt
+    document.querySelector<HTMLButtonElement>('.prompt-modal [aria-label="关闭"]')?.click()
     await quiet()
-    const addSecBtn = [...document.querySelectorAll<HTMLButtonElement>(".ref-item.open button")].find((b) =>
+
+    // Exercise createPrompt & addSection so auto-focus effects run under @solidjs/diagnostics
+    const addPromptBtn = [...document.querySelectorAll<HTMLButtonElement>(".prompt-toolbar button")].find((b) =>
+      b.textContent?.includes("新建提示词"),
+    )
+    check(addPromptBtn, "新建提示词 button exists")
+    addPromptBtn?.click()
+    await quiet()
+    check(document.querySelector(".prompt-modal .prompt-title-input"), "title input renders in modal")
+    const addSecBtn = [...document.querySelectorAll<HTMLButtonElement>(".prompt-modal button")].find((b) =>
       b.textContent?.includes("添加分节"),
     )
-    check(addSecBtn, "添加分节 button exists on newly created entry")
+    check(addSecBtn, "添加分节 button exists on newly created prompt")
     addSecBtn?.click()
     await quiet()
+    check(document.querySelector(".prompt-modal .prompt-sec-title-input"), "section title input renders in modal")
+
+    // Close modal (blank new draft should be pruned back to 6 rows)
+    document.querySelector<HTMLButtonElement>('.prompt-modal [aria-label="关闭"]')?.click()
+    await quiet()
+    check(
+      document.querySelectorAll(".prompt-row").length === 6,
+      `blank new draft pruned on close, got ${document.querySelectorAll(".prompt-row").length}`,
+    )
 
     // Check accessible names on all interactive controls (skipping @ui-sdk hidden form inputs)
     for (const el of document.querySelectorAll<HTMLElement>(".settings button, .settings input, .settings textarea")) {

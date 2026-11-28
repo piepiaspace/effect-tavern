@@ -313,7 +313,7 @@ export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly
                     </Show>
                     <Switch
                       on={f().enabled !== false}
-                      label={f().id}
+                      label={f().label?.trim() || slotName(f().id)}
                       onFlip={() => (
                         blurField(),
                         updateFrag(i, { enabled: f().enabled === false ? undefined : false })
@@ -328,6 +328,19 @@ export const ProseTab = (props: { pack: Pack; onSave: Save; inherited?: readonly
                       <Close />
                     </button>
                   </div>
+                  <input
+                    type="text"
+                    class="frag-label-input"
+                    enterkeyhint="done"
+                    placeholder={t("prompts.titlePlaceholder")}
+                    aria-label={t("prompts.titleLabel")}
+                    value={f().label ?? ""}
+                    onChange={(e) => {
+                      const label = e.currentTarget.value.trim()
+                      updateFrag(i, { label: label || undefined })
+                    }}
+                    onKeyDown={leaveInput}
+                  />
                   <Well label={t("writing.requirement")}>
                     <textarea
                       ref={autosize(() => f().text ?? "")}

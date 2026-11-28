@@ -846,6 +846,13 @@
   gap: var(--space-2);
 }
 
+.prompt-pop-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .prompt-pop-label {
   font-size: var(--text-caption);
   font-weight: 600;

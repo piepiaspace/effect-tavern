@@ -14,12 +14,15 @@ import {
   fillKnown,
   editedProduct,
   kindFields,
+  layerOf,
   orderedPacks,
   packHoles,
   productEdit,
   productKind,
+  promptsOf,
   serializePack,
   toggleMount,
+  type PromptItem,
   type ReferenceEntry,
   withEntryMode,
   withoutProductPatch,
@@ -426,5 +429,129 @@ assert.deepEqual(
   }),
   ["char", "user", "ally", "place"],
 )
+
+// unified prompts projection (`promptsOf` <-> `layerOf`): lossless round-trip, zero drift on untouched items,
+// slot yield/mute, legacy free head fragment preservation & promotion, cross-table moves, and blank draft dropping
+const starter = { ...createStarterPack("starter"), default: true as const }
+const starterItems = promptsOf(starter)
+assert.equal(starterItems.length, 2)
+assert.equal(starterItems[0].slot, "language")
+assert.equal(starterItems[0].slotStrategy, "yield")
+assert.equal(starterItems[0].title, "语言")
+assert.equal(starterItems[1].slot, null)
+assert.equal(starterItems[1].position, "head")
+assert.equal(starterItems[1].title, "心声记号")
+assert.equal(JSON.stringify(layerOf(starter, starterItems)), JSON.stringify(starter))
+
+// toggling enabled on item 0 leaves item 1 (`thought-syntax`) byte-identical
+const toggledStarter = layerOf(
+  starter,
+  starterItems.map((x, i) => (i === 0 ? { ...x, enabled: false } : x)),
+)
+assert.equal(toggledStarter.fragments?.[0].enabled, false)
+assert.deepEqual(toggledStarter.fragments?.[1], starter.fragments![1])
+
+// editing text of legacy free head fragment keeps it in `fragments` with original id & mode; adding a section promotes it to `entries`
+const editedThought = layerOf(
+  starter,
+  starterItems.map((x, i) => (i === 1 ? { ...x, body: "更新后的心声规则" } : x)),
+)
+assert.equal(editedThought.entries, undefined)
+assert.deepEqual(editedThought.fragments?.[1], {
+  id: "thought-syntax",
+  label: "心声记号",
+  text: "更新后的心声规则",
+  mode: "yield",
+})
+const promotedThought = layerOf(
+  starter,
+  starterItems.map((x, i) =>
+    i === 1 ? { ...x, sections: [{ id: "sec-1", title: "示例", body: "⦅他心里一沉⦆" }] } : x,
+  ),
+)
+assert.equal(promotedThought.fragments?.length, 1)
+assert.equal(promotedThought.entries?.length, 1)
+assert.equal(promotedThought.entries?.[0].id, "thought-syntax")
+assert.equal(promotedThought.entries?.[0].activation, "always")
+assert.deepEqual(promotedThought.entries?.[0].sections, [{ id: "sec-1", title: "示例", text: "⦅他心里一沉⦆" }])
+
+// blank new draft is dropped; new plain item lands in entries; mute slot with empty body lands in fragments; auto playerAccess persists
+const customPack: Layer = { id: "p-custom", name: "自定义包" }
+const newItems: PromptItem[] = [
+  {
+    id: "prompt-blank",
+    title: "未完成草稿",
+    body: "   ",
+    enabled: true,
+    mode: "always",
+    hint: "",
+    position: "head",
+    slot: null,
+    slotStrategy: "override",
+    residency: "window",
+    playerAccess: true,
+    sections: [],
+  },
+  {
+    id: "prompt-auto-no-player",
+    title: "雨夜光影",
+    body: "写湿冷空气与灯晕",
+    enabled: true,
+    mode: "auto",
+    hint: "雨夜触发",
+    position: "head",
+    slot: null,
+    slotStrategy: "override",
+    residency: "window",
+    playerAccess: false,
+    sections: [],
+  },
+  {
+    id: "prompt-mute-style",
+    title: "静音文风",
+    body: "",
+    enabled: true,
+    mode: "always",
+    hint: "",
+    position: "head",
+    slot: "style",
+    slotStrategy: "mute",
+    residency: "window",
+    playerAccess: false,
+    sections: [],
+  },
+  {
+    id: "prompt-tail",
+    title: "收束提醒",
+    body: "留出互动支点",
+    enabled: false,
+    mode: "always",
+    hint: "",
+    position: "tail",
+    slot: null,
+    slotStrategy: "override",
+    residency: "window",
+    playerAccess: false,
+    sections: [],
+  },
+]
+const writtenCustom = layerOf(customPack, newItems)
+assert.deepEqual(writtenCustom.fragments, [
+  { id: "style", label: "静音文风", mode: "mute" },
+  { id: "收束提醒", label: "收束提醒", text: "留出互动支点", at: "tail", enabled: false },
+])
+assert.deepEqual(writtenCustom.entries, [
+  {
+    id: "雨夜光影",
+    title: "雨夜光影",
+    summary: "雨夜触发",
+    text: "写湿冷空气与灯晕",
+    access: { model: true, player: false },
+    activation: "on_demand",
+    residency: "window",
+  },
+])
+// round-trip writtenCustom back through promptsOf -> layerOf is zero-drift
+assert.equal(JSON.stringify(layerOf(writtenCustom, promptsOf(writtenCustom))), JSON.stringify(writtenCustom))
 
 console.log("writing ok")

@@ -744,6 +744,7 @@ const en: Dict = {
     sectionsLockHint: "Only available without sections",
     modeLockHint: "Locked to Always by placement or slot",
     sectionsLimit: "Up to {n} sections",
+    allowManual: "Allow / invocation",
   },
   invoke: {
     mode: "Reading mode",

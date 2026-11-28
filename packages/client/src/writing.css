@@ -702,6 +702,22 @@
 .prose-panel .frag-count {
   align-self: center;
 }
+.frag-label-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: var(--text-body);
+  font-weight: 550;
+  outline: none;
+}
+.frag-label-input::placeholder {
+  color: var(--ink-3);
+  font-weight: 450;
+}
 .prose-panel .frag-row .field-well {
   height: auto;
   border-radius: var(--radius);

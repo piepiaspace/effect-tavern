@@ -740,6 +740,7 @@ const zh = {
     sectionsLockHint: "仅适用于无分节项",
     modeLockHint: "已绑定特殊位置，固定为常驻",
     sectionsLimit: "最多 {n} 节",
+    allowManual: "允许 / 手动调用",
   },
   invoke: {
     mode: "读取模式",

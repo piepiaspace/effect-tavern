@@ -256,7 +256,7 @@ export const Packs = (props: Pane) => {
 
                 <div class="pack-tab-body">
                   <Show when={tab() === "prompts"}>
-                    <PromptsTab />
+                    <PromptsTab pack={p()} onSave={save} />
                   </Show>
                   <Show when={tab() === "lexicon"}>
                     <LexiconTab pack={p()} onSave={save} />

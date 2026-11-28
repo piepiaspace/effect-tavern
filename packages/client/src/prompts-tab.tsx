@@ -1,41 +1,27 @@
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createEffect, createMemo, createSignal, createStore, For, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, createStore, For, onCleanup, Show, snapshot } from "solid-js"
 import { autosize } from "./autosize.ts"
 import { ask, blurField, dialogHandle, newId, Switch } from "./controls.tsx"
 import { t } from "./i18n.ts"
 import { Close, Clue, More, Plus, Trash } from "./icons.tsx"
-import { leaveArea, leaveInput } from "./layer-tabs.tsx"
-
-export type PromptMode = "always" | "auto" | "manual"
-export type PromptPosition = "head" | "tail"
-export type PromptSlot = "language" | "style" | "voice" | "setting" | "pov" | "verbosity" | "persona"
-export type SlotStrategy = "yield" | "override" | "both" | "mute"
-export type PromptResidency = "window" | "turn" | "permanent"
-
-export interface PromptSection {
-  id: string
-  title: string
-  body: string
-}
-
-export interface PromptItem {
-  id: string
-  title: string
-  body: string
-  enabled: boolean
-  mode: PromptMode
-  hint: string
-  position: PromptPosition
-  slot: PromptSlot | null
-  slotStrategy: SlotStrategy
-  residency: PromptResidency
-  sections: PromptSection[]
-}
+import { leaveArea, leaveInput, type Save } from "./layer-tabs.tsx"
+import {
+  layerOf,
+  MAX_ENTRY_SECTIONS,
+  promptsOf,
+  type PromptItem,
+  type PromptMode,
+  type PromptResidency,
+  type PromptSection,
+  type PromptSlot,
+  type SlotStrategy,
+} from "./pack.ts"
+import type { Pack } from "./store.ts"
 
 type FilterMode = "all" | PromptMode
 
-const MAX_SECTIONS = 8
+const SAVE_DELAY = 350
 const MODES: readonly PromptMode[] = ["always", "auto", "manual"]
 const FILTERS: readonly FilterMode[] = ["all", "always", "auto", "manual"]
 const SLOTS: readonly PromptSlot[] = ["language", "style", "voice", "setting", "pov", "verbosity", "persona"]
@@ -68,131 +54,6 @@ const strategyLabel = (s: SlotStrategy) =>
 const residencyLabel = (r: PromptResidency) =>
   r === "window" ? t("invoke.window") : r === "turn" ? t("invoke.turn") : t("invoke.permanent")
 
-const createSeedPrompts = (): PromptItem[] => [
-  {
-    id: "prompt-overview",
-    title: "叙事总纲",
-    body: [
-      "以克制、具体的感官细节推进场景，避免概括式抒情与上帝视角总结。人物的情绪优先通过动作停顿、目光偏移与物件触感呈现。",
-      "",
-      "一、镜头与空间感",
-      "每一轮落笔前先锚定人物在房间或街道中的物理位置，光线从哪一侧来、桌面摆着什么器物、远处有什么背景声响。不要在空旷的纯白背景里让角色凭空对话；也不要为了堆砌文采而打断正在进行的动作链。",
-      "",
-      "二、情绪克制与留白",
-      "禁止替读者下情绪结论（例如“她感到一阵难以言喻的失落”）。将抽象心理拆解成可观察的微动作：指尖在杯沿停顿半拍、话说到一半换了称呼、借整理衣袖避开视线。",
-      "",
-      "三、节奏与留口",
-      "长段描写之后接一两句短促对话，维持松紧交替的阅读呼吸。段落收束时保持动作悬置，留出清晰可接续的互动支点，不越权代写玩家的心理与决定。",
-    ].join("\n"),
-    enabled: true,
-    mode: "always",
-    hint: "",
-    position: "head",
-    slot: null,
-    slotStrategy: "yield",
-    residency: "window",
-    sections: [],
-  },
-  {
-    id: "prompt-dialogue-skill",
-    title: "对话与潜台词技法",
-    body: [
-      "人物开口前先确立各自的顾忌与目的，不把真实意图直白说穿。每一句台词至少承担两件事：推进当下事件，或暗中暴露双方关系。",
-      "",
-      "长对话之间穿插环境声响或细小动作，让节奏有呼吸感；能由停顿、转移话题或做一件小事来替代的情绪，就不要直接说出口。",
-    ].join("\n"),
-    enabled: true,
-    mode: "always",
-    hint: "",
-    position: "head",
-    slot: null,
-    slotStrategy: "yield",
-    residency: "window",
-    sections: [
-      {
-        id: "sec-pause",
-        title: "停顿与留白",
-        body: "情绪转折处宁可留半拍沉默，也不要用形容词堆砌解释人物此刻的心理。\n\n例如在关键提问之后，先写水壶轻响、指节叩击木桌或视线落向窗外，再给出延迟半拍的简短答复。",
-      },
-      {
-        id: "sec-particles",
-        title: "语气词克制",
-        body: "减少密集的感叹号与夸张语气词，用断句长短、语序倒装与称谓变化区隔人物口吻。\n\n同一段对话中尽量避免连续两句使用相同的句尾语气词。",
-      },
-      {
-        id: "sec-action",
-        title: "动作代答",
-        body: "当角色回避问题时，优先用倒茶、合上书页、移开视线、起身关窗等动作回应，而非直接说“我不想谈”或“这不重要”。",
-      },
-    ],
-  },
-  {
-    id: "prompt-language-slot",
-    title: "中文叙述规范",
-    body: "全文使用自然流利的现代汉语书面语叙述，对话使用直角引号「」，避免翻译腔与生硬的欧化长定语。",
-    enabled: true,
-    mode: "always",
-    hint: "",
-    position: "head",
-    slot: "language",
-    slotStrategy: "yield",
-    residency: "window",
-    sections: [],
-  },
-  {
-    id: "prompt-tail-reminder",
-    title: "每轮收束检查",
-    body: "本轮结尾停在可供玩家自然接续的动作或话头处，不替玩家做关键决定，也不提前总结下一幕走向。",
-    enabled: true,
-    mode: "always",
-    hint: "",
-    position: "tail",
-    slot: null,
-    slotStrategy: "yield",
-    residency: "window",
-    sections: [],
-  },
-  {
-    id: "prompt-rain-atmosphere",
-    title: "雨夜与室内光影",
-    body: "着重写窗玻璃的水痕、湿冷空气、暖色灯晕与远处模糊的声响，让空间显得安静而有包裹感。",
-    enabled: true,
-    mode: "auto",
-    hint: "当场景涉及雨天、夜晚、烛火或室内独处时启用",
-    position: "head",
-    slot: null,
-    slotStrategy: "yield",
-    residency: "window",
-    sections: [],
-  },
-  {
-    id: "prompt-slow-motion",
-    title: "慢镜头特写",
-    body: "放慢时间流速，将当前关键瞬间拆解为三到四个微距感官切片：呼吸声、指尖温度、光影掠过与心跳间隔。",
-    enabled: true,
-    mode: "manual",
-    hint: "输入 /慢镜头 时触发，拉长关键瞬间的感官节奏",
-    position: "head",
-    slot: null,
-    slotStrategy: "yield",
-    residency: "turn",
-    sections: [],
-  },
-  {
-    id: "prompt-classical-style",
-    title: "半文言润色参考",
-    body: "叙事句式可略带旧白话与笔记小品气息，四字短语与白话交替使用，保持清雅而不晦涩。",
-    enabled: false,
-    mode: "always",
-    hint: "",
-    position: "head",
-    slot: "style",
-    slotStrategy: "override",
-    residency: "window",
-    sections: [],
-  },
-]
-
 const charCountOf = (item: PromptItem) => {
   if (item.slot !== null && item.slotStrategy === "mute") return 0
   let total = item.body.trim().length
@@ -208,6 +69,12 @@ const firstLineOf = (text: string) =>
 
 const isSpecialPlacement = (item: PromptItem) => item.slot !== null || item.position === "tail"
 
+const isBlankDraft = (item: PromptItem) =>
+  !item.from &&
+  !(item.slot !== null && item.slotStrategy === "mute") &&
+  !item.body.trim() &&
+  !item.sections.some((s) => s.body.trim())
+
 const placementTextOf = (item: PromptItem): string | null => {
   if (item.slot !== null) {
     const slotText = slotLabel(item.slot)
@@ -218,8 +85,10 @@ const placementTextOf = (item: PromptItem): string | null => {
   return null
 }
 
-export const PromptsTab = () => {
-  const [items, setItems] = createStore<PromptItem[]>(createSeedPrompts())
+const packSig = (p: Pack) => JSON.stringify([p.fragments ?? [], p.entries ?? [], !!p.default])
+
+export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
+  const [items, setItems] = createStore<PromptItem[]>([])
   const [filter, setFilter] = createSignal<FilterMode>("all")
   const [query, setQuery] = createSignal("")
   const [editingId, setEditingId] = createSignal<string | null>(null)
@@ -230,6 +99,74 @@ export const PromptsTab = () => {
   let focusSecFor: string | null = null
   let titleInput: HTMLInputElement | undefined
   let secTitleInput: HTMLInputElement | undefined
+
+  let syncedPackId = ""
+  let lastSavedSig = ""
+  let latestPack: Pack | undefined
+  let saveTimer: ReturnType<typeof setTimeout> | undefined
+
+  const clearTimer = () => {
+    if (saveTimer !== undefined) {
+      clearTimeout(saveTimer)
+      saveTimer = undefined
+    }
+  }
+
+  const flushSave = () => {
+    clearTimer()
+    if (!latestPack) return
+    const plain = snapshot(items)
+    const next = layerOf(latestPack, plain)
+    const nextSig = packSig(next)
+    if (nextSig === lastSavedSig) return
+    lastSavedSig = nextSig
+    void props.onSave((p) => layerOf(p, plain))
+  }
+
+  const scheduleSave = () => {
+    clearTimer()
+    saveTimer = setTimeout(flushSave, SAVE_DELAY)
+  }
+
+  onCleanup(() => {
+    if (saveTimer !== undefined) flushSave()
+  })
+
+  createEffect(
+    () => [props.pack.id, packSig(props.pack), props.pack] as const,
+    ([id, sig, pack]) => {
+      latestPack = pack
+      if (id !== syncedPackId) {
+        clearTimer()
+        syncedPackId = id
+        lastSavedSig = sig
+        const next = promptsOf(pack)
+        setItems((list) => {
+          list.splice(0, list.length, ...next)
+        })
+        editor.close()
+        setEditingId(null)
+        setActiveSecId(null)
+        setQuery("")
+        setFilter("all")
+        return
+      }
+      if (sig !== lastSavedSig) {
+        clearTimer()
+        lastSavedSig = sig
+        const next = promptsOf(pack)
+        setItems((list) => {
+          list.splice(0, list.length, ...next)
+        })
+        const curEdit = editingId()
+        if (curEdit && !next.some((x) => x.id === curEdit)) {
+          editor.close()
+          setEditingId(null)
+          setActiveSecId(null)
+        }
+      }
+    },
+  )
 
   createEffect(
     () => editingId(),
@@ -286,11 +223,13 @@ export const PromptsTab = () => {
     })
   })
 
-  const updateItem = (id: string, fn: (draft: PromptItem) => void) => {
+  const updateItem = (id: string, fn: (draft: PromptItem) => void, mode: "immediate" | "debounced" = "immediate") => {
     setItems((list) => {
       const target = list.find((x) => x.id === id)
       if (target) fn(target)
     })
+    if (mode === "immediate") flushSave()
+    else scheduleSave()
   }
 
   const openEditor = (id: string) => {
@@ -301,6 +240,21 @@ export const PromptsTab = () => {
   }
 
   const onEditorClosed = () => {
+    const closedId = editingId()
+    flushSave()
+    if (closedId) {
+      setItems((list) => {
+        const idx = list.findIndex((x) => x.id === closedId)
+        if (idx < 0) return
+        const target = list[idx]
+        for (let j = target.sections.length - 1; j >= 0; j--) {
+          const s = target.sections[j]
+          if (!s.title.trim() && !s.body.trim()) target.sections.splice(j, 1)
+        }
+        if (isBlankDraft(target)) list.splice(idx, 1)
+      })
+      flushSave()
+    }
     setEditingId(null)
     setActiveSecId(null)
   }
@@ -308,6 +262,7 @@ export const PromptsTab = () => {
   const createPrompt = () => {
     blurField()
     const id = newId("prompt")
+    const defaultStrat: SlotStrategy = props.pack.default ? "yield" : "override"
     const fresh: PromptItem = {
       id,
       title: "",
@@ -317,15 +272,16 @@ export const PromptsTab = () => {
       hint: "",
       position: "head",
       slot: null,
-      slotStrategy: "yield",
+      slotStrategy: defaultStrat,
       residency: "window",
+      playerAccess: true,
       sections: [],
     }
     focusTitleFor = id
     if (filter() !== "all" && filter() !== "always") setFilter("all")
     setQuery("")
     setItems((list) => {
-      list.unshift(fresh)
+      list.push(fresh)
     })
     openEditor(id)
   }
@@ -340,6 +296,7 @@ export const PromptsTab = () => {
         const idx = list.findIndex((x) => x.id === item.id)
         if (idx >= 0) list.splice(idx, 1)
       })
+      flushSave()
     }
     const hasContent = Boolean(item.title.trim() || item.hint.trim() || item.body.trim()) || item.sections.length > 0
     if (hasContent) {
@@ -352,11 +309,12 @@ export const PromptsTab = () => {
   const addSection = (itemId: string) => {
     blurField()
     const target = items.find((x) => x.id === itemId)
-    if (!target || target.sections.length >= MAX_SECTIONS) return
+    if (!target || target.sections.length >= MAX_ENTRY_SECTIONS) return
     const secId = newId("sec")
     focusSecFor = secId
-    updateItem(itemId, (draft) => {
-      draft.sections.push({ id: secId, title: "", body: "" })
+    setItems((list) => {
+      const item = list.find((x) => x.id === itemId)
+      if (item) item.sections.push({ id: secId, title: "", body: "" })
     })
     setActiveSecId(secId)
   }
@@ -366,10 +324,13 @@ export const PromptsTab = () => {
     const run = () => {
       const target = items.find((x) => x.id === itemId)
       const prevIdx = target ? target.sections.findIndex((s) => s.id === sec.id) : -1
-      updateItem(itemId, (draft) => {
-        const idx = draft.sections.findIndex((s) => s.id === sec.id)
-        if (idx >= 0) draft.sections.splice(idx, 1)
+      setItems((list) => {
+        const item = list.find((x) => x.id === itemId)
+        if (!item) return
+        const idx = item.sections.findIndex((s) => s.id === sec.id)
+        if (idx >= 0) item.sections.splice(idx, 1)
       })
+      flushSave()
       if (activeSecId() === sec.id) {
         const nextList = items.find((x) => x.id === itemId)?.sections ?? []
         const fallback = nextList[prevIdx] ?? nextList[prevIdx - 1] ?? null
@@ -584,9 +545,17 @@ export const PromptsTab = () => {
                             onClick={() => {
                               blurField()
                               updateItem(item().id, (draft) => {
+                                const prev = draft.mode
                                 draft.mode = m
-                                if (m === "manual" && draft.residency === "permanent") {
+                                if (m === "manual") {
                                   draft.residency = "turn"
+                                  draft.playerAccess = true
+                                } else if (m === "auto") {
+                                  if (prev === "manual") draft.residency = "window"
+                                  if (prev === "always") draft.playerAccess = true
+                                } else {
+                                  if (draft.residency === "turn") draft.residency = "window"
+                                  draft.playerAccess = false
                                 }
                               })
                             }}
@@ -628,6 +597,23 @@ export const PromptsTab = () => {
                                   </button>
                                 )}
                               </For>
+                            </div>
+                          </div>
+                        </Show>
+
+                        <Show when={item().mode === "auto"}>
+                          <div class="prompt-pop-group">
+                            <div class="prompt-pop-toggle">
+                              <span class="prompt-pop-label">{t("prompts.allowManual")}</span>
+                              <Switch
+                                on={item().playerAccess}
+                                label={t("prompts.allowManual")}
+                                onFlip={() =>
+                                  updateItem(item().id, (draft) => {
+                                    draft.playerAccess = !draft.playerAccess
+                                  })
+                                }
+                              />
                             </div>
                           </div>
                         </Show>
@@ -780,10 +766,15 @@ export const PromptsTab = () => {
                         ref={(el) => (titleInput = el)}
                         onInput={(e) => {
                           const v = e.currentTarget.value
-                          updateItem(item().id, (draft) => {
-                            draft.title = v
-                          })
+                          updateItem(
+                            item().id,
+                            (draft) => {
+                              draft.title = v
+                            },
+                            "debounced",
+                          )
                         }}
+                        onBlur={flushSave}
                         onKeyDown={leaveInput}
                       />
 
@@ -803,10 +794,15 @@ export const PromptsTab = () => {
                             value={item().hint}
                             onInput={(e) => {
                               const v = e.currentTarget.value
-                              updateItem(item().id, (draft) => {
-                                draft.hint = v
-                              })
+                              updateItem(
+                                item().id,
+                                (draft) => {
+                                  draft.hint = v
+                                },
+                                "debounced",
+                              )
                             }}
+                            onBlur={flushSave}
                             onKeyDown={leaveArea}
                           />
                         </div>
@@ -840,10 +836,10 @@ export const PromptsTab = () => {
                           <button
                             type="button"
                             class="prompt-sec-add"
-                            disabled={item().sections.length >= MAX_SECTIONS}
+                            disabled={item().sections.length >= MAX_ENTRY_SECTIONS}
                             title={
-                              item().sections.length >= MAX_SECTIONS
-                                ? t("prompts.sectionsLimit", { n: MAX_SECTIONS })
+                              item().sections.length >= MAX_ENTRY_SECTIONS
+                                ? t("prompts.sectionsLimit", { n: MAX_ENTRY_SECTIONS })
                                 : undefined
                             }
                             onClick={() => addSection(item().id)}
@@ -854,7 +850,7 @@ export const PromptsTab = () => {
 
                           <Show when={hasSections()}>
                             <span class="prompt-sec-quota mono">
-                              {item().sections.length}/{MAX_SECTIONS}
+                              {item().sections.length}/{MAX_ENTRY_SECTIONS}
                             </span>
                           </Show>
                         </div>
@@ -884,10 +880,15 @@ export const PromptsTab = () => {
                               value={item().body}
                               onInput={(e) => {
                                 const v = e.currentTarget.value
-                                updateItem(item().id, (draft) => {
-                                  draft.body = v
-                                })
+                                updateItem(
+                                  item().id,
+                                  (draft) => {
+                                    draft.body = v
+                                  },
+                                  "debounced",
+                                )
                               }}
+                              onBlur={flushSave}
                               onKeyDown={leaveArea}
                             />
                           </Show>
@@ -906,11 +907,16 @@ export const PromptsTab = () => {
                                 ref={(el) => (secTitleInput = el)}
                                 onInput={(e) => {
                                   const v = e.currentTarget.value
-                                  updateItem(item().id, (draft) => {
-                                    const target = draft.sections.find((s) => s.id === sec().id)
-                                    if (target) target.title = v
-                                  })
+                                  updateItem(
+                                    item().id,
+                                    (draft) => {
+                                      const target = draft.sections.find((s) => s.id === sec().id)
+                                      if (target) target.title = v
+                                    },
+                                    "debounced",
+                                  )
                                 }}
+                                onBlur={flushSave}
                                 onKeyDown={leaveInput}
                               />
                               <Show when={sec().body.trim().length > 0}>
@@ -934,11 +940,16 @@ export const PromptsTab = () => {
                               value={sec().body}
                               onInput={(e) => {
                                 const v = e.currentTarget.value
-                                updateItem(item().id, (draft) => {
-                                  const target = draft.sections.find((s) => s.id === sec().id)
-                                  if (target) target.body = v
-                                })
+                                updateItem(
+                                  item().id,
+                                  (draft) => {
+                                    const target = draft.sections.find((s) => s.id === sec().id)
+                                    if (target) target.body = v
+                                  },
+                                  "debounced",
+                                )
                               }}
+                              onBlur={flushSave}
                               onKeyDown={leaveArea}
                             />
                           </>
