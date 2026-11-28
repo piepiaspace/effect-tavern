@@ -459,10 +459,10 @@
   left: 100%;
   bottom: -2rem;
   width: 10rem;
-  height: 5.25rem;
+  height: 7rem;
   display: block;
   margin-left: var(--space-1);
-  pointer-events: auto;
+  pointer-events: none;
 }
 .home-mark .home-sub {
   margin: 0;

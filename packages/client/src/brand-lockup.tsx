@@ -6,15 +6,15 @@ import { active } from "./host.ts"
 import { theme } from "./theme.ts"
 
 const CSS_W = 160
-const CSS_H = 84
-const BASE_Y = 52
-const EMIT_X = 10.5
-const EMIT_Y = BASE_Y - 2.4
+const CSS_H = 112
+const BASE_Y = 80
+const EMIT_X = 8.8
+const EMIT_Y = BASE_Y - 3.0
 const PARTICLE_COUNT = 135
 const FINENESS = 0.85
 const WIND = 1.0
-const MAX_OPACITY = 0.68
-const SPREAD = 0.9
+const MAX_OPACITY = 0.66
+const SPREAD = 0.92
 const CURL_STRENGTH = 1.15
 const IDLE_MS = 1000 / 30
 
@@ -90,32 +90,35 @@ const InkPlumeCanvas = () => {
 
     const stepParticle = (p: InkParticle, dt: number, t: number) => {
       p.age += dt
-      const progress = p.age / p.life
-      const nx = p.x * 0.022 - t * 0.32 * WIND
-      const ny = p.y * 0.026 + p.seed * 0.003
+      const progress = Math.min(1, p.age / p.life)
+      // Slow upward-advecting curl field so eddies rise and uncurl lazily like chimney smoke
+      const nx = p.x * 0.02 - t * 0.09 * WIND
+      const ny = p.y * 0.022 + t * 0.11 * WIND + p.seed * 0.004
       const curl = curl2D(nx, ny)
 
-      const windDriftX = (24 + 14 * progress) * WIND
-      const ribbonWaveY = Math.sin(p.x * 0.055 - t * 1.15) * 7.5 * WIND
-      const liftY = (-6.5 + progress * 3.0) * WIND
-      const turbScale = (9 + 26 * Math.pow(progress, 1.15)) * CURL_STRENGTH * SPREAD
+      const sway = Math.sin(t * 0.45 + p.y * 0.025) * 3.2
+      const driftX = (6.8 + sway * 0.5) * (1 - 0.18 * progress) * WIND
+      const liftY = (-10.5 - 1.5 * Math.sin(t * 0.35)) * (1 - 0.28 * progress) * WIND
+      const turbScale = (4.5 + 16.5 * Math.pow(progress, 1.15)) * CURL_STRENGTH * SPREAD
 
-      let targetVx = windDriftX + curl.vx * turbScale
-      let targetVy = liftY + ribbonWaveY * 0.35 + curl.vy * turbScale * 0.68
+      let targetVx = driftX + curl.vx * turbScale
+      let targetVy = liftY + curl.vy * turbScale * 0.85
 
       if (mouse.active) {
         const dx = p.x - mouse.x
         const dy = p.y - mouse.y
         const d2 = dx * dx + dy * dy
-        if (d2 < 900 && d2 > 1) {
+        if (d2 < 1156 && d2 > 1) {
           const d = Math.sqrt(d2)
-          const force = (1 - d / 30) * 58
-          targetVx += (dx / d) * force
-          targetVy += (dy / d) * force
+          const falloff = 1 - d / 34
+          const push = falloff * 28
+          const swirl = falloff * 14
+          targetVx += (dx / d) * push - (dy / d) * swirl
+          targetVy += (dy / d) * push + (dx / d) * swirl
         }
       }
 
-      const lerp = Math.min(1, dt * 4.5)
+      const lerp = Math.min(1, dt * 2.4)
       p.vx += (targetVx - p.vx) * lerp
       p.vy += (targetVy - p.vy) * lerp
       p.x += p.vx * dt
@@ -131,15 +134,20 @@ const InkPlumeCanvas = () => {
           : r < 0.94
             ? (0.85 + Math.random() * 0.55) * FINENESS
             : (1.35 + Math.random() * 0.45) * FINENESS
-      const life = 2.3 + Math.random() * 2.1
-      const angle = Math.random() * Math.PI * 2
-      const dist = Math.random() * 2.1
+      const life = 3.8 + Math.random() * 2.8
+      const jitterAngle = Math.random() * Math.PI * 2
+      const dist = Math.random() * 1.9
+      // First-quadrant chimney launch: ~14°..78° above horizontal, softly centered around ~46° with a slow breeze sway
+      const u = (Math.random() + Math.random()) * 0.5
+      const breezeBias = Math.sin(simTime * 0.42) * 0.14
+      const launchAngle = Math.max(0.18, Math.min(1.42, 0.24 + u * 1.12 + breezeBias))
+      const launchSpeed = (5.5 + Math.random() * 6.5) * WIND
       const p: InkParticle = {
-        x: EMIT_X + Math.cos(angle) * dist,
-        y: EMIT_Y + Math.sin(angle) * dist,
-        vx: (16 + Math.random() * 14) * WIND,
-        vy: (-4.5 - Math.random() * 7.5) * WIND,
-        age: prewarm * life,
+        x: EMIT_X + Math.cos(jitterAngle) * dist,
+        y: EMIT_Y + Math.sin(jitterAngle) * dist,
+        vx: Math.cos(launchAngle) * launchSpeed,
+        vy: -Math.sin(launchAngle) * launchSpeed,
+        age: 0,
         life,
         radius: baseRadius,
         maxAlpha: (0.35 + Math.random() * 0.65) * MAX_OPACITY,
@@ -147,8 +155,8 @@ const InkPlumeCanvas = () => {
         toneOffset: Math.floor(Math.random() * 32),
       }
       if (prewarm > 0) {
-        const steps = Math.floor(prewarm * 50)
-        const dt = 0.04
+        const dt = 0.05
+        const steps = Math.floor((prewarm * life) / dt)
         for (let s = 0; s < steps; s++) stepParticle(p, dt, simTime - (steps - s) * dt)
       }
       return p
@@ -158,7 +166,7 @@ const InkPlumeCanvas = () => {
       ctx.clearRect(0, 0, CSS_W, CSS_H)
 
       // Single crisp ink period sitting flush on the wordmark baseline
-      const breath = 0.88 + Math.sin(simTime * 1.4) * 0.12
+      const breath = 0.88 + Math.sin(simTime * 0.95) * 0.12
       ctx.fillStyle = dark
         ? `rgba(236,235,229,${(0.9 * breath).toFixed(3)})`
         : `rgba(26,25,23,${(0.9 * breath).toFixed(3)})`
@@ -171,12 +179,14 @@ const InkPlumeCanvas = () => {
         const progress = p.age / p.life
         if (progress <= 0 || progress >= 1) continue
 
-        const alphaEnv = progress < 0.12 ? progress / 0.12 : Math.pow(1 - (progress - 0.12) / 0.88, 1.75)
-        const rightFade = p.x > CSS_W - 28 ? Math.max(0, (CSS_W - p.x) / 28) : 1
-        const alpha = p.maxAlpha * alphaEnv * rightFade
+        const alphaEnv = progress < 0.14 ? progress / 0.14 : Math.pow(1 - (progress - 0.14) / 0.86, 1.65)
+        const rightFade = p.x > CSS_W - 30 ? Math.max(0, (CSS_W - p.x) / 30) : 1
+        const topFade = p.y < 26 ? Math.max(0, p.y / 26) : 1
+        const leftFade = p.x < 6 ? Math.max(0, p.x / 6) : 1
+        const alpha = p.maxAlpha * alphaEnv * rightFade * topFade * leftFade
         if (alpha < 0.012) continue
 
-        const r = Math.max(0.3, p.radius * (0.78 + 0.32 * Math.sin(progress * Math.PI)))
+        const r = Math.max(0.3, p.radius * (0.72 + 0.38 * Math.sin(progress * Math.PI)))
         if (dark) {
           const v = 244 - p.toneOffset
           ctx.fillStyle = `rgba(${v},${v - 1},${v - 5},${alpha.toFixed(3)})`
@@ -233,16 +243,21 @@ const InkPlumeCanvas = () => {
 
     const onMove = (e: PointerEvent) => {
       const rect = el.getBoundingClientRect()
-      mouse.x = e.clientX - rect.left
-      mouse.y = e.clientY - rect.top
-      mouse.active = true
+      const x = e.clientX - rect.left
+      const y = e.clientY - rect.top
+      const near = x >= -24 && x <= CSS_W + 24 && y >= -24 && y <= CSS_H + 24
+      mouse.active = near
+      if (near) {
+        mouse.x = x
+        mouse.y = y
+      }
     }
     const onLeave = () => {
       mouse.active = false
     }
 
-    el.addEventListener("pointermove", onMove)
-    el.addEventListener("pointerleave", onLeave)
+    window.addEventListener("pointermove", onMove, { passive: true })
+    document.documentElement.addEventListener("pointerleave", onLeave)
     window.addEventListener("resize", resize)
 
     const io =
@@ -266,8 +281,8 @@ const InkPlumeCanvas = () => {
       onStateChange = undefined
       stop()
       io?.disconnect()
-      el.removeEventListener("pointermove", onMove)
-      el.removeEventListener("pointerleave", onLeave)
+      window.removeEventListener("pointermove", onMove)
+      document.documentElement.removeEventListener("pointerleave", onLeave)
       window.removeEventListener("resize", resize)
     }
   })
