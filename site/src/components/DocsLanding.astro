@@ -55,7 +55,7 @@ const resolve = (href: string) => withBase(href, base);
 
 <div class="landing-root relative">
   <!-- Full-bleed editorial Hero -->
-  <section class="relative overflow-hidden">
+  <section class="relative overflow-hidden" data-landing-hero>
     <div class="landing-grid pointer-events-none absolute inset-0" aria-hidden="true"></div>
     <div class="relative z-10 mx-auto max-w-[76rem] px-6 sm:px-10 pt-12 pb-16 sm:pt-16 sm:pb-24">
       <div class="grid items-center gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
@@ -66,7 +66,10 @@ const resolve = (href: string) => withBase(href, base);
           </div>
 
           <h1 class="mt-5 mb-0 leading-[1.06] tracking-[-0.03em] text-foreground">
-            <span class="landing-aperture-line block font-sans font-semibold text-[2.45rem] sm:text-[3.25rem] lg:text-[3.75rem] tracking-[-0.04em]">
+            <span
+              data-aperture-line
+              class="landing-aperture-line block font-sans font-semibold text-[2.45rem] sm:text-[3.25rem] lg:text-[3.75rem] tracking-[-0.04em]"
+            >
               {headlineTop}
             </span>
             <span class="landing-aperture-rule my-2.5 flex items-center gap-3" aria-hidden="true">
@@ -108,12 +111,23 @@ const resolve = (href: string) => withBase(href, base);
           </div>
         </div>
 
-        <!-- Framed Cosmic Noir Vinyl Cosmos -->
-        <div class="relative mx-auto w-full max-w-[23rem] lg:max-w-[25rem]">
-          <div class="rounded-3xl border border-border bg-card p-6 sm:p-7 shadow-default">
+        <!-- Framed Cosmic Noir Vinyl Cosmos (stationary hit wrapper + lifted visual card) -->
+        <div class="group/vinyl relative mx-auto w-full max-w-[23rem] lg:max-w-[25rem]" data-vinyl-card>
+          <div class="landing-vinyl-card rounded-3xl border border-border bg-card p-6 sm:p-7 shadow-default transition-[transform,box-shadow,border-color] duration-300 ease-out group-hover/vinyl:-translate-y-1 group-hover/vinyl:shadow-lg group-hover/vinyl:border-border-strong motion-reduce:group-hover/vinyl:translate-y-0">
             <div class="flex items-center justify-between font-mono text-[0.6875rem] tracking-[0.08em] text-muted-foreground/80">
               <span>01/06</span>
-              <span>33.3 RPM</span>
+              <div class="flex items-center gap-2">
+                <span>33.3 RPM</span>
+                <button
+                  type="button"
+                  data-vinyl-toggle
+                  aria-label={lang === "zh" ? "暂停旋转" : "Pause turntable"}
+                  class="inline-flex size-5 items-center justify-center rounded-full border border-border bg-background/80 text-[0.5625rem] text-muted-foreground transition-colors hover:border-border-strong hover:text-foreground cursor-pointer"
+                >
+                  <span data-vinyl-icon-pause aria-hidden="true">❚❚</span>
+                  <span data-vinyl-icon-play class="hidden" aria-hidden="true">▶</span>
+                </button>
+              </div>
             </div>
             <div class="my-4 flex items-center justify-center">
               <svg
@@ -165,7 +179,7 @@ const resolve = (href: string) => withBase(href, base);
                   <path d="m889.6 244.5c41.86 0.768 72.7-34.69 72.7-71.81 0-19.58-7.808-38.27-19.71-49.79" stroke="var(--nb-card)" stroke-width="3.2" />
                   <path d="m898.3 126.2c-22.78 0-40.58 17.79-40.58 39.04 0 13.7 6.528 25.6 16.9 32.26l5.504-15.62 15.23 5.248 1.536 2.56 1.536 1.152 4.224 6.016 0.256 7.68-2.432 0.64c20.86 0.384 36.61-15.87 36.61-36.99 0-8.448-1.28-14.08-4.608-21.38l-13.7 30.21c-3.2 5.632-10.5 7.552-18.56 5.504-11.65-2.944-18.3-16.51-14.34-25.22l11.65-31.1h0.768z" fill="var(--nb-brand)" />
                 </g>
-                <g>
+                <g class="landing-vinyl-tonearm">
                   <path d="m881.4 180.6-146.2 376.4 15.74 7.296 147.7-373.1-17.28-10.62z" fill="var(--nb-card)" stroke="currentColor" stroke-width="3" />
                   <path d="m726 557.3c-18.82 21.76-41.6 50.69-59.39 74.24l25.22 14.08 57.22-54.91 5.632-23.55-28.67-9.856z" fill="var(--nb-card)" stroke="currentColor" stroke-width="3" />
                   <circle cx="719.9" cy="592.5" r="8.2" fill="currentColor" />
@@ -174,8 +188,10 @@ const resolve = (href: string) => withBase(href, base);
                   <path d="m921.3 78.46-32.9 82.56c-2.048 13.44 17.79 22.4 25.22 15.1l34.94-80c13.44-12.29-15.1-28.42-27.26-17.66z" fill="var(--nb-card)" stroke="currentColor" stroke-width="3.9" />
                   <ellipse transform="matrix(.9523 .3052 -.3052 .9523 69.78 -283.1)" cx="940.2" cy="81.63" rx="17.47" ry="12.08" fill="currentColor" />
                 </g>
-                <path d="m168.3 118.5c-5.76 44.8-3.328 43.52-38.14 49.54 35.71 4.992 33.28 7.04 37.76 44.54 5.888-39.81 2.176-39.04 39.94-44.29-36.22-6.4-33.66-7.168-38.91-49.79h-0.64z" fill="var(--nb-brand)" />
-                <path d="m876.9 790c-5.76 48.77-3.712 49.79-42.24 54.91 38.91 4.864 36.86 9.728 41.86 49.28h0.896c4.736-41.22 2.944-43.39 39.3-49.15-38.14-6.528-35.46-9.984-39.04-55.04h-0.768z" fill="var(--nb-brand)" />
+                <g class="landing-vinyl-stars">
+                  <path d="m168.3 118.5c-5.76 44.8-3.328 43.52-38.14 49.54 35.71 4.992 33.28 7.04 37.76 44.54 5.888-39.81 2.176-39.04 39.94-44.29-36.22-6.4-33.66-7.168-38.91-49.79h-0.64z" fill="var(--nb-brand)" />
+                  <path d="m876.9 790c-5.76 48.77-3.712 49.79-42.24 54.91 38.91 4.864 36.86 9.728 41.86 49.28h0.896c4.736-41.22 2.944-43.39 39.3-49.15-38.14-6.528-35.46-9.984-39.04-55.04h-0.768z" fill="var(--nb-brand)" />
+                </g>
               </svg>
             </div>
             <div class="flex items-center justify-between font-mono text-[0.6875rem] tracking-[0.1em] uppercase text-muted-foreground/80">
@@ -257,13 +273,16 @@ const resolve = (href: string) => withBase(href, base);
   }
 
   /* Glyph-as-Aperture Portal (Line 1): predominantly neutral charcoal ink with a
-     restrained, surgical 118° terracotta light sliver + subtle orbital contours. */
+     restrained, cursor-driven 118° terracotta light sliver + subtle orbital contours. */
   .landing-aperture-line {
+    --beam-x: 28%;
+    --topo-x: 42%;
+    --topo-y: 52%;
     color: transparent;
     -webkit-text-stroke: 0.6px rgb(21 21 21 / 0.22);
     background-image:
       repeating-radial-gradient(
-        ellipse 140% 75% at 62% 58%,
+        ellipse 140% 75% at var(--topo-x) var(--topo-y),
         transparent 0 11px,
         rgb(255 255 255 / 0.24) 11px 12px,
         transparent 12px 22px
@@ -280,7 +299,7 @@ const resolve = (href: string) => withBase(href, base);
         #151515 100%
       );
     background-size: 160% 160%, 240% 100%;
-    background-position: 35% 50%, 26% 50%;
+    background-position: var(--topo-x) var(--topo-y), var(--beam-x) 50%;
     -webkit-background-clip: text;
     background-clip: text;
   }
@@ -289,7 +308,7 @@ const resolve = (href: string) => withBase(href, base);
     -webkit-text-stroke: 0.6px rgb(245 245 245 / 0.2);
     background-image:
       repeating-radial-gradient(
-        ellipse 140% 75% at 62% 58%,
+        ellipse 140% 75% at var(--topo-x) var(--topo-y),
         transparent 0 11px,
         rgb(255 255 255 / 0.18) 11px 12px,
         transparent 12px 22px
@@ -319,39 +338,119 @@ const resolve = (href: string) => withBase(href, base);
     transform-origin: 501px 515px;
   }
 
-  /* Scroll-driven progressive enhancement: sweeping the aperture beam and
-     spinning the Cosmic Noir vinyl platter in sync with page scroll. */
-  @supports ((animation-timeline: view()) and (animation-range: entry)) {
-    @media (prefers-reduced-motion: no-preference) {
-      .landing-aperture-line {
-        animation: landing-aperture-sweep linear both;
-        animation-timeline: scroll(root);
-        animation-range: 0px 440px;
-      }
+  .landing-vinyl-tonearm {
+    transform-origin: 890px 172px;
+    transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
 
-      .landing-vinyl-platter {
-        animation: landing-vinyl-scroll linear both;
-        animation-timeline: scroll(root);
-        animation-range: 0px 900px;
-      }
+  .landing-vinyl-stars {
+    transform-origin: 512px 512px;
+    transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .landing-vinyl-platter {
+      animation: landing-vinyl-spin 24s linear infinite;
+    }
+
+    [data-vinyl-card][data-paused="true"] .landing-vinyl-platter {
+      animation-play-state: paused;
+    }
+
+    [data-vinyl-card]:hover .landing-vinyl-tonearm {
+      transform: rotate(3.2deg);
+    }
+
+    [data-vinyl-card]:hover .landing-vinyl-stars {
+      transform: scale(1.03);
     }
   }
 
-  @keyframes landing-aperture-sweep {
-    from {
-      background-position: 28% 50%, 18% 50%;
-    }
-    to {
-      background-position: 78% 50%, 86% 50%;
-    }
-  }
-
-  @keyframes landing-vinyl-scroll {
+  @keyframes landing-vinyl-spin {
     from {
       transform: rotate(0deg);
     }
     to {
-      transform: rotate(135deg);
+      transform: rotate(360deg);
     }
   }
 </style>
+
+<script>
+  import { mount } from "@cloudflare/nimbus-docs/client";
+
+  // Horizontal pointer-interactive aperture beam across Line 1
+  mount("[data-landing-hero]", (hero) => {
+    const line = hero.querySelector<HTMLElement>("[data-aperture-line]");
+    if (!line || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return () => {};
+
+    let targetX = 28;
+    let targetY = 52;
+    let curX = 28;
+    let curY = 52;
+    let raf = 0;
+
+    const tick = () => {
+      raf = 0;
+      curX += (targetX - curX) * 0.14;
+      curY += (targetY - curY) * 0.14;
+      line.style.setProperty("--beam-x", `${curX.toFixed(2)}%`);
+      line.style.setProperty("--topo-x", `${(30 + curX * 0.4).toFixed(2)}%`);
+      line.style.setProperty("--topo-y", `${curY.toFixed(2)}%`);
+      if (Math.abs(targetX - curX) > 0.08 || Math.abs(targetY - curY) > 0.08) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    const kick = () => {
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
+    const onMove = (e: PointerEvent) => {
+      const rect = hero.getBoundingClientRect();
+      const nx = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const ny = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      targetX = 88 - nx * 76;
+      targetY = 38 + ny * 28;
+      kick();
+    };
+
+    const onLeave = () => {
+      targetX = 28;
+      targetY = 52;
+      kick();
+    };
+
+    hero.addEventListener("pointermove", onMove, { passive: true });
+    hero.addEventListener("pointerleave", onLeave);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      hero.removeEventListener("pointermove", onMove);
+      hero.removeEventListener("pointerleave", onLeave);
+    };
+  });
+
+  // Pause / resume control for the continuously spinning Vinyl Cosmos platter
+  mount("[data-vinyl-card]", (card) => {
+    const btn = card.querySelector<HTMLButtonElement>("[data-vinyl-toggle]");
+    if (!btn) return () => {};
+    const pauseIcon = btn.querySelector<HTMLElement>("[data-vinyl-icon-pause]");
+    const playIcon = btn.querySelector<HTMLElement>("[data-vinyl-icon-play]");
+    const isZh = document.documentElement.lang.startsWith("zh");
+
+    const onClick = () => {
+      const paused = card.getAttribute("data-paused") !== "true";
+      if (paused) card.setAttribute("data-paused", "true");
+      else card.removeAttribute("data-paused");
+      pauseIcon?.classList.toggle("hidden", paused);
+      playIcon?.classList.toggle("hidden", !paused);
+      btn.setAttribute(
+        "aria-label",
+        paused ? (isZh ? "继续旋转" : "Play turntable") : (isZh ? "暂停旋转" : "Pause turntable"),
+      );
+    };
+
+    btn.addEventListener("click", onClick);
+    return () => btn.removeEventListener("click", onClick);
+  });
+</script>
