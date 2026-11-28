@@ -31,20 +31,7 @@ const sidebar = sidebarOn
             i.type === "group" && i.label === "简体中文",
         );
         if (!group) return tree;
-        return [
-          ...(group.indexHref
-            ? [
-                {
-                  type: "link" as const,
-                  label: "简介",
-                  href: group.indexHref,
-                  isCurrent: group.indexIsCurrent,
-                  order: 0,
-                },
-              ]
-            : []),
-          ...group.children,
-        ];
+        return group.children;
       },
     })
   : false;

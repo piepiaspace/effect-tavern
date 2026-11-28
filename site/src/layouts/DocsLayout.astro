@@ -101,10 +101,10 @@ const showToc = headings !== false && (hasToc || headings.length > 0);
         <slot />
       </main>
     ) : (
-      <div class="flex-1 mx-auto w-full">
-        <div class="flex">
+      <div class="docs-shell flex-1 mx-auto w-full px-3 sm:px-4 pb-8 pt-1">
+        <div class="docs-shell-row flex items-start gap-3 lg:gap-4">
           {showSidebar && (
-            <aside id="desktop-sidebar" aria-label="Sidebar" data-nb-desktop-sidebar class="hidden md:flex w-60 lg:w-(--nb-sidebar-width) shrink-0 border-e border-border bg-background sticky top-14 h-[calc(100vh-3.5rem)] flex-col relative">
+            <aside id="desktop-sidebar" aria-label="Sidebar" data-nb-desktop-sidebar class="docs-desktop-sidebar hidden md:flex w-60 lg:w-(--nb-sidebar-width) shrink-0 bg-transparent sticky top-14 h-[calc(100vh-4rem)] flex-col relative overflow-hidden">
               {/* One tree per page: this node moves into the mobile drawer
                   while it is open and comes back on close. It owns the
                   scroll, so open-group and scroll state follow it. */}
@@ -112,13 +112,12 @@ const showToc = headings !== false && (hasToc || headings.length > 0);
                 {hasSidebar ? (
                   <slot name="sidebar" />
                 ) : (
-                  <nav class="px-4 pb-12 pt-5">
+                  <nav class="px-2 pb-12 pt-3">
                     {showFilter && <SidebarFilter />}
                     <Sidebar items={sidebar} persist />
                   </nav>
                 )}
               </div>
-              <div class="pointer-events-none sticky bottom-0 h-8 bg-gradient-to-t from-base to-transparent" />
             </aside>
           )}
 
@@ -198,8 +197,8 @@ const showToc = headings !== false && (hasToc || headings.length > 0);
           {/* No sidebar: a spacer the TOC's width keeps the body centred on the page. */}
           {!showSidebar && showToc && <div aria-hidden="true" class="hidden xl:block w-(--nb-toc-width) shrink-0" />}
 
-          <main id="main-content" tabindex="-1" transition:name="nb-content" class="flex-1 min-w-0">
-            <div class="mx-auto max-w-(--nb-content-max) px-4 md:px-6 pt-6 pb-12">
+          <main id="main-content" tabindex="-1" transition:name="nb-content" class="flex-1 min-w-0 rounded-2xl border border-border bg-card shadow-sm">
+            <div class="mx-auto max-w-(--nb-content-max) px-5 sm:px-8 md:px-10 pt-7 pb-12">
               {versionStatus?.isDeprecated && (
                 <Banner
                   variant="caution"
@@ -221,7 +220,7 @@ const showToc = headings !== false && (hasToc || headings.length > 0);
                     {/* The page header: title, description and page actions, as one styleable part. */}
                     <div data-slot="page-header" class="mt-6">
                     <div class="flex items-center gap-3 flex-wrap">
-                      <h1 class="text-foreground mb-0 [overflow-wrap:anywhere] [text-wrap:balance]" style={`font-size:var(--nb-h1-size);line-height:var(--nb-h1-leading);font-weight:var(--nb-h1-weight);letter-spacing:var(--nb-h1-tracking)`}>{title}</h1>
+                      <h1 class="font-serif text-foreground mb-0 [overflow-wrap:anywhere] [text-wrap:balance]" style={`font-size:var(--nb-h1-size);line-height:var(--nb-h1-leading);font-weight:var(--nb-h1-weight);letter-spacing:var(--nb-h1-tracking)`}>{title}</h1>
                       {draft && <Badge text="Draft" variant="warning" size="medium" />}
                     </div>
                     {description && (
@@ -434,6 +433,47 @@ const showToc = headings !== false && (hasToc || headings.length > 0);
         if (dialog.open) unlockScroll();
       };
     });
+
+    // Desktop sidebar collapse/expand toggle (persisted across navigation).
+    mount("[data-sidebar-toggle]", (btn) => {
+      const root = document.documentElement;
+      const sync = () => {
+        const collapsed = root.getAttribute("data-sidebar-collapsed") === "true";
+        btn.setAttribute("aria-pressed", String(collapsed));
+      };
+      sync();
+      const onClick = () => {
+        const next = root.getAttribute("data-sidebar-collapsed") !== "true";
+        if (next) root.setAttribute("data-sidebar-collapsed", "true");
+        else root.removeAttribute("data-sidebar-collapsed");
+        try {
+          localStorage.setItem("docs-sidebar-collapsed", String(next));
+        } catch {}
+        sync();
+      };
+      btn.addEventListener("click", onClick);
+      return () => btn.removeEventListener("click", onClick);
+    });
   </script>
+
+  <style is:global>
+    .docs-desktop-sidebar {
+      transition:
+        width 220ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 180ms ease,
+        margin 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    html[data-sidebar-collapsed="true"] .docs-desktop-sidebar {
+      width: 0 !important;
+      opacity: 0;
+      pointer-events: none;
+      margin-inline-end: -0.75rem;
+    }
+    @media (min-width: 1024px) {
+      html[data-sidebar-collapsed="true"] .docs-desktop-sidebar {
+        margin-inline-end: -1rem;
+      }
+    }
+  </style>
 
 </BaseLayout>

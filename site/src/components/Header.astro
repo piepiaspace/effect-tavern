@@ -65,36 +65,68 @@ const langSwitchHref = withBase(
   import.meta.env.BASE_URL,
 );
 const langSwitchLabel = isZh ? "EN" : "中文";
+const introHref = withBase(isZh ? "/zh/introduction/" : "/introduction/", import.meta.env.BASE_URL);
+const conceptsHref = withBase(isZh ? "/zh/concepts/" : "/concepts/", import.meta.env.BASE_URL);
+const isHome = currentSlug === "/" || currentSlug === "/zh";
+const isConcepts = bareSlug === "/concepts";
+const isDocs = !isHome && !isConcepts;
 ---
 
-<header class="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur-lg">
+<header class="sticky top-0 z-30 bg-background/85 backdrop-blur-md">
   <div class="mx-auto flex items-center justify-between gap-3 h-14 px-4 lg:px-6">
-    <div class="flex items-center gap-3 min-w-0">
+    <div class="flex items-center gap-2.5 min-w-0">
+      {showSidebar && (
+        <button
+          type="button"
+          data-sidebar-toggle
+          aria-label={isZh ? "折叠或展开侧边栏" : "Toggle sidebar"}
+          class="hidden md:inline-flex items-center justify-center w-8 h-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
+        >
+          <Icon name="ph:sidebar-simple" class="w-4 h-4" />
+        </button>
+      )}
       <slot name="brand">
-        <a href={homeHref} class="flex shrink-0 items-center gap-2 text-foreground no-underline transition-opacity hover:opacity-70">
+        <a href={homeHref} class="flex shrink-0 items-center gap-2.5 text-foreground no-underline transition-opacity hover:opacity-75">
           <Logo class="h-5 w-5 shrink-0" />
           <span class="text-sm font-semibold tracking-tight">{config.title}</span>
+          <span class="hidden sm:inline-flex items-center rounded-full border border-border bg-card px-2 py-0.5 font-mono text-[0.625rem] font-medium tracking-[0.12em] uppercase text-muted-foreground">
+            Docs
+          </span>
         </a>
       </slot>
 
-      {showSections && (
-        <nav aria-label="Sections" class="hidden md:flex items-center gap-1 ms-4 ps-4 border-s border-border h-6 min-w-0 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {sections.map((section) => (
-            <a
-              href={resolveSectionHref(section.href)}
-              aria-current={section.isActive ? "page" : undefined}
-              class:list={[
-                "px-2 py-1 rounded-md text-[0.8125rem] font-medium no-underline transition-colors shrink-0 whitespace-nowrap",
-                section.isActive
-                  ? "text-foreground bg-accent"
-                  : "text-muted-foreground hover:text-foreground hover:bg-accent/60",
-              ]}
-            >
-              {section.label}
-            </a>
-          ))}
-        </nav>
-      )}
+      <nav aria-label="Primary" class="hidden md:flex items-center gap-1 ms-3 min-w-0">
+        <a
+          href={homeHref}
+          aria-current={isHome ? "page" : undefined}
+          class:list={[
+            "px-3 py-1 rounded-full text-[0.8125rem] font-medium no-underline transition-colors shrink-0",
+            isHome ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground hover:bg-accent/70",
+          ]}
+        >
+          {isZh ? "首页" : "Home"}
+        </a>
+        <a
+          href={introHref}
+          aria-current={isDocs ? "page" : undefined}
+          class:list={[
+            "px-3 py-1 rounded-full text-[0.8125rem] font-medium no-underline transition-colors shrink-0",
+            isDocs ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground hover:bg-accent/70",
+          ]}
+        >
+          {isZh ? "文档" : "Docs"}
+        </a>
+        <a
+          href={conceptsHref}
+          aria-current={isConcepts ? "page" : undefined}
+          class:list={[
+            "px-3 py-1 rounded-full text-[0.8125rem] font-medium no-underline transition-colors shrink-0",
+            isConcepts ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground hover:bg-accent/70",
+          ]}
+        >
+          {isZh ? "核心概念" : "Concepts"}
+        </a>
+      </nav>
     </div>
 
     <div class="flex items-center gap-2 shrink-0">

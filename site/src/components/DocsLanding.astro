@@ -1,0 +1,357 @@
+---
+/**
+ * DocsLanding — visual product home page (mode: custom) for Effect Tavern Docs.
+ * Full-bleed warm archival paper + architectural drafting grid, Geist Serif hero,
+ * spinning Cosmic Noir Vinyl Cosmos platter, flicker-free 6-card docs map, and
+ * a calm quick-start terminal strip.
+ */
+import BrandIcon, { type BrandIconName } from "./BrandIcon.astro";
+import { withBase } from "@cloudflare/nimbus-docs/runtime";
+
+interface CardItem {
+  title: string;
+  description: string;
+  icon: BrandIconName;
+  href: string;
+}
+
+interface Props {
+  lang: "en" | "zh";
+  kicker: string;
+  headlineTop: string;
+  headlineBottom: string;
+  subtitle: string;
+  primaryLabel: string;
+  primaryHref: string;
+  secondaryLabel: string;
+  secondaryHref: string;
+  exploreHeading: string;
+  exploreSub: string;
+  cards: CardItem[];
+  quickStartHeading: string;
+  quickStartSub: string;
+}
+
+const {
+  lang,
+  kicker,
+  headlineTop,
+  headlineBottom,
+  subtitle,
+  primaryLabel,
+  primaryHref,
+  secondaryLabel,
+  secondaryHref,
+  exploreHeading,
+  exploreSub,
+  cards,
+  quickStartHeading,
+  quickStartSub,
+} = Astro.props;
+
+const base = import.meta.env.BASE_URL;
+const resolve = (href: string) => withBase(href, base);
+---
+
+<div class="landing-root relative">
+  <!-- Full-bleed editorial Hero -->
+  <section class="relative overflow-hidden">
+    <div class="landing-grid pointer-events-none absolute inset-0" aria-hidden="true"></div>
+    <div class="relative z-10 mx-auto max-w-[76rem] px-6 sm:px-10 pt-12 pb-16 sm:pt-16 sm:pb-24">
+      <div class="grid items-center gap-12 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div class="flex flex-col items-start">
+          <div class="flex items-center gap-2.5 font-mono text-[0.6875rem] tracking-[0.14em] uppercase text-muted-foreground">
+            <span class="inline-block h-px w-5 bg-border-strong shrink-0" aria-hidden="true"></span>
+            <span>{kicker}</span>
+          </div>
+
+          <h1 class="mt-5 mb-0 leading-[1.06] tracking-[-0.03em] text-foreground">
+            <span class="landing-aperture-line block font-sans font-semibold text-[2.45rem] sm:text-[3.25rem] lg:text-[3.75rem] tracking-[-0.04em]">
+              {headlineTop}
+            </span>
+            <span class="landing-aperture-rule my-2.5 flex items-center gap-3" aria-hidden="true">
+              <span class="h-px flex-1 max-w-[14rem] landing-aperture-dash"></span>
+              <span class="font-mono text-[0.625rem] tracking-[0.12em] uppercase text-muted-foreground/75">
+                Aperture · 118°
+              </span>
+            </span>
+            <span class="block font-serif font-semibold text-[2.6rem] sm:text-[3.5rem] lg:text-[4rem] tracking-[-0.03em]">
+              {headlineBottom}
+            </span>
+          </h1>
+
+          <p class="mt-6 mb-0 max-w-[44ch] text-base sm:text-[1.0625rem] leading-[1.7] text-muted-foreground">
+            {subtitle}
+          </p>
+
+          <div class="mt-8 flex flex-wrap items-center gap-3.5">
+            <a
+              href={resolve(primaryHref)}
+              class="inline-flex items-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-medium text-primary-foreground no-underline shadow-sm transition-colors hover:bg-primary-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <span>{primaryLabel}</span>
+              <span aria-hidden="true">→</span>
+            </a>
+            <a
+              href={resolve(secondaryHref)}
+              class="inline-flex items-center gap-2 rounded-xl border border-border-strong bg-card/85 px-5 py-3 text-sm font-medium text-foreground no-underline shadow-sm transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <span>{secondaryLabel}</span>
+            </a>
+          </div>
+
+          <div class="mt-8 flex flex-wrap items-center gap-x-4 gap-y-1.5 font-mono text-[0.75rem] text-muted-foreground/85">
+            <span>+ Effect v4</span>
+            <span>+ Solid 2.0</span>
+            <span>+ @ui-sdk</span>
+            <span>+ Bun</span>
+          </div>
+        </div>
+
+        <!-- Framed Cosmic Noir Vinyl Cosmos -->
+        <div class="relative mx-auto w-full max-w-[23rem] lg:max-w-[25rem]">
+          <div class="rounded-3xl border border-border bg-card p-6 sm:p-7 shadow-default">
+            <div class="flex items-center justify-between font-mono text-[0.6875rem] tracking-[0.08em] text-muted-foreground/80">
+              <span>01/06</span>
+              <span>33.3 RPM</span>
+            </div>
+            <div class="my-4 flex items-center justify-center">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="block w-full h-auto text-foreground"
+                viewBox="0 0 1024 1024"
+                fill="none"
+                aria-hidden="true"
+              >
+                <g class="landing-vinyl-platter">
+                  <circle cx="501" cy="515" r="404" fill="currentColor" />
+                  <circle cx="501.3" cy="514.9" r="126.9" fill="var(--nb-brand)" stroke="var(--nb-card)" stroke-width="5" />
+                  <circle cx="500.7" cy="515.7" r="19.38" fill="currentColor" />
+                  <circle cx="500.7" cy="515.7" r="6.129" fill="var(--nb-card)" />
+                  <path d="m586.2 171.1c-28.93-6.4-58.62-9.344-87.42-9.344-183.2 0-363 144.4-363 355.5 0 214.8 162.8 359.3 358.4 359.3 216.2 0 367.5-169.7 367.5-361.2 0-47.49-8.576-96.64-27.39-135.7" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m814 351.1c-65.02-118.9-180.5-172.7-219.6-176.6" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m443.9 197.1c-76.42 11.78-146.2 50.69-194 99.2" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m246.9 301.3c-48.38 50.82-75.01 124.3-77.18 202.1" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m169.2 506.2c-3.2 125.4 59.26 229.9 144.5 281.7" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m332.4 797.3c48.77 28.29 109.3 41.6 161.4 42.75" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m497.9 839.9c173.8 1.664 332.9-127.1 332.9-314.5 0-7.168 0.128-9.088 0.128-10.37" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m703.7 301.2c-58.62-52.1-134.4-77.82-199.3-77.82-49.02 0-93.44 13.06-124.5 34.82" stroke="var(--nb-card)" stroke-width="1.9" />
+                  <path d="m301.8 294.3c-59.78 49.66-94.59 133.2-94.59 221.7 0 50.56 11.52 100.4 31.87 135.8" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m247.2 664.6c52.22 95.1 165 137.3 261.6 137.3 169 0 283.4-110.8 284.7-280.4" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m399.2 283.6c32-16.64 72.32-23.68 111.6-23.68 139.9 0 238.8 105.3 242.4 242.4" stroke="var(--nb-card)" stroke-width="1.9" />
+                  <path d="m246.4 471.3c-1.28 12.16-1.408 29.18-1.408 41.34 0 151.2 116.1 253.3 256.9 253.3 128.1 0 226.2-70.02 256.5-159.5" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m625.5 700.7c-41.22 19.46-86.91 29.57-129.8 29.57-126.2 0-219.8-100.6-219.8-217.7 0-62.46 24.06-123.6 60.8-156.5" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <path d="m347.4 472.1c18.69-66.69 85.89-112.4 156.3-112.4 88.96 0 154.2 68.99 153 155 0 93.95-79.23 150.5-158 150.5-88.19 0-155.3-67.58-154.8-150.5" stroke="var(--nb-card)" stroke-width="2.2" />
+                  <circle cx="342.9" cy="406.8" r="8.7" fill="var(--nb-card)" />
+                  <circle cx="701.3" cy="294.4" r="11" fill="var(--nb-card)" />
+                  <circle cx="593.3" cy="172.1" r="8" fill="var(--nb-card)" />
+                  <circle cx="249.5" cy="298.3" r="6.8" fill="var(--nb-card)" />
+                  <circle cx="241.3" cy="660.1" r="11.5" fill="var(--nb-card)" />
+                  <circle cx="320.2" cy="793.8" r="13.5" fill="var(--nb-card)" />
+                  <circle cx="716.2" cy="466.8" r="7.2" fill="var(--nb-card)" />
+                  <circle cx="448.3" cy="691.5" r="7" fill="var(--nb-card)" />
+                  <circle cx="808.7" cy="647.2" r="5.2" fill="var(--nb-card)" />
+                  <circle cx="831.8" cy="517.8" r="5.1" fill="var(--nb-card)" />
+                  <circle cx="494.2" cy="839.8" r="5.1" fill="var(--nb-card)" />
+                  <circle cx="168.9" cy="503.7" r="4.9" fill="var(--nb-card)" />
+                  <path d="m367.2 253.7c-27.26-3.584-51.84 20.35-51.84 47.36 0 24.19 20.1 43.26 41.6 43.26 18.94 0 36.61-13.06 41.98-27.65-6.912 7.808-17.54 12.42-27.52 12.42-19.97 0-34.94-16.26-34.94-35.84 0-19.2 13.44-36.1 30.72-39.55z" fill="var(--nb-card)" />
+                  <path d="m667.3 341.4c-3.456 23.55-3.584 23.81-19.2 26.88 17.02 3.328 15.87 2.688 19.2 25.34 3.456-23.42 2.304-22.27 19.97-25.34-18.94-3.328-17.54-3.84-19.97-26.88z" fill="var(--nb-card)" />
+                  <path d="m236.7 440.8c-1.92 22.02-1.664 21.12-16 24.45 15.87 3.584 13.95 2.048 15.62 22.27 3.84-20.35 2.56-20.35 15.87-22.27-14.72-3.072-13.31-6.528-15.49-24.45z" fill="var(--nb-card)" />
+                </g>
+                <path d="m639.6 655.5c-4.096 34.43-3.456 31.87-29.82 37.12 27.9 5.376 25.09 2.56 29.44 32.9 5.12-29.82 1.536-29.18 30.85-32.9-28.67-6.016-25.34-1.28-30.46-37.12z" fill="var(--nb-card)" />
+                <g>
+                  <circle cx="888" cy="173" r="90" fill="currentColor" />
+                  <path d="m910.5 97.15c-6.144-1.408-13.06-2.048-20.74-2.048-43.01 0-80.13 35.33-80.13 77.06 0 32 20.86 59.14 47.36 68.22" stroke="var(--nb-card)" stroke-width="3.2" />
+                  <path d="m889.6 244.5c41.86 0.768 72.7-34.69 72.7-71.81 0-19.58-7.808-38.27-19.71-49.79" stroke="var(--nb-card)" stroke-width="3.2" />
+                  <path d="m898.3 126.2c-22.78 0-40.58 17.79-40.58 39.04 0 13.7 6.528 25.6 16.9 32.26l5.504-15.62 15.23 5.248 1.536 2.56 1.536 1.152 4.224 6.016 0.256 7.68-2.432 0.64c20.86 0.384 36.61-15.87 36.61-36.99 0-8.448-1.28-14.08-4.608-21.38l-13.7 30.21c-3.2 5.632-10.5 7.552-18.56 5.504-11.65-2.944-18.3-16.51-14.34-25.22l11.65-31.1h0.768z" fill="var(--nb-brand)" />
+                </g>
+                <g>
+                  <path d="m881.4 180.6-146.2 376.4 15.74 7.296 147.7-373.1-17.28-10.62z" fill="var(--nb-card)" stroke="currentColor" stroke-width="3" />
+                  <path d="m726 557.3c-18.82 21.76-41.6 50.69-59.39 74.24l25.22 14.08 57.22-54.91 5.632-23.55-28.67-9.856z" fill="var(--nb-card)" stroke="currentColor" stroke-width="3" />
+                  <circle cx="719.9" cy="592.5" r="8.2" fill="currentColor" />
+                  <path d="m672.6 641.4-16 27.78 7.68 5.888 23.55-26.24-15.23-7.424z" fill="var(--nb-brand)" stroke="currentColor" stroke-width="2" />
+                  <path d="m656.5 670-8.704 16.38 16.38-12.16-7.68-4.224z" fill="var(--nb-card)" />
+                  <path d="m921.3 78.46-32.9 82.56c-2.048 13.44 17.79 22.4 25.22 15.1l34.94-80c13.44-12.29-15.1-28.42-27.26-17.66z" fill="var(--nb-card)" stroke="currentColor" stroke-width="3.9" />
+                  <ellipse transform="matrix(.9523 .3052 -.3052 .9523 69.78 -283.1)" cx="940.2" cy="81.63" rx="17.47" ry="12.08" fill="currentColor" />
+                </g>
+                <path d="m168.3 118.5c-5.76 44.8-3.328 43.52-38.14 49.54 35.71 4.992 33.28 7.04 37.76 44.54 5.888-39.81 2.176-39.04 39.94-44.29-36.22-6.4-33.66-7.168-38.91-49.79h-0.64z" fill="var(--nb-brand)" />
+                <path d="m876.9 790c-5.76 48.77-3.712 49.79-42.24 54.91 38.91 4.864 36.86 9.728 41.86 49.28h0.896c4.736-41.22 2.944-43.39 39.3-49.15-38.14-6.528-35.46-9.984-39.04-55.04h-0.768z" fill="var(--nb-brand)" />
+              </svg>
+            </div>
+            <div class="flex items-center justify-between font-mono text-[0.6875rem] tracking-[0.1em] uppercase text-muted-foreground/80">
+              <span>Effect Tavern</span>
+              <span>Vinyl Cosmos</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Explore the Docs: 6-card visual map with stationary outer hit targets -->
+  <section class="mx-auto max-w-[76rem] px-6 sm:px-10 pb-16">
+    <div class="flex flex-col gap-1.5 mb-7">
+      <h2 class="m-0 font-serif text-[1.75rem] sm:text-[2rem] font-medium tracking-[-0.02em] text-foreground">
+        {exploreHeading}
+      </h2>
+      <p class="m-0 text-sm sm:text-base text-muted-foreground">{exploreSub}</p>
+    </div>
+
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {cards.map((card) => (
+        <a
+          href={resolve(card.href)}
+          class="group block rounded-2xl text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <div class="flex h-full flex-col rounded-2xl bg-card p-6 shadow-sm ring ring-border transition-[transform,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:shadow-default group-hover:ring-border-strong motion-reduce:group-hover:translate-y-0">
+            <div class="mb-4 inline-flex size-12 items-center justify-center rounded-2xl border border-border bg-background/85 text-foreground">
+              <BrandIcon name={card.icon} class="size-7" />
+            </div>
+            <div class="text-base font-semibold leading-snug text-foreground">
+              {card.title}
+            </div>
+            <p class="mt-2 mb-0 text-sm leading-relaxed text-muted-foreground">
+              {card.description}
+            </p>
+          </div>
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <!-- Calm Quick Start Strip -->
+  <section class="mx-auto max-w-[76rem] px-6 sm:px-10 pb-20">
+    <div class="rounded-3xl border border-border bg-card p-6 sm:p-8 shadow-sm">
+      <div class="grid items-center gap-6 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <div>
+          <h2 class="m-0 font-serif text-[1.5rem] sm:text-[1.75rem] font-medium tracking-[-0.02em] text-foreground">
+            {quickStartHeading}
+          </h2>
+          <p class="mt-2 mb-0 text-sm leading-relaxed text-muted-foreground">
+            {quickStartSub}
+          </p>
+          <div class="mt-4 font-mono text-xs text-muted-foreground/85">
+            {lang === "zh"
+              ? "全站每页均提供净版 Markdown（/<slug>/index.md）与 /llms.txt"
+              : "Every page publishes a clean Markdown twin (/<slug>/index.md) and /llms.txt"}
+          </div>
+        </div>
+        <div class="overflow-x-auto rounded-2xl border border-border bg-background/85 px-5 py-4 font-mono text-[0.8125rem] leading-7 text-foreground">
+          <div><span class="select-none text-muted-foreground mr-2">$</span>vp install</div>
+          <div><span class="select-none text-muted-foreground mr-2">$</span>bun --bun vp run dev</div>
+          <div><span class="select-none text-muted-foreground mr-2">$</span>MODEL=fake bun run tavern play wuxia --greeting 0</div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<style>
+  .landing-grid {
+    background-image:
+      linear-gradient(to right, var(--nb-border) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--nb-border) 1px, transparent 1px);
+    background-size: 48px 48px;
+    mask-image: radial-gradient(ellipse 75% 75% at 58% 45%, rgb(0 0 0 / 0.72) 0%, transparent 80%);
+    opacity: 0.7;
+  }
+
+  /* Glyph-as-Aperture Portal (Line 1): predominantly neutral charcoal ink with a
+     restrained, surgical 118° terracotta light sliver + subtle orbital contours. */
+  .landing-aperture-line {
+    color: transparent;
+    -webkit-text-stroke: 0.6px rgb(21 21 21 / 0.22);
+    background-image:
+      repeating-radial-gradient(
+        ellipse 140% 75% at 62% 58%,
+        transparent 0 11px,
+        rgb(255 255 255 / 0.24) 11px 12px,
+        transparent 12px 22px
+      ),
+      linear-gradient(
+        118deg,
+        #151515 0%,
+        #151515 36%,
+        #5e2b18 46%,
+        #c8522a 52%,
+        #e58442 56%,
+        #5e2b18 62%,
+        #151515 72%,
+        #151515 100%
+      );
+    background-size: 160% 160%, 240% 100%;
+    background-position: 35% 50%, 26% 50%;
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+
+  :global([data-mode="dark"]) .landing-aperture-line {
+    -webkit-text-stroke: 0.6px rgb(245 245 245 / 0.2);
+    background-image:
+      repeating-radial-gradient(
+        ellipse 140% 75% at 62% 58%,
+        transparent 0 11px,
+        rgb(255 255 255 / 0.18) 11px 12px,
+        transparent 12px 22px
+      ),
+      linear-gradient(
+        118deg,
+        #e8e8e6 0%,
+        #e8e8e6 36%,
+        #c46b45 47%,
+        #f08d4d 53%,
+        #f7be83 56%,
+        #c46b45 62%,
+        #e8e8e6 72%,
+        #e8e8e6 100%
+      );
+  }
+
+  .landing-aperture-dash {
+    background: repeating-linear-gradient(
+      to right,
+      var(--nb-border-strong) 0 4px,
+      transparent 4px 8px
+    );
+  }
+
+  .landing-vinyl-platter {
+    transform-origin: 501px 515px;
+  }
+
+  /* Scroll-driven progressive enhancement: sweeping the aperture beam and
+     spinning the Cosmic Noir vinyl platter in sync with page scroll. */
+  @supports ((animation-timeline: view()) and (animation-range: entry)) {
+    @media (prefers-reduced-motion: no-preference) {
+      .landing-aperture-line {
+        animation: landing-aperture-sweep linear both;
+        animation-timeline: scroll(root);
+        animation-range: 0px 440px;
+      }
+
+      .landing-vinyl-platter {
+        animation: landing-vinyl-scroll linear both;
+        animation-timeline: scroll(root);
+        animation-range: 0px 900px;
+      }
+    }
+  }
+
+  @keyframes landing-aperture-sweep {
+    from {
+      background-position: 28% 50%, 18% 50%;
+    }
+    to {
+      background-position: 78% 50%, 86% 50%;
+    }
+  }
+
+  @keyframes landing-vinyl-scroll {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(135deg);
+    }
+  }
+</style>

@@ -3,24 +3,25 @@
  * Card — a titled panel, optionally with an icon. With `href`, the whole card
  * is the link.
  *
- *   <Card title="Write a page" icon="ph:pencil-simple">Create an .mdx file.</Card>
- *   <Card title="Quickstart" href="/get-started/quickstart/">Your first request.</Card>
- *
- * For a rich title or a custom mark, use the `title` and `icon` slots.
+ * Hit-target / visual-surface separation: the outer `<Tag>` stays stationary so
+ * hovering near the bottom edge never oscillates (no hover flicker), while the
+ * inner `[data-slot="card-surface"]` carries the subtle lift and shadow.
  */
 import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+import BrandIcon, { type BrandIconName } from "@/components/BrandIcon.astro";
 import { cn } from "@/lib/cn";
 import type { HTMLAttributes } from "astro/types";
 
 interface Props extends HTMLAttributes<"article"> {
   title?: string;
-  /** Iconify icon name, e.g. `ph:lightning`. */
+  /** Iconify icon name (e.g. `ph:lightning`) or Effect Tavern custom icon (`et:timeline`). */
   icon?: string;
   /** Makes the whole card a link. */
   href?: string;
 }
 
 const { title, icon, href, class: className, ...attrs } = Astro.props;
+const brandIcon = icon?.startsWith("et:") ? (icon.slice(3) as BrandIconName) : null;
 const hasIcon = Boolean(icon) || Astro.slots.has("icon");
 const hasTitle = Boolean(title) || Astro.slots.has("title");
 const Tag = href ? "a" : "article";
@@ -33,23 +34,39 @@ const Title = href ? "p" : "h3";
   data-slot="card"
   href={href}
   class={cn(
-    "my-4 block rounded-lg bg-card p-5 shadow-sm ring ring-border",
-    href && "group text-inherit no-underline transition-[box-shadow] hover:shadow-default hover:ring-border-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+    "my-4 block rounded-2xl",
+    href && "group text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
     className,
   )}
   {...attrs}
 >
-  {hasIcon && (
-    <div data-slot="card-icon" class="mb-2.5 text-brand">
-      <slot name="icon">{icon && <Icon name={icon} class="block size-6" />}</slot>
+  <div
+    data-slot="card-surface"
+    class={cn(
+      "h-full rounded-2xl bg-card p-5 shadow-sm ring ring-border",
+      href && "transition-[transform,box-shadow] duration-200 ease-out group-hover:-translate-y-0.5 group-hover:shadow-default group-hover:ring-border-strong motion-reduce:group-hover:translate-y-0",
+    )}
+  >
+    {hasIcon && (
+      <div data-slot="card-icon" class={cn("mb-3", brandIcon ? "text-foreground" : "text-brand")}>
+        <slot name="icon">
+          {brandIcon ? (
+            <span class="inline-flex size-10 items-center justify-center rounded-xl border border-border bg-background/85">
+              <BrandIcon name={brandIcon} class="block size-6" />
+            </span>
+          ) : (
+            icon && <Icon name={icon} class="block size-6" />
+          )}
+        </slot>
+      </div>
+    )}
+    {hasTitle && (
+      <Title data-slot="card-title" class="m-0 text-base font-semibold leading-snug text-foreground">
+        <slot name="title">{title}</slot>
+      </Title>
+    )}
+    <div data-slot="card-content" class:list={["text-sm leading-normal text-muted-foreground", hasTitle && "mt-1.5"]}>
+      <slot />
     </div>
-  )}
-  {hasTitle && (
-    <Title data-slot="card-title" class={cn("m-0 text-base font-semibold leading-snug text-foreground", href && "transition-colors group-hover:text-primary")}>
-      <slot name="title">{title}</slot>
-    </Title>
-  )}
-  <div data-slot="card-content" class:list={["text-sm leading-normal text-muted-foreground", hasTitle && "mt-1.5"]}>
-    <slot />
   </div>
 </Tag>

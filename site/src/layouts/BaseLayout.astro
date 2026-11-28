@@ -1,8 +1,9 @@
 ---
 import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
-// The body font starts downloading with the page instead of after the CSS.
+// The body and editorial display fonts start downloading with the page instead of after the CSS.
 import interLatin from "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2?url";
+import geistSerif from "../assets/fonts/GeistSerifVF.woff2?url";
 import "../styles/globals.css";
 import "../styles/prose.css";
 import { ClientRouter } from "astro:transitions";
@@ -69,6 +70,7 @@ const resolvedMarkdownUrl =
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="preload" href={interLatin} as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href={geistSerif} as="font" type="font/woff2" crossorigin />
     <WebMCP />
 
     <script is:inline>
@@ -100,6 +102,11 @@ const resolvedMarkdownUrl =
             b.setAttribute("data-nb-state", mode);
             b.setAttribute("aria-pressed", String(mode === "dark"));
           });
+          try {
+            const collapsed = localStorage.getItem("docs-sidebar-collapsed") === "true";
+            if (collapsed) root.setAttribute("data-sidebar-collapsed", "true");
+            else root.removeAttribute("data-sidebar-collapsed");
+          } catch {}
         };
 
         applyTheme();

@@ -1,81 +1,61 @@
 ---
-title: 简介
+title: Effect Tavern
 description: 基于 Effect v4 的声明式卡片、多阶段回合管线与确定性状态结算系统。
+mode: custom
 sidebar:
-  order: 0
+  hidden: true
 ---
 
-Effect Tavern 是从零设计的 AI 角色扮演与交互叙事全栈系统，基于 **Effect v4**、**Solid 2.0**、**UI SDK（`@ui-sdk`）** 与 **Bun** 构建。
-
-它彻底摒弃了“提示词魔咒 + 聊天楼层深度插入 + 正则解析状态栏”的传统做法，将每张卡定义为**声明式数据加确定性规则**。代码掌控执行循环、带种子的随机掷骰、状态变更与缓存前缀断点；LLM 只在类型严密的阶段接缝上被调用，负责分类判断、渲染散文与提取结构化事实。
-
-<Aside type="note" title="双语支持与 Agent 原生友好">
-  点击顶栏右上角可一键切换至 [English](/) 对应页面。本站所有页面均同步输出净版 Markdown（`/zh/<slug>/index.md`）以及面向 Coding Agent 的 `/llms.txt` 索引。
-</Aside>
-
-## 文档导览
-
-<CardGrid>
-  <Card title="核心概念" icon="ph:compass" href="/zh/concepts/">
-    了解八阶段回合管线、不可变日志树、统一 `WorldState` 三类产物分责与缓存前缀纪律。
-  </Card>
-  <Card title="卡片创作与工坊" icon="ph:cards" href="/zh/card-authoring/">
-    掌握“两顶帽子”制卡流程、`Card` 各字段职责、实测避坑铁律，以及旧卡展开与工坊工具。
-  </Card>
-  <Card title="CLI 与无头宿主" icon="ph:terminal-window" href="/zh/cli/">
-    用一个命令 `tavern` 完成零 Token 回归测试、终端游玩、工坊编译与无头服务部署。
-  </Card>
-  <Card title="玩家层、写作包与帽子" icon="ph:stack" href="/zh/layers-and-packs/">
-    告别传统大杂烩预设，通过五级 `Layer` 优先级、写作开关、写作包（`Pack`）、协议壳（`Hat`）与决策预检按需定制。
-  </Card>
-  <Card title="桌面与手机应用" icon="ph:app-window" href="/zh/app/">
-    安装应用，了解数据存放位置，以及 Go 宿主替页面做了什么。
-  </Card>
-  <Card title="Web 客户端与交互架构" icon="ph:browsers" href="/zh/client/">
-    了解三层空间画布壳层、无跳变流式阅读器、回合检查器，以及基于 `@ui-sdk` 的跨平台控件与 Agent Bridge。
-  </Card>
-</CardGrid>
-
-## 快速上手
-
-**环境要求：** Bun `>= 1.4.5` 以及 Vite+（`vp`；依赖由 Bun 安装）。
-
-<Steps>
-  <Step title="安装依赖">
-    ```sh
-    vp install
-    ```
-  </Step>
-  <Step title="启动全栈 Web 开发环境">
-    ```sh
-    bun --bun vp run dev
-    ```
-    同一进程内挂载 Solid 2.0 前端（HMR）与 `/api` 会话接口（默认库 `.dev/tavern.db`）。传入 `MODEL=fake` 可在不消耗 API Token 的情况下走通完整流程。
-  </Step>
-  <Step title="或在终端直接游玩与校验卡片">
-    ```sh
-    bun run tavern card install packages/runtime/test/cards/wuxia.yaml
-    MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
-    bun run tavern card check packages/runtime/test/cards/wuxia.yaml
-    ```
-  </Step>
-  <Step title="运行静态检查与全仓自检">
-    ```sh
-    vp check
-    vp run verify
-    cd packages/client && vp run verify:ui
-    ```
-  </Step>
-</Steps>
-
-## 测试夹具卡与重制样卡
-
-程序本身不带任何卡片：新安装的书架是空的，卡片来自文件或玩家自己添加的卡库。仓库在 `packages/runtime/test/cards/` 下保留四张 YAML 卡作为测试夹具（配合 `samples/life-of-pi/life-of-pi.yaml` 等完整重制样卡），既是文档范例，也是运行时的回归基线，安装方式与任何卡片文件相同：
-
-| 卡片 ID | 视角与默认通道 | 覆盖机制 |
-| --- | --- | --- |
-| `banxing`（伴星） | `participant` / `act` | 纯聊天卡（零规则、零 lore），演示对白声音样本 `fiction` 片段 |
-| `ri`（理） | `participant` / `act` | 单轴多段 `scale` 散文分段、`hidden` 隐藏结局开关、三开场与锁存型读数 |
-| `wuxia`（竹林） | `participant` / `act` | 动作掷骰、读数分段、三层 lore、`director`、`world` 记录与人物表、`guard` |
-| `yandao`（盐道） | `author` / `note` | 无玩家角色的大世界续写，卡片接管 `pov` 槽位并在第 1 轮开窗 |
-| `life-of-pi`（`samples/`） | `participant` / `act` | 多日时间循环重制卡，演示写后 `passages`、`digest` 纪元边界与 `end: true` 终局 |
+<DocsLanding
+  lang="zh"
+  kicker="技术文档 · EFFECT V4"
+  headlineTop="声明式卡片，"
+  headlineBottom="确定性世界。"
+  subtitle="从零设计的 AI 角色扮演与交互叙事全栈系统——代码掌控循环、掷骰与状态结算，LLM 只在类型严密的阶段接缝上叙事。"
+  primaryLabel="阅读文档简介"
+  primaryHref="/zh/introduction/"
+  secondaryLabel="核心概念"
+  secondaryHref="/zh/concepts/"
+  exploreHeading="文档导览"
+  exploreSub="直接进入系统架构、卡片创作工坊、CLI 宿主或客户端壳层。"
+  cards={[
+    {
+      title: "核心概念",
+      description: "八阶段回合管线、不可变日志树、统一 WorldState 三类产物分责与缓存前缀纪律。",
+      icon: "timeline",
+      href: "/zh/concepts/",
+    },
+    {
+      title: "卡片创作与工坊",
+      description: "“两顶帽子”制卡流程、声明式规则、世界书与旧卡重制工坊工具。",
+      icon: "story-card",
+      href: "/zh/card-authoring/",
+    },
+    {
+      title: "CLI 与无头宿主",
+      description: "用一个命令 tavern 完成零 Token 回归测试、终端游玩、编译与 SSE 宿主部署。",
+      icon: "template",
+      href: "/zh/cli/",
+    },
+    {
+      title: "玩家层、写作包与帽子",
+      description: "告别传统大杂烩预设，通过五级 Layer 优先级、写作包与协议壳按需定制。",
+      icon: "layers",
+      href: "/zh/layers-and-packs/",
+    },
+    {
+      title: "桌面与手机应用",
+      description: "了解本地书架存储位置、原生 Go 薄宿主以及跨平台桌面与移动端打包。",
+      icon: "package",
+      href: "/zh/app/",
+    },
+    {
+      title: "Web 客户端与交互架构",
+      description: "三层空间画布壳层、无跳变流式阅读器、回合检查器与 @ui-sdk 跨平台控件。",
+      icon: "shell",
+      href: "/zh/client/",
+    },
+  ]}
+  quickStartHeading="快速上手"
+  quickStartSub="需要 Bun >= 1.4.5。一键启动全栈开发环境，或用 MODEL=fake 零 Token 在终端运行测试卡。"
+/>

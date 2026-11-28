@@ -1,0 +1,81 @@
+---
+title: 简介
+description: 基于 Effect v4 的声明式卡片、多阶段回合管线与确定性状态结算系统。
+sidebar:
+  order: 0
+---
+
+Effect Tavern 是从零设计的 AI 角色扮演与交互叙事全栈系统，基于 **Effect v4**、**Solid 2.0**、**UI SDK（`@ui-sdk`）** 与 **Bun** 构建。
+
+它彻底摒弃了“提示词魔咒 + 聊天楼层深度插入 + 正则解析状态栏”的传统做法，将每张卡定义为**声明式数据加确定性规则**。代码掌控执行循环、带种子的随机掷骰、状态变更与缓存前缀断点；LLM 只在类型严密的阶段接缝上被调用，负责分类判断、渲染散文与提取结构化事实。
+
+<Aside type="note" title="双语支持与 Agent 原生友好">
+  点击顶栏右上角可一键切换至 [English](/introduction/) 对应页面。本站所有页面均同步输出净版 Markdown（`/zh/<slug>/index.md`）以及面向 Coding Agent 的 `/llms.txt` 索引。
+</Aside>
+
+## 文档导览
+
+<CardGrid>
+  <Card title="核心概念" icon="et:timeline" href="/zh/concepts/">
+    了解八阶段回合管线、不可变日志树、统一 `WorldState` 三类产物分责与缓存前缀纪律。
+  </Card>
+  <Card title="卡片创作与工坊" icon="et:story-card" href="/zh/card-authoring/">
+    掌握“两顶帽子”制卡流程、`Card` 各字段职责、实测避坑铁律，以及旧卡展开与工坊工具。
+  </Card>
+  <Card title="CLI 与无头宿主" icon="et:template" href="/zh/cli/">
+    用一个命令 `tavern` 完成零 Token 回归测试、终端游玩、工坊编译与无头服务部署。
+  </Card>
+  <Card title="玩家层、写作包与帽子" icon="et:layers" href="/zh/layers-and-packs/">
+    告别传统大杂烩预设，通过五级 `Layer` 优先级、写作开关、写作包（`Pack`）、协议壳（`Hat`）与决策预检按需定制。
+  </Card>
+  <Card title="桌面与手机应用" icon="et:package" href="/zh/app/">
+    安装应用，了解数据存放位置，以及 Go 宿主替页面做了什么。
+  </Card>
+  <Card title="Web 客户端与交互架构" icon="et:shell" href="/zh/client/">
+    了解三层空间画布壳层、无跳变流式阅读器、回合检查器，以及基于 `@ui-sdk` 的跨平台控件与 Agent Bridge。
+  </Card>
+</CardGrid>
+
+## 快速上手
+
+**环境要求：** Bun `>= 1.4.5` 以及 Vite+（`vp`；依赖由 Bun 安装）。
+
+<Steps>
+  <Step title="安装依赖">
+    ```sh
+    vp install
+    ```
+  </Step>
+  <Step title="启动全栈 Web 开发环境">
+    ```sh
+    bun --bun vp run dev
+    ```
+    同一进程内挂载 Solid 2.0 前端（HMR）与 `/api` 会话接口（默认库 `.dev/tavern.db`）。传入 `MODEL=fake` 可在不消耗 API Token 的情况下走通完整流程。
+  </Step>
+  <Step title="或在终端直接游玩与校验卡片">
+    ```sh
+    bun run tavern card install packages/runtime/test/cards/wuxia.yaml
+    MODEL=fake bun run tavern play wuxia --greeting 0 --input "走进竹林"
+    bun run tavern card check packages/runtime/test/cards/wuxia.yaml
+    ```
+  </Step>
+  <Step title="运行静态检查与回归验证">
+    ```sh
+    vp check
+    vp run verify
+    cd packages/client && vp run verify:ui
+    ```
+  </Step>
+</Steps>
+
+## 内置夹具与示例卡
+
+程序发布时本身不附带任何卡片：新安装后的书架是空的，卡片由玩家自行导入文件或接入卡库。仓库在 `packages/runtime/test/cards/` 中保存了四张用于回归测试的 YAML 夹具卡（以及 `samples/life-of-pi/life-of-pi.yaml` 等完整重制示例），它们既展示系统边界，也像普通卡文件一样可随时安装体验：
+
+| 卡片 ID | 模式 / 通道 | 核心展示特性 |
+| --- | --- | --- |
+| `banxing` | `participant` / `act` | 零规则、零世界书的纯对话卡；`fiction` 语感范本 |
+| `ri` | `participant` / `act` | 多阶段 `scale` 刻度区间、`hidden` 路线开关、3 个开场白、自锁读数 |
+| `wuxia` | `participant` / `act` | 动作检定、读数区间、三层世界书、`director`、`world` 记录与表格、`guard` |
+| `yandao` | `author` / `note` | 无主角世界模拟、卡片自持 `pov` 槽位、首回合观察窗口 |
+| `life-of-pi`（`samples/`） | `participant` / `act` | 多日时间循环、记账后 `passages`、`digest` 纪元边界与 `end: true` |

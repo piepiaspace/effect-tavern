@@ -19,10 +19,10 @@ export type ButtonVariant =
 export type ButtonSize = "xs" | "sm" | "base" | "lg";
 export type ButtonShape = "base" | "square" | "circle";
 
-// `rounded-lg` is the default radius for every button; `circle` overrides
-// it to `rounded-full` (see `buttonVariants`), `square` keeps it.
+// `rounded-xl` gives buttons Effect Tavern's softer, tactile geometry; `circle` overrides
+// it to `rounded-full` (see `buttonVariants`), `square` keeps `rounded-xl`.
 export const buttonBase =
-  "group inline-flex max-w-full shrink-0 items-center justify-center rounded-lg text-center font-medium no-underline [text-wrap:balance] transition-all cursor-pointer select-none focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
+  "group inline-flex max-w-full shrink-0 items-center justify-center rounded-xl text-center font-medium no-underline [text-wrap:balance] transition-all cursor-pointer select-none focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50";
 
 export const buttonVariantClasses: Record<ButtonVariant, string> = {
   primary:

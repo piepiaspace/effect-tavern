@@ -33,22 +33,7 @@ const sidebar = sidebarOn
             i.type === "group" && i.label === "English",
         );
         if (!group) return tree;
-        const introHref = group.indexHref ?? "/";
-        const hasIntro = group.children.some((c) => c.type === "link" && c.href === introHref);
-        return [
-          ...(!hasIntro
-            ? [
-                {
-                  type: "link" as const,
-                  label: "Introduction",
-                  href: introHref,
-                  isCurrent: currentSlug === "/",
-                  order: 0,
-                },
-              ]
-            : []),
-          ...group.children,
-        ];
+        return group.children;
       },
     })
   : false;

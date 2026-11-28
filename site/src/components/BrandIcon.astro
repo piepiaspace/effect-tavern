@@ -1,0 +1,68 @@
+---
+/**
+ * BrandIcon — Effect Tavern's bespoke duotone geometric icons (extracted from
+ * packages/client/public/brand/custom-icons-sheet-{1,3}.svg). Ink shapes follow
+ * `currentColor`; the single focal accent follows `var(--nb-brand)`.
+ */
+export type BrandIconName =
+  | "timeline"
+  | "story-card"
+  | "template"
+  | "layers"
+  | "package"
+  | "shell";
+
+interface Props {
+  name: BrandIconName;
+  class?: string;
+}
+
+const { name, class: cls = "size-6" } = Astro.props;
+---
+
+{name === "timeline" && (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="120 554 244 244" class={cls} aria-hidden="true">
+    <circle cx="242.5" cy="581.9" r="24.46" fill="var(--nb-brand)" />
+    <circle cx="323.6" cy="660.8" r="20.99" fill="currentColor" />
+    <circle cx="161" cy="680.8" r="22.46" fill="currentColor" />
+    <path d="m306.2 660.7c-25.32 9.448-46.67 20.97-57.63 39.68v-83.89h-13.79v107.9c-19.08-26.83-46.48-24-56.69-36.47l-8.503 8.881c6.613 8.503 19.27 12.47 28.34 15.31 22.86 7.18 37.22 28.34 37.22 52.34v30.42h13.42v-52.34c0-38.36 30.99-61.22 62.17-69.53l-4.535-12.28z" fill="currentColor" />
+  </svg>
+)}
+{name === "story-card" && (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="828 574 228 228" class={cls} aria-hidden="true">
+    <path d="m973 647.7v-70.1h-103.7c-14.36 0-25.32 10.77-25.32 24.94v171c0 14.36 11.9 25.51 25.32 25.51h143.4c13.98 0 25.89-10.96 25.89-25.51v-125.8h-65.57zm49.51 125.1c0 5.48-4.346 10.01-9.826 10.01h-141.1c-5.858 0-10.01-4.346-10.01-10.01v-168.7c0-5.669 4.157-10.01 10.01-10.01h83.89v52.53c0 9.637 8.314 17.57 17.76 17.57h49.32v108.6z" fill="currentColor" />
+    <path d="m983.4 584v52.53h53.1l-53.1-52.53z" fill="var(--nb-brand)" />
+    <rect x="884.3" y="693.7" width="113.9" height="16.06" fill="currentColor" />
+    <rect x="884.3" y="728.6" width="89.27" height="14.64" fill="currentColor" />
+  </svg>
+)}
+{name === "template" && (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="804 548 180 180" class={cls} aria-hidden="true">
+    <path d="m844.3 586.1v37.22l-13.42 13.79 13.42 13.98v38.36h20.41v20.22h-24l-15.87-17.38v-37.03l-17.19-18.14 17.19-17.95v-34.96l15.87-16.63h24v18.52h-20.41z" fill="currentColor" />
+    <path d="m980.8 637.1-16.63 17.95v36.85l-17.01 17.76h-23.24v-20.03h20.6v-38.36l13.79-14.17-15.87-14.36v-36.66h-18.52v-18.52h23.24l17.01 16.82v35.15l16.63 17.57z" fill="currentColor" />
+    <circle cx="894.1" cy="638" r="18.69" fill="var(--nb-brand)" />
+  </svg>
+)}
+{name === "layers" && (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="1178 164 232 232" class={cls} aria-hidden="true">
+    <path d="m1298 169.6-113.6 54.04 113.6 35.33 103-50.64-103-38.74z" fill="currentColor" />
+    <path d="m1350 316.8-49.51 29.1-68.59-29.85-50.07 23.81 119.2 50.83 100.9-52.72-51.96-21.16z" fill="currentColor" />
+    <path d="m1343 248.8-10.39 4.535 54.23 22.86-86.73 51.96-101.7-46.67 52.34-25.51-10.77-3.779-59.52 29.67 119.8 55.17 104.9-61.98-62.17-26.26z" fill="currentColor" />
+    <path d="m1303 267.5-53.66 26.45 53.66 23.24v-49.69z" fill="var(--nb-brand)" />
+  </svg>
+)}
+{name === "package" && (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="542 548 180 180" class={cls} aria-hidden="true">
+    <path d="m624.6 639.7v85.41l-71.61-41.95v-83.71l71.61 40.25z" fill="currentColor" />
+    <path d="m710.4 599.5v83.52l-77.09 42.14v-85.41l41.57-24v51.21l22.11-11.15v-47.99l13.42-8.314z" fill="currentColor" />
+    <path d="m673.3 608.2-44.59 23.81-70.48-42.14 44.21-24 70.86 42.33z" fill="currentColor" />
+    <path d="m706.2 591.5-22.49 11.34-71.42-42.14 18.33-10.2 75.58 41z" fill="var(--nb-brand)" />
+    <path d="m704.7 603.6v49.13l-18.71 8.125v-48.37l18.71-8.881z" fill="var(--nb-brand)" />
+  </svg>
+)}
+{name === "shell" && (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="475 572 230 230" class={cls} aria-hidden="true">
+    <path d="m626.3 577.9h-147v216.9h222.4v-142.7l-17.95-17.38v101.1h-137.4v-143.2h95.61l-15.68-14.74zm-129.2 14.74h34.39v143.2h-34.39v-143.2zm186.7 156.8v30.42h-186.7v-30.42h186.7z" fill="currentColor" />
+    <path d="m643.5 577.9 58.01 57.25v-57.25h-58.01z" fill="var(--nb-brand)" />
+  </svg>
+)}

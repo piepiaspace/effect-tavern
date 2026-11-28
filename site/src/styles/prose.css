@@ -76,6 +76,7 @@
 /* Markdown heading typography is token-driven from globals.css. Space above
    a heading is larger than below it, so each heading groups with its section. */
 .docs-content :where(h1:not([class])) {
+  font-family: var(--nb-font-serif);
   font-size: var(--nb-h1-size);
   line-height: var(--nb-h1-leading);
   font-weight: var(--nb-h1-weight);
@@ -84,6 +85,7 @@
 }
 
 .docs-content :where(h2:not([class])) {
+  font-family: var(--nb-font-serif);
   font-size: var(--nb-h2-size);
   line-height: var(--nb-h2-leading);
   font-weight: var(--nb-h2-weight);
