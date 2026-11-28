@@ -1,6 +1,17 @@
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
-import { createEffect, createMemo, createSignal, createStore, For, onCleanup, Show, snapshot } from "solid-js"
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  createStore,
+  For,
+  onCleanup,
+  reconcile,
+  Show,
+  snapshot,
+  untrack,
+} from "solid-js"
 import { autosize } from "./autosize.ts"
 import { ask, blurField, dialogHandle, newId, Switch } from "./controls.tsx"
 import { t } from "./i18n.ts"
@@ -69,8 +80,7 @@ const firstLineOf = (text: string) =>
 
 const isSpecialPlacement = (item: PromptItem) => item.slot !== null || item.position === "tail"
 
-const isBlankDraft = (item: PromptItem) =>
-  !item.from &&
+const isEmptyPrompt = (item: PromptItem) =>
   !(item.slot !== null && item.slotStrategy === "mute") &&
   !item.body.trim() &&
   !item.sections.some((s) => s.body.trim())
@@ -140,10 +150,7 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
         clearTimer()
         syncedPackId = id
         lastSavedSig = sig
-        const next = promptsOf(pack)
-        setItems((list) => {
-          list.splice(0, list.length, ...next)
-        })
+        setItems(reconcile(promptsOf(pack)))
         editor.close()
         setEditingId(null)
         setActiveSecId(null)
@@ -155,15 +162,17 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
         clearTimer()
         lastSavedSig = sig
         const next = promptsOf(pack)
-        setItems((list) => {
-          list.splice(0, list.length, ...next)
-        })
-        const curEdit = editingId()
+        setItems(reconcile(next))
+        const curEdit = untrack(editingId)
         if (curEdit && !next.some((x) => x.id === curEdit)) {
           editor.close()
           setEditingId(null)
           setActiveSecId(null)
         }
+        return
+      }
+      if (saveTimer === undefined && untrack(editingId) === null) {
+        setItems(reconcile(promptsOf(pack)))
       }
     },
   )
@@ -251,7 +260,7 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
           const s = target.sections[j]
           if (!s.title.trim() && !s.body.trim()) target.sections.splice(j, 1)
         }
-        if (isBlankDraft(target)) list.splice(idx, 1)
+        if (isEmptyPrompt(target)) list.splice(idx, 1)
       })
       flushSave()
     }

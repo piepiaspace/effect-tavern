@@ -463,6 +463,16 @@ if (!new URLSearchParams(location.search).has("manual")) {
       `blank new draft pruned on close, got ${document.querySelectorAll(".prompt-row").length}`,
     )
 
+    // Toggle a row switch to exercise a real PUT /packs/:id save echo under @solidjs/diagnostics
+    const rowSwitch = document.querySelector<HTMLButtonElement>(".prompt-row-switch .switch")
+    check(rowSwitch, "row switch exists")
+    rowSwitch?.click()
+    await quiet()
+    check(rowSwitch?.getAttribute("aria-checked") === "false", "row switch toggles off")
+    rowSwitch?.click()
+    await quiet()
+    check(rowSwitch?.getAttribute("aria-checked") === "true", "row switch toggles back on")
+
     // Check accessible names on all interactive controls (skipping @ui-sdk hidden form inputs)
     for (const el of document.querySelectorAll<HTMLElement>(".settings button, .settings input, .settings textarea")) {
       if (el.getAttribute("aria-hidden") === "true" || el.closest('[aria-hidden="true"]')) continue

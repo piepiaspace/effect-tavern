@@ -554,4 +554,66 @@ assert.deepEqual(writtenCustom.entries, [
 // round-trip writtenCustom back through promptsOf -> layerOf is zero-drift
 assert.equal(JSON.stringify(layerOf(writtenCustom, promptsOf(writtenCustom))), JSON.stringify(writtenCustom))
 
+// unbinding a muted standard slot or a tail fragment moves it into entries cleanly (no lingering `mode: "mute"` or slot rebind)
+const unboundMuted = layerOf(
+  writtenCustom,
+  promptsOf(writtenCustom).map((x) =>
+    x.slot === "style" ? { ...x, slot: null, title: "style", body: "改写为普通常驻" } : x,
+  ),
+)
+assert.equal(
+  unboundMuted.fragments?.some((f) => f.id === "style"),
+  false,
+)
+const migratedEntry = unboundMuted.entries?.find((e) => e.text === "改写为普通常驻")
+assert.ok(migratedEntry)
+assert.equal(migratedEntry.activation, "always")
+assert.equal("mode" in migratedEntry, false)
+
+const unboundTail = layerOf(
+  writtenCustom,
+  promptsOf(writtenCustom).map((x) => (x.position === "tail" ? { ...x, position: "head" } : x)),
+)
+assert.equal(
+  unboundTail.fragments?.some((f) => f.at === "tail"),
+  false,
+)
+assert.ok(unboundTail.entries?.some((e) => e.text === "留出互动支点" && e.activation === "always"))
+
+// duplicate tail titles in the same pack receive unique fragment IDs so runtime `tail:<id>` never silently overrides
+const dupTailPack = layerOf<Layer>({ id: "p-tail", name: "末尾去重" }, [
+  {
+    id: "prompt-t1",
+    title: "收束提醒",
+    body: "第一条末尾提醒",
+    enabled: true,
+    mode: "always",
+    hint: "",
+    position: "tail",
+    slot: null,
+    slotStrategy: "override",
+    residency: "window",
+    playerAccess: false,
+    sections: [],
+  },
+  {
+    id: "prompt-t2",
+    title: "收束提醒",
+    body: "第二条末尾提醒",
+    enabled: true,
+    mode: "always",
+    hint: "",
+    position: "tail",
+    slot: null,
+    slotStrategy: "override",
+    residency: "window",
+    playerAccess: false,
+    sections: [],
+  },
+])
+assert.deepEqual(
+  dupTailPack.fragments?.map((f) => f.id),
+  ["收束提醒", "收束提醒-2"],
+)
+
 console.log("writing ok")

@@ -369,13 +369,14 @@ const stripUiPrefix = (id: string) => id.replace(/^(frag|entry):/, "")
 export const layerOf = <R extends Layer & { default?: boolean }>(pack: R, items: readonly PromptItem[]): R => {
   const nextFragments: Fragment[] = []
   const nextEntries: PackEntry[] = []
+  const usedTailIds = new Set<string>()
   const usedEntryIds = new Set<string>()
 
-  // Reserve untouched entry IDs first so new/promoted items never collide with them.
+  // Reserve untouched IDs first so new/renamed/promoted items never collide with them.
   for (const item of items) {
-    if (item.from?.kind === "entry" && promptBaseline(item) === item.from.baseline) {
-      usedEntryIds.add(item.from.raw.id)
-    }
+    if (!item.from || promptBaseline(item) !== item.from.baseline) continue
+    if (item.from.kind === "entry") usedEntryIds.add(item.from.raw.id)
+    else if (item.from.raw.at === "tail") usedTailIds.add(item.from.raw.id)
   }
 
   for (const item of items) {
@@ -386,21 +387,31 @@ export const layerOf = <R extends Layer & { default?: boolean }>(pack: R, items:
       continue
     }
 
+    const isLegacyFreeHead =
+      item.from?.kind === "fragment" && item.from.raw.at !== "tail" && !SLOTS.includes(item.from.raw.id)
+
     const staysFragment =
       item.slot !== null ||
       item.position === "tail" ||
-      (item.from?.kind === "fragment" && item.mode === "always" && item.sections.length === 0)
+      (isLegacyFreeHead && item.mode === "always" && item.sections.length === 0)
 
     if (staysFragment) {
       const muted = item.slot !== null && item.slotStrategy === "mute"
       if (!muted && !item.body.trim()) continue
 
-      const id =
+      const baseId =
         item.slot !== null
           ? item.slot
           : item.from?.kind === "fragment" && !SLOTS.includes(item.from.raw.id)
             ? item.from.raw.id
             : cleanEntrySlug(item.title) || cleanEntrySlug(stripUiPrefix(item.id)) || `req-${nextFragments.length + 1}`
+
+      let id = baseId
+      if (item.position === "tail") {
+        let n = 2
+        while (usedTailIds.has(id)) id = `${baseId}-${n++}`
+        usedTailIds.add(id)
+      }
 
       const label = item.title.trim()
       const at = item.position === "tail" ? ("tail" as const) : undefined
@@ -409,7 +420,7 @@ export const layerOf = <R extends Layer & { default?: boolean }>(pack: R, items:
           ? !pack.default && item.slotStrategy === "override"
             ? undefined
             : item.slotStrategy
-          : item.from?.kind === "fragment"
+          : isLegacyFreeHead && item.from?.kind === "fragment"
             ? item.from.raw.mode
             : undefined
 
