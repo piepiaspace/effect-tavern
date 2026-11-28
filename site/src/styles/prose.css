@@ -282,7 +282,7 @@
    horizontal scrollbars on normal 3–4 column documentation tables. */
 .docs-content :where(td:not([class])) :where(code:not([class])) {
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 .docs-content :where(tbody:not([class]) tr:not([class]):last-child td:not([class])) {
