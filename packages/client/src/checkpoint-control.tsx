@@ -27,6 +27,7 @@ type CheckpointControlProps = {
   id: string
   watch: unknown
   small?: boolean
+  onReload?: () => void
 } & ({ kind: RowKind; session?: never } | { kind: "card" | "hat"; session: CheckpointSession })
 
 function rowSession(kind: RowKind, id: string): CheckpointSession {
@@ -171,6 +172,7 @@ export const CheckpointControl = (props: CheckpointControlProps) => {
     try {
       await editor.reload()
       if (current(asset)) {
+        props.onReload?.()
         setBadge(asset)
         setReloadPending(false)
         setLocal("clean")

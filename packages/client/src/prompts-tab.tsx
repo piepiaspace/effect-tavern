@@ -1,3 +1,4 @@
+import { canonicalJson } from "@effect-tavern/runtime/src/storage.ts"
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@ui-sdk/solid/dialog"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
 import {
@@ -23,12 +24,14 @@ import {
   promptsOf,
   type PromptItem,
   type PromptMode,
+  type PromptOrigin,
   type PromptResidency,
   type PromptSection,
   type PromptSlot,
   type SlotStrategy,
 } from "./pack.ts"
 import type { Pack } from "./store.ts"
+import { settleAssetWrites } from "./wire.ts"
 
 type FilterMode = "all" | PromptMode
 
@@ -95,9 +98,9 @@ const placementTextOf = (item: PromptItem): string | null => {
   return null
 }
 
-const packSig = (p: Pack) => JSON.stringify([p.fragments ?? [], p.entries ?? [], !!p.default])
+const promptContent = (p: Pack) => canonicalJson([p.fragments ?? [], p.entries ?? []])
 
-export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
+export const PromptsTab = (props: { pack: Pack; reload: number; onSave: Save }) => {
   const [items, setItems] = createStore<PromptItem[]>([])
   const [filter, setFilter] = createSignal<FilterMode>("all")
   const [query, setQuery] = createSignal("")
@@ -110,27 +113,89 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
   let titleInput: HTMLInputElement | undefined
   let secTitleInput: HTMLInputElement | undefined
 
-  let syncedPackId = ""
-  let lastSavedSig = ""
-  let latestPack: Pack | undefined
+  // One mounted tab belongs to one pack. An open editor owns its rows and their UI ids.
+  // Only the idle list follows the server. A PUT acknowledgement never replaces an active draft.
+  let base = untrack(() => props.pack)
+  const [ready, setReady] = createSignal(false)
+  const [saving, setSaving] = createSignal(false)
+  const [saveError, setSaveError] = createSignal("")
+  let submitted: { content: string; version: number } | undefined
+  let version = 0
+  let confirmed = 0
   let saveTimer: ReturnType<typeof setTimeout> | undefined
 
+  // Reopening a pack can race the last write from its previous editor.
+  void settleAssetWrites("pack").then(() => setReady(true))
+  createEffect(
+    () => (ready() && !editingId() && !saving() && !saveError() ? props.pack : null),
+    (pack) => {
+      if (!pack) return
+      base = pack
+      setItems(reconcile(promptsOf(pack)))
+    },
+  )
+
   const clearTimer = () => {
-    if (saveTimer !== undefined) {
-      clearTimeout(saveTimer)
-      saveTimer = undefined
-    }
+    clearTimeout(saveTimer)
+    saveTimer = undefined
   }
+
+  createEffect(
+    () => props.reload,
+    (restored, previous) => {
+      if (previous === undefined || restored === previous) return
+      clearTimer()
+      confirmed = version
+      submitted = undefined
+      setSaving(false)
+      setSaveError("")
+      editor.close()
+      setEditingId(null)
+      setActiveSecId(null)
+    },
+  )
 
   const flushSave = () => {
     clearTimer()
-    if (!latestPack) return
-    const plain = snapshot(items)
-    const next = layerOf(latestPack, plain)
-    const nextSig = packSig(next)
-    if (nextSig === lastSavedSig) return
-    lastSavedSig = nextSig
-    void props.onSave((p) => layerOf(p, plain))
+    const written = new Map<string, PromptOrigin>()
+    const next = layerOf(base, snapshot(items), written)
+    const content = promptContent(next)
+    if (content === (submitted?.content ?? promptContent(base))) {
+      setSaveError("")
+      return
+    }
+
+    // Keep the assigned storage id for subsequent edits (including renames), and keep
+    // the UI id, current section and text exactly as the author is editing them.
+    setItems((rows) => {
+      for (const row of rows) {
+        const origin = written.get(row.id)
+        if (origin) row.from = origin
+      }
+    })
+    const write = { content, version: ++version }
+    submitted = write
+    setSaving(true)
+    setSaveError("")
+    void props
+      .onSave((p) => ({ ...p, fragments: next.fragments, entries: next.entries }))
+      .then(
+        () => {
+          if (write.version > confirmed) {
+            confirmed = write.version
+            base = next
+          }
+          if (submitted !== write) return
+          submitted = undefined
+          setSaving(false)
+        },
+        (error: unknown) => {
+          if (submitted !== write) return
+          submitted = undefined
+          setSaveError(error instanceof Error ? error.message : String(error))
+          setSaving(false)
+        },
+      )
   }
 
   const scheduleSave = () => {
@@ -141,41 +206,6 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
   onCleanup(() => {
     if (saveTimer !== undefined) flushSave()
   })
-
-  createEffect(
-    () => [props.pack.id, packSig(props.pack), props.pack] as const,
-    ([id, sig, pack]) => {
-      latestPack = pack
-      if (id !== syncedPackId) {
-        clearTimer()
-        syncedPackId = id
-        lastSavedSig = sig
-        setItems(reconcile(promptsOf(pack)))
-        editor.close()
-        setEditingId(null)
-        setActiveSecId(null)
-        setQuery("")
-        setFilter("all")
-        return
-      }
-      if (sig !== lastSavedSig) {
-        clearTimer()
-        lastSavedSig = sig
-        const next = promptsOf(pack)
-        setItems(reconcile(next))
-        const curEdit = untrack(editingId)
-        if (curEdit && !next.some((x) => x.id === curEdit)) {
-          editor.close()
-          setEditingId(null)
-          setActiveSecId(null)
-        }
-        return
-      }
-      if (saveTimer === undefined && untrack(editingId) === null) {
-        setItems(reconcile(promptsOf(pack)))
-      }
-    },
-  )
 
   createEffect(
     () => editingId(),
@@ -250,7 +280,6 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
 
   const onEditorClosed = () => {
     const closedId = editingId()
-    flushSave()
     if (closedId) {
       setItems((list) => {
         const idx = list.findIndex((x) => x.id === closedId)
@@ -258,7 +287,7 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
         const target = list[idx]
         for (let j = target.sections.length - 1; j >= 0; j--) {
           const s = target.sections[j]
-          if (!s.title.trim() && !s.body.trim()) target.sections.splice(j, 1)
+          if (!s.body.trim()) target.sections.splice(j, 1)
         }
         if (isEmptyPrompt(target)) list.splice(idx, 1)
       })
@@ -353,6 +382,19 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
     }
   }
 
+  const saveNotice = () => (
+    <Show when={saveError()}>
+      {(message) => (
+        <p role="alert">
+          {message()}{" "}
+          <button type="button" class="btn sm" onClick={flushSave}>
+            {t("common.retry")}
+          </button>
+        </p>
+      )}
+    </Show>
+  )
+
   const filterLabel = (f: FilterMode) => (f === "all" ? t("prompts.filterAll") : modeLabel(f))
 
   return (
@@ -403,13 +445,14 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
             </Show>
           </label>
 
-          <button type="button" class="btn prompt-add-btn" onClick={createPrompt}>
+          <button type="button" class="btn prompt-add-btn" disabled={!ready()} onClick={createPrompt}>
             <Plus aria-hidden="true" />
             <span>{t("prompts.add")}</span>
           </button>
         </div>
       </div>
 
+      <Show when={!editingId()}>{saveNotice()}</Show>
       <div class="prompt-list scroller">
         <div class="prompt-column">
           <Show when={items.length > 0} fallback={<p class="prompt-empty">{t("prompts.empty")}</p>}>
@@ -513,6 +556,7 @@ export const PromptsTab = (props: { pack: Pack; onSave: Save }) => {
               return (
                 <>
                   <DialogTitle class="sr-only">{displayTitle()}</DialogTitle>
+                  {saveNotice()}
                   <div class="prompt-sheet-grab" aria-hidden="true" />
 
                   <div class="prompt-peek-wrap">

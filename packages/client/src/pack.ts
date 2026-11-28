@@ -366,7 +366,11 @@ const stripUiPrefix = (id: string) => id.replace(/^(frag|entry):/, "")
 
 /** Write edited `PromptItem[]` back onto `pack`, keeping untouched rows verbatim via `from.raw`, preserving legacy free
  *  head fragments in `fragments` until they gain sections or change mode, and dropping blank new drafts. */
-export const layerOf = <R extends Layer & { default?: boolean }>(pack: R, items: readonly PromptItem[]): R => {
+export const layerOf = <R extends Layer & { default?: boolean }>(
+  pack: R,
+  items: readonly PromptItem[],
+  written?: Map<string, PromptOrigin>,
+): R => {
   const nextFragments: Fragment[] = []
   const nextEntries: PackEntry[] = []
   const usedTailIds = new Set<string>()
@@ -432,6 +436,7 @@ export const layerOf = <R extends Layer & { default?: boolean }>(pack: R, items:
         ...(mode && { mode }),
         ...(item.enabled === false && { enabled: false }),
       }
+      written?.set(item.id, { kind: "fragment", raw: frag, baseline: promptBaseline(item) })
       nextFragments.push(frag)
       continue
     }
@@ -471,10 +476,9 @@ export const layerOf = <R extends Layer & { default?: boolean }>(pack: R, items:
     while (usedEntryIds.has(uid)) uid = `${cleaned.id}-${n++}`
     usedEntryIds.add(uid)
 
-    nextEntries.push({
-      ...(uid === cleaned.id ? cleaned : { ...cleaned, id: uid }),
-      ...(item.enabled === false && { enabled: false }),
-    })
+    const entry = { ...cleaned, id: uid, ...(item.enabled === false && { enabled: false }) }
+    written?.set(item.id, { kind: "entry", raw: entry, baseline: promptBaseline(item) })
+    nextEntries.push(entry)
   }
 
   const out: Record<string, unknown> = { ...pack }

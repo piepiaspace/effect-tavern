@@ -7,8 +7,8 @@ import { flip, locale, t } from "../src/i18n.ts"
 import { newCard } from "../src/pages.ts"
 import { Settings } from "../src/settings.tsx"
 import { openSettings } from "../src/settings-navigation.ts"
-import { cards, page, registry } from "../src/store.ts"
-import { fetchHats, fetchPersonas } from "../src/wire.ts"
+import { cards, packs, page, registry } from "../src/store.ts"
+import { fetchHats, fetchPacks, fetchPersonas } from "../src/wire.ts"
 import { ManuscriptPage } from "../src/workshop.tsx"
 import { quiet, tracked, until } from "./settle.ts"
 import "../src/app.css"
@@ -17,6 +17,8 @@ if (locale() !== "zh-CN") flip()
 const network = globalThis.fetch
 const requests: { path: string; method: string; body?: string; status: number }[] = []
 let failRead = ""
+let failPut = ""
+let holdPut: { path: string; release: Promise<void> } | undefined
 globalThis.fetch = tracked(async (input, init) => {
   const path = new URL(input instanceof Request ? input.url : input, location.href).pathname
   const method = init?.method ?? "GET"
@@ -24,8 +26,16 @@ globalThis.fetch = tracked(async (input, init) => {
   if (method === "GET" && path === failRead) {
     failRead = ""
     response = new Response(null, { status: 503 })
+  } else if (method === "PUT" && path === failPut) {
+    failPut = ""
+    response = new Response("save unavailable", { status: 503 })
   } else response = await network(input, init)
   requests.push({ path, method, body: typeof init?.body === "string" ? init.body : undefined, status: response.status })
+  if (method === "PUT" && holdPut?.path === path) {
+    const { release } = holdPut
+    holdPut = undefined
+    await release
+  }
   return response
 })
 const at = read(page)
@@ -73,7 +83,112 @@ const put = async (path: string, body: unknown) => {
 }
 const requestsTo = (path: string, method: string) =>
   requests.filter((r) => r.path === "/api/" + path && r.method === method)
+async function editPrompts() {
+  await fetchPacks()
+  openSettings("packs")
+  await quiet()
+  await click(t("packs.newPack"))
+  const pack = registry.get(packs).find((p) => p.name === t("packs.newPack"))!
+  const path = "packs/" + pack.id
+  const stored = async () => {
+    const rows: (typeof pack)[] = await (await network("/api/packs")).json()
+    return rows.find((p) => p.id === pack.id)!
+  }
+  await click(t("prompts.add"))
+  const title = el<HTMLInputElement>(".prompt-title-input")
+  const body = el<HTMLTextAreaElement>(".prompt-editor-textarea")
+  change(title, "雨夜")
+  const gate = Promise.withResolvers<void>()
+  holdPut = { path: "/api/" + path, release: gate.promise }
+  change(body, "第一句。")
+  check(await until(() => !holdPut), "SQLite saved the first sentence while its acknowledgement is held")
+  change(body, "第一句。第二句。")
+  body.blur() // queue the second write behind the first
+  change(body, "第一句。第二句。第三句。")
+  gate.resolve()
+  check(await until(() => requestsTo(path, "PUT").some((r) => r.body?.includes("第三句。"))), "latest draft was sent")
+  await quiet()
+  check(
+    document.activeElement === body && body.value === "第一句。第二句。第三句。",
+    "old acknowledgements preserve text and focus",
+  )
+  const first = (await stored()).entries![0]
+  check(first.text === body.value, "the complete draft reached SQLite")
+  change(title, "雨夜改名")
+  title.blur()
+  await quiet()
+  check((await stored()).entries![0].id === first.id, "renaming during the same edit keeps the saved resource id")
+
+  await click(t("packs.addSection"))
+  change(el<HTMLInputElement>(".prompt-sec-title-input"), "细节")
+  const sectionBody = el<HTMLTextAreaElement>(".prompt-editor-textarea")
+  change(sectionBody, "分节正文。")
+  check(await until(() => requestsTo(path, "PUT").some((r) => r.body?.includes("分节正文。"))), "section was saved")
+  await quiet()
+  check(
+    document.activeElement === sectionBody && sectionBody.value === "分节正文。",
+    "acknowledgement keeps the active section",
+  )
+  await click(t("packs.addSection"))
+  change(el<HTMLInputElement>(".prompt-sec-title-input"), "临时提纲")
+  await click(t("common.close"))
+  check((await stored()).entries![0].sections?.length === 1, "only the section with text was saved")
+  check(
+    el(".prompt-list").textContent.includes(t("packs.sectionsCount", { n: 1 })),
+    "the closed list agrees with storage",
+  )
+  el<HTMLButtonElement>(".prompt-row").click()
+  await quiet()
+  check(
+    el<HTMLTextAreaElement>(".prompt-editor-textarea").value === first.text,
+    "reopening reads the complete overview",
+  )
+  await click(t("common.close"))
+
+  await click(t("prompts.add"))
+  change(el<HTMLInputElement>(".prompt-title-input"), "收束")
+  change(el<HTMLTextAreaElement>(".prompt-editor-textarea"), "留一个线索。")
+  await click(t("prompts.advanced"))
+  await click(t("prompts.positionTail"))
+  check(
+    el<HTMLInputElement>(".prompt-title-input").value === "收束",
+    "conversion to a tail fragment keeps the editor open",
+  )
+  check((await stored()).fragments?.[0].text === "留一个线索。", "the tail is present in SQLite")
+  el<HTMLButtonElement>(".prompt-more-trigger").click()
+  await quiet()
+  const tail = el<HTMLTextAreaElement>(".prompt-editor-textarea")
+  failPut = "/api/" + path
+  change(tail, "失败后继续编辑。")
+  check(await until(() => document.querySelector(".prompt-modal [role=alert]")), "a rejected save is visible")
+  check(
+    tail.value === "失败后继续编辑。" && (await stored()).fragments?.[0].text === "留一个线索。",
+    "failure keeps the draft",
+  )
+  await click(t("common.retry"))
+  check((await stored()).fragments?.[0].text === tail.value, "retry saved the retained text")
+
+  const leave = Promise.withResolvers<void>()
+  holdPut = { path: "/api/" + path, release: leave.promise }
+  change(tail, "切包前的最后一句。")
+  openSettings("packs", "starter")
+  check(await until(() => !holdPut), "switching packs flushes the old pack's debounce")
+  openSettings("packs", pack.id)
+  leave.resolve()
+  await quiet()
+  check((await stored()).fragments?.[0].text === "切包前的最后一句。", "the last edit belongs to the original pack")
+  check(
+    el(".prompt-list").textContent.includes("切包前的最后一句。"),
+    "reopening waits for the previous editor's last save",
+  )
+  await click(t("checkpoint.title"))
+  await click(t("checkpoint.revert"))
+  await click(t("checkpoint.confirmRevert"))
+  check(!document.querySelector(".prompt-row") && !(await stored()).entries?.length, "reverting reloads the empty pack")
+}
+
 const run = async () => {
+  await editPrompts()
   await put("personas/first", { name: "First", text: "" })
   await put("personas/writer", { name: "Writer", text: "original", default: false })
   await fetchPersonas()

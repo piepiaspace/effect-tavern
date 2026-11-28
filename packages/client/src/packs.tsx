@@ -47,6 +47,7 @@ export const Packs = (props: Pane) => {
   const known = read(cards)
   const pack = () => list().find((p) => p.id === props.picked) ?? list()[0]
   const [tab, setTab] = createSignal<PackTab>("prompts")
+  const [promptReload, setPromptReload] = createSignal(0)
   let fileInput!: HTMLInputElement
 
   /** Each pack's mounted cards by title, derived from `locals[cardId].mounts`. */
@@ -62,7 +63,7 @@ export const Packs = (props: Pane) => {
 
   const savePack = async (id: string, edit: (p: Pack) => Pack) => {
     await putPack(id, edit)
-    await refreshActiveCard()
+    await refreshActiveCard().catch(() => {}) // the pack is already saved even if the active card cannot refresh
   }
   const removePack = async (id: string) => {
     await deletePack(id)
@@ -194,7 +195,12 @@ export const Packs = (props: Pane) => {
                       )}
                     </For>
                   </nav>
-                  <CheckpointControl kind="pack" id={p().id} watch={p()} />
+                  <CheckpointControl
+                    kind="pack"
+                    id={p().id}
+                    watch={p()}
+                    onReload={() => setPromptReload((n) => n + 1)}
+                  />
                   <button
                     type="button"
                     class="icon sm"
@@ -255,8 +261,8 @@ export const Packs = (props: Pane) => {
                 </Show>
 
                 <div class="pack-tab-body">
-                  <Show when={tab() === "prompts"}>
-                    <PromptsTab pack={p()} onSave={save} />
+                  <Show when={tab() === "prompts" && p().id} keyed>
+                    {(id) => <PromptsTab pack={p()} reload={promptReload()} onSave={(edit) => savePack(id, edit)} />}
                   </Show>
                   <Show when={tab() === "lexicon"}>
                     <LexiconTab pack={p()} onSave={save} />
