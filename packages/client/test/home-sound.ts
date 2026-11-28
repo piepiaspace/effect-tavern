@@ -177,7 +177,7 @@ const gesture = async (type = "pointerup") => {
 const audioSession = { type: "auto" }
 ;(globalThis.navigator as any).audioSession = audioSession
 
-const { createMechanicalSound, DEFAULT_SOUND_PROFILE } = await import("../src/home-sound.ts")
+const { createMechanicalSound } = await import("../src/home-sound.ts")
 const sound = createMechanicalSound()
 
 // before the player turns it on, a gesture makes no context
