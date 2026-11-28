@@ -177,6 +177,18 @@ const run = async () => {
     el('.checkpoint-pop [role="alert"]').textContent === t("checkpoint.reloadFailed"),
     "reload failure stays visible",
   )
+  document.body.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerType: "mouse" }))
+  document.body.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerType: "mouse" }))
+  document.body.click()
+  await quiet()
+  const trigger = el<HTMLButtonElement>(".checkpoint-trigger")
+  check(
+    !trigger.hasAttribute("data-open") &&
+      trigger.title === t("checkpoint.reloadFailed") &&
+      getComputedStyle(el(".checkpoint-dot")).opacity === "1",
+    "dismissing the panel keeps the reload warning on the trigger",
+  )
+  await click(t("checkpoint.title"))
   // Switching browser tabs normally saves this desk, including when its last save failed.
   Object.defineProperty(document, "hidden", { configurable: true, value: true })
   document.dispatchEvent(new Event("visibilitychange"))
@@ -194,6 +206,8 @@ const run = async () => {
     !document.querySelector(".workshop-block") &&
       !document.querySelector(".workshop-notice") &&
       title().value === "Baseline" &&
+      trigger.dataset.status === "clean" &&
+      trigger.title !== t("checkpoint.reloadFailed") &&
       registry.get(cards).find((c) => c.id === id)?.title === "Baseline",
     "workshop and shelf both show the restored card",
   )

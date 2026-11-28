@@ -4,6 +4,7 @@ import type { Origin } from "@effect-tavern/runtime/src/library.ts"
 import { type CheckpointKind, type ObjectId } from "@effect-tavern/runtime/src/storage.ts"
 import { checkpointObject, checkpointValue } from "./checkpoint.ts"
 import { batch, run } from "./sqlite-batch.ts"
+import { gcSteps } from "./sqlite-queries.ts"
 
 interface AssetRow {
   id: string
@@ -97,6 +98,6 @@ export function checkpointStore(db: Database) {
     body: (hash: ObjectId): unknown =>
       JSON.parse(db.query<{ body: string }, [string]>("select body from blob where hash=?").get(hash)!.body),
     pin: (kind: CheckpointKind, id: string, obj: ReturnType<typeof checkpointObject>, edited: boolean, at: number) =>
-      batch(db, anchorSteps(kind, id, obj, edited, at)),
+      batch(db, [...anchorSteps(kind, id, obj, edited, at), ...gcSteps()]),
   }
 }

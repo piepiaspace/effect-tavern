@@ -86,6 +86,15 @@ async function run() {
     perspective.value = "Edited perspective"
     perspective.dispatchEvent(new Event("change", { bubbles: true }))
     if (!(await until(() => saved.switches?.povText === "Edited perspective"))) throw Error("Missing local perspective")
+    perspective.focus()
+    for (const value of ["Edited perspective!", "Edited perspective"]) {
+      perspective.value = value
+      perspective.dispatchEvent(new InputEvent("input", { bubbles: true }))
+    }
+    perspective.blur()
+    refresh(local)
+    if (!(await until(() => perspective.value === "Pack perspective")))
+      throw Error("Typing back to the original text hid the restored perspective")
     button(root, t("switches.povFirst"))!.click()
     if (!(await until(() => saved.switches?.pov === "first" && saved.switches.povText === undefined)))
       throw Error("Changing perspective kept the local custom text")

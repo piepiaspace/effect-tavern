@@ -10,7 +10,7 @@
     background-color var(--dur-2) var(--ease);
 }
 
-.checkpoint-trigger[data-status="drifted"] {
+.checkpoint-trigger:not([data-status="clean"]) {
   color: var(--ink-2);
 }
 
@@ -42,7 +42,7 @@
   inset-inline-end: 5px;
 }
 
-.checkpoint-trigger[data-status="drifted"] .checkpoint-dot {
+.checkpoint-trigger:not([data-status="clean"]) .checkpoint-dot {
   opacity: 1;
 }
 
@@ -158,7 +158,7 @@
     transition: rotate var(--dur-3) var(--ease-spring);
   }
 
-  .checkpoint-trigger[data-status="drifted"] svg {
+  .checkpoint-trigger:not([data-status="clean"]) svg {
     rotate: -14deg;
   }
 
@@ -173,7 +173,7 @@
       scale var(--dur-3) var(--ease-spring);
   }
 
-  .checkpoint-trigger[data-status="drifted"] .checkpoint-dot {
+  .checkpoint-trigger:not([data-status="clean"]) .checkpoint-dot {
     scale: 1;
   }
 

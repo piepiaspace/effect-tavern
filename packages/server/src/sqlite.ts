@@ -591,6 +591,7 @@ export const openSqlite = (file: string, onClose?: () => void) => {
           steps.push(...anchorSteps("card", card.id, checkpointObject(card), !!origin.edited))
         if (!q("select 1 from card where id=?").get(card.id))
           steps.push(...anchorSteps("local", card.id, checkpointObject({})))
+        else if (origin.via !== "builtin") steps.push(...gcSteps())
         batch(db, steps)
       },
       /** One card's json column, parsed (decoded by the caller); none when the table has no such id. */

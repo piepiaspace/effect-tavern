@@ -19,6 +19,7 @@ import { createServer, type Server } from "node:net"
 import { join } from "node:path"
 import { gzipSync } from "node:zlib"
 import { Database } from "bun:sqlite"
+import { checkpointObject } from "../src/checkpoint.ts"
 import { library } from "../src/library.ts"
 import { open } from "../src/data.ts"
 import { run } from "../bin/tavern.ts"
@@ -571,15 +572,27 @@ try {
     const afterEdits = await inspect()
     assert.equal(afterEdits.facts.match(/blob_count=\d+/)[0], before.facts.match(/blob_count=\d+/)[0])
     assert.match(afterEdits.facts, /orphan_blobs=0/)
-    lib.personas.put({ id: "p", name: "我", text: "Pinned" })
-    const { standing } = lib.checkpoints.get("persona", "p")
+    const { standing, rev } = lib.checkpoints.get("card", card.id)
     assert.equal(standing.status, "drifted")
-    lib.checkpoints.mutate("persona", "p", {
+    lib.checkpoints.mutate("card", card.id, {
       action: "pin",
+      rev,
       expectedAnchorHash: standing.anchorHash,
       expectedWorkingHash: standing.workingHash,
     })
+    assert.match((await inspect()).facts, /orphan_blobs=0 orphan_bytes=0/)
+    lib.cards.install({ ...lib.cards.get(card.id), title: "Replacement" }, { via: "file" }, { replace: true })
+    assert.match((await inspect()).facts, /orphan_blobs=0 orphan_bytes=0/)
     store.close()
+    // Older installs can still have an unreferenced blob for doctor to report.
+    const db = new Database(file)
+    const orphan = checkpointObject("Old snapshot")
+    db.query("insert into blob(hash,encoding,body,byte_len,created_at) values(?,'utf8',?,?,0)").run(
+      orphan.hash,
+      orphan.body,
+      orphan.size,
+    )
+    db.close()
     const diagnosis = await inspect()
     assert.equal(diagnosis.mark, "ok")
     assert.match(diagnosis.what, /doctored 可读写，\d+ MB$/)

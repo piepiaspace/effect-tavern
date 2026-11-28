@@ -130,6 +130,11 @@ export const CheckpointControl = (props: CheckpointControlProps) => {
       : t("checkpoint.driftedAt", { time: formatTime(s.updatedAt) })
   }
 
+  const badgeTitle = () => {
+    if (reloadPending()) return t("checkpoint.reloadFailed")
+    return badgeStanding() ? statusText(badgeStanding()) : t("checkpoint.title")
+  }
+
   const onOpenChange = async (open: boolean) => {
     panelOpen = open
     opening?.abort()
@@ -236,10 +241,10 @@ export const CheckpointControl = (props: CheckpointControlProps) => {
     <Popover controller={pop} onOpenChange={onOpenChange}>
       <PopoverTrigger
         class={{ icon: true, sm: props.small !== false, "checkpoint-trigger": true }}
-        data-status={badgeStanding()?.status ?? "clean"}
+        data-status={reloadPending() ? "reload-pending" : (badgeStanding()?.status ?? "clean")}
         disabled={!props.id}
         aria-label={t("checkpoint.title")}
-        title={badgeStanding() ? statusText(badgeStanding()) : t("checkpoint.title")}
+        title={badgeTitle()}
       >
         <Anchor aria-hidden="true" />
         <span class="checkpoint-dot" aria-hidden="true" />

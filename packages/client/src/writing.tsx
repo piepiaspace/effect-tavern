@@ -354,7 +354,8 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
     writeSwitches((x) => ({ ...x, ...(key === "pov" && { povText: undefined }), [key]: pressing(key, x, value) }))
   }
   const isCustomPov = () => (localSw()?.pov ?? effSw()?.pov) === "custom"
-  const pov = () => povDraft() ?? localSw()?.povText ?? effSw()?.povText ?? ""
+  const savedPov = () => localSw()?.povText ?? effSw()?.povText ?? ""
+  const pov = () => povDraft() ?? savedPov()
   const toggleCustomPov = () => {
     setPovDraft(null)
     const next = !isCustomPov() ? "custom" : localSw()?.pov === "custom" ? undefined : "second"
@@ -601,7 +602,10 @@ const SwitchesAndProducts = (props: { fromLabel: (from: string) => string }) => 
                       placeholder={t("switches.povCustomPlaceholder")}
                       disabled={disabled()}
                       value={pov()}
-                      onInput={(e) => setPovDraft(e.currentTarget.value)}
+                      onInput={(e) => {
+                        const text = e.currentTarget.value
+                        setPovDraft(text === savedPov() ? null : text)
+                      }}
                       onChange={(e) => commitPovText(e.currentTarget.value)}
                       onKeyDown={leaveArea}
                     />
