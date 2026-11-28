@@ -760,12 +760,12 @@ export const PromptsTab = (props: { pack: Pack; reload: number; onSave: Save }) 
                             <div class="prompt-pop-head">
                               <span class="prompt-pop-label">{t("prompts.strategyLabel")}</span>
                             </div>
-                            <div class="prompt-pop-pills" role="group" aria-label={t("prompts.strategyLabel")}>
+                            <div class="prompt-pop-grid" role="group" aria-label={t("prompts.strategyLabel")}>
                               <For each={STRATEGIES}>
                                 {(strat) => (
                                   <button
                                     type="button"
-                                    class={{ "prompt-pop-pill": true, warn: strat === "mute" }}
+                                    class={{ "prompt-pop-pill": true, "is-mute": strat === "mute" }}
                                     aria-pressed={item().slotStrategy === strat ? "true" : "false"}
                                     onClick={() =>
                                       updateItem(item().id, (draft) => {

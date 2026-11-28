@@ -905,7 +905,7 @@
   font-weight: 600;
 }
 
-.prompt-pop-pill.warn[aria-pressed="true"] {
+.prompt-pop-pill.is-mute[aria-pressed="true"] {
   background: var(--warn-soft);
   color: var(--warn);
 }
