@@ -478,6 +478,13 @@ export const withMainHat =
     const { hat: _, ...rest } = r
     return id ? { ...rest, hat: id } : rest
   }
+/** Global history fold threshold ratio (0.1–1; omitted at default 0.5). */
+export const withFoldThreshold =
+  (ratio: number | undefined) =>
+  (r: Routing): Routing => {
+    const { foldThreshold: _, ...rest } = r
+    return ratio === undefined || ratio === 0.5 ? rest : { ...rest, foldThreshold: ratio }
+  }
 /** A stage's template from its menu value (`stageHatValue`): `""` follows the main one, `HAT_NONE` is none; an empty
  *  `stageHats` is left out. */
 export const withStageHat =

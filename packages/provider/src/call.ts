@@ -87,22 +87,10 @@ const usesGemini3ThinkingLevel = (modelId: string): boolean =>
   !GEMINI_ROBOTICS_15_RE.test(modelId) &&
   !/gemini-3-pro-image/i.test(modelId)
 
-const gemini3MinThinkingLevel = (modelId: string): "minimal" | "low" => {
-  const name = /(?:^|[/.])(gemini-[^/]*)$/i.exec(modelId)?.[1]?.toLowerCase() ?? ""
-  if (name === "gemini-flash-latest") return "low"
-  const pro = /^gemini-(\d+)(?:\.\d+)?-pro(?:$|-)/.exec(name)
-  if (Number(pro?.[1]) >= 3) return "low"
-  const flash = /^gemini-(\d+)\.(\d+)-flash(?:$|-(?!lite(?:-|$)))/.exec(name)
-  if (!flash) return "minimal"
-  const major = Number(flash[1])
-  const minor = Number(flash[2])
-  return major > 3 || (major === 3 && minor >= 7) ? "low" : "minimal"
-}
-
 const geminiThinkingConfig = (effort: Effort, modelId?: string): Record<string, unknown> => {
   const includeThoughts = effort !== "off"
   if (modelId !== undefined && usesGemini3ThinkingLevel(modelId)) {
-    const thinkingLevel = effort === "off" ? gemini3MinThinkingLevel(modelId) : effort === "max" ? "high" : effort
+    const thinkingLevel = effort === "off" ? "low" : effort === "max" ? "high" : effort
     return { thinkingLevel, includeThoughts }
   }
   let budget = GEMINI_BUDGET[effort]

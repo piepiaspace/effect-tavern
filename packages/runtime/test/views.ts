@@ -55,10 +55,21 @@ assert.equal(summaries.compress([root, child, tail], 1, sources)?.text, "Summary
   }
 }
 
-// The fold budget off the narrate model's window: half of it less the head-and-reply reserve; unknown → 8000.
+// The fold budget off the narrate model's window: threshold of it less the head-and-reply reserve;
+// unknown window defaults to 1M (1048576), threshold = 1 disables folding (Infinity).
 assert.deepEqual(
   [32000, 128000, 200000, 16000, 8000, undefined].map((w) => policyFor(w).budget),
-  [8000, 56000, 92000, 0, 0, 8000],
+  [8000, 56000, 92000, 0, 0, 516288],
+)
+assert.equal(policyFor(200000, 0.8).budget, 152000)
+assert.equal(policyFor(200000, 1).budget, Number.POSITIVE_INFINITY)
+assert.equal(
+  folded(
+    Array.from({ length: 10 }, (_, id) => ({ id }) as never),
+    () => 100000,
+    policyFor(200000, 1),
+  ),
+  0,
 )
 
 console.log("ok")

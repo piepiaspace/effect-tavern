@@ -65,6 +65,7 @@ export interface PreviewConnectionMeta {
   reasoningBack: boolean
   ttl?: CacheTtl
   contextTokens?: number
+  foldThreshold?: number
   providerId?: string
   providerName?: string
   modelId?: string
@@ -834,7 +835,8 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   }
 }
 
-const summarizePolicy = (contextTokens?: number): Policy => policyFor(contextTokens)
+const summarizePolicy = (contextTokens?: number, foldThreshold?: number): Policy =>
+  policyFor(contextTokens, foldThreshold)
 
 /** An action may emit different tokens on each roll. Evaluate each effect sequence as the rules engine would. */
 const eventOptions = (card: Card, rpg: ReturnType<typeof makeCard>, state: State): string[] => {
@@ -908,7 +910,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   const rpg = makeCard(card.rules)
   const cardLore = card.lore.map((e) => ({ ...e, source: "card" as const, ...gateOf(e.id, e.offer) }))
   const L = makeLore<Paths, readonly string[]>(namedLore(cardLore, R.names))
-  const policy = summarizePolicy(connection.contextTokens)
+  const policy = summarizePolicy(connection.contextTokens, connection.foldThreshold)
   const derived = makeDerived({
     catalogs: card.catalogs ?? [],
     rpg,

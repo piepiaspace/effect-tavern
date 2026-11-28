@@ -410,11 +410,14 @@ const over = (data: Data, m: () => Model = model) => library({ data: stocked(dat
   const pair = (model: string) => ({ provider: "relay", model })
   assert.equal(on(lib.model("narrate")), "env")
   assert.deepEqual(lib.policy(), policyFor())
-  assert.equal(lib.policy().budget, 8000)
+  assert.equal(lib.policy().budget, 516288)
   lib.providers.put(relay)
   lib.routing.write({ default: pair("m"), stages: { lookup: pair("n") } })
   assert.deepEqual([on(lib.model("lookup")), on(lib.model("narrate"))], ["n", "m"])
   assert.deepEqual([lib.policy(), lib.policy().budget], [policyFor(16000), 0]) // a 16k window folds everything it may
+  lib.routing.write({ default: pair("m"), foldThreshold: 1, stages: { lookup: pair("n") } })
+  assert.equal(lib.policy().budget, Number.POSITIVE_INFINITY) // 100% disables folding
+  lib.routing.write({ default: pair("m"), stages: { lookup: pair("n") } })
   lib.providers.put({ ...relay, models: [{ id: "m", contextTokens: 200000 }, { id: "n" }] })
   assert.ok(lib.policy().budget > 0) // a 200k one keeps the tail
   const story = lib.stories.create(chat.id)
@@ -449,7 +452,7 @@ const over = (data: Data, m: () => Model = model) => library({ data: stocked(dat
   data.stories.list = stories
   lib.routing.write({ default: pair("m"), stages: { lookup: pair("n") } })
   const pinned = library({ data: stocked(data, chat), model, pinned: true })
-  assert.deepEqual([on(pinned.model("lookup")), pinned.policy().budget], ["env", 8000])
+  assert.deepEqual([on(pinned.model("lookup")), pinned.policy().budget], ["env", 516288])
   assert.throws(() => library({ data: stocked(open(":memory:"), chat) }).model("narrate"), NoModel)
 
   lib.providers.put({ ...relay, enabled: false })
@@ -557,8 +560,8 @@ const over = (data: Data, m: () => Model = model) => library({ data: stocked(dat
     const thinking = { id: "m", effort: "high" as const }
     put({ models: [thinking] })
     const asked = await lib.providers.test("relay", "m")
-    // the probe switches thinking off over the entry's effort and names no ceiling of its own
-    assert.deepEqual([bodies.at(-1)!.max_tokens, bodies.at(-1)!.reasoning_effort], [undefined, undefined])
+    // the probe respects the entry's own effort and names no ceiling of its own
+    assert.deepEqual([bodies.at(-1)!.max_tokens, bodies.at(-1)!.reasoning_effort], [undefined, "high"])
     assert.deepEqual(
       [asked.length, asked[0].formats, asked[0].url, asked[0].method, asked[0].status, asked[0].ok],
       [1, ["openai-compatible"], `${up}/v1/chat/completions`, "POST", 200, true],

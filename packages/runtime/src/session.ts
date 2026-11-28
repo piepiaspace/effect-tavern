@@ -111,6 +111,7 @@ export const Pair = Schema.Struct({ provider: Schema.String, model: Schema.Strin
 export const Routing = Schema.Struct({
   default: Schema.optionalKey(Pair),
   hat: Schema.optionalKey(Schema.String),
+  foldThreshold: Schema.optionalKey(Schema.Number),
   stages: Schema.optionalKey(
     Schema.Struct(Object.fromEntries([...phases, "author"].map((p) => [p, Schema.optionalKey(Pair)]))),
   ),
@@ -123,6 +124,7 @@ export const Routing = Schema.Struct({
 export type Routing = {
   default?: typeof Pair.Type
   hat?: string
+  foldThreshold?: number
   stages?: Partial<Record<Phase | "author", typeof Pair.Type>>
   stageHats?: Partial<Record<HatPhase, string | null>>
 }

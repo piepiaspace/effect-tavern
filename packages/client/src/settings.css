@@ -859,6 +859,12 @@
   white-space: nowrap;
   transition: color var(--dur-1) var(--ease);
 }
+.effort-tick[data-edge="start"] {
+  translate: 0 0;
+}
+.effort-tick[data-edge="end"] {
+  translate: -100% 0;
+}
 .effort-tick:first-child {
   translate: calc(-1 * var(--space-2)) 0;
 }
@@ -1078,6 +1084,92 @@
 .routing-grid .setting-card > .note {
   grid-column: 1 / -1;
 }
+.routing-grid .threshold-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.threshold-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: 26px;
+}
+.threshold-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.threshold-num {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding-inline: var(--space-2);
+  border-radius: var(--radius);
+  background: var(--alpha-1);
+  box-shadow: inset 0 0 0 var(--hairline) var(--line);
+}
+.threshold-num:focus-within {
+  box-shadow: inset 0 0 0 1.5px var(--ring);
+}
+.threshold-input {
+  width: 3ch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--text-footnote);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+}
+.threshold-unit {
+  font-size: var(--text-caption);
+  color: var(--ink-3);
+  user-select: none;
+}
+.threshold-slider .effort-control {
+  height: 20px;
+  padding-inline: 0;
+}
+.threshold-slider .effort-fill {
+  transition: none;
+}
+.threshold-ruler {
+  position: relative;
+  height: 6px;
+}
+.threshold-mark {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 3px;
+  translate: -50% 0;
+  border-radius: var(--radius-pill);
+  background: var(--alpha-2);
+}
+.threshold-mark[data-major] {
+  height: 6px;
+  background: var(--alpha-3);
+}
+.threshold-mark[data-passed] {
+  background: var(--ink-3);
+}
+.threshold-mark[data-major][data-passed] {
+  background: var(--ink);
+}
+.threshold-slider .effort-ticks {
+  margin-inline: 0;
+}
+.threshold-slider .effort-tick:first-child {
+  translate: 0 0;
+}
+.threshold-slider .effort-tick:last-child {
+  translate: -100% 0;
+}
 /* a phone: the stages are one surface, a row each, the name beside its model menu, the ghost template chip tucked under it */
 @media (width < 72rem) {
   .cards-grid {
@@ -1097,6 +1189,13 @@
     border-radius: 0;
     background: none;
     box-shadow: none;
+  }
+  .cards-grid .threshold-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
   }
   .routing-grid .stage-head {
     min-height: var(--control-lg);

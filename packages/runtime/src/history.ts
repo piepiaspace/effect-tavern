@@ -60,17 +60,22 @@ export interface Policy {
   keep: number // turns the tail always keeps
   block: number // the boundary moves this many turns at a time
 }
-/** The tail budget a narrate model's window leaves: half the window, less a reserve for the head (frame, fiction,
- *  summary) and the reply; 32k → 8000, 128k → 56000, 200k → 92000. The window unknown → 8000 (about eight Chinese turns
- *  verbatim). A window too small for the reserve folds all but `keep`. `keep` and `block` do not scale. Rerouting narrate
- *  to another window moves the boundary once, either way; along one window it only grows. */
+/** The tail budget a narrate model's window leaves: `threshold` of the window (default 50%), less a reserve for the head
+ *  (frame, fiction, summary) and the reply; threshold >= 1 disables folding (Infinity). An unknown window defaults to 1M
+ *  (1048576). A window too small for the reserve folds all but `keep`. `keep` and `block` do not scale. Rerouting
+ *  narrate to another window moves the boundary once, either way; along one window it only grows. */
+export const defaultContextTokens = 1_048_576
 export const share = 0.5
 export const reserve = 8000
-export const policyFor = (contextTokens?: number): Policy => ({
-  budget: contextTokens ? Math.max(0, Math.floor(contextTokens * share) - reserve) : 8000,
-  keep: 2,
-  block: 2,
-})
+export const policyFor = (contextTokens?: number, threshold = share): Policy => {
+  const ratio = Number.isFinite(threshold) ? Math.max(0.1, Math.min(1, threshold)) : share
+  const window = contextTokens ?? defaultContextTokens
+  return {
+    budget: ratio >= 1 ? Number.POSITIVE_INFINITY : Math.max(0, Math.floor(window * ratio) - reserve),
+    keep: 2,
+    block: 2,
+  }
+}
 /** §18.4: how many leading turns to fold: the fewest, in whole blocks, that leave the tail's `cost` within the budget,
  *  never fewer than `keep` turns in the tail. A longer path only adds cost to every tail, so the count is monotone
  *  non-decreasing along a path and moves in blocks: the summary is byte-stable between moves. Walks back from the end

@@ -233,7 +233,7 @@ export const library = ({
     return env(phase === "author" ? "record" : phase, onExchange)
   }
   /** The fold policy off the narrate pair's model entry (the one stage that reads the unfolded tail), never throwing:
-   *  `GET /nodes` folds before any model is needed, on a fresh install too. No pair, no entry, or pinned → 8000. */
+   *  `GET /nodes` folds before any model is needed, on a fresh install too. No pair, no entry, or pinned → 1M default. */
   const policy = () => {
     const r = pinned ? {} : routing()
     const pair = r.stages?.narrate ?? r.default
@@ -243,7 +243,7 @@ export const library = ({
         .list()
         .find((x) => x.id === pair.provider)
         ?.models.find((x) => x.id === pair.model)
-    return policyFor(m?.contextTokens)
+    return policyFor(m?.contextTokens, r.foldThreshold)
   }
   /** The routing row without the pairs `keep` refuses; written only when something went. */
   const prune = (keep: (pair: Pair) => boolean) => {
@@ -254,6 +254,7 @@ export const library = ({
     data.routing.write({
       ...(r.default && keep(r.default) && { default: r.default }),
       ...(r.hat !== undefined && { hat: r.hat }),
+      ...(r.foldThreshold !== undefined && { foldThreshold: r.foldThreshold }),
       ...(r.stages && { stages: Object.fromEntries(stages) }),
       ...(r.stageHats && { stageHats: r.stageHats }),
     })
@@ -753,9 +754,8 @@ export const library = ({
         })
       },
       /** Minimal requests, each a Probe (a completed probe is one whatever it found; what throws here is the provider's
-       *  configuration: no key, no endpoint, a bad URL). With a model, one request for a short answer under the
-       *  model's format, thinking off where the format can switch it off and no ceiling but the entry's own (a thinking
-       *  model's reasoning counts as output: a few tokens' ceiling truncated it into an empty answer). Without, the listing from every endpoint the provider has: one request per distinct listing
+       *  configuration: no key, no endpoint, a bad URL). With a model, one request for a short answer using the model's
+       *  own format and settings (no effort override, no ceiling but the entry's own). Without, the listing from every endpoint the provider has: one request per distinct listing
        *  URL (two formats on one address share a probe, sent under the default format's auth), the default's first. */
       test: async (id: string, model?: string): Promise<Probe[]> => {
         const p = providerOf(id)
@@ -764,9 +764,9 @@ export const library = ({
           return [
             await probed([c.format], plan(c.format, c.endpoint, c.model).generate, async (onTrace) => {
               const failed = await Effect.runPromise(
-                text(bind(c, { onTrace, fetch: network(c) }), [{ role: "user", content: "Hi" }], {
-                  effort: "off",
-                }).pipe(Effect.match({ onFailure: (e) => e, onSuccess: () => undefined })),
+                text(bind(c, { onTrace, fetch: network(c) }), [{ role: "user", content: "Hi" }]).pipe(
+                  Effect.match({ onFailure: (e) => e, onSuccess: () => undefined }),
+                ),
               )
               if (failed) throw failed
             }),
@@ -934,6 +934,7 @@ export const library = ({
           reasoningBack: caps.reasoningBack,
           ttl: p.cacheTtl,
           contextTokens: m.contextTokens,
+          ...(r.foldThreshold !== undefined && { foldThreshold: r.foldThreshold }),
           providerId: p.id,
           providerName: p.name,
           modelId: m.id,

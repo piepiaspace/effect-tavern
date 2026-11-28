@@ -13,7 +13,9 @@ import {
   NARRATIVE_TOOL_DESCRIPTION,
 } from "@effect-tavern/provider/src/deliver.ts"
 import { hatEntryActive, hatToolName, hatWraps, type Hat, type HatEntry } from "@effect-tavern/runtime/src/fragment.ts"
+import { NumberInput, NumberInputControl, NumberInputGroup } from "@ui-sdk/solid/number-input"
 import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@ui-sdk/solid/popover"
+import { Slider, SliderControl, SliderIndicator, SliderThumb, SliderTrack } from "@ui-sdk/solid/slider"
 import { Dynamic, type JSX } from "@solidjs/web"
 import {
   createContext,
@@ -101,6 +103,7 @@ import {
   validToolInput,
   withDefaultPair,
   withDeliver,
+  withFoldThreshold,
   withMainHat,
   withStageHat,
   withStagePair,
@@ -305,6 +308,7 @@ const Routing = (props: { onDecision: () => void }) => {
             </For>
             <For each={mainNotes(list(), hatList(), route())}>{(n) => <div class="note">{noteText(n)}</div>}</For>
           </div>
+          <FoldThreshold value={route().foldThreshold} onChange={(v) => putRouting(withFoldThreshold(v))} />
         </div>
         <div class="block">
           <div class="block-title">
@@ -369,6 +373,118 @@ const Routing = (props: { onDecision: () => void }) => {
         </div>
       </div>
     </section>
+  )
+}
+
+const FOLD_MIN = 25
+const FOLD_MAX = 100
+const FOLD_DEFAULT = 50
+const FOLD_TICKS = [25, 50, 75, 100] as const
+const FOLD_RULER = Array.from({ length: 16 }, (_, i) => FOLD_MIN + i * 5)
+
+const clampFold = (n: number) => Math.max(FOLD_MIN, Math.min(FOLD_MAX, Math.round(n)))
+
+/** Global context fold threshold: continuous 25–100% ruler slider paired with a precise % input (100% disables folding). */
+const FoldThreshold = (props: { value: number | undefined; onChange: (v: number | undefined) => Promise<void> }) => {
+  const [draft, setDraft] = createSignal<number | null>(null)
+  let seq = 0
+  const stored = () => clampFold((props.value ?? FOLD_DEFAULT / 100) * 100)
+  const pct = () => draft() ?? stored()
+  const pos = (n: number) => `${((n - FOLD_MIN) / (FOLD_MAX - FOLD_MIN)) * 100}%`
+  const commit = (n: number) => {
+    const next = clampFold(n)
+    const id = ++seq
+    setDraft(next)
+    void props.onChange(next === FOLD_DEFAULT ? undefined : next / 100).finally(() => {
+      if (seq === id) setDraft(null)
+    })
+  }
+  return (
+    <div class="setting-card threshold-card">
+      <div class="threshold-head">
+        <span class="stage-head">{t("settings.foldThreshold")}</span>
+        <div class="threshold-actions">
+          <Show when={pct() !== FOLD_DEFAULT}>
+            <button type="button" class="effort-reset" onClick={() => commit(FOLD_DEFAULT)}>
+              {t("models.effortReset")}
+            </button>
+          </Show>
+          <NumberInput
+            class="threshold-num-root"
+            aria-label={t("settings.foldThreshold")}
+            min={FOLD_MIN}
+            max={FOLD_MAX}
+            step={1}
+            value={pct()}
+            onValueCommit={(v) => v !== null && commit(v)}
+          >
+            <NumberInputGroup class="threshold-num">
+              <NumberInputControl
+                class="threshold-input mono"
+                aria-label={t("settings.foldThreshold")}
+                enterkeyhint="done"
+              />
+              <span class="threshold-unit" aria-hidden="true">
+                %
+              </span>
+            </NumberInputGroup>
+          </NumberInput>
+        </div>
+      </div>
+      <Slider
+        class="effort-slider threshold-slider"
+        min={FOLD_MIN}
+        max={FOLD_MAX}
+        step={1}
+        largeStep={5}
+        value={pct()}
+        format={(n) => (n >= FOLD_MAX ? t("settings.foldOff") : `${n}%`)}
+        onValueChange={(v) => {
+          seq++
+          const n = typeof v === "number" ? v : (v[0] ?? FOLD_DEFAULT)
+          setDraft(clampFold(n))
+        }}
+        onValueCommit={(v) => {
+          const n = typeof v === "number" ? v : (v[0] ?? FOLD_DEFAULT)
+          commit(n)
+        }}
+      >
+        <SliderControl class="effort-control" style={{ "touch-action": "pan-y" }}>
+          <SliderTrack class="effort-track">
+            <SliderIndicator class="effort-fill" />
+            <SliderThumb class="effort-thumb" aria-label={t("settings.foldThreshold")} />
+          </SliderTrack>
+        </SliderControl>
+        <div class="threshold-ruler" aria-hidden="true">
+          <For each={FOLD_RULER} keyed={false}>
+            {(mark) => (
+              <span
+                class="threshold-mark"
+                data-major={mark() % 25 === 0 ? "" : undefined}
+                data-passed={mark() <= pct() ? "" : undefined}
+                style={{ left: pos(mark()) }}
+              />
+            )}
+          </For>
+        </div>
+        <div class="effort-ticks">
+          <For each={FOLD_TICKS} keyed={false}>
+            {(mark) => (
+              <button
+                type="button"
+                class="effort-tick"
+                data-active={pct() === mark() ? "" : undefined}
+                data-edge={mark() === FOLD_MIN ? "start" : mark() === FOLD_MAX ? "end" : undefined}
+                style={{ left: pos(mark()) }}
+                onClick={() => commit(mark())}
+              >
+                {mark() === FOLD_MAX ? t("settings.foldOff") : `${mark()}%`}
+              </button>
+            )}
+          </For>
+        </div>
+      </Slider>
+    </div>
   )
 }
 

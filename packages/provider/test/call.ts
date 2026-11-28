@@ -131,10 +131,10 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
     includeThoughts: true,
   })
 
-  // Gemini 3 Flash & Gemini 3 Pro thinkingLevel
+  // Gemini 3+ thinkingLevel (effort: "off" maps uniformly to "low" without per-model sniffing)
   const f3Off = await captureGemini("gemini-3-flash-preview", { effort: "off" })
   assert.deepEqual((f3Off.sent.generationConfig as Record<string, unknown>).thinkingConfig, {
-    thinkingLevel: "minimal",
+    thinkingLevel: "low",
     includeThoughts: false,
   })
   const f3Med = await captureGemini("gemini-3-flash-preview", { effort: "medium" })
@@ -144,6 +144,11 @@ const msgs: Message[] = [{ role: "user", content: "Begin the scene." }]
   })
   const p3Off = await captureGemini("gemini-3-pro-preview", { effort: "off" })
   assert.deepEqual((p3Off.sent.generationConfig as Record<string, unknown>).thinkingConfig, {
+    thinkingLevel: "low",
+    includeThoughts: false,
+  })
+  const g4Off = await captureGemini("gemini-4-neon", { effort: "off" })
+  assert.deepEqual((g4Off.sent.generationConfig as Record<string, unknown>).thinkingConfig, {
     thinkingLevel: "low",
     includeThoughts: false,
   })
