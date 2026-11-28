@@ -3,6 +3,7 @@
 import type { State as Paths } from "./cond.ts"
 import { holds } from "./cond.ts"
 import type { Lore } from "./lore.ts"
+import { entryOpening } from "./request.ts"
 import type { PackEntry } from "./layer.ts"
 import { feedsChronicle, itemText, type Product } from "./product.ts"
 import { worldValue, type WorldState } from "./world.ts"
@@ -48,7 +49,7 @@ export const revision = (value: unknown): string =>
     ),
   )
 export const policy = (source: Source, p: ContextPolicy = {}) => ({
-  access: p.access ?? { model: true, player: source === "pack" },
+  access: p.access ?? { model: true, player: source === "pack" && p.activation !== "always" },
   activation: p.activation ?? "on_demand",
   residency: p.residency ?? "window",
 })
@@ -104,7 +105,7 @@ export const sectionResources = (
           title: explicitTitle || (source === "pack" ? x.id : hook(x.text)),
           text: x.text,
           source,
-          access: { model: p.access.model, player: false },
+          access: { model: p.access.model || p.activation === "on_demand", player: false },
           activation: "on_demand",
           residency: p.residency,
           disclosures: [],
@@ -112,6 +113,15 @@ export const sectionResources = (
         }
       })
 }
+/** Pack faces in the standing head count as held without a journal delivery. */
+export const inStandingHead = (r: Pick<Resource, "source" | "access" | "activation">) =>
+  r.source === "pack" && r.access.model && r.activation === "always"
+
+export const turnDeliveries = (resources: readonly Resource[], selected: readonly Resource[]) => [
+  ...resources.filter((r) => r.source === "card" && r.access.model && r.activation === "always"),
+  ...selected.filter((r) => !inStandingHead(r)),
+]
+
 /** Preserve every delivered version in the journal, while request assembly selects the latest. */
 export const uniqueDeliveries = (snapshots: readonly DeliverySnapshot[]) => [
   ...new Map(snapshots.map((s) => [`${s.resourceId}#${s.revision}`, s])).values(),
@@ -147,7 +157,7 @@ export const latest = (snapshots: readonly DeliverySnapshot[]) => [
   ...new Map(snapshots.map((s) => [s.resourceId, s])).values(),
 ]
 export const deliveryText = (s: DeliverySnapshot) =>
-  `[${s.resourceId} revision=${s.revision}${s.superseded ? ` supersedes=${s.superseded}` : ""}] ${s.title}\n${s.text}`
+  `[${s.resourceId} revision=${s.revision}${s.superseded ? ` supersedes=${s.superseded}` : ""}]\n${entryOpening(s)}\n${s.text}\n</entry>`
 /** Both narrator and lookup inject this same set. Permanent survives the window, turn never does. */
 export const residentOn = (
   path: readonly { deliveries: readonly DeliverySnapshot[] }[],
@@ -201,7 +211,7 @@ const headOf = (u: { title: string; summary?: string }) => (u.summary ? `${u.tit
 const lineOf = (u: Unit) =>
   [
     `${u.resourceId} ${headOf(u)}${u.resident ? " (resident: sections only)" : ""}`,
-    ...(u.sections ?? []).map((x) => `  ${x.resourceId} ${x.title}`),
+    ...(u.sections ?? []).map((x) => `  ${x.resourceId} ${u.title} › ${x.title}`),
   ].join("\n")
 /** The catalog as the LLM loop's first request reads it (and `card view --stage lookup`). */
 export const catalogBlock = (c: Catalog) =>
@@ -215,18 +225,31 @@ export const catalogBlock = (c: Catalog) =>
       ].join("\n")
 
 export const contextLookup = (resources: readonly Resource[], injected: readonly DeliverySnapshot[]) => {
-  const held = new Map(injected.map((s) => [s.resourceId, s]))
+  const byId = new Map(resources.map((r) => [r.resourceId, r]))
+  const standing = resources.filter(inStandingHead)
+  const held = new Map([...injected, ...standing].map((s) => [s.resourceId, s]))
+  const recalled = (snapshots: readonly DeliverySnapshot[]) =>
+    snapshots.filter((s) => {
+      const r = byId.get(s.resourceId)
+      return !(r && inStandingHead(r) && r.revision === s.revision)
+    })
   const delivered: DeliverySnapshot[] = []
   const disclosures: Disclosure[] = []
   const unheld = (r: Resource) => held.get(r.resourceId)?.revision !== r.revision
-  const open = (r: Resource) => r.access.model && r.activation === "on_demand"
+  const accessible = (r: Resource) => r.access.model || !unheld(r)
+  const open = (r: Resource) => {
+    if (!r.access.model || r.activation !== "on_demand") return false
+    if (!r.of) return true
+    const parent = byId.get(r.of)
+    return !!parent && accessible(parent)
+  }
   /** An entry's sections not in this request: its directory, on the lookup side only (§3), never in a snapshot. */
   const sectionsOf = (id: string) => resources.filter((x) => x.of === id && open(x) && unheld(x))
   const directory = (xs: readonly Resource[]) =>
     xs.map((x) => ({ resourceId: x.resourceId, title: x.title.slice(0, 160) }))
   /** The search units: an entry (never a section) whose own face is unread, or that still has an unread section. */
   const readable = () =>
-    resources.filter((r) => !r.of && r.access.model && ((open(r) && unheld(r)) || sectionsOf(r.resourceId).length))
+    resources.filter((r) => !r.of && accessible(r) && ((open(r) && unheld(r)) || sectionsOf(r.resourceId).length))
   const search = (query: string, scope: "all" | Source = "all") => {
     const pool = readable()
       .filter((r) => scope === "all" || r.source === scope)
@@ -295,15 +318,15 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
     const ids = [...new Set(refs)]
     const selected: Resource[] = []
     for (const id of ids) {
-      const r = resources.find((r) => r.resourceId === id && open(r))
-      if (!r)
+      const r = byId.get(id)
+      if (!r || !open(r))
         return {
           ok: false as const,
           code: "unavailable_resource",
           message: `${id}: unavailable; search for accessible resources.`,
         }
       // A section supplements its entry, never goes on alone: an entry not in the request comes first (§3).
-      const face = r.of === undefined ? undefined : resources.find((x) => x.resourceId === r.of)
+      const face = r.of === undefined ? undefined : byId.get(r.of)
       if (face && unheld(face) && !ids.includes(face.resourceId) && !selected.includes(face)) selected.push(face)
       selected.push(r)
     }
@@ -369,7 +392,7 @@ export const contextLookup = (resources: readonly Resource[], injected: readonly
       async ({ refs }) => read(refs),
     ),
   }
-  return { tools, readable, units, search, catalog, read, told, delivered, disclosures }
+  return { tools, readable, units, search, catalog, read, told, recalled, delivered, disclosures }
 }
 
 /** Materialize unlocked lore, pack entries and recalled rows before applying reader permissions. */

@@ -1280,7 +1280,7 @@ console.log("preview: ok")
   const outlineView = res.resources.find((r) => r.resourceId === "pack:craft/outline")!
   assert.equal(outlineView.title, "叙事总纲 (Marin)")
   assert.equal(outlineView.summary, "围绕 Marin 的核心节奏规范")
-  assert.equal(outlineView.residencyStatus, "delivered_this_turn")
+  assert.equal(outlineView.residencyStatus, "resident_permanent")
   assert.equal(outlineView.inCatalog, false)
   assert.equal(outlineView.simulatedRead, true)
   assert.deepEqual(

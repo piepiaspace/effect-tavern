@@ -41,7 +41,8 @@ import {
   catalogBlock,
   fedResources,
   contextLookup,
-  deliveryText,
+  turnDeliveries,
+  inStandingHead,
   freeze,
   latest,
   loreResource,
@@ -83,7 +84,8 @@ import {
   resolve,
   resolveWithTrace,
   shown,
-  worldOf,
+  checkBackground,
+  packHead,
   type Resolved,
   type ResolvedTrace,
   type Rows,
@@ -466,13 +468,13 @@ export const makeSession = ({
   /** A stage's document: the frame at this state, the input, then the stage's own ask. */
   const ask = (state: Paths, input: Input, a: Ask) => {
     const M = modelFor(a.stage)
-    const { frame, tail, names: N } = layer()
+    const { frame, tail, entries, switches, names: N } = layer()
     const worn = M.hat === undefined ? undefined : hat?.(M.hat)
     const prepHat = worn ? prepareHat(worn, N) : undefined
     return request(
       {
-        frame: headOf(frame, { state }),
-        world: headOf(worldOf(card, frame), { state }),
+        frame: [...headOf(frame, { state }), ...packHead(entries)],
+        effectivePovLine: switches.effectivePovLine && expandState(switches.effectivePovLine, state),
         tail: headOf(tail, { state }),
         input,
       },
@@ -622,9 +624,6 @@ export const makeSession = ({
       stage: "record",
       known: fed.known,
       current: fed.current,
-      invoked: latest(scene.deliveries)
-        .filter((d) => scene.input.invoke?.includes(d.resourceId))
-        .map(deliveryText),
       asks: productAsks(picks, context, catalogs()),
       ...(settlement && { tools: true }),
       questions: qs?.lines,
@@ -815,19 +814,19 @@ export const makeSession = ({
       for (const id of invoked)
         if (!selected.some((r) => r.resourceId === id) && !(reused && base!.input.invoke?.includes(id)))
           return yield* new Rejected({ message: `${id}: not invocable` })
-      const automatic = resources.filter((r) => r.access.model && r.activation === "always")
+      const initial = turnDeliveries(resources, selected)
       let deliveries: DeliverySnapshot[] = reused
         ? [...base!.deliveries]
-        : [...automatic, ...selected].map((r) =>
+        : initial.map((r) =>
             freeze(
               r,
               resident.find((s) => s.resourceId === r.resourceId),
             ),
           )
-      const looked: Disclosure[] = reused ? [...base!.read] : [...automatic, ...selected].flatMap((r) => r.disclosures)
+      const looked: Disclosure[] = reused ? [...base!.read] : initial.flatMap((r) => r.disclosures)
       // An edit keeps its original context, but newly selected player tools still need a frozen delivery.
       if (reused) {
-        const added = selected.filter((r) => !base!.input.invoke?.includes(r.resourceId))
+        const added = selected.filter((r) => !inStandingHead(r) && !base!.input.invoke?.includes(r.resourceId))
         deliveries.push(
           ...added
             .filter((r) => !deliveries.some((s) => s.resourceId === r.resourceId && s.revision === r.revision))
@@ -841,9 +840,8 @@ export const makeSession = ({
         looked.push(...added.flatMap((r) => r.disclosures))
       }
       const hasInput = !!(input.text || input.note)
+      const lookup = contextLookup(resources, latest([...resident, ...current, ...deliveries]))
       if (!reused && hasInput) {
-        const injected = latest([...resident, ...current, ...deliveries])
-        const lookup = contextLookup(resources, injected)
         // One catalog view per turn (#168), two exclusive readers: a complete one goes to the decision model when there
         // is one, and its answer settles lookup alone; anything else (no decision model, a failed or blocked call, an
         // answer with no probability, an incomplete view) runs the LLM loop with the view in its first request.
@@ -869,7 +867,7 @@ export const makeSession = ({
                 stage: "lookup",
                 ledger: here.ledger(),
                 // lookup's own reading: an entry's unread sections listed under it; narrate's `told` stays bare
-                context: latest([...resident, ...deliveries]).map(lookup.told),
+                context: lookup.recalled(latest([...resident, ...deliveries])).map(lookup.told),
                 current: here.known(false, tx.world).current,
                 catalog: catalogBlock(view),
               }),
@@ -1066,7 +1064,7 @@ export const makeSession = ({
             state: pre,
             history: transition?.boundary ? [] : transcript.history(),
             summarized: sum !== undefined,
-            told: latest([...resident, ...deliveries]),
+            told: lookup.recalled(latest([...resident, ...deliveries])),
             known: transition?.boundary ? fed.known : undefined,
             outcome: events,
             current: fed.current,
@@ -1102,7 +1100,7 @@ export const makeSession = ({
         // stands whole; the prose is written by now, so the fast pass never fails the turn. Its call is on the trace.
         const fast = (text: string) => {
           const { state, questions } = checkQuestions({
-            world: worldBlock(headOf(worldOf(card, layer().frame), { state: pre })),
+            world: worldBlock(headOf(checkBackground(layer().frame), { state: pre })),
             draft: text,
             rules: guard,
             open,
@@ -1512,7 +1510,11 @@ export const makeSession = ({
       events: n.events,
       context,
     })
-    const node = timelineNode(n, derived.at(parents).state, card.rules, products(), media)
+    const node = timelineNode(n, derived.at(parents).state, card.rules, products(), media, (id) =>
+      layer()
+        .entries.find((e) => e.id === id)
+        ?.title?.trim(),
+    )
     const applicable = views.filter((v) => !v.when || matches(v.when))
     const turnFields = views.some((v) => residency(v) === "turn")
     if (turnFields) node.fields = n.state

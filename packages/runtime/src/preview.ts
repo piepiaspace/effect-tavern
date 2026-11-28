@@ -1,6 +1,6 @@
 // Shared `narrate` request preparation and design-time Prompt Tree preview (sandbox & story branch).
 // Both `session.ts` (real play) and `previewNarrate` assemble the narrate document through `prepareNarrate`,
-// guaranteeing identical head (<world>, <fiction>, <writing_guidelines>), hat, history, turn and tail output.
+// guaranteeing identical head (<standing_context>, <writing_switches>, <fiction>), hat, history, turn and tail output.
 import { signedOnly, wire, type CacheTtl, type Message } from "@effect-tavern/provider/src/call.ts"
 import type { Format } from "@effect-tavern/provider/src/url.ts"
 import { makeCard, shownGreeting, type Beat, type Card, type Field, type State } from "./card.ts"
@@ -8,6 +8,8 @@ import { holds, lookup, type Cond, type State as Paths } from "./cond.ts"
 import {
   catalogBlock,
   contextLookup,
+  turnDeliveries,
+  inStandingHead,
   fedResources,
   freeze,
   latest,
@@ -32,7 +34,7 @@ import {
 } from "./fragment.ts"
 import { narratorHistory, policyFor, type Policy } from "./history.ts"
 import { type Input, type Turn as TurnOf } from "./journal.ts"
-import { resolveWithTrace, worldOf, type ResolvedTrace, type Rows } from "./layer.ts"
+import { resolveWithTrace, packHead, type ResolvedTrace, type Rows } from "./layer.ts"
 import { hook, makeLore, namedLore, type Disclosure } from "./lore.ts"
 import { expand, fill, keepHoles, unfilled, type Names } from "./names.ts"
 import { conditionChildren, unlockPath, unlocks } from "./paths.ts"
@@ -771,11 +773,7 @@ export const prepareNarrate = (o: PrepareNarrateInput): PrepareNarrateResult => 
   }
   const common: Common = {
     cardId,
-    frame: keptFrame,
-    world: worldOf(
-      card,
-      keptFrame.filter((m): m is Slotted & { id: string } => m.id !== undefined),
-    ),
+    frame: [...keptFrame, ...packHead(R.entries, RT.sources.entries)],
     tail: keptTail,
     input: o.input,
   }
@@ -1080,14 +1078,14 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   }
 
   // 2. Always-on model deliveries
-  const automatic = resources.filter((r) => r.access.model && r.activation === "always")
-  let deliveries: DeliverySnapshot[] = [...automatic, ...playerSelected].map((r) =>
+  const initial = turnDeliveries(resources, playerSelected)
+  let deliveries: DeliverySnapshot[] = initial.map((r) =>
     freeze(
       r,
       resident.find((s) => s.resourceId === r.resourceId),
     ),
   )
-  const preDisclosures: Disclosure[] = [...automatic, ...playerSelected].flatMap((r) => r.disclosures)
+  const preDisclosures: Disclosure[] = initial.flatMap((r) => r.disclosures)
 
   // 3. Simulated model lookup reads via contextLookup.read() (never bypassing access.model!)
   const preInjected = latest([...resident, ...currentRes, ...deliveries])
@@ -1144,7 +1142,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     state: s1Context,
     history: opts.mode === "story" ? here.history() : narratorHistory(basePath),
     summarized: sum !== undefined,
-    told: latest([...resident, ...deliveries]),
+    told: lookupCtx.recalled(latest([...resident, ...deliveries])),
     outcome: actionEvents,
     current: fed.current,
     must: open.filter((d) => mustIds.includes(d.id)),
@@ -1249,7 +1247,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
   const unitsAfter = new Map(lookupAfter.units().map((u) => [u.resourceId, u]))
   const postHeld = new Map(postInjected.map((d) => [d.resourceId, d]))
   const resourceMap = new Map(resources.map((r) => [r.resourceId, r]))
-  const residentMap = new Map(resident.map((d) => [d.resourceId, d]))
+  const residentMap = new Map([...resident, ...resources.filter(inStandingHead)].map((d) => [d.resourceId, d]))
   const deliveredMap = new Map(deliveries.map((d) => [d.resourceId, d]))
   const seenIds = new Set(seenOnPath.map((s) => s.resourceId))
   const seenDisclosures: Disclosure[] = basePath.flatMap((t) => [...t.read, ...t.fired])
@@ -1357,7 +1355,7 @@ export const previewNarrate = (opts: PreviewNarrateInput): PreviewNarrateResult 
     const residencyStatus: ResidencyStatus = delivSnap
       ? "delivered_this_turn"
       : resSnap
-        ? resSnap.residency === "permanent"
+        ? resSnap.residency === "permanent" || (liveRes && inStandingHead(liveRes))
           ? "resident_permanent"
           : "resident_in_window"
         : "none"

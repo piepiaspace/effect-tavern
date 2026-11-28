@@ -65,7 +65,11 @@ let rows: Rows = {
   local: { id: "local", name: "Local", card: "test", mounts: ["p"] },
 }
 const model = fake((o) =>
-  defaultAnswer(readStage(o), { notes: "a note", scene: { place: "Here", present: [] }, people: [] }),
+  readStage(o).phase === "lookup" &&
+  o.prompt.some((m) => typeof m.content === "string" && m.content.includes("pack:p/manual#s1")) &&
+  !o.prompt.some((m) => m.role === "tool")
+    ? { text: "", toolCalls: [{ name: "read_context", input: { refs: ["pack:p/manual#s1"] } }] }
+    : defaultAnswer(readStage(o), { notes: "a note", scene: { place: "Here", present: [] }, people: [] }),
 )
 const S = makeSession({ card, rows: () => rows, model: () => model, policy: { budget: 0, keep: 2, block: 2 } })
 let calls: Extract<Event, { kind: "call" }>[] = []
@@ -89,20 +93,19 @@ await Effect.runPromise(
       S.node(g.id).playerCatalog.map((e) => [e.resourceId, e.title, e.summary]),
       [
         ["card:guide", "GUIDE ONE", "GUIDE TWO"],
-        ["pack:p/always", "常驻规范", "每轮驻留的叙事底线"],
         ["pack:p/manual", "手动小剧场", "仅玩家通过菜单调用"],
         ["pack:p/auto", "auto", ""],
         ["pack:p/permanent", "permanent", ""],
       ],
     )
-    for (const id of ["card:secret", "card:locked", "missing"]) {
+    for (const id of ["card:secret", "card:locked", "pack:p/always", "missing"]) {
       assert.equal((yield* Effect.exit(go(S.act(g.id, { text: "", invoke: [id] }))))._tag, "Failure")
       assert.equal(calls.length, 0)
     }
     const t = yield* go(
       S.act(g.id, {
         text: "",
-        invoke: ["card:guide", "pack:p/always", "pack:p/manual", "pack:p/auto", "pack:p/permanent"],
+        invoke: ["card:guide", "pack:p/manual", "pack:p/auto", "pack:p/permanent"],
       }),
     )
     assert.deepEqual(
@@ -118,11 +121,51 @@ await Effect.runPromise(
     const next = yield* go(S.act(t.id, { text: "continue" }))
     assert.ok(!text("narrate").includes("GUIDE ONE") && !text("narrate").includes("MANUAL BODY"))
     assert.ok(text("narrate").includes("AUTO BODY") && text("lookup").includes("AUTO BODY"))
+    const pack = rows.packs![0]
+    rows = {
+      ...rows,
+      packs: [{ ...pack, entries: pack.entries!.map((e) => (e.id === "manual" ? { ...e, residency: "window" } : e)) }],
+    }
+    const drill = yield* go(S.act(g.id, { text: "", note: "请参考子节。", invoke: ["pack:p/manual"] }))
+    assert.deepEqual(
+      drill.deliveries.map((d) => d.resourceId),
+      ["pack:p/manual", "pack:p/manual#s1"],
+    )
+    assert.ok(text("narrate").includes("MANUAL SECTION"))
     let last = next
     for (let i = 0; i < 4; i++) last = yield* go(S.act(last.id, { text: "continue" }))
     assert.ok(!text("narrate").includes("AUTO BODY"))
     assert.ok(text("narrate").includes("PERMANENT BODY"))
     const frozen = structuredClone(t.deliveries)
+    const mounted = rows.packs![0]
+    rows = {
+      ...rows,
+      packs: [
+        {
+          ...mounted,
+          entries: mounted.entries!.map((e) =>
+            e.id === "always" ? { ...e, access: { model: true, player: true } } : e,
+          ),
+        },
+      ],
+    }
+    const pinned = yield* go(S.act(g.id, { text: "", invoke: ["pack:p/always"] }))
+    assert.deepEqual(pinned.deliveries, [])
+    assert.deepEqual(S.timelineNode(pinned.id).invocations, [
+      { resourceId: "pack:p/always", title: "常驻规范", source: "pack" },
+    ])
+    rows = { ...rows, packs: [{ ...mounted, entries: mounted.entries!.map((e) => ({ ...e, enabled: false })) }] }
+    const disabled = yield* go(S.act(t.id, { text: "continue" }))
+    assert.deepEqual(disabled.deliveries, [])
+    for (const phase of ["lookup", "narrate"])
+      assert.doesNotMatch(text(phase), /PERMANENT BODY|AUTO BODY|ALWAYS BODY|MANUAL SECTION/)
+    const afterDrill = yield* go(S.act(drill.id, { text: "continue" }))
+    assert.deepEqual(afterDrill.deliveries, [])
+    assert.doesNotMatch(text("narrate"), /MANUAL BODY|MANUAL SECTION/)
+    assert.doesNotMatch(text("lookup"), /MANUAL BODY|MANUAL SECTION/)
+    const rewordDisabled = yield* go(S.reword(drill.id))
+    assert.deepEqual(rewordDisabled.deliveries, drill.deliveries)
+    assert.ok(text("narrate").includes("MANUAL SECTION"))
     rows = {}
     assert.deepEqual(S.node(t.id).delivered, frozen)
     const rerun = yield* go(S.reword(t.id))
@@ -152,7 +195,7 @@ await Effect.runPromise(
     const kept = yield* go(S.edit(next.id, { input: { text: "continue", invoke: ["card:guide"] } }))
     assert.ok(kept.deliveries.some((d) => d.resourceId === "card:guide" && d.text.includes("GUIDE TWO")))
     assert.equal(S.timelineNode(kept.id).invocations[0]?.resourceId, "card:guide")
-    assert.ok(text("record").includes("GUIDE TWO"))
+    assert.ok(!text("record").includes("GUIDE TWO"))
     assert.equal(
       (yield* Effect.exit(go(S.edit(next.id, { input: { text: "continue", invoke: ["card:secret"] } }))))._tag,
       "Failure",

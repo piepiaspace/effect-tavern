@@ -61,17 +61,17 @@ const head = on.map((f) =>
     .join("\n"),
 )
 assert.equal(head.length, 9) // language, thought-syntax, pov, style; town, sides, now, tense (局势 ≥ 6), blood (起点 血案)
-// no world slot (yandao declares only pov and style): the fiction as one <fiction>, the writing lines after it
+const titles = ["语言", "心声记号", "全知群像视角", "冷峻白描"]
 assert.deepEqual(sent("narrate").slice(0, 2), [
+  `<standing_context>\n${NOTE.standing}\n${titles.map((title, i) => `<item title="${title}">\n${head[i]}\n</item>`).join("\n\n")}\n</standing_context>`,
   `<fiction>\n${NOTE.fiction}\n${head.slice(4).join("\n\n")}\n</fiction>`,
-  `<writing_guidelines>\n${NOTE.guidelines}\n${head.slice(0, 4).join("\n\n")}\n</writing_guidelines>`,
 ])
 // lookup and record: preview has no path ledger; the final message is the session's note/prose (empty in preview).
 assert.deepEqual(sent("lookup").map(unledgered).slice(0, -1), at("lookup").doc.map(text).slice(0, -1))
 // the catalog view, the same block in the preview and the turn (#168)
 assert.match(sent("lookup").join("\n"), /\nAvailable \(1, complete\):\ncard:yandao /)
 const r = at("record")
-assert.equal(r.sections[0].text, "") // yandao declares only pov and style: head (record) shows worldOf, never writing lines
+for (const body of head.slice(0, 4)) assert.ok(r.sections[0].text.includes(body))
 assert.deepEqual(sent("record").slice(0, -1), r.doc.map(text).slice(0, -1))
 for (const line of r.sections.find((x) => x.name === "record")!.text.split("\n"))
   assert.ok(sent("record").join("\n").includes(line), line)
@@ -259,7 +259,7 @@ assert.doesNotMatch(section(recorded, "gates")!, /lore\./)
   // the card's entry with an open hole stays, the hole as written (names.ts)
   assert.match(listed, /missing  layer 1\/1  in the index\n {4}\{\{unknown_name\}\}/)
   assert.doesNotMatch(preview("narrate").doc.map(text).join("\n"), /PLAYER ONLY/)
-  assert.match(preview("record", "manual").doc.map(text).join("\n"), /PLAYER ONLY/)
+  assert.doesNotMatch(preview("record", "manual").doc.map(text).join("\n"), /PLAYER ONLY/)
   const runtime = makeSession({
     card,
     rows: () => player,

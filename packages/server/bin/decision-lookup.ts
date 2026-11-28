@@ -10,13 +10,14 @@
 // newest stored turn, each naming the entries it should need: the library alone holds only turns that read nothing.
 // `--card <yaml>` asks a card file's CASES over its pool at the story's start (a large card no story has played);
 // `--batch <n>` sends at most n questions per request (default: the whole pool in one, to find the service's limit).
+// Add `--sections` with `--card` to include two standing parents with identically named sections.
 import { decisionService } from "./decision-service.ts"
 import { Database } from "bun:sqlite"
 import { join } from "node:path"
 import { blocked, compileDecision, decide } from "@effect-tavern/provider"
 import { decodeCard, type Card } from "@effect-tavern/runtime/src/card.ts"
 import type { Unit } from "@effect-tavern/runtime/src/context.ts"
-import { LOOKUP, lookupQuestions } from "@effect-tavern/runtime/src/decision.ts"
+import { LOOKUP, lookupQuestions, lookupSelect } from "@effect-tavern/runtime/src/decision.ts"
 import { type Layer, type Local, type Rows } from "@effect-tavern/runtime/src/layer.ts"
 import { makeSession } from "@effect-tavern/runtime/src/session.ts"
 import { plain } from "@effect-tavern/runtime/support/rows.ts"
@@ -52,6 +53,7 @@ const CASES: Record<string, { text: string; note?: string; need: string[] }[]> =
     { text: "去找皇冠和灰姑娘谈谈。", need: ["皇冠_Crown", "灰姑娘_Cinderella"] },
     { text: "那位自称国王的妮姬现在在哪？", need: ["皇冠_Crown"] }, // by meaning: the title carries only the name
     { text: "今天先休息吧，我有点累了。", need: [] },
+    { text: "这次别用分镜示例，直接照常写。", need: [] },
     { text: "继续。", note: "这段写得有点像村上春树。", need: [] },
   ],
 }
@@ -138,10 +140,17 @@ const ask = async (
         p: (answers[`u${i}`] as { probability?: number } | undefined)?.probability ?? NaN,
         label: label(x.resourceId),
       }))
-  runs.push({ at, status: bad ?? "ok", ms, ps })
+  const selected = lookupSelect(answers, units).ids
+  runs.push({ at, status: bad ?? (selected ? "ok" : "incomplete"), ms, ps })
   console.log(
     `${at.padEnd(16)} ${(bad ?? "ok").padEnd(8)} ${String(ms).padStart(5)}ms ${String(tokens).padStart(6)}tok ${chunks.length}req  ${line}`,
   )
+  if (selected) {
+    const needed = pool.filter((x) => label(x.resourceId))
+    console.log(
+      `    delivered ${selected.length}, labelled in top ${selected.filter(label).length}/${needed.length}: ${selected.join(", ") || "—"}`,
+    )
+  }
   // a large pool prints what should be read and whatever else ranks beside it
   const shown = ps.length <= 12 ? ps : [...ps].sort((a, b) => b.p - a.p).filter((x, i) => x.label || i < 5)
   for (const x of shown) console.log(`    ${x.label ? "+" : " "} ${x.p.toFixed(2)}  ${x.id}`)
@@ -155,6 +164,26 @@ console.log(`${config.driver} ${config.model} · ${cardFile ?? dir}${dry ? " · 
 if (cardFile) {
   const card = await readCard(cardFile)
   const pool = makeSession({ card, rows: () => plain, model: idle }).readable(null)
+  if (args.includes("--sections")) {
+    const parent = (id: string, title: string): Unit => ({
+      resourceId: id,
+      title,
+      resident: true,
+      sections: ["常见误区", "示例"].map((name, i) => ({ resourceId: `${id}#${i}`, title: name })),
+    })
+    const units = [
+      ...pool,
+      parent("pack:probe/camera", "分镜与镜头调度"),
+      parent("pack:probe/dialogue", "冷峻白描对白"),
+    ]
+    for (const [note, target] of [
+      ["这段请按分镜与镜头调度的常见误区检查一遍再写。", "pack:probe/camera#0"],
+      ["参照冷峻白描对白的示例写这段对话。", "pack:probe/dialogue#1"],
+      ["上次聊的电影最近又上映了。", ""],
+      ["这次别用分镜与镜头调度的示例，直接照常写。", ""],
+    ])
+      await ask(`${card.id} sections`, units, "", { text: "继续。", note }, (id) => id === target)
+  }
   for (const c of CASES[card.id] ?? [])
     await ask(`${card.id} case`, pool, "", c, (id) => c.need.some((x) => id.endsWith(`:${x}`)))
 }

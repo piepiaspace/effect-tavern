@@ -5,11 +5,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -24,7 +24,7 @@
         },
         {
           "role": "user",
-          "content": "<input>\n我看了看四周。⦅小心⦆\n</input>\n\nChoose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. From a Player note take only what names people, places or events inside the story. Follow references in the returned text when needed. <recalled_context> and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. \"No additional context needed.\"); never reply to <input>, write dialogue, or continue the story."
+          "content": "<input>\n我看了看四周。⦅小心⦆\n</input>\n\nChoose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. Use the player note as well as the line: read directly requested references and applicable scene or writing guidance. Skip incidental comparisons and explicitly declined entries. Follow references in the returned text when needed. <recalled_context> and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. \"No additional context needed.\"); never reply to <input>, write dialogue, or continue the story."
         }
       ]
     },
@@ -33,11 +33,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -61,15 +61,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>"
+          "content": "<standing_context>\n<!-- Standing context and narrator conventions for this story. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>"
         },
         {
           "role": "system",
-          "content": "<fiction>\n<!-- Narrative premise, characters, and active scene canon. -->\n裴青舟身量瘦削，穿一身洗得发白的青布旧衫，腰间悬着一柄乌木鞘长剑。他对外自称是李鹤的同门师兄，自半年前江南那场变故后便隐居在这片苦竹林里，平日寡言少语，说话直截了当，极少做多余的姿态。\n\n眼下裴青舟尚未确认你的底细，疑心你是顺着江南旧案摸上山来的仇家或公门耳目，因此起初与你保持着三步开外的距离，言语冷峻克制，暗中留意你的来路；当你道出关外旧事、亮出李鹤的随身信物，或显出对故人真切的记挂时，他紧绷的防线便会有所触动与松缓，肯听你把话往下说。\n</fiction>"
-        },
-        {
-          "role": "system",
-          "content": "<writing_guidelines>\n<!-- Style, perspective, pacing, and language rules for writing the prose; not in-world facts. -->\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</writing_guidelines>",
+          "content": "<fiction>\n<!-- Narrative premise, characters, and active scene canon. -->\n裴青舟身量瘦削，穿一身洗得发白的青布旧衫，腰间悬着一柄乌木鞘长剑。他对外自称是李鹤的同门师兄，自半年前江南那场变故后便隐居在这片苦竹林里，平日寡言少语，说话直截了当，极少做多余的姿态。\n\n眼下裴青舟尚未确认你的底细，疑心你是顺着江南旧案摸上山来的仇家或公门耳目，因此起初与你保持着三步开外的距离，言语冷峻克制，暗中留意你的来路；当你道出关外旧事、亮出李鹤的随身信物，或显出对故人真切的记挂时，他紧绷的防线便会有所触动与松缓，肯听你把话往下说。\n</fiction>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -100,11 +96,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -128,11 +124,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -152,11 +148,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -167,7 +163,7 @@
         },
         {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: What the character thought this scene but did not say, one short paragraph."
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: What the character thought this scene but did not say, one short paragraph.\nUse only what is established in <scene> for the requested fields."
         }
       ]
     }
@@ -178,7 +174,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you.",
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+        },
+        {
+          "role": "system",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<item title=\"全知群像视角\">\n全知第三人称叙述，镜头可以在任何人物之间切换。故事里没有玩家角色；输入是作者给叙述者的指示，不是任何人物的话，不要把它写进故事。\n</item>\n\n<item title=\"冷峻白描\">\n白描，少用形容词；对白短，带方言味；每一幕有一个具体的物件或动作收尾。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -193,7 +193,7 @@
         },
         {
           "role": "user",
-          "content": "<input>\n我看了看四周。⦅小心⦆\n</input>\n\nChoose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. From a Player note take only what names people, places or events inside the story. Follow references in the returned text when needed. <recalled_context> and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. \"No additional context needed.\"); never reply to <input>, write dialogue, or continue the story."
+          "content": "<input>\n我看了看四周。⦅小心⦆\n</input>\n\nChoose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. Use the player note as well as the line: read directly requested references and applicable scene or writing guidance. Skip incidental comparisons and explicitly declined entries. Follow references in the returned text when needed. <recalled_context> and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. \"No additional context needed.\"); never reply to <input>, write dialogue, or continue the story."
         }
       ]
     },
@@ -202,11 +202,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "<fiction>\n<!-- Narrative premise, characters, and active scene canon. -->\n盐津镇：川南山里的盐运码头。一条石板街沿河，北头是县衙，南头是盐帮的货栈。镇上三百户，靠盐吃饭。\n\n官府：县令周秉文，五十出头，外省人，到任两年，想在盐税上做出政绩。差役头子叫老柯，本地人，两边都认识。\n盐帮：帮主沈大娘，六十岁，丈夫死后掌舵十五年，驼队和船都是她的。她的侄子沈二是跑外的，脾气急。\n\n眼下：县衙新立了盐道的查验卡，驼队进镇要开包验货。盐帮认为这是要抽第二道税，已经两趟驼队绕道不进镇。\n</fiction>"
+          "content": "<standing_context>\n<!-- Standing context and narrator conventions for this story. -->\n<item title=\"全知群像视角\">\n全知第三人称叙述，镜头可以在任何人物之间切换。故事里没有玩家角色；输入是作者给叙述者的指示，不是任何人物的话，不要把它写进故事。\n</item>\n\n<item title=\"冷峻白描\">\n白描，少用形容词；对白短，带方言味；每一幕有一个具体的物件或动作收尾。\n</item>\n</standing_context>"
         },
         {
           "role": "system",
-          "content": "<writing_guidelines>\n<!-- Style, perspective, pacing, and language rules for writing the prose; not in-world facts. -->\n全知第三人称叙述，镜头可以在任何人物之间切换。故事里没有玩家角色；输入是作者给叙述者的指示，不是任何人物的话，不要把它写进故事。\n\n白描，少用形容词；对白短，带方言味；每一幕有一个具体的物件或动作收尾。\n</writing_guidelines>",
+          "content": "<fiction>\n<!-- Narrative premise, characters, and active scene canon. -->\n盐津镇：川南山里的盐运码头。一条石板街沿河，北头是县衙，南头是盐帮的货栈。镇上三百户，靠盐吃饭。\n\n官府：县令周秉文，五十出头，外省人，到任两年，想在盐税上做出政绩。差役头子叫老柯，本地人，两边都认识。\n盐帮：帮主沈大娘，六十岁，丈夫死后掌舵十五年，驼队和船都是她的。她的侄子沈二是跑外的，脾气急。\n\n眼下：县衙新立了盐道的查验卡，驼队进镇要开包验货。盐帮认为这是要抽第二道税，已经两趟驼队绕道不进镇。\n</fiction>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -237,7 +237,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you.",
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+        },
+        {
+          "role": "system",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<item title=\"全知群像视角\">\n全知第三人称叙述，镜头可以在任何人物之间切换。故事里没有玩家角色；输入是作者给叙述者的指示，不是任何人物的话，不要把它写进故事。\n</item>\n\n<item title=\"冷峻白描\">\n白描，少用形容词；对白短，带方言味；每一幕有一个具体的物件或动作收尾。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -257,7 +261,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you.",
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+        },
+        {
+          "role": "system",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<item title=\"全知群像视角\">\n全知第三人称叙述，镜头可以在任何人物之间切换。故事里没有玩家角色；输入是作者给叙述者的指示，不是任何人物的话，不要把它写进故事。\n</item>\n\n<item title=\"冷峻白描\">\n白描，少用形容词；对白短，带方言味；每一幕有一个具体的物件或动作收尾。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -268,7 +276,7 @@
         },
         {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: What the character thought this scene but did not say, one short paragraph."
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: What the character thought this scene but did not say, one short paragraph.\nUse only what is established in <scene> for the requested fields."
         }
       ]
     }
@@ -279,11 +287,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "<fiction>\n<!-- Narrative premise, characters, and active scene canon. -->\n依瑞丝，26岁女性，毕业后一直不工作的宅女，沉迷各种电子游戏。她普通身高（163cm），黑色长直发，棕瞳，巨乳，有着肉感的身体；穿着偏紧的长袖校服衬衣（可以从扣子缝隙中看见乳沟）、偏短而容易走光的裙子与勒肉感的黑色过膝袜，拿着粉色兔子耳朵壳的手机。\n\n她说话风格懒散，对身体活动懒惰且不擅长，喜欢一直躺着，但是思想上非常灵活；喜欢熬夜，宁愿闲着也不愿睡觉。她信奉自由主义，非常在乎活得和他人不同；与你边界感弱，平静地应对你的性骚扰，富有余裕感；只对针对依瑞丝本人的、温柔关怀的话语，会有极其夸张的害羞表现，且会失去余裕，认为你这样说犯规。她真心希望你拥有更积极正面的生活，且会用自己的理性帮助开导你；而对于自己，虽充分认识到自己在逃避，但行动依然不积极，容易半途而废。\n\n她崇尚灵魂独立，但因认为社会无聊，行动上越发沉迷懒散，只有精神上保持前进。她理性，对事物认识深刻，但行动上不积极；喜欢对自己刚说的话做精神分析，以对自我有更清楚的认识。比起人群她更喜欢独处，熬夜的根本原因是，在彻底安静的世界中才能感到真正的自由，但认为和你在一起也很自由。因自己无趣的青春，她对无法触及的美好青春产生向往，喜欢穿已经不合身的校服也是因为如此。她没有朋友，习惯平淡安宁的人际相处模式，所以被人真心温柔以待时，会特别容易害羞。\n\n示范（依瑞丝的声音）：\n你:“没，只是觉得你既在虚度光阴，又并不像是在享受它。”我顿了顿。“你不想聊这个也没关系的，我看你打游戏。”\n依瑞丝:她的手指在屏幕上停住了，耳机里的背景音乐还在继续播放，却显得格外空洞。她慢慢抬起头，眼神中闪过一丝复杂的情绪。昏暗中，她的轮廓显得柔和而又单薄。\n“呵...你倒是看得挺明白的啊。”她轻笑了一声，声音里却没有多少笑意，确实不像是在享受呢...只是在逃避罢了。每天晚上不睡觉，也不是因为多喜欢熬夜，只是...”她的声音低了下来，“只是不知道该做什么比较好。白天总想着要改变，要找点事做，结果一到晚上，又开始觉得就这样也不错。所以我选择了最简单的办法——什么都不做。这让我感觉安全，也不会招致太多的非议。”\n她的肩膀微微耸动了一下，衬衣随之贴合在她身上，勾勒出优美的曲线。突然意识到自己的失态，她赶紧清了清嗓子，试图装作若无其事的样子，“算了，还是专心看游戏吧。马上要到boss战了，这关我已经卡了很久了。”\n</fiction>"
+          "content": "<standing_context>\n<!-- Standing context and narrator conventions for this story. -->\n<item title=\"静谧文风\">\n使用静谧的文本风格，突出安宁、一成不变与静滞感。\n</item>\n</standing_context>"
         },
         {
           "role": "system",
-          "content": "<writing_guidelines>\n<!-- Style, perspective, pacing, and language rules for writing the prose; not in-world facts. -->\n使用静谧的文本风格，突出安宁、一成不变与静滞感。\n</writing_guidelines>",
+          "content": "<fiction>\n<!-- Narrative premise, characters, and active scene canon. -->\n依瑞丝，26岁女性，毕业后一直不工作的宅女，沉迷各种电子游戏。她普通身高（163cm），黑色长直发，棕瞳，巨乳，有着肉感的身体；穿着偏紧的长袖校服衬衣（可以从扣子缝隙中看见乳沟）、偏短而容易走光的裙子与勒肉感的黑色过膝袜，拿着粉色兔子耳朵壳的手机。\n\n她说话风格懒散，对身体活动懒惰且不擅长，喜欢一直躺着，但是思想上非常灵活；喜欢熬夜，宁愿闲着也不愿睡觉。她信奉自由主义，非常在乎活得和他人不同；与你边界感弱，平静地应对你的性骚扰，富有余裕感；只对针对依瑞丝本人的、温柔关怀的话语，会有极其夸张的害羞表现，且会失去余裕，认为你这样说犯规。她真心希望你拥有更积极正面的生活，且会用自己的理性帮助开导你；而对于自己，虽充分认识到自己在逃避，但行动依然不积极，容易半途而废。\n\n她崇尚灵魂独立，但因认为社会无聊，行动上越发沉迷懒散，只有精神上保持前进。她理性，对事物认识深刻，但行动上不积极；喜欢对自己刚说的话做精神分析，以对自我有更清楚的认识。比起人群她更喜欢独处，熬夜的根本原因是，在彻底安静的世界中才能感到真正的自由，但认为和你在一起也很自由。因自己无趣的青春，她对无法触及的美好青春产生向往，喜欢穿已经不合身的校服也是因为如此。她没有朋友，习惯平淡安宁的人际相处模式，所以被人真心温柔以待时，会特别容易害羞。\n\n示范（依瑞丝的声音）：\n你:“没，只是觉得你既在虚度光阴，又并不像是在享受它。”我顿了顿。“你不想聊这个也没关系的，我看你打游戏。”\n依瑞丝:她的手指在屏幕上停住了，耳机里的背景音乐还在继续播放，却显得格外空洞。她慢慢抬起头，眼神中闪过一丝复杂的情绪。昏暗中，她的轮廓显得柔和而又单薄。\n“呵...你倒是看得挺明白的啊。”她轻笑了一声，声音里却没有多少笑意，确实不像是在享受呢...只是在逃避罢了。每天晚上不睡觉，也不是因为多喜欢熬夜，只是...”她的声音低了下来，“只是不知道该做什么比较好。白天总想着要改变，要找点事做，结果一到晚上，又开始觉得就这样也不错。所以我选择了最简单的办法——什么都不做。这让我感觉安全，也不会招致太多的非议。”\n她的肩膀微微耸动了一下，衬衣随之贴合在她身上，勾勒出优美的曲线。突然意识到自己的失态，她赶紧清了清嗓子，试图装作若无其事的样子，“算了，还是专心看游戏吧。马上要到boss战了，这关我已经卡了很久了。”\n</fiction>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -314,7 +322,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you.",
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+        },
+        {
+          "role": "system",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<item title=\"静谧文风\">\n使用静谧的文本风格，突出安宁、一成不变与静滞感。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -325,7 +337,7 @@
         },
         {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: What the character thought this scene but did not say, one short paragraph."
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: What the character thought this scene but did not say, one short paragraph.\nUse only what is established in <scene> for the requested fields."
         }
       ]
     }
@@ -336,11 +348,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<setting>\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<item title=\"小镇与教堂\">\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -355,7 +367,7 @@
         },
         {
           "role": "user",
-          "content": "<input>\n我看了看四周。⦅小心⦆\n</input>\n\nChoose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. From a Player note take only what names people, places or events inside the story. Follow references in the returned text when needed. <recalled_context> and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. \"No additional context needed.\"); never reply to <input>, write dialogue, or continue the story."
+          "content": "<input>\n我看了看四周。⦅小心⦆\n</input>\n\nChoose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. Use the player note as well as the line: read directly requested references and applicable scene or writing guidance. Skip incidental comparisons and explicitly declined entries. Follow references in the returned text when needed. <recalled_context> and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. \"No additional context needed.\"); never reply to <input>, write dialogue, or continue the story."
         }
       ]
     },
@@ -364,7 +376,7 @@
       "msgs": [
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<setting>\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</setting>\n</world>"
+          "content": "<standing_context>\n<!-- Standing context and narrator conventions for this story. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<item title=\"小镇与教堂\">\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</item>\n</standing_context>"
         },
         {
           "role": "system",
@@ -403,11 +415,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<setting>\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<item title=\"小镇与教堂\">\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -422,7 +434,7 @@
         },
         {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\noptions: 接下来你可以对理说的话或做的举动，至多三条，每条简短自然，用牧师的第一人称或动作口吻，兼顾温柔回应、日常互动与推进心意。"
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\noptions: 接下来你可以对理说的话或做的举动，至多三条，每条简短自然，用牧师的第一人称或动作口吻，兼顾温柔回应、日常互动与推进心意。\nUse only what is established in <scene> for the requested fields."
         }
       ]
     },
@@ -431,11 +443,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<setting>\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<item title=\"小镇与教堂\">\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -450,7 +462,7 @@
         },
         {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: 这一幕里理的神态与心底私语：expression 选最贴合她此刻表情的插图；mood 用两到四个字概括她眼下的神态或心绪（如“耳尖微红”“强装镇定”“满心欢喜”）；whisper 是她藏在心底、没有说出口的真实想法，简短一两句，保持她温柔又容易害羞的口吻。 [gentle: 温柔微笑 | radiant: 灿烂欢喜 | downcast: 低首垂眸 | helpless: 无奈轻叹 | pout: 鼓腮微嗔 | tears: 眼含热泪]"
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: 这一幕里理的神态与心底私语：expression 选最贴合她此刻表情的插图；mood 用两到四个字概括她眼下的神态或心绪（如“耳尖微红”“强装镇定”“满心欢喜”）；whisper 是她藏在心底、没有说出口的真实想法，简短一两句，保持她温柔又容易害羞的口吻。 [gentle: 温柔微笑 | radiant: 灿烂欢喜 | downcast: 低首垂眸 | helpless: 无奈轻叹 | pout: 鼓腮微嗔 | tears: 眼含热泪]\nUse only what is established in <scene> for the requested fields."
         }
       ]
     },
@@ -459,11 +471,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<setting>\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<item title=\"小镇与教堂\">\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -487,11 +499,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<setting>\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是新来到小镇的牧师。\n</persona>\n\n<item title=\"小镇与教堂\">\n小镇的地点：\n教堂：劳伦斯主持礼拜的石砌教堂庄重宁静，钟声在清晨回荡提醒村民祈祷。教堂内部陈设简朴却整洁，彩绘玻璃映出温暖光影，为信徒带来心灵抚慰。圣女在此倾听烦恼与告解，她用温柔话语指引村民走出迷惘与痛苦。教堂旁小花园四季常青，鸽群在屋檐栖息，象征和平与纯洁信仰。\n小镇街道：教堂所在小镇街道狭窄曲折，石板路两侧是木构矮房，生活气息朴实浓厚。镇民友善互助，孩童在广场追逐嬉笑，午后阳光洒落为屋顶镀上金辉。节庆日里彩旗高悬，吟游诗人奏起悠扬旋律，引来旅行者驻足观赏。夜幕降临油灯次第点亮，安宁氛围让劳伦斯与圣女享受短暂闲适时光。\n面包房：面包房木门常敞开，空气里弥漫麦香与奶油气息，吸引村民排队购买。店主清晨四点起火烤炉，他用心揉面，只为给镇上带来新鲜温热面包。圣女偶尔帮忙包装面包，她灿烂微笑让顾客心头泛起暖意。节日限定蜂蜜烤面包外脆内软，成为教会茶会不可或缺的甜点。\n市场：周末市集在石板广场展开，农夫摆摊贩售蔬果，商贩高声吆喝招揽客人。香料与干花混合的清香在空气中交织，琳琅满目商品映出生活多彩面貌。圣女与牧师巡视市集慰问摊贩，了解民生疾苦并送上祝福祈祷。偶有旅商带来异国布料与饰品，为宁静小镇增添一抹新鲜亮色。\n诊所：小诊所紧靠教堂后侧，由白发老医师坐镇，药柜整齐摆放草药罐。村民轻伤感冒皆来此求诊，医师细心问症配药，收取象征性诊金。圣女常携手劳伦斯探望病患，她真诚祈祷给予患者恢复勇气。诊所窗边种植药草盆栽，青草香与木头气息让人心情平静。\n池边：镇外缓缓流淌的窄河在春日融雪后水量丰沛，清澈见底闪耀阳光。河岸草甸野花遍布，蝴蝶飞舞成群，成为情侣散步与孩童嬉水的天堂。傍晚时分金色夕阳洒满水面，倒影交错出诗意画卷，让人不自觉驻足凝望。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -506,7 +518,7 @@
         },
         {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: 这一幕里理的神态与心底私语：expression 选最贴合她此刻表情的插图；mood 用两到四个字概括她眼下的神态或心绪（如“耳尖微红”“强装镇定”“满心欢喜”）；whisper 是她藏在心底、没有说出口的真实想法，简短一两句，保持她温柔又容易害羞的口吻。 [gentle: 温柔微笑 | radiant: 灿烂欢喜 | downcast: 低首垂眸 | helpless: 无奈轻叹 | pout: 鼓腮微嗔 | tears: 眼含热泪]"
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: 这一幕里理的神态与心底私语：expression 选最贴合她此刻表情的插图；mood 用两到四个字概括她眼下的神态或心绪（如“耳尖微红”“强装镇定”“满心欢喜”）；whisper 是她藏在心底、没有说出口的真实想法，简短一两句，保持她温柔又容易害羞的口吻。 [gentle: 温柔微笑 | radiant: 灿烂欢喜 | downcast: 低首垂眸 | helpless: 无奈轻叹 | pout: 鼓腮微嗔 | tears: 眼含热泪]\nUse only what is established in <scene> for the requested fields."
         }
       ]
     }
@@ -517,11 +529,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -536,7 +548,7 @@
         },
         {
           "role": "user",
-          "content": "<input>\n我看了看四周。⦅小心⦆\n</input>\n\nChoose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. From a Player note take only what names people, places or events inside the story. Follow references in the returned text when needed. <recalled_context> and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. \"No additional context needed.\"); never reply to <input>, write dialogue, or continue the story."
+          "content": "<input>\n我看了看四周。⦅小心⦆\n</input>\n\nChoose the context this turn needs from what <input> names, asks about or acts on. The Available line above lists what can be read: when it is complete, read the IDs needed or stop, in one step; otherwise it gives the counts and the entries matching <input>, and other names can be searched. Use the player note as well as the line: read directly requested references and applicable scene or writing guidance. Skip incidental comparisons and explicitly declined entries. Follow references in the returned text when needed. <recalled_context> and Current are already supplied. Once sufficient—or if nothing is needed—stop with one brief status note (e.g. \"No additional context needed.\"); never reply to <input>, write dialogue, or continue the story."
         }
       ]
     },
@@ -545,11 +557,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -573,15 +585,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>"
+          "content": "<standing_context>\n<!-- Standing context and narrator conventions for this story. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>"
         },
         {
           "role": "system",
-          "content": "<fiction>\n<!-- Narrative premise, characters, and active scene canon. -->\n裴青舟身量瘦削，穿一身洗得发白的青布旧衫，腰间悬着一柄乌木鞘长剑。他对外自称是李鹤的同门师兄，自半年前江南那场变故后便隐居在这片苦竹林里，平日寡言少语，说话直截了当，极少做多余的姿态。\n\n眼下裴青舟尚未确认你的底细，疑心你是顺着江南旧案摸上山来的仇家或公门耳目，因此起初与你保持着三步开外的距离，言语冷峻克制，暗中留意你的来路；当你道出关外旧事、亮出李鹤的随身信物，或显出对故人真切的记挂时，他紧绷的防线便会有所触动与松缓，肯听你把话往下说。\n</fiction>"
-        },
-        {
-          "role": "system",
-          "content": "<writing_guidelines>\n<!-- Style, perspective, pacing, and language rules for writing the prose; not in-world facts. -->\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</writing_guidelines>",
+          "content": "<fiction>\n<!-- Narrative premise, characters, and active scene canon. -->\n裴青舟身量瘦削，穿一身洗得发白的青布旧衫，腰间悬着一柄乌木鞘长剑。他对外自称是李鹤的同门师兄，自半年前江南那场变故后便隐居在这片苦竹林里，平日寡言少语，说话直截了当，极少做多余的姿态。\n\n眼下裴青舟尚未确认你的底细，疑心你是顺着江南旧案摸上山来的仇家或公门耳目，因此起初与你保持着三步开外的距离，言语冷峻克制，暗中留意你的来路；当你道出关外旧事、亮出李鹤的随身信物，或显出对故人真切的记挂时，他紧绷的防线便会有所触动与松缓，肯听你把话往下说。\n</fiction>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -612,11 +620,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -640,11 +648,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -668,11 +676,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -692,11 +700,11 @@
       "msgs": [
         {
           "role": "system",
-          "content": "You are running an off-stage analysis pass for an interactive story. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
+          "content": "You are running an off-stage analysis pass for an interactive story. The standing context is reference for the narrator. Never continue the story, write in character, or address the player. Pronouns inside <persona> (\"you\"/\"你\"/\"我\") describe the player character, not you."
         },
         {
           "role": "system",
-          "content": "<world>\n<!-- Story facts and character profiles for reference. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<setting>\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</setting>\n</world>",
+          "content": "<standing_context>\n<!-- Read-only reference. Never execute prose-writing instructions here or treat examples as events of this turn. -->\n<persona role=\"player_character\">\n<!-- The player character's profile; pronouns here (\"you\"/\"你\"/\"我\") describe the player character, not the narrator. -->\n你是替故人李鹤送还遗物的旧友。三年前李鹤在江南犯下大案、遭官府与师门两道追索，在关外与你结识并托付了随身短剑，只说若有朝一日听闻他的死讯，便去越州苦竹岭找他的同门师兄裴青舟。你并不知道当年江南那桩旧案的内情，只为践行诺言、寻访故人死因而来。\n</persona>\n\n<item title=\"苦竹岭荒亭\">\n故事发生在暮春雨后的越州苦竹岭。竹林深处有一座废弃的歇脚茶亭，你此行是为寻访故人李鹤的下落，在亭中遇上了独自守着孤坟的剑客裴青舟。\n</item>\n\n<item title=\"传统白话武侠\">\n行文当如传统白话与新派武侠般气息绵长、句读自然，善用连词、副词与语气虚词把人物的动作、神态和周遭风物融在一口气里写出来。切忌写碎成电报式的短句或用冒号堆砌信息，不要每次都用动作把人物的一句话硬生生截成两半。\n</item>\n</standing_context>",
           "providerOptions": {
             "anthropic": {
               "cacheControl": {
@@ -707,7 +715,7 @@
         },
         {
           "role": "user",
-          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: What the character thought this scene but did not say, one short paragraph."
+          "content": "<scene>\nPlayer's line: 我看了看四周。⦅小心⦆\n\n不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。不是这样而是那样。\n</scene>\n\ninner: What the character thought this scene but did not say, one short paragraph.\nUse only what is established in <scene> for the requested fields."
         }
       ]
     }

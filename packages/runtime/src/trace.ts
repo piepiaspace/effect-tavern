@@ -74,9 +74,9 @@ export type MessageZone = "head" | "history" | "input" | "turn" | "tail"
 export type MessageSubzone =
   | "hat-lead"
   | "lead"
-  | "world" // `<world>`: the frame's who and where, as the off-stage stages read it
+  | "world" // `<standing_context>`: resolved head fragments and standing pack entries
   | "fiction"
-  | "guidelines" // `<writing_guidelines>`: the frame's writing slots and the player's head fragments
+  | "guidelines" // `<writing_switches>`: narrator-only compiled writing switches
   | "hat-head"
   | "summary"
   | "history"

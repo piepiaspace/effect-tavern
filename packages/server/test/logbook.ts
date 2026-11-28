@@ -663,7 +663,7 @@ for (const columns of [48, 100]) {
   const kept = shaped.split("\n").map((l) => (l ? `  ${l}` : ""))
   const at = rows.findIndex((_, i) => kept.every((k, j) => rows[i + j] === k))
   assert.ok(at > 0)
-  assert.equal(rows[at + kept.length], "  </setting>")
+  assert.equal(rows[at + kept.length], "  </item>")
   assert.match(rows[rows.indexOf("[user]", at) - 2], /^ {2}╌╌ 断点 ╌+$/)
   // a call's #n counts across the turn (session.ts `emitting`): narrate #1, the settlement #2, its repair #3
   assert.ok(rows.some((r) => r.startsWith("→ 伴星 #1 · narrate · #1")))

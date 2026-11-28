@@ -420,7 +420,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   const s = lookupSelect(answers, units)
   assert.deepEqual(
     s.lines.map((l) => l.label),
-    ["E0.", "E1.", "E2.", "E3.", "E4.", "E5.", "E6.", "E7.", "RS.", "Low."],
+    ["E0.", "E1.", "E2.", "E3.", "E4.", "E5.", "E6.", "E7.", "R. › RS.", "Low."],
   )
   // r#s ranks first, e0..e6 fill the 8; e7 (0.61) no longer fits; low is at 0.5, not over it
   assert.deepEqual(s.ids, ["card:r#s", ...Array.from({ length: 7 }, (_, i) => `card:e${i}`)])
@@ -483,7 +483,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   const t2 = await f.go(f.S.act(t.id, { text: "her years at sea" }))
   assert.equal(f.lookup.length, 0)
   assert.ok(sent[1].questions.some((q) => q.includes("Mira's years at sea.")))
-  assert.ok(sent[1].questions.every((q) => !q.includes("Mira keeps the lighthouse.")))
+  assert.ok(sent[1].questions.some((q) => q.includes("Mira keeps the lighthouse. › Mira's years at sea.")))
   assert.ok(t2.deliveries.some((d) => d.resourceId === "card:mira#past"))
 }
 // A failed decision call: the LLM loop runs, the whole catalog in its first request, and nothing was delivered early.
@@ -566,15 +566,14 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
     [
       ["pack:craft/cinema", "电影化场景调度", "当对白存在潜台词博弈、视线交锋或留白张力时读取"],
       ["pack:craft/bare", "bare", ""],
-      ["pack:craft/outline", "叙事节奏总纲", "全篇节奏控制核心原则"],
+
       ["pack:craft/manual", "黑色幽默小剧场", "仅玩家主动点名触发的荒诞旁白模板"],
     ],
   )
 
   // Always-on main entry (`craft/outline`) is pre-injected; its sections remain on-demand in lookup (`resident: sections only`).
   // Manual-only entry (`craft/manual`) and its sections are completely invisible to model lookup.
-  const alwaysHeld = res.filter((x) => x.access.model && x.activation === "always").map((x) => freeze(x))
-  const l = contextLookup(res, alwaysHeld)
+  const l = contextLookup(res, [])
   assert.deepEqual(
     l.readable().map((x) => x.resourceId),
     ["pack:craft/cinema", "pack:craft/bare", "pack:craft/outline"],
@@ -584,10 +583,24 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   assert.ok(block.includes("pack:craft/bare bare\n"))
   assert.ok(
     block.includes(
-      "pack:craft/outline 叙事节奏总纲 — 全篇节奏控制核心原则 (resident: sections only)\n  pack:craft/outline#climax 高潮收束技法\n  pack:craft/outline#transition 转场切镜",
+      "pack:craft/outline 叙事节奏总纲 — 全篇节奏控制核心原则 (resident: sections only)\n  pack:craft/outline#climax 叙事节奏总纲 › 高潮收束技法\n  pack:craft/outline#transition 叙事节奏总纲 › 转场切镜",
     ),
   )
   assert.ok(!block.includes("craft/manual"))
+  const manual = res.find((r) => r.resourceId === "pack:craft/manual")!
+  const child = res.find((r) => r.of === manual.resourceId)!
+  assert.equal(l.read([child.resourceId]).ok, false)
+  const invoked = contextLookup(res, [freeze(manual)])
+  assert.ok(invoked.read([child.resourceId]).ok)
+  assert.deepEqual(
+    invoked.delivered.map((r) => r.resourceId),
+    [child.resourceId],
+  )
+  const legacy = freeze(byId.get("pack:craft/outline")!)
+  assert.deepEqual(
+    l.recalled([legacy, { ...legacy, revision: "earlier" }]).map((r) => r.revision),
+    ["earlier"],
+  )
 
   // `summary` participates in anchor search ranking; section `title` participates in section hit ordering
   const sumHit = l.search("视线交锋")
@@ -647,7 +660,7 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
   )
   assert.deepEqual(
     t1.deliveries.map((d) => d.resourceId),
-    ["pack:craft/outline", "pack:craft/outline#climax", "pack:craft/cinema"],
+    ["pack:craft/outline#climax", "pack:craft/cinema"],
   )
   const narrateDoc = JSON.stringify(calls.find((c) => c.phase === "narrate")!.msgs)
   assert.ok(narrateDoc.includes("总纲常驻：先立感官锚点，再推进冲突。"))
@@ -665,7 +678,15 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
       local: { id: "local", name: "Local", card: chat.id, mounts: ["craft"] },
     }),
     model: (p) => (p === "lookup" ? lookupModel2 : otherModel),
-    store: { read: () => ({ nodes: [...S.log.nodes.values()], head: t1.id }), write: () => {} },
+    store: {
+      read: () => ({
+        nodes: [...S.log.nodes.values()].map((n) =>
+          n.id === t1.id ? { ...n, deliveries: [legacy, ...n.deliveries] } : n,
+        ),
+        head: t1.id,
+      }),
+      write: () => {},
+    },
   })
   const t2 = await Effect.runPromise(
     outcome(
@@ -678,13 +699,17 @@ const tc = { toolCallId: "test", signal: new AbortController().signal }
       ),
     ),
   )
+  for (const stage of ["lookup", "narrate"]) {
+    const message = JSON.stringify(calls.find((c) => c.phase === stage)!.msgs)
+    assert.equal(message.split(legacy.text).length - 1, 1)
+  }
   const lookupPrompt2 = JSON.stringify(calls.find((c) => c.phase === "lookup")!.msgs)
   assert.ok(lookupPrompt2.includes("pack:craft/cinema 电影化场景调度 — 当对白存在潜台词博弈"))
   assert.ok(lookupPrompt2.includes("(resident: sections only)"))
-  assert.ok(lookupPrompt2.includes("pack:craft/cinema#subtext 潜台词与停顿"))
+  assert.ok(lookupPrompt2.includes("pack:craft/cinema#subtext 电影化场景调度 › 潜台词与停顿"))
   assert.deepEqual(
     t2.deliveries.map((d) => d.resourceId),
-    ["pack:craft/outline", "pack:craft/cinema#subtext"],
+    ["pack:craft/cinema#subtext"],
   )
 }
 console.log("lookup ok")

@@ -264,11 +264,11 @@ export const makeDerived = ({
   }
 
   const resident = (path: readonly Turn[], start: number) => {
-    const resources = resourcesOn(path)
+    const active = new Set(resourcesOn(path).map((r) => r.resourceId))
     return residentOn(path, start).filter(
       (s) =>
         // Removed entities no longer provide current context; their frozen evidence remains on the original turn.
-        s.source !== "memory" || resources.some((r) => r.resourceId === s.resourceId),
+        s.source === "card" || active.has(s.resourceId),
     )
   }
   const currentResources = (path: readonly Turn[]) => fedResources(resourcesOn(path), products())
