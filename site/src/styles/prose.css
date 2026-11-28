@@ -230,13 +230,19 @@
   border-spacing: 0;
   border-radius: var(--nb-radius);
   border: 1px solid var(--nb-border);
+  background: var(--nb-card);
+  overflow: hidden;
   table-layout: auto;
   font-size: 0.875rem;
-  line-height: 1.25rem;
+  line-height: 1.375rem;
 }
 
-/* Wide tables scroll within this box at all widths instead of overflowing the
-   page; short tables still fill it via the inner `width: 100%`. */
+.docs-content :where(table:not([class]):has(> colgroup)) {
+  table-layout: fixed;
+}
+
+/* Wide tables scroll within this box on narrow phones instead of overflowing
+   the page; desktop tables stay flush within --nb-content-max via <colgroup>. */
 .docs-content :where(.nb-table-scroll) {
   max-width: 100%;
   overflow-x: auto;
@@ -245,24 +251,38 @@
   -webkit-overflow-scrolling: touch;
 }
 
+@media (max-width: 639px) {
+  .docs-content :where(table:not([class]):has(> colgroup)) {
+    min-width: 34rem;
+  }
+}
+
+.docs-content :where(thead:not([class])) {
+  background: var(--nb-muted);
+}
+
 .docs-content :where(th:not([class])),
 .docs-content :where(td:not([class])) {
   padding: 0.625rem 0.875rem;
   text-align: start;
   vertical-align: top;
   border-bottom: 1px solid var(--nb-border);
+  overflow-wrap: break-word;
 }
 
 .docs-content :where(th:not([class])) {
   font-weight: 500;
+  font-size: 0.8125rem;
   color: var(--nb-muted-foreground);
-  white-space: nowrap;
+  white-space: normal;
+  text-wrap: balance;
 }
 
-/* Code in a cell is usually an identifier: keep it whole and let the table
-   scroll rather than break `RateLimit-Remaining` across two lines. */
+/* Allow long code tokens inside table cells to wrap cleanly instead of forcing
+   horizontal scrollbars on normal 3–4 column documentation tables. */
 .docs-content :where(td:not([class])) :where(code:not([class])) {
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .docs-content :where(tbody:not([class]) tr:not([class]):last-child td:not([class])) {

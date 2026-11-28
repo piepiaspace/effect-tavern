@@ -1,0 +1,43 @@
+---
+/**
+ * Disclosure — styled collapsible panel for MDX pages built on Nimbus's
+ * Collapsible primitive (`grid-template-rows: 0fr → 1fr`).
+ */
+import Icon from "@cloudflare/nimbus-docs/components/Icon.astro";
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
+
+interface Props {
+  title: string;
+  meta?: string;
+  open?: boolean;
+}
+
+const { title, meta, open = false } = Astro.props;
+---
+
+<Collapsible
+  open={open}
+  class="my-5 rounded-2xl border border-border bg-background/60 transition-colors hover:border-border-strong"
+>
+  <CollapsibleTrigger
+    class="group flex items-center justify-between gap-3 px-4 py-3 text-sm font-medium text-foreground"
+  >
+    <span class="flex items-center gap-2.5 min-w-0">
+      <span class="truncate">{title}</span>
+      {meta && (
+        <span class="hidden sm:inline-flex shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[0.6875rem] font-normal text-muted-foreground">
+          {meta}
+        </span>
+      )}
+    </span>
+    <Icon
+      name="ph:caret-down"
+      class="size-4 shrink-0 text-muted-foreground transition-transform duration-200 group-aria-expanded:rotate-180"
+    />
+  </CollapsibleTrigger>
+  <CollapsibleContent>
+    <div class="px-4 pb-4 pt-1 border-t border-border/70">
+      <slot />
+    </div>
+  </CollapsibleContent>
+</Collapsible>

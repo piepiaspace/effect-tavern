@@ -4,6 +4,7 @@ import nimbus, {
   defineConfig as defineNimbusConfig,
 } from "@cloudflare/nimbus-docs";
 import { tableScroll } from "@cloudflare/nimbus-docs/markdown";
+import { tableLayout } from "./src/lib/table-layout";
 
 const nimbusConfig = defineNimbusConfig({
   site: "https://piepiaspace.github.io",
@@ -42,7 +43,7 @@ export default defineConfig({
         "nimbus/internal-link": "error",
       },
       markdown: {
-        hastPlugins: [tableScroll()],
+        hastPlugins: [tableLayout(), tableScroll()],
         features: { headingAttributes: false },
       },
     }),

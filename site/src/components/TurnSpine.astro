@@ -1,0 +1,147 @@
+---
+/**
+ * TurnSpine — theme-native architectural pipeline visualization for Effect
+ * Tavern's multi-stage turn spine. Neutral ink-on-paper surfaces with surgical
+ * terracotta markers for LLM seams, zero runtime JS.
+ */
+interface Props {
+  lang?: "en" | "zh";
+}
+
+const { lang = "en" } = Astro.props;
+const isZh = lang === "zh";
+
+type Kind = "code" | "llm" | "hybrid";
+
+interface Stage {
+  id: string;
+  kind: Kind;
+  role: string;
+  always?: boolean;
+}
+
+const row1: Stage[] = [
+  { id: "lookup", kind: "hybrid", role: isZh ? "目录预检 / 检索" : "Catalog / search" },
+  { id: "decide", kind: "llm", role: isZh ? "动作与概率" : "Action & judge" },
+  { id: "settle", kind: "code", role: isZh ? "掷骰与结算" : "Seeded RNG & rules" },
+  { id: "gate", kind: "code", role: isZh ? "解锁与开窗" : "Unlock & offer" },
+  { id: "direct", kind: "llm", role: isZh ? "分拣与基调" : "Must/may & tone" },
+];
+
+const row2: Stage[] = [
+  { id: "narrate", kind: "llm", role: isZh ? "流式叙事" : "Stream prose", always: true },
+  { id: "check", kind: "hybrid", role: isZh ? "预检 / 护栏" : "Guard & rewrite" },
+  { id: "polish", kind: "llm", role: isZh ? "去套话润色" : "Lexicon polish" },
+  { id: "record", kind: "llm", role: isZh ? "读数与入账" : "Readouts & ops", always: true },
+];
+---
+
+<figure class="ts-root my-6 rounded-2xl border border-border bg-background/70 p-4 sm:p-5">
+  <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+    <div class="font-mono text-[0.6875rem] tracking-[0.12em] uppercase text-muted-foreground">
+      {isZh ? "回合执行管线 · 9 阶段接缝" : "Turn Execution Pipeline · 9 Stage Seams"}
+    </div>
+    <div class="flex flex-wrap items-center gap-3 font-mono text-[0.6875rem] text-muted-foreground">
+      <span class="inline-flex items-center gap-1.5">
+        <span class="inline-block size-2 rounded-full bg-brand" aria-hidden="true"></span>
+        {isZh ? "LLM 接缝" : "LLM seam"}
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="inline-block size-2 rounded-full border border-brand bg-card" aria-hidden="true"></span>
+        {isZh ? "预检 + LLM" : "Pre-check + LLM"}
+      </span>
+      <span class="inline-flex items-center gap-1.5">
+        <span class="inline-block size-2 rounded-[2px] bg-foreground" aria-hidden="true"></span>
+        {isZh ? "纯代码" : "Pure code"}
+      </span>
+    </div>
+  </div>
+
+  <!-- Row 1: Preparation & Mechanical Settlement -->
+  <div class="ts-row grid grid-cols-2 items-stretch gap-2.5 sm:grid-cols-5">
+    {row1.map((s, idx) => (
+      <div class="ts-cell relative flex items-stretch">
+        <div class="ts-node flex h-full w-full flex-col justify-between gap-1 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm">
+          <div class="flex items-center justify-between gap-1.5">
+            <span class="font-mono text-xs font-semibold text-foreground">{s.id}</span>
+            <span
+              class:list={[
+                "inline-block shrink-0",
+                s.kind === "llm" && "size-2 rounded-full bg-brand",
+                s.kind === "hybrid" && "size-2 rounded-full border border-brand bg-card",
+                s.kind === "code" && "size-2 rounded-[2px] bg-foreground",
+              ]}
+              aria-hidden="true"
+            />
+          </div>
+          <span class="text-[0.75rem] leading-tight text-muted-foreground">{s.role}</span>
+        </div>
+        {idx < row1.length - 1 && (
+          <span class="ts-arrow hidden sm:inline-block" aria-hidden="true">→</span>
+        )}
+      </div>
+    ))}
+  </div>
+
+  <!-- Connector between Row 1 and Row 2 -->
+  <div class="my-2 hidden sm:flex items-center justify-between px-4 font-mono text-[0.625rem] text-muted-foreground/75" aria-hidden="true">
+    <span>{isZh ? "↑ 按需激活（Opt-in）" : "↑ Opt-in stages"}</span>
+    <span class="flex-1 mx-3 h-px bg-border"></span>
+    <span>{isZh ? "↓ 叙事与入账" : "↓ Narration & commit"}</span>
+  </div>
+
+  <!-- Row 2: Narration, Verification & State Commit -->
+  <div class="ts-row mt-2.5 sm:mt-0 grid grid-cols-2 items-stretch gap-2.5 sm:grid-cols-4">
+    {row2.map((s, idx) => (
+      <div class="ts-cell relative flex items-stretch">
+        <div
+          class:list={[
+            "ts-node flex h-full w-full flex-col justify-between gap-1 rounded-xl border px-3 py-2.5 shadow-sm",
+            s.always ? "border-border-strong bg-card" : "border-border bg-card",
+          ]}
+        >
+          <div class="flex items-center justify-between gap-1.5">
+            <span class="font-mono text-xs font-semibold text-foreground">{s.id}</span>
+            <span class="flex items-center gap-1.5">
+              {s.always && (
+                <span class="rounded-full bg-muted px-1.5 py-0.5 font-mono text-[0.5625rem] uppercase tracking-[0.06em] text-muted-foreground">
+                  {isZh ? "必跑" : "Core"}
+                </span>
+              )}
+              <span
+                class:list={[
+                  "inline-block shrink-0",
+                  s.kind === "llm" && "size-2 rounded-full bg-brand",
+                  s.kind === "hybrid" && "size-2 rounded-full border border-brand bg-card",
+                ]}
+                aria-hidden="true"
+              />
+            </span>
+          </div>
+          <span class="text-[0.75rem] leading-tight text-muted-foreground">{s.role}</span>
+        </div>
+        {idx < row2.length - 1 && (
+          <span class="ts-arrow hidden sm:inline-block" aria-hidden="true">→</span>
+        )}
+      </div>
+    ))}
+  </div>
+</figure>
+
+<style>
+  .ts-cell {
+    gap: 0.25rem;
+  }
+  .ts-arrow {
+    position: absolute;
+    right: -0.78rem;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+    font-family: var(--nb-font-mono);
+    font-size: 0.6875rem;
+    color: var(--nb-muted-foreground);
+    opacity: 0.65;
+    pointer-events: none;
+  }
+</style>

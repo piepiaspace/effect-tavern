@@ -11,11 +11,11 @@ Effect Tavern separates **narrative prose**, **mechanical settlement**, and **st
 
 A player turn is a fixed execution pipeline rather than a single LLM completion:
 
-```text
-lookup → decide → settle → gate → direct → narrate → check → polish → record
-```
+<TurnSpine lang="en" />
 
-Structured stages are **strictly opt-in**: a pure chat card (`banxing.yaml`) executes only `narrate` and `record`. All other stages activate automatically when the card declares their inputs:
+Structured stages are **strictly opt-in**: a pure chat card (`banxing.yaml`) executes only `narrate` and `record`. All other stages activate automatically when the card declares their inputs.
+
+<Disclosure title="Stage-by-stage breakdown" meta="9 stages">
 
 | Stage | Runs When | Reads | Responsibility |
 | --- | --- | --- | --- |
@@ -28,6 +28,8 @@ Structured stages are **strictly opt-in**: a pure chat card (`banxing.yaml`) exe
 | `check` | `guard` or `must` non-empty | `<world>`, `review.head`, `<draft>` prose | Runs `DecisionModel` fast pass when enabled; falls back to LLM `check` when ambiguous, triggering at most one correction rewrite |
 | `polish` | `switches.polish !== false` & `lexicon` hit | `<world>`, `review.head`, `<draft>` matched sentences | Rewrites only narration sentences outside dialogue that match `lexicon` slop patterns |
 | `record` | Every turn | `<world>`, `review.head`, `<scene>` final prose | Answers `readouts`, extracts `chronicle`/`theater` products, commits sparse `world` `DomainChange` ops |
+
+</Disclosure>
 
 ### Decision Model Pre-Check (`lookup` & `check`)
 

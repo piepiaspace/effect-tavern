@@ -5,8 +5,10 @@
  */
 
 import { Aside } from "./components/ui/aside";
+import Disclosure from "./components/Disclosure.astro";
 import DocsLanding from "./components/DocsLanding.astro";
 import Render from "./components/Render.astro";
+import TurnSpine from "./components/TurnSpine.astro";
 import { Card } from "./components/ui/card";
 import { CardGrid } from "./components/ui/card-grid";
 import { PackageManagers } from "./components/ui/package-managers";
@@ -17,6 +19,7 @@ export const components = {
   Aside,
   Card,
   CardGrid,
+  Disclosure,
   DocsLanding,
   PackageManagers,
   Render,
@@ -24,4 +27,5 @@ export const components = {
   Steps,
   TabItem,
   Tabs,
+  TurnSpine,
 };

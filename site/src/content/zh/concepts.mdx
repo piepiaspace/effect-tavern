@@ -11,11 +11,11 @@ Effect Tavern 在协议层面将**叙事正文**、**机械结算**与**结构�
 
 玩家的一轮输入走固定骨架的阶段流水线，而非单次模型生成：
 
-```text
-lookup → decide → settle → gate → direct → narrate → check → polish → record
-```
+<TurnSpine lang="zh" />
 
-所有结构化阶段均为 **按需开启（Opt-in）**：一张纯聊天卡（如 `banxing.yaml`）每轮只运行 `narrate` 与 `record`；其余阶段仅在卡片声明了对应机制时自动接入：
+所有结构化阶段均为 **按需开启（Opt-in）**：一张纯聊天卡（如 `banxing.yaml`）每轮只运行 `narrate` 与 `record`；其余阶段仅在卡片声明了对应机制时自动接入。
+
+<Disclosure title="展开各阶段触发条件与职责对照表" meta="9 个阶段">
 
 | 阶段 | 触发条件 | 读取范围 | 核心职责 |
 | --- | --- | --- | --- |
@@ -28,6 +28,8 @@ lookup → decide → settle → gate → direct → narrate → check → polis
 | `check` | `guard` 或 `must` 非空 | `<world>`、`review.head`、`<draft>` 草稿 | 开启预检时先经 `DecisionModel` 快筛；遇到模糊项再回退语言模型 `check`，最多触发一次纠错重写 |
 | `polish` | `switches.polish !== false` 且命中词表 | `<world>`、`review.head`、`<draft>` 命中句 | 仅重写对白之外命中 `lexicon` 套话模式的旁白句子 |
 | `record` | 每轮必跑 | `<world>`、`review.head`、`<scene>` 定稿正文 | 回答 `readouts` 选择题、提取 `chronicle` / `theater` 产物、提交 `world` 稀疏变更 |
+
+</Disclosure>
 
 ### 决策模型预检（`lookup` 与 `check`）
 
